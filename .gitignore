@@ -1,24 +1,104 @@
-# Virtual environment
-venv/
-.env
-
-# Python cache
+# --------------------
+# Python / bytecode
+# --------------------
 __pycache__/
-*.pyc
+*.py[cod]
+*$py.class
+*.so
 
-# Logs
+# --------------------
+# Virtual environments / secrets
+# --------------------
+venv/
+.venv/
+env/
+ENV/
+env.bak/
+venv.bak/
+.env
+.envrc
+.env.*
+
+# --------------------
+# Build / distribution
+# --------------------
+.Python
+build/
+dist/
+develop-eggs/
+eggs/
+.eggs/
+wheels/
+sdist/
+lib/
+lib64/
+parts/
+var/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# --------------------
+# Logs & runtime files
+# --------------------
+logs/
 *.log
+*.jsonl
 
-# OS / IDE
+# --------------------
+# Local databases / data
+# --------------------
+data/*.db
+*.sqlite
+*.sqlite3
+*.db
+
+# --------------------
+# Test / coverage
+# --------------------
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+pytest_cache/
+nosetests.xml
+coverage.xml
+*.cover
+*.py.cover
+
+# --------------------
+# IDE / OS
+# --------------------
 .vscode/
 .idea/
+.spyderproject
+.spyproject
+.ropeproject
+.mypy_cache/
+.pyre/
+.pytype/
+.ruff_cache/
+
 .DS_Store
-
 desktop.ini
+Thumbs.db
 
-# Runtime data
-data/*.db
-logs/
+# --------------------
+# Jupyter / IPython
+# --------------------
+.ipynb_checkpoints
+profile_default/
+ipython_config.py
 
-# Safety
-*.jsonl
+# --------------------
+# Docs / misc
+# --------------------
+docs/_build/
+site/
+.pdm-python
+.pdm-build/
+.pixi
+__pypackages__/
