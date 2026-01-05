@@ -1,0 +1,24 @@
+# Virtual environment
+venv/
+.env
+
+# Python cache
+__pycache__/
+*.pyc
+
+# Logs
+*.log
+
+# OS / IDE
+.vscode/
+.idea/
+.DS_Store
+
+desktop.ini
+
+# Runtime data
+data/*.db
+logs/
+
+# Safety
+*.jsonl
