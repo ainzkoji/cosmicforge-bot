@@ -3,8 +3,10 @@ import uuid
 import json
 import traceback
 
+import asyncio
 from pathlib import Path
 from fastapi import Query
+from fastapi import Body
 
 from fastapi import FastAPI
 from app.core.config import settings
@@ -14,7 +16,7 @@ from app.symbols.universe import parse_symbols, build_universe
 from app.runner.runner import PaperRunner
 from app.symbols.leverage import parse_leverage_map, leverage_for
 from app.exchange.binance.filters import extract_filters, round_qty
-import asyncio
+
 from dataclasses import dataclass
 from typing import Optional
 from datetime import datetime, timezone
@@ -518,7 +520,7 @@ def debug_settings():
         "DEFAULT_LEVERAGE": settings.DEFAULT_LEVERAGE,
         "STOP_LOSS_PCT": settings.STOP_LOSS_PCT,
         "TAKE_PROFIT_PCT": settings.TAKE_PROFIT_PCT,
-        "FORCE_SIGNAL": settings.FORCE_SIGNAL,
+        # "FORCE_SIGNAL": settings.FORCE_SIGNAL,
         "TRADE_MODE": settings.TRADE_MODE,
     }
 
@@ -1239,4 +1241,46 @@ def reset_kill(reset_pnl: bool = False):
         "ok": True,
         "kill": runner.daily.kill,
         "realized_pnl": runner.daily.realized_pnl,
+    }
+
+
+@app.post("/debug/set_last_stop")
+def debug_set_last_stop(payload: dict = Body(...)):
+    """
+    Set last_stop_ms for a symbol to simulate a recent stop-loss.
+    This does NOT place any trades.
+    """
+    symbol = (payload.get("symbol") or "").upper()
+    minutes_ago = int(payload.get("minutes_ago") or 0)
+
+    if not symbol:
+        return {"ok": False, "error": "symbol is required"}
+
+    runner = get_runner()  # ✅ YOUR runner source
+
+    st = runner.state.get(symbol)
+    if st is None:
+        return {"ok": False, "error": f"symbol {symbol} not in runner.state"}
+
+    now_ms = int(time.time() * 1000)
+    st.last_stop_ms = now_ms - (minutes_ago * 60 * 1000)
+
+    # reset confirmation state (if these fields exist)
+    if hasattr(st, "reentry_confirm_signal"):
+        st.reentry_confirm_signal = "NONE"
+    if hasattr(st, "reentry_confirm_count"):
+        st.reentry_confirm_count = 0
+
+    # persist if you have a store
+    if hasattr(runner, "store") and runner.store is not None:
+        try:
+            runner.store.save_symbol(symbol, st)
+        except Exception:
+            pass
+
+    return {
+        "ok": True,
+        "symbol": symbol,
+        "last_stop_ms": st.last_stop_ms,
+        "minutes_ago": minutes_ago,
     }

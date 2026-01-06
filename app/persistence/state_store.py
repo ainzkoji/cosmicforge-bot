@@ -81,9 +81,12 @@ class StateStore:
                 last_checked_ms=int(r["last_checked_ms"] or 0),
                 adds=int(r["adds"] or 0),
                 last_trade_ms=int(r["last_trade_ms"] or 0),
+                last_stop_ms=int(r["last_stop_ms"] or 0),
                 pending_open=r["pending_open"],
                 entry_qty=float(r["entry_qty"] or 0.0),
                 last_user_trade_id=int(r["last_user_trade_id"] or 0),
+                reentry_confirm_signal=(r["reentry_confirm_signal"] or "NONE"),
+                reentry_confirm_count=int(r["reentry_confirm_count"] or 0),
             )
 
         return out
@@ -100,10 +103,10 @@ class StateStore:
                 """
                 INSERT INTO symbol_state(
                     symbol, position, entry_price, last_signal, last_action,
-                    last_checked_ms, adds, last_trade_ms, pending_open, entry_qty,
+                    last_checked_ms, adds, last_trade_ms, last_stop_ms, pending_open, entry_qty,
                     last_user_trade_id, updated_at
                 )
-                VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
                 ON CONFLICT(symbol) DO UPDATE SET
                     position=excluded.position,
                     entry_price=excluded.entry_price,
@@ -112,9 +115,12 @@ class StateStore:
                     last_checked_ms=excluded.last_checked_ms,
                     adds=excluded.adds,
                     last_trade_ms=excluded.last_trade_ms,
+                    last_stop_ms=excluded.last_stop_ms,
                     pending_open=excluded.pending_open,
                     entry_qty=excluded.entry_qty,
                     last_user_trade_id=excluded.last_user_trade_id,
+                    reentry_confirm_signal=excluded.reentry_confirm_signal,
+                    reentry_confirm_count=excluded.reentry_confirm_count,
                     updated_at=excluded.updated_at
                 """,
                 (
@@ -126,6 +132,7 @@ class StateStore:
                     int(d.get("last_checked_ms", 0)),
                     int(d.get("adds", 0)),
                     int(d.get("last_trade_ms", 0)),
+                    int(d.get("last_stop_ms", 0)),
                     d.get("pending_open", "NONE"),
                     float(d.get("entry_qty", 0.0)),
                     int(d.get("last_user_trade_id", 0)),

@@ -26,7 +26,6 @@ from app.execution.confirm import wait_until_flat
 from app.execution.position_manager import should_exit
 from app.execution.exit_rules import should_close_position
 
-
 # ✅ ADD: wire RiskGate into runner (dependency injection)
 from app.risk.gate import RiskGate
 
@@ -373,13 +372,6 @@ class PaperRunner:
                 res.meta = {"reason": "strategy_exception"}
             base_signal = (getattr(res.signal, "value", None) or "HOLD").upper()
             sig = base_signal
-            fs = settings.FORCE_SIGNAL.lower()
-            if fs == "buy":
-                sig = "BUY"
-            elif fs == "sell":
-                sig = "SELL"
-
-            print(f"[DEBUG] FORCE_SIGNAL={settings.FORCE_SIGNAL}, computed_sig={sig}")
 
             self.audit.event(
                 event_type="STRATEGY_SIGNAL",
@@ -394,13 +386,6 @@ class PaperRunner:
                 },
             )
 
-            # Force signal override (for testing only)
-            fs = settings.FORCE_SIGNAL.lower()
-            if fs == "buy":
-                sig = "BUY"
-            elif fs == "sell":
-                sig = "SELL"
-
             price = self.client.last_price(symbol)
 
             st = self.state[symbol]
@@ -410,6 +395,11 @@ class PaperRunner:
 
             cooldown_ok = (now_ms - st.last_trade_ms) >= (
                 settings.COOLDOWN_SECONDS * 1000
+            )
+
+            # ✅ SL cooldown (after stop-loss)
+            sl_cooldown_ok = (now_ms - int(getattr(st, "last_stop_ms", 0) or 0)) >= (
+                int(getattr(settings, "SL_COOLDOWN_SECONDS", 600) or 600) * 1000
             )
 
             def mark_trade(action: str) -> None:
@@ -478,6 +468,26 @@ class PaperRunner:
                     symbol, exec_signal, trade_usdt
                 )
 
+                if exec_result.action == "CLOSED_POSITION":
+                    st.position = "NONE"
+                    st.entry_price = None
+                    st.entry_qty = 0.0
+                    st.adds = 0
+                    st.pending_open = "NONE"
+
+                # ✅ A) Record stop-out time for SL cooldown (persisted via StateStore.save_symbol)
+                if str(exit_reason).startswith("STOP_LOSS"):
+                    st.last_stop_ms = int(now_ms)
+                    st.reentry_confirm_signal = "NONE"
+                    st.reentry_confirm_count = 0
+
+                if exec_result.action in {
+                    "CLOSED_LONG",
+                    "CLOSED_SHORT",
+                    "ORDER_PLACED",
+                }:
+                    mark_trade(decision)
+
                 self.audit.event(
                     event_type="EXECUTION_RESULT",
                     run_id=self.run_id,
@@ -501,11 +511,87 @@ class PaperRunner:
                     "exit_reason": exit_reason,
                 }
 
+            # ✅ B) STOP-LOSS RE-ENTRY CONTROL: cooldown + confirmation (no logic removed)
+            reentry_confirm_ok = True
+            # ✅ Log when SL cooldown blocks a fresh entry (not just pending_open)
+            if (
+                st.position == "NONE"
+                and sig in ("BUY", "SELL")
+                and cooldown_ok
+                and not sl_cooldown_ok
+            ):
+                self.audit.event(
+                    event_type="DECISION",
+                    run_id=self.run_id,
+                    symbol=symbol,
+                    action="NOOP_SL_COOLDOWN",
+                    details={
+                        "signal": sig,
+                        "last_stop_ms": int(getattr(st, "last_stop_ms", 0) or 0),
+                        "sl_cooldown_seconds": int(
+                            getattr(settings, "SL_COOLDOWN_SECONDS", 600) or 600
+                        ),
+                    },
+                )
+
+            last_stop_ms = int(getattr(st, "last_stop_ms", 0) or 0)
+            needed_conf = int(getattr(settings, "REENTRY_CONFIRMATION_COUNT", 2) or 2)
+
+            # Only apply confirmation after we have a stop record AND cooldown has passed AND we're flat
+            if st.position == "NONE" and last_stop_ms > 0 and sig in ("BUY", "SELL"):
+                if sl_cooldown_ok:
+                    if getattr(st, "reentry_confirm_signal", "NONE") == sig:
+                        st.reentry_confirm_count = (
+                            int(getattr(st, "reentry_confirm_count", 0) or 0) + 1
+                        )
+                    else:
+                        st.reentry_confirm_signal = sig
+                        st.reentry_confirm_count = 1
+
+                    if st.reentry_confirm_count < needed_conf:
+                        reentry_confirm_ok = False
+                        self.audit.event(
+                            event_type="DECISION",
+                            run_id=self.run_id,
+                            symbol=symbol,
+                            action="NOOP_REENTRY_CONFIRMATION",
+                            details={
+                                "signal": sig,
+                                "confirm_count": st.reentry_confirm_count,
+                                "needed": needed_conf,
+                            },
+                        )
+                else:
+                    # cooldown not ok => block re-entry (reentry_confirm_ok stays True but open conditions still require sl_cooldown_ok)
+                    pass
+
+            # OPTIONAL: log why pending open was blocked by SL cooldown
+            if (
+                st.position == "NONE"
+                and st.pending_open in {"BUY", "SELL"}
+                and cooldown_ok
+                and not sl_cooldown_ok
+            ):
+                self.audit.event(
+                    event_type="DECISION",
+                    run_id=self.run_id,
+                    symbol=symbol,
+                    action="NOOP_SL_COOLDOWN",
+                    details={
+                        "last_stop_ms": int(getattr(st, "last_stop_ms", 0) or 0),
+                        "sl_cooldown_seconds": int(
+                            getattr(settings, "SL_COOLDOWN_SECONDS", 600) or 600
+                        ),
+                    },
+                )
+
             # 3) If we have a pending open and we're flat, open it now
             if (
                 st.position == "NONE"
                 and st.pending_open in {"BUY", "SELL"}
                 and cooldown_ok
+                and sl_cooldown_ok
+                and reentry_confirm_ok
             ):
                 decision = f"OPEN_PENDING_{st.pending_open}"
                 exec_signal = st.pending_open
@@ -592,6 +678,12 @@ class PaperRunner:
                     # keep for UI until next sync refreshes entryPrice
                     st.entry_price = price
                     st.adds = 0
+
+                    # ✅ C) Once we re-enter successfully, clear stop tracking
+                    st.last_stop_ms = 0
+                    st.reentry_confirm_signal = "NONE"
+                    st.reentry_confirm_count = 0
+
                     mark_trade(decision)
 
                 if exec_result.action in {
@@ -628,7 +720,12 @@ class PaperRunner:
             exec_signal = "HOLD"
 
             if sig == "BUY":
-                if st.position == "NONE" and cooldown_ok:
+                if (
+                    st.position == "NONE"
+                    and cooldown_ok
+                    and sl_cooldown_ok
+                    and reentry_confirm_ok
+                ):
                     decision = "OPEN_LONG"
                     exec_signal = "BUY"
 
@@ -642,6 +739,8 @@ class PaperRunner:
                     if (
                         settings.TRADE_MODE == "repeat"
                         and cooldown_ok
+                        and sl_cooldown_ok
+                        and reentry_confirm_ok
                         and st.adds < settings.MAX_ADDS_PER_POSITION
                     ):
                         st.adds += 1
@@ -649,7 +748,12 @@ class PaperRunner:
                         exec_signal = "BUY"
 
             elif sig == "SELL":
-                if st.position == "NONE" and cooldown_ok:
+                if (
+                    st.position == "NONE"
+                    and cooldown_ok
+                    and sl_cooldown_ok
+                    and reentry_confirm_ok
+                ):
                     decision = "OPEN_SHORT"
                     exec_signal = "SELL"
 
@@ -663,6 +767,8 @@ class PaperRunner:
                     if (
                         settings.TRADE_MODE == "repeat"
                         and cooldown_ok
+                        and sl_cooldown_ok
+                        and reentry_confirm_ok
                         and st.adds < settings.MAX_ADDS_PER_POSITION
                     ):
                         st.adds += 1
@@ -733,8 +839,14 @@ class PaperRunner:
                     # keep for UI until next sync refreshes entryPrice
                     st.entry_price = price
 
+                # ✅ C) Once we re-enter successfully, clear stop tracking (OPEN / OPEN_PENDING only)
+                if decision.startswith(("OPEN_", "OPEN_PENDING_")):
+                    st.last_stop_ms = 0
+                    st.reentry_confirm_signal = "NONE"
+                    st.reentry_confirm_count = 0
+
             # When a close happens: update realized PnL and trigger kill-switch if needed
-            if exec_result.action in {"CLOSED_LONG", "CLOSED_SHORT"}:
+            if exec_result.action in {"CLOSED_LONG", "CLOSED_SHORT", "CLOSED_POSITION"}:
                 # ✅ Confirm position is actually flat before counting realized pnl
                 flat = False
                 try:
@@ -1119,7 +1231,7 @@ class PaperRunner:
                 st = self.state[sym]
                 p = pos_map.get(sym)
 
-                # Clear any pending open after restart (robust safety)
+                # Clear any pending open after restart
                 st.pending_open = "NONE"
                 st.adds = 0
 

@@ -2,10 +2,14 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import time
+from decimal import Decimal, ROUND_DOWN, ROUND_UP
 
 from app.core.config import settings
 from app.exchange.binance.client import BinanceFuturesClient
-from app.exchange.binance.filters import extract_filters, round_qty, round_price
+from app.exchange.binance.filters import (
+    extract_filters,
+    round_qty,
+)  # round_price no longer used here
 from app.symbols.leverage import leverage_for
 from app.execution.confirm import wait_until_flat
 from app.symbols.sizing import parse_usdt_map, usdt_for, size_from_budget
@@ -13,6 +17,85 @@ from app.symbols.sizing import parse_usdt_map, usdt_for, size_from_budget
 
 class PolicyViolation(Exception):
     pass
+
+
+# =========================
+# Price helpers (tick rounding + buffer)
+# =========================
+def _round_to_tick(px: float, tick: Decimal, *, up: bool) -> float:
+    """
+    Round price to the exchange tick.
+    up=False -> round DOWN
+    up=True  -> round UP
+    """
+    p = Decimal(str(px))
+    mode = ROUND_UP if up else ROUND_DOWN
+    return float((p / tick).to_integral_value(rounding=mode) * tick)
+
+
+def _apply_sl_tp_rounding_with_buffer(
+    *,
+    side: str,
+    entry_px: float,
+    sl_price: float,
+    tp_price: float,
+    tick: Decimal,
+    buffer_ticks: int = 2,
+) -> tuple[float, float]:
+    """
+    side: "BUY" (long entry) or "SELL" (short entry)
+
+    Ensures direction-correct tick rounding:
+      - LONG:  SL below -> DOWN, TP above -> UP
+      - SHORT: SL above -> UP,   TP below -> DOWN
+
+    Adds 1–2 tick safety buffer away from entry to avoid Binance -2021.
+    """
+    tick_f = float(tick)
+    buf = tick_f * float(buffer_ticks)
+
+    if side == "BUY":
+        sl_price = _round_to_tick(sl_price, tick, up=False)  # below
+        tp_price = _round_to_tick(tp_price, tick, up=True)  # above
+        sl_price = min(sl_price, entry_px - buf)
+        tp_price = max(tp_price, entry_px + buf)
+    else:
+        sl_price = _round_to_tick(sl_price, tick, up=True)  # above
+        tp_price = _round_to_tick(tp_price, tick, up=False)  # below
+        sl_price = max(sl_price, entry_px + buf)
+        tp_price = min(tp_price, entry_px - buf)
+
+    return sl_price, tp_price
+
+
+def _place_sl_with_retry_on_2021(
+    *,
+    client: BinanceFuturesClient,
+    symbol: str,
+    exit_side: str,
+    sl_price: float,
+    buf: float,
+) -> dict:
+    """
+    Retry once on Binance -2021 by nudging stop further away.
+    exit_side:
+      - "SELL" closes LONG (SL is below)
+      - "BUY"  closes SHORT (SL is above)
+    """
+    try:
+        return client.place_stop_market(symbol, exit_side, sl_price)
+    except RuntimeError as e:
+        s = str(e)
+        if '"code":-2021' in s or "would immediately trigger" in s:
+            # push 2 more ticks away and retry once
+            if exit_side == "SELL":
+                # closing LONG -> SL must be BELOW, push further down
+                sl_price = sl_price - buf
+            else:
+                # closing SHORT -> SL must be ABOVE, push further up
+                sl_price = sl_price + buf
+            return client.place_stop_market(symbol, exit_side, sl_price)
+        raise
 
 
 # =========================
@@ -408,14 +491,30 @@ class BinanceExecutor:
             tp_price = entry_px * (1.0 - tp_pct)
             exit_side = "BUY"
 
-        sl_price = float(round_price(sl_price, flt.tick_size))
-        tp_price = float(round_price(tp_price, flt.tick_size))
-
-        sl = self.client.place_stop_market(
-            symbol,
-            exit_side,
-            sl_price,
+        # Directional tick rounding + buffer (prevents -2021)
+        tick = flt.tick_size
+        buffer_ticks = 2  # 1 or 2 is fine
+        sl_price, tp_price = _apply_sl_tp_rounding_with_buffer(
+            side=side,
+            entry_px=entry_px,
+            sl_price=sl_price,
+            tp_price=tp_price,
+            tick=tick,
+            buffer_ticks=buffer_ticks,
         )
+
+        # Retry once on -2021 for SL only
+        tick_f = float(tick)
+        buf = tick_f * float(buffer_ticks)
+
+        sl = _place_sl_with_retry_on_2021(
+            client=self.client,
+            symbol=symbol,
+            exit_side=exit_side,
+            sl_price=sl_price,
+            buf=buf,
+        )
+
         tp = self.client.place_take_profit_market(
             symbol,
             exit_side,
@@ -482,18 +581,40 @@ class BinanceExecutor:
         tp_pct = settings.TAKE_PROFIT_PCT / 100.0
 
         if pos_amt > 0:
+            # LONG
             exit_side = "SELL"
             sl_price = px * (1.0 - sl_pct)
             tp_price = px * (1.0 + tp_pct)
+            entry_side = "BUY"
         else:
+            # SHORT
             exit_side = "BUY"
             sl_price = px * (1.0 + sl_pct)
             tp_price = px * (1.0 - tp_pct)
+            entry_side = "SELL"
 
-        sl_price = float(round_price(sl_price, flt.tick_size))
-        tp_price = float(round_price(tp_price, flt.tick_size))
+        tick = flt.tick_size
+        buffer_ticks = 2
+        sl_price, tp_price = _apply_sl_tp_rounding_with_buffer(
+            side=entry_side,
+            entry_px=px,
+            sl_price=sl_price,
+            tp_price=tp_price,
+            tick=tick,
+            buffer_ticks=buffer_ticks,
+        )
 
-        sl = self.client.place_stop_market(symbol, exit_side, sl_price)
+        tick_f = float(tick)
+        buf = tick_f * float(buffer_ticks)
+
+        sl = _place_sl_with_retry_on_2021(
+            client=self.client,
+            symbol=symbol,
+            exit_side=exit_side,
+            sl_price=sl_price,
+            buf=buf,
+        )
+
         tp = self.client.place_take_profit_market(symbol, exit_side, tp_price)
 
         return {

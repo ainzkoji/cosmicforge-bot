@@ -91,8 +91,12 @@ class DB:
                 last_trade_ms INTEGER NOT NULL,
                 pending_open TEXT NOT NULL,
                 entry_qty REAL NOT NULL,
-                last_user_trade_id INTEGER NOT NULL DEFAULT 0,
+                last_user_trade_id INTE
+                last_stop_ms INTEGER NOT NULL DEFAULT 0,
+                reentry_confirm_signal TEXT NOT NULL DEFAULT 'NONE',
+                reentry_confirm_count INTEGER NOT NULL DEFAULT 0,
                 updated_at TEXT NOT NULL
+                
             )
             """
             )
@@ -101,6 +105,35 @@ class DB:
             try:
                 conn.execute(
                     "ALTER TABLE symbol_state ADD COLUMN last_user_trade_id INTEGER NOT NULL DEFAULT 0"
+                )
+            except Exception:
+                pass
+
+            # ✅ Migration safety: if symbol_state existed before last_stop_ts_utc
+            try:
+                conn.execute(
+                    "ALTER TABLE symbol_state ADD COLUMN last_stop_ts_utc TEXT"
+                )
+            except Exception:
+                pass
+
+            # ✅ Migration safety: if symbol_state existed before last_stop_ms
+            try:
+                conn.execute(
+                    "ALTER TABLE symbol_state ADD COLUMN last_stop_ms INTEGER NOT NULL DEFAULT 0"
+                )
+            except Exception:
+                pass
+            try:
+                conn.execute(
+                    "ALTER TABLE symbol_state ADD COLUMN reentry_confirm_signal TEXT NOT NULL DEFAULT 'NONE'"
+                )
+            except Exception:
+                pass
+
+            try:
+                conn.execute(
+                    "ALTER TABLE symbol_state ADD COLUMN reentry_confirm_count INTEGER NOT NULL DEFAULT 0"
                 )
             except Exception:
                 pass

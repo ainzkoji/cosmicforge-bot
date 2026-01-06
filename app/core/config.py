@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import os
 from typing import Any, Dict, List, Optional
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -171,10 +172,15 @@ class Settings(BaseSettings):
     MAX_ADDS_PER_POSITION: int = 2
     STOP_LOSS_PCT: float = 0.7
     TAKE_PROFIT_PCT: float = 1.2
-    FORCE_SIGNAL: Optional[str] = None
 
     RUN_INTERVAL_SECONDS: int = 60
     RUN_MAX_SYMBOLS: int = 10
+
+    # After a STOP LOSS, block new entries on that symbol for this many minutes
+    SL_COOLDOWN_SECONDS: int = int(os.getenv("SL_COOLDOWN_SECONDS", "3600"))
+
+    # After cooldown expires, require N consecutive identical signals before re-entry
+    REENTRY_CONFIRMATION_COUNT: int = 2
 
     # ✅ Parse env strings into correct types
     @field_validator("TRADE_SYMBOLS", mode="before")
@@ -204,10 +210,10 @@ class Settings(BaseSettings):
 
         self.EXECUTION_MODE = (self.EXECUTION_MODE or "paper").lower()
 
-        if self.FORCE_SIGNAL is not None:
-            self.FORCE_SIGNAL = self.FORCE_SIGNAL.strip().lower() or None
+        # if self.FORCE_SIGNAL is not None:
+        #    self.FORCE_SIGNAL = self.FORCE_SIGNAL.strip().lower() or None
 
-            # ✅ instance-safe defaulting
+        # ✅ instance-safe defaulting
         if not self.RUN_MAX_SYMBOLS:
             self.RUN_MAX_SYMBOLS = self.MAX_SYMBOLS
 

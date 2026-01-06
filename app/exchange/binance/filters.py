@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 from decimal import Decimal, ROUND_DOWN
 
@@ -65,3 +66,21 @@ def round_price(px: float, tick_size: Decimal) -> Decimal:
     """
     p = Decimal(str(px))
     return (p / tick_size).to_integral_value(rounding=ROUND_DOWN) * tick_size
+
+
+def _tick(symbol: str) -> float:
+    info = get_symbol_info(symbol)
+    if not info:
+        return 0.01
+    f = get_price_filter(info)
+    return float(f.get("tickSize", "0.01"))
+
+
+def round_price_down(symbol: str, price: float) -> float:
+    tick = _tick(symbol)
+    return math.floor(price / tick) * tick
+
+
+def round_price_up(symbol: str, price: float) -> float:
+    tick = _tick(symbol)
+    return math.ceil(price / tick) * tick
