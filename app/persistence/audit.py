@@ -1,4 +1,3 @@
-# app/persistence/audit.py
 from __future__ import annotations
 
 import json
@@ -6,6 +5,7 @@ from pathlib import Path
 from typing import Any, Dict, Optional
 
 from app.persistence.db import DB, utc_now_iso
+from app.ops.context import get_run_id, get_cycle_id
 
 
 class Audit:
@@ -26,48 +26,48 @@ class Audit:
             # never crash bot due to audit file issues
             pass
 
-    # backward-compat alias (you call runner.audit.log_event in main.py in some places)
-    def log_event(self, *args, **kwargs):
-        return self.event(*args, **kwargs)
-
+    # ✅ ADD: compatibility methods (DO NOT REMOVE ANYTHING ELSE)
     def start_run(
-        self, run_id: str, mode: str, interval_seconds: int, max_symbols: int
+        self,
+        run_id: str,
+        mode: str,
+        interval_seconds: int,
+        max_symbols: int,
     ) -> None:
-        with self.db.connect() as conn:
-            conn.execute(
-                "INSERT OR REPLACE INTO runs(run_id, started_at, mode, interval_seconds, max_symbols) VALUES (?,?,?,?,?)",
-                (run_id, utc_now_iso(), mode, interval_seconds, max_symbols),
-            )
-
-        # also mirror to jsonl
-        self._write_jsonl(
-            {
-                "timestamp_utc": utc_now_iso(),
-                "event_type": "RUN_START",
-                "run_id": run_id,
-                "details": {
-                    "mode": mode,
-                    "interval_seconds": interval_seconds,
-                    "max_symbols": max_symbols,
-                },
-            }
+        """
+        Compatibility method used by main.py.
+        Does NOT manage runs table — it only records a RUN_START event.
+        """
+        self.event(
+            event_type="RUN",
+            run_id=run_id,
+            cycle_id=None,
+            symbol=None,
+            action="RUN_START",
+            details={
+                "mode": mode,
+                "interval_seconds": interval_seconds,
+                "max_symbols": max_symbols,
+            },
         )
 
     def stop_run(self, run_id: str) -> None:
-        with self.db.connect() as conn:
-            conn.execute(
-                "UPDATE runs SET stopped_at = ? WHERE run_id = ?",
-                (utc_now_iso(), run_id),
-            )
-
-        self._write_jsonl(
-            {
-                "timestamp_utc": utc_now_iso(),
-                "event_type": "RUN_STOP",
-                "run_id": run_id,
-                "details": {},
-            }
+        """
+        Compatibility method used by main.py.
+        Records a RUN_STOP event.
+        """
+        self.event(
+            event_type="RUN",
+            run_id=run_id,
+            cycle_id=None,
+            symbol=None,
+            action="RUN_STOP",
+            details={},
         )
+
+    # backward-compat alias
+    def log_event(self, *args, **kwargs):
+        return self.event(*args, **kwargs)
 
     def event(
         self,
@@ -78,25 +78,63 @@ class Audit:
         action: Optional[str] = None,
         details: Optional[Dict[str, Any]] = None,
     ) -> None:
-        payload = json.dumps(details or {}, ensure_ascii=False)
+        """
+        Robust audit event writer.
+
+        Priority for run_id / cycle_id:
+        1) Explicit argument (if provided)
+        2) Context-local value (automatic)
+        3) None
+        """
+
+        resolved_run_id = run_id or get_run_id()
+        resolved_cycle_id = cycle_id or get_cycle_id()
+
+        def _json_default(o):
+            # date / datetime
+            try:
+                return o.isoformat()
+            except Exception:
+                pass
+
+            # Decimal, UUID, etc.
+            return str(o)
+
+        payload = json.dumps(details or {}, ensure_ascii=False, default=_json_default)
 
         # 1) DB (source of truth)
         with self.db.connect() as conn:
             conn.execute(
                 """
-                INSERT INTO events(timestamp_utc, run_id, cycle_id, symbol, event_type, action, details_json)
+                INSERT INTO events(
+                    timestamp_utc,
+                    run_id,
+                    cycle_id,
+                    symbol,
+                    event_type,
+                    action,
+                    details_json
+                )
                 VALUES (?,?,?,?,?,?,?)
                 """,
-                (utc_now_iso(), run_id, cycle_id, symbol, event_type, action, payload),
+                (
+                    utc_now_iso(),
+                    resolved_run_id,
+                    resolved_cycle_id,
+                    symbol,
+                    event_type,
+                    action,
+                    payload,
+                ),
             )
 
-        # 2) JSONL mirror (for /runner/audit/tail)
+        # 2) JSONL mirror (for tailing)
         self._write_jsonl(
             {
                 "timestamp_utc": utc_now_iso(),
                 "event_type": event_type,
-                "run_id": run_id,
-                "cycle_id": cycle_id,
+                "run_id": resolved_run_id,
+                "cycle_id": resolved_cycle_id,
                 "symbol": symbol,
                 "action": action,
                 "details": details or {},

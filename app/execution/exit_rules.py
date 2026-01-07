@@ -21,3 +21,30 @@ def should_close_position(
         last_trade_ms=0,
         signal="HOLD",
     )
+
+
+def _validate_sl_tp(
+    side: str,
+    entry_price: float,
+    stop_loss: float,
+    take_profit: float,
+) -> None:
+    """
+    Validate SL/TP invariants.
+    LONG: stop_loss < entry_price < take_profit
+    SHORT: take_profit < entry_price < stop_loss
+    Raises ValueError if invalid.
+    """
+    side_u = (side or "").upper()
+
+    if side_u == "LONG":
+        if not (stop_loss < entry_price < take_profit):
+            raise ValueError("Invalid SL/TP for LONG")
+        return
+
+    if side_u == "SHORT":
+        if not (take_profit < entry_price < stop_loss):
+            raise ValueError("Invalid SL/TP for SHORT")
+        return
+
+    raise ValueError(f"Invalid side: {side}")

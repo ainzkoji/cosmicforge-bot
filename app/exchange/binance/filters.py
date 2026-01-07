@@ -13,6 +13,43 @@ class SymbolFilters:
     tick_size: Decimal
 
 
+_EXCHANGE_INFO_CACHE: dict | None = None
+
+
+def set_exchange_info(exchange_info: dict) -> None:
+    """
+    Set exchangeInfo once (e.g., on startup). Enables get_symbol_info() for legacy callers.
+    """
+    global _EXCHANGE_INFO_CACHE
+    _EXCHANGE_INFO_CACHE = exchange_info
+
+
+def get_symbol_info(symbol: str) -> dict | None:
+    """
+    Legacy helper: return a single symbol info dict from cached exchangeInfo.
+    Returns None if cache is not set or symbol not found.
+    """
+    global _EXCHANGE_INFO_CACHE
+    if not _EXCHANGE_INFO_CACHE:
+        return None
+
+    sym = (symbol or "").upper()
+    for s in _EXCHANGE_INFO_CACHE.get("symbols", []):
+        if (s.get("symbol") or "").upper() == sym:
+            return s
+    return None
+
+
+def get_price_filter(info: dict) -> dict:
+    """
+    Extract PRICE_FILTER from Binance symbol info.
+    """
+    for f in info.get("filters", []):
+        if f.get("filterType") == "PRICE_FILTER":
+            return f
+    raise ValueError("PRICE_FILTER not found in symbol info")
+
+
 def _get_filter(symbol_info: dict, filter_type: str) -> dict | None:
     for f in symbol_info.get("filters", []):
         if f.get("filterType") == filter_type:
@@ -52,20 +89,28 @@ def extract_filters(exchange_info: dict, symbol: str) -> SymbolFilters:
     raise ValueError(f"Symbol not found in exchangeInfo: {symbol}")
 
 
-def round_qty(qty: float, step_size: Decimal) -> Decimal:
+def _to_decimal(x) -> Decimal:
+    return x if isinstance(x, Decimal) else Decimal(str(x))
+
+
+def round_qty(qty: float, step_size) -> Decimal:
     """
     Round quantity DOWN to nearest valid stepSize.
+    step_size can be Decimal or float/string.
     """
     q = Decimal(str(qty))
-    return (q / step_size).to_integral_value(rounding=ROUND_DOWN) * step_size
+    step = _to_decimal(step_size)
+    return (q / step).to_integral_value(rounding=ROUND_DOWN) * step
 
 
-def round_price(px: float, tick_size: Decimal) -> Decimal:
+def round_price(px: float, tick_size) -> Decimal:
     """
     Round price DOWN to nearest valid tickSize.
+    tick_size can be Decimal or float/string.
     """
     p = Decimal(str(px))
-    return (p / tick_size).to_integral_value(rounding=ROUND_DOWN) * tick_size
+    tick = _to_decimal(tick_size)
+    return (p / tick).to_integral_value(rounding=ROUND_DOWN) * tick
 
 
 def _tick(symbol: str) -> float:
@@ -84,3 +129,24 @@ def round_price_down(symbol: str, price: float) -> float:
 def round_price_up(symbol: str, price: float) -> float:
     tick = _tick(symbol)
     return math.ceil(price / tick) * tick
+
+
+def _float_quantize(value: Decimal, step) -> float:
+    """
+    Convert Decimal -> float but quantize to the step's decimal places
+    so float division like (out/step)%1 behaves as expected in tests.
+    """
+    step_d = step if isinstance(step, Decimal) else Decimal(str(step))
+    # number of decimal places in step (e.g. 0.1 -> 1, 0.001 -> 3)
+    places = max(0, -step_d.as_tuple().exponent)
+    return float(value.quantize(Decimal("1").scaleb(-places)))
+
+
+def round_qty_to_step(qty: float, step_size: float) -> float:
+    out_d = round_qty(qty, step_size)  # returns Decimal
+    return _float_quantize(out_d, step_size)
+
+
+def round_price_to_tick(price: float, tick_size: float) -> float:
+    out_d = round_price(price, tick_size)  # returns Decimal
+    return _float_quantize(out_d, tick_size)

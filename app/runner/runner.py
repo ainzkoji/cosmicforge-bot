@@ -25,9 +25,14 @@ from app.symbols.universe import parse_symbols
 from app.execution.confirm import wait_until_flat
 from app.execution.position_manager import should_exit
 from app.execution.exit_rules import should_close_position
+from app.persistence.trade_fills import record_fill
+
 
 # ✅ ADD: wire RiskGate into runner (dependency injection)
 from app.risk.gate import RiskGate
+
+# ✅ ADD: cycle context helpers
+from app.ops.context import set_cycle_id, clear_cycle_id
 
 
 class PaperRunner:
@@ -686,6 +691,38 @@ class PaperRunner:
 
                     mark_trade(decision)
 
+                    # ✅ Now the REAL piece: record trade_fills so PnL + win rate work (OPEN)
+                    try:
+                        _d = exec_result.details or {}
+                        filled_qty = (
+                            _d.get("filled_qty")
+                            or _d.get("executed_qty")
+                            or _d.get("qty")
+                            or _d.get("quantity")
+                            or st.entry_qty
+                            or 0.0
+                        )
+                        avg_price = (
+                            _d.get("avg_price")
+                            or _d.get("avgPrice")
+                            or _d.get("price")
+                            or price
+                        )
+                        fee = _d.get("fee")
+
+                        record_fill(
+                            self.db,
+                            symbol=symbol,
+                            side="LONG" if exec_signal == "BUY" else "SHORT",
+                            action="OPEN",
+                            qty=float(filled_qty),
+                            price=float(avg_price),
+                            fee=float(fee) if fee is not None else None,
+                            realized_pnl=None,
+                        )
+                    except Exception:
+                        pass
+
                 if exec_result.action in {
                     "ORDER_PLACED",
                     "CLOSED_LONG",
@@ -839,6 +876,45 @@ class PaperRunner:
                     # keep for UI until next sync refreshes entryPrice
                     st.entry_price = price
 
+                # ✅ Now the REAL piece: record trade_fills so PnL + win rate work (OPEN)
+                try:
+                    _d = exec_result.details or {}
+                    filled_qty = (
+                        _d.get("filled_qty")
+                        or _d.get("executed_qty")
+                        or _d.get("qty")
+                        or _d.get("quantity")
+                        or st.entry_qty
+                        or 0.0
+                    )
+                    avg_price = (
+                        _d.get("avg_price")
+                        or _d.get("avgPrice")
+                        or _d.get("price")
+                        or price
+                    )
+                    fee = _d.get("fee")
+
+                    if "LONG" in decision:
+                        side = "LONG"
+                    elif "SHORT" in decision:
+                        side = "SHORT"
+                    else:
+                        side = "LONG" if exec_signal == "BUY" else "SHORT"
+
+                    record_fill(
+                        self.db,
+                        symbol=symbol,
+                        side=side,
+                        action="OPEN",
+                        qty=float(filled_qty),
+                        price=float(avg_price),
+                        fee=float(fee) if fee is not None else None,
+                        realized_pnl=None,
+                    )
+                except Exception:
+                    pass
+
                 # ✅ C) Once we re-enter successfully, clear stop tracking (OPEN / OPEN_PENDING only)
                 if decision.startswith(("OPEN_", "OPEN_PENDING_")):
                     st.last_stop_ms = 0
@@ -940,6 +1016,50 @@ class PaperRunner:
                     self.daily.realized_pnl += pnl
                     if self.daily.realized_pnl < -settings.DAILY_MAX_LOSS_USDT:
                         self.daily.kill = True
+
+                    # ✅ Now the REAL piece: record trade_fills so PnL + win rate work (CLOSE)
+                    try:
+                        _d = exec_result.details or {}
+                        filled_qty = (
+                            _d.get("filled_qty")
+                            or _d.get("executed_qty")
+                            or _d.get("qty")
+                            or _d.get("quantity")
+                            or st.entry_qty
+                            or 0.0
+                        )
+                        avg_price = (
+                            _d.get("avg_price")
+                            or _d.get("avgPrice")
+                            or _d.get("price")
+                            or price
+                        )
+                        fee = _d.get("fee")
+
+                        if exec_result.action == "CLOSED_LONG":
+                            side = "LONG"
+                        elif exec_result.action == "CLOSED_SHORT":
+                            side = "SHORT"
+                        else:
+                            if "LONG" in decision:
+                                side = "LONG"
+                            elif "SHORT" in decision:
+                                side = "SHORT"
+                            else:
+                                side = "LONG"
+
+                        record_fill(
+                            self.db,
+                            symbol=symbol,
+                            side=side,
+                            action="CLOSE",
+                            qty=float(filled_qty),
+                            price=float(avg_price),
+                            fee=float(fee) if fee is not None else None,
+                            realized_pnl=float(pnl) if pnl is not None else None,
+                        )
+                    except Exception:
+                        pass
 
                     # ✅ Persist daily state immediately after any realized pnl update
                     self.store.save_daily(
@@ -1085,6 +1205,7 @@ class PaperRunner:
 
             # --- CYCLE AUDIT START ---
             cycle_id = str(uuid.uuid4())
+            set_cycle_id(cycle_id)
             self.audit.event(
                 event_type="CYCLE_START",
                 run_id=self.run_id,
@@ -1105,10 +1226,23 @@ class PaperRunner:
                 symbols = list(settings.TRADE_SYMBOLS)
 
             symbols = symbols[:max_symbols]
+            syms = symbols
 
             results = []
-            for s in symbols:
-                results.append(self.step_symbol(s))
+
+            for s in syms:
+                try:
+                    results.append(self.step_symbol(s))
+                except Exception as e:
+                    # never kill whole runner for one symbol
+                    self.audit.event(
+                        event_type="ERROR",
+                        symbol=s,
+                        action="STEP_SYMBOL_FAILED",
+                        details={"error": repr(e)},
+                    )
+                    results.append({"symbol": s, "ok": False, "error": repr(e)})
+                    continue
 
             # --- CYCLE AUDIT END ---
             self.audit.event(
@@ -1134,6 +1268,7 @@ class PaperRunner:
             }
 
         finally:
+            clear_cycle_id()
             self._cycle_lock.release()
 
     def record_realized_pnl_from_usertrades(

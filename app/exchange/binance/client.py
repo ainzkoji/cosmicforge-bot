@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import random
 import time
 import requests
 
@@ -9,6 +10,7 @@ from app.exchange.binance.filters import (
     extract_filters,
     round_qty,
 )
+from app.exchange.binance.filters import set_exchange_info
 
 
 def kline_closes(klines: list) -> list[float]:
@@ -34,9 +36,74 @@ class BinanceFuturesClient:
 
         self._exchange_info_cache: dict | None = None
         self._exchange_info_cache_ts: float = 0.0
-
         # ✅ ADD: server time offset (ms)
         self._time_offset_ms: int = 0
+
+        # load exchange info (used by filters/rounding)
+        try:
+            set_exchange_info(self.exchange_info())
+        except Exception:
+            # don't crash app at import/startup; runners can refresh later
+            pass
+
+        # sync time once (timestamp safety)
+        try:
+            self.sync_time()
+        except Exception:
+            pass
+
+    # ------------------------------------------------------------------
+    # ✅ ADD: robust request helper (PASTE EXACTLY, UNCHANGED)
+    # ------------------------------------------------------------------
+    def _request(
+        self, method: str, path: str, params=None, headers=None, max_retries: int = 6
+    ):
+        url = f"{self.base_url}{path}"
+        params = dict(params or {})
+        headers = dict(headers or {})
+
+        last_err = None
+        for attempt in range(max_retries + 1):
+            try:
+                r = requests.request(
+                    method, url, params=params, headers=headers, timeout=15
+                )
+
+                # Rate limit / temp ban
+                if r.status_code in (418, 429):
+                    ra = r.headers.get("Retry-After")
+                    sleep_s = float(ra) if ra else (0.4 * (2**attempt))
+                    sleep_s += random.uniform(0, 0.2)
+                    time.sleep(min(sleep_s, 10.0))
+                    continue
+
+                # Timestamp drift
+                if r.status_code == 400 and "timestamp" in r.text.lower():
+                    try:
+                        self.sync_time()
+                    except Exception:
+                        pass
+                    continue
+
+                # Server errors
+                if r.status_code >= 500:
+                    time.sleep(min(0.4 * (2**attempt), 8.0))
+                    continue
+
+                r.raise_for_status()
+                return r.json() if r.content else None
+
+            except (requests.Timeout, requests.ConnectionError) as e:
+                last_err = e
+                time.sleep(min(0.4 * (2**attempt), 8.0))
+                continue
+            except Exception as e:
+                last_err = e
+                break
+
+        raise RuntimeError(
+            f"Binance request failed after retries: {method} {path} ({last_err})"
+        )
 
     # ---------------- TIME SYNC (PUBLIC) ----------------
 
@@ -130,16 +197,15 @@ class BinanceFuturesClient:
     # ---------------- PUBLIC ----------------
 
     def ping(self) -> dict:
+        # (left untouched)
         r = requests.get(f"{self.base_url}/fapi/v1/ping", timeout=20)
         return {"status_code": r.status_code}
 
     def exchange_info(self) -> dict:
-        r = requests.get(f"{self.base_url}/fapi/v1/exchangeInfo", timeout=20)
-        if r.status_code >= 400:
-            raise RuntimeError(f"Binance HTTP {r.status_code}: {r.text}")
-        return r.json()
+        # ✅ UPDATED to use _request helper
+        return self._request("GET", "/fapi/v1/exchangeInfo")
 
-    def exchange_info_cached(self, ttl_seconds: int = 3600) -> dict:
+    def exchange_info_cached(self, ttl_seconds: int = 60) -> dict:
         now = time.time()
         if (
             self._exchange_info_cache
@@ -153,41 +219,30 @@ class BinanceFuturesClient:
         return data
 
     def klines(self, symbol: str, interval: str = "1m", limit: int = 100) -> list:
+        # ✅ UPDATED to use _request helper
         params = {"symbol": symbol, "interval": interval, "limit": limit}
-        r = requests.get(
-            f"{self.base_url}/fapi/v1/klines",
-            params=params,
-            timeout=20,
-        )
-        if r.status_code >= 400:
-            raise RuntimeError(f"Binance HTTP {r.status_code}: {r.text}")
-        return r.json()
+        return self._request("GET", "/fapi/v1/klines", params=params)
 
     def mark_price(self, symbol: str) -> dict:
-        r = requests.get(
-            f"{self.base_url}/fapi/v1/premiumIndex",
+        # ✅ UPDATED to use _request helper
+        return self._request(
+            "GET",
+            "/fapi/v1/premiumIndex",
             params={"symbol": symbol},
-            timeout=20,
         )
-        if r.status_code >= 400:
-            raise RuntimeError(f"Binance HTTP {r.status_code}: {r.text}")
-        return r.json()
 
     def all_prices(self) -> list:
-        r = requests.get(f"{self.base_url}/fapi/v1/ticker/price", timeout=20)
-        if r.status_code >= 400:
-            raise RuntimeError(f"Binance HTTP {r.status_code}: {r.text}")
-        return r.json()
+        # ✅ UPDATED to use _request helper
+        return self._request("GET", "/fapi/v1/ticker/price")
 
     def last_price(self, symbol: str) -> float:
-        r = requests.get(
-            f"{self.base_url}/fapi/v1/ticker/price",
+        # ✅ UPDATED to use _request helper
+        data = self._request(
+            "GET",
+            "/fapi/v1/ticker/price",
             params={"symbol": symbol},
-            timeout=20,
         )
-        if r.status_code >= 400:
-            raise RuntimeError(f"Binance HTTP {r.status_code}: {r.text}")
-        return float(r.json()["price"])
+        return float(data["price"])
 
     # ---------------- ACCOUNT / TRADING ----------------
 

@@ -7,6 +7,8 @@ import asyncio
 from pathlib import Path
 from fastapi import Query
 from fastapi import Body
+from typing import Any, Dict, List
+
 
 from fastapi import FastAPI
 from app.core.config import settings
@@ -16,6 +18,12 @@ from app.symbols.universe import parse_symbols, build_universe
 from app.runner.runner import PaperRunner
 from app.symbols.leverage import parse_leverage_map, leverage_for
 from app.exchange.binance.filters import extract_filters, round_qty
+from app.ops.run_manager import RunManager
+from app.ops.context import set_run_id, clear_run_id
+from app.ops.run_tracker import RunTracker
+from app.persistence.db import DB
+from app.ops.context import set_cycle_id, clear_cycle_id
+
 
 from dataclasses import dataclass
 from typing import Optional
@@ -27,6 +35,51 @@ from app.execution.confirm import wait_until_flat
 
 app = FastAPI(title="CosmicForge Bot MVP")
 paper_runner_instance: PaperRunner | None = None
+run_tracker = RunTracker(DB())
+CURRENT_RUN_ID: str | None = None
+
+
+run_manager = RunManager()
+
+
+SENSITIVE_KEYS = {
+    "BINANCE_API_KEY",
+    "BINANCE_API_SECRET",
+}
+
+
+def _utc_now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+@app.on_event("startup")
+async def _startup_validate_config():
+    """Fail-fast config validation at startup."""
+    try:
+        warnings = settings.validate_runtime()
+        for w in warnings:
+            print(f"[CONFIG WARNING] {w}")
+    except Exception as e:
+        # Fail-closed: crash the service rather than running with a dangerous config
+        print(str(e))
+        raise
+
+
+@app.on_event("startup")
+async def _startup_run_manager():
+    # create a run record in DB
+    info = run_manager.start()
+    print(f"[RUN] started run_id={info.run_id} mode={info.mode}")
+
+
+@app.on_event("shutdown")
+async def _shutdown_run_manager():
+    # stop the most recent running run (safe even after reload)
+    current = run_manager.get_current()
+    if current and current.get("run"):
+        run_id = current["run"]["run_id"]
+        run_manager.stop(run_id, status="STOPPED")
+        print(f"[RUN] stopped run_id={run_id}")
 
 
 def get_runner() -> PaperRunner:
@@ -76,9 +129,6 @@ class RunnerServiceState:
 runner_service = RunnerServiceState()
 
 
-# app/main.py
-
-
 def _utc_now_iso():
     return datetime.now(timezone.utc).isoformat()
 
@@ -91,59 +141,59 @@ async def runner_loop():
     runner = get_runner()
 
     while runner_service.running:
+        # ✅ generate cycle id ONCE per loop
+        cycle_id = str(uuid.uuid4())
+        set_cycle_id(cycle_id)
+
         try:
             runner_service.last_cycle_at = _utc_now_iso()
 
-            # OPTIONAL: refresh daily state from DB each cycle (source of truth)
-            try:
-                saved = runner.store.load_daily(date.today())
-                if saved:
-                    runner.daily.day = date.today()
-                    runner.daily.realized_pnl = float(saved.get("realized_pnl", 0.0))
-                    runner.daily.kill = bool(saved.get("kill", False))
-            except Exception:
-                pass
+            # 🔴 CYCLE START EVENT (context provides run_id + cycle_id)
+            runner.audit.event(
+                event_type="CYCLE",
+                action="CYCLE_START",
+                details={},
+            )
 
-            # ✅ DEBUG crash hook (must be before run_once)
-            if getattr(runner_service, "crash_next_cycle", False):
-                runner_service.crash_next_cycle = False
-                raise RuntimeError("Intentional crash (debug/crash-next-cycle)")
-
+            # ---- EXISTING LOGIC (DO NOT MOVE) ----
             runner.run_once(max_symbols=runner_service.max_symbols)
             runner_service.cycle_count += 1
             runner_service.last_error = None
 
+            # 🔴 CYCLE END EVENT
+            runner.audit.event(
+                event_type="CYCLE",
+                action="CYCLE_END",
+                details={},
+            )
+
         except Exception:
-            # capture full traceback
             err = traceback.format_exc()
             runner_service.last_error = err
 
-            # ✅ FAIL CLOSED: kill switch ON + persist
+            # ✅ FAIL-CLOSED (existing behavior)
             try:
-                runner.daily.day = date.today()
                 runner.daily.kill = True
                 runner.store.save_daily(
-                    runner.daily.day, runner.daily.realized_pnl, runner.daily.kill
+                    runner.daily.day,
+                    runner.daily.realized_pnl,
+                    runner.daily.kill,
                 )
             except Exception:
                 pass
 
-            # ✅ log fatal event
-            try:
-                runner.audit.event(
-                    event_type="FATAL",
-                    run_id=getattr(runner, "run_id", None),
-                    cycle_id=None,
-                    symbol=None,
-                    action="RUNNER_HALTED",
-                    details={"error": err},
-                )
-            except Exception:
-                pass
+            runner.audit.event(
+                event_type="FATAL",
+                action="RUNNER_HALTED",
+                details={"error": err},
+            )
 
-            # ✅ stop loop -> manual restart required
             runner_service.running = False
             break
+
+        finally:
+            # ✅ ALWAYS clear cycle context
+            clear_cycle_id()
 
         await asyncio.sleep(runner_service.interval_seconds)
 
@@ -670,8 +720,17 @@ async def runner_live_start(
 
     runner = get_runner()  # ensure runner exists
 
-    # ✅ ADD: start audit run (DO NOT REMOVE ANYTHING ELSE)
-    runner.run_id = str(uuid.uuid4())
+    # ✅ Use CURRENT_RUN_ID as the single source of truth
+    global CURRENT_RUN_ID
+
+    if not CURRENT_RUN_ID:
+        CURRENT_RUN_ID = str(uuid.uuid4())
+
+    runner.run_id = CURRENT_RUN_ID
+
+    # ✅ set context run_id so Audit can attach automatically
+    set_run_id(CURRENT_RUN_ID)
+
     runner.audit.start_run(
         run_id=runner.run_id,
         mode=settings.EXECUTION_MODE.lower(),
@@ -1283,4 +1342,267 @@ def debug_set_last_stop(payload: dict = Body(...)):
         "symbol": symbol,
         "last_stop_ms": st.last_stop_ms,
         "minutes_ago": minutes_ago,
+    }
+
+
+@app.get("/health")
+async def health():
+    return {
+        "status": "ok",
+        "time_utc": datetime.now(timezone.utc).isoformat(),
+        "execution_mode": settings.EXECUTION_MODE,
+        "binance_env": settings.BINANCE_ENV,
+        "binance_base_url": settings.BINANCE_FAPI_BASE_URL,
+        "default_interval": settings.DEFAULT_INTERVAL,
+        "trade_symbols_count": len(settings.TRADE_SYMBOLS),
+        "trade_symbols": settings.TRADE_SYMBOLS[:20],  # avoid huge output
+        "live_symbols_count": len(settings.LIVE_SYMBOLS),
+        "max_live_trades_per_cycle": settings.MAX_LIVE_TRADES_PER_CYCLE,
+        "risk": {
+            "daily_max_loss_usdt": settings.DAILY_MAX_LOSS_USDT,
+            "kill_switch_close_positions": settings.KILL_SWITCH_CLOSE_POSITIONS,
+            "stop_loss_pct": settings.STOP_LOSS_PCT,
+            "take_profit_pct": settings.TAKE_PROFIT_PCT,
+        },
+    }
+
+
+def _settings_public_dict() -> Dict[str, Any]:
+    data = settings.model_dump()
+    # remove/mask secrets
+    for k in list(data.keys()):
+        if k in SENSITIVE_KEYS:
+            data[k] = "***"
+    return data
+
+
+@app.get("/debug/config")
+async def debug_config():
+    return {"config": _settings_public_dict()}
+
+
+def _sanity_checks() -> Dict[str, Any]:
+    warnings: List[str] = []
+    errors: List[str] = []
+
+    # ---------- SYMBOL CHECKS ----------
+    if len(settings.TRADE_SYMBOLS) > settings.MAX_SYMBOLS:
+        warnings.append(
+            f"TRADE_SYMBOLS count ({len(settings.TRADE_SYMBOLS)}) exceeds MAX_SYMBOLS ({settings.MAX_SYMBOLS})."
+        )
+
+    missing_live = set(settings.LIVE_SYMBOLS) - set(settings.TRADE_SYMBOLS)
+    if missing_live:
+        errors.append(f"LIVE_SYMBOLS not in TRADE_SYMBOLS: {sorted(missing_live)}")
+
+    # ---------- SIZING CHECKS ----------
+    if settings.TRADE_USDT_PER_ORDER < settings.MIN_NOTIONAL_USDT:
+        warnings.append(
+            f"TRADE_USDT_PER_ORDER ({settings.TRADE_USDT_PER_ORDER}) "
+            f"is below MIN_NOTIONAL_USDT ({settings.MIN_NOTIONAL_USDT})."
+        )
+
+    # ---------- LEVERAGE CHECKS ----------
+    for sym, lev in settings.SYMBOL_LEVERAGE_MAP.items():
+        if sym not in settings.TRADE_SYMBOLS:
+            warnings.append(f"Leverage defined for unused symbol: {sym}")
+        if lev < settings.MIN_LEVERAGE:
+            warnings.append(
+                f"Leverage for {sym} ({lev}) is below MIN_LEVERAGE ({settings.MIN_LEVERAGE})"
+            )
+
+    # ---------- RISK CHECKS ----------
+    if settings.DAILY_MAX_LOSS_USDT <= 0:
+        warnings.append(
+            "DAILY_MAX_LOSS_USDT is <= 0 (kill switch will trigger immediately)."
+        )
+
+    if settings.STOP_LOSS_PCT > 5:
+        warnings.append(
+            f"STOP_LOSS_PCT ({settings.STOP_LOSS_PCT}%) is high for leveraged trading."
+        )
+
+    # ---------- EXECUTION SAFETY ----------
+    if settings.EXECUTION_MODE == "live" and settings.BINANCE_ENV == "mainnet":
+        warnings.append("LIVE + MAINNET = REAL MONEY TRADING")
+
+    # ---------- DB CHECK ----------
+    try:
+        from app.persistence.db import DB
+
+        db = DB()  # defaults to data/bot.db
+        with db.connect() as conn:
+            row = conn.execute("SELECT COUNT(*) AS cnt FROM symbol_state").fetchone()
+            symbol_rows = int(row["cnt"]) if row else 0
+
+    except Exception as e:
+        errors.append(f"Database error: {str(e)}")
+        symbol_rows = None
+
+    return {
+        "status": "ok" if not errors else "error",
+        "errors": errors,
+        "warnings": warnings,
+        "db": {"symbol_state_rows": symbol_rows},
+    }
+
+
+@app.get("/debug/sanity")
+async def debug_sanity():
+    return _sanity_checks()
+
+
+@app.get("/debug/run/current")
+async def debug_run_current():
+    data = run_manager.get_current()
+    if not data:
+        return {"status": "no_running_run"}
+    return {"status": "ok", **data}
+
+
+@app.get("/debug/run/last")
+async def debug_run_last():
+    data = run_manager.get_last()
+    if not data:
+        return {"status": "no_runs"}
+    return {"status": "ok", **data}
+
+
+@app.on_event("startup")
+async def _startup_run_manager():
+    info = run_manager.start()
+    set_run_id(info.run_id)
+    print(f"[RUN] started run_id={info.run_id}")
+
+
+@app.on_event("shutdown")
+async def _shutdown_run_manager():
+    current = run_manager.get_current()
+    if current and current.get("run"):
+        run_id = current["run"]["run_id"]
+        run_manager.stop(run_id, status="STOPPED")
+    clear_run_id()
+
+
+@app.get("/debug/db/events/latest")
+async def debug_db_events_latest(limit: int = 20):
+    from app.persistence.db import DB
+
+    db = DB()
+    with db.connect() as conn:
+        rows = conn.execute(
+            """
+            SELECT timestamp_utc, run_id, cycle_id, symbol, event_type, action
+            FROM events
+            ORDER BY id DESC
+            LIMIT ?
+            """,
+            (limit,),
+        ).fetchall()
+    return {"rows": [dict(r) for r in rows]}
+
+
+def _interval_to_seconds(s: str) -> int:
+    s = (s or "1m").lower().strip()
+    if s.endswith("m"):
+        return int(s[:-1]) * 60
+    if s.endswith("h"):
+        return int(s[:-1]) * 60
+    if s.endswith("s"):
+        return int(s[:-1])
+    return 60
+
+
+@app.on_event("startup")
+async def _startup_run():
+    global CURRENT_RUN_ID
+    CURRENT_RUN_ID = run_tracker.start_run(
+        mode=settings.EXECUTION_MODE,
+        interval_seconds=_interval_to_seconds(settings.DEFAULT_INTERVAL),
+        max_symbols=settings.MAX_SYMBOLS,
+    )
+    set_run_id(CURRENT_RUN_ID)
+
+
+@app.on_event("shutdown")
+async def _shutdown_run():
+    if CURRENT_RUN_ID:
+        run_tracker.stop_run(CURRENT_RUN_ID)
+    clear_run_id()
+
+
+@app.get("/debug/run/summary/current")
+async def run_summary_current():
+    if not CURRENT_RUN_ID:
+        return {"status": "no_run"}
+    summary = run_tracker.refresh_summary(CURRENT_RUN_ID)
+    wins = summary.get("win_trades") or 0
+    losses = summary.get("loss_trades") or 0
+    total_closed = wins + losses
+    win_rate = (wins / total_closed) if total_closed else None
+    return {
+        "status": "ok",
+        "run_id": CURRENT_RUN_ID,
+        "summary": summary,
+        "win_rate": win_rate,
+    }
+
+
+@app.get("/debug/run/summary/last")
+async def run_summary_last():
+    from app.persistence.db import DB
+
+    db = DB()
+    with db.connect() as conn:
+        run = conn.execute(
+            "SELECT run_id FROM runs ORDER BY started_at DESC LIMIT 1"
+        ).fetchone()
+    if not run:
+        return {"status": "no_runs"}
+    run_id = run["run_id"]
+    summary = run_tracker.refresh_summary(run_id)
+    wins = summary.get("win_trades") or 0
+    losses = summary.get("loss_trades") or 0
+    total_closed = wins + losses
+    win_rate = (wins / total_closed) if total_closed else None
+    return {"status": "ok", "run_id": run_id, "summary": summary, "win_rate": win_rate}
+
+
+@app.get("/debug/db/trade_fills")
+async def debug_trade_fills(limit: int = 50):
+    from app.persistence.db import DB
+
+    db = DB()
+    with db.connect() as conn:
+        rows = conn.execute(
+            "SELECT * FROM trade_fills ORDER BY id DESC LIMIT ?",
+            (int(limit),),
+        ).fetchall()
+    return {"rows": [dict(r) for r in rows]}
+
+
+@app.post("/risk/daily/reset")
+async def risk_daily_reset():
+    runner = get_runner()
+    runner.daily.kill = False
+    runner.daily.realized_pnl = 0.0
+    runner.store.save_daily(
+        runner.daily.day, runner.daily.realized_pnl, runner.daily.kill
+    )
+
+    runner.audit.event(
+        event_type="RISK",
+        symbol=None,
+        action="DAILY_RESET",
+        details={
+            "day": runner.daily.day,
+            "realized_pnl": runner.daily.realized_pnl,
+            "kill": runner.daily.kill,
+        },
+    )
+    return {
+        "status": "ok",
+        "day": runner.daily.day,
+        "kill": runner.daily.kill,
+        "realized_pnl": runner.daily.realized_pnl,
     }

@@ -12,7 +12,7 @@ from urllib.parse import urlencode
 
 def sign(secret: str, query_string: str) -> str:
     return hmac.new(
-        secret.encode("utf-8"), query_string.encode("utf-8"), hashlib.sha1006
+        secret.encode("utf-8"), query_string.encode("utf-8"), hashlib.sha256
     ).hexdigest()
 
 
