@@ -95,6 +95,9 @@ class StateStore:
         """
         UPSERT symbol state (safe across restarts).
         """
+        if not st.pending_open:
+            st.pending_open = "NONE"
+
         d = asdict(st)
         symbol = symbol.upper()
 

@@ -36,24 +36,20 @@ class BinanceFuturesClient:
 
         self._exchange_info_cache: dict | None = None
         self._exchange_info_cache_ts: float = 0.0
-        # ✅ ADD: server time offset (ms)
         self._time_offset_ms: int = 0
 
-        # load exchange info (used by filters/rounding)
         try:
             set_exchange_info(self.exchange_info())
         except Exception:
-            # don't crash app at import/startup; runners can refresh later
             pass
 
-        # sync time once (timestamp safety)
         try:
             self.sync_time()
         except Exception:
             pass
 
     # ------------------------------------------------------------------
-    # ✅ ADD: robust request helper (PASTE EXACTLY, UNCHANGED)
+    # robust request helper
     # ------------------------------------------------------------------
     def _request(
         self, method: str, path: str, params=None, headers=None, max_retries: int = 6
@@ -69,7 +65,6 @@ class BinanceFuturesClient:
                     method, url, params=params, headers=headers, timeout=15
                 )
 
-                # Rate limit / temp ban
                 if r.status_code in (418, 429):
                     ra = r.headers.get("Retry-After")
                     sleep_s = float(ra) if ra else (0.4 * (2**attempt))
@@ -77,7 +72,6 @@ class BinanceFuturesClient:
                     time.sleep(min(sleep_s, 10.0))
                     continue
 
-                # Timestamp drift
                 if r.status_code == 400 and "timestamp" in r.text.lower():
                     try:
                         self.sync_time()
@@ -85,7 +79,6 @@ class BinanceFuturesClient:
                         pass
                     continue
 
-                # Server errors
                 if r.status_code >= 500:
                     time.sleep(min(0.4 * (2**attempt), 8.0))
                     continue
@@ -105,7 +98,7 @@ class BinanceFuturesClient:
             f"Binance request failed after retries: {method} {path} ({last_err})"
         )
 
-    # ---------------- TIME SYNC (PUBLIC) ----------------
+    # ---------------- TIME SYNC ----------------
 
     def _public_get(self, path: str, params: dict | None = None) -> dict:
         r = requests.get(f"{self.base_url}{path}", params=params or {}, timeout=20)
@@ -118,10 +111,6 @@ class BinanceFuturesClient:
         return int(data["serverTime"])
 
     def sync_time(self) -> int:
-        """
-        Computes and stores local->server time offset.
-        Positive offset means local clock is behind server.
-        """
         local_ms = int(time.time() * 1000)
         server_ms = self._server_time_ms()
         self._time_offset_ms = server_ms - local_ms
@@ -145,8 +134,6 @@ class BinanceFuturesClient:
             raise ValueError("Missing BINANCE_API_KEY or BINANCE_API_SECRET in .env")
 
         params = params or {}
-
-        # ✅ use offset timestamp
         params["timestamp"] = int(time.time() * 1000) + int(self._time_offset_ms)
         params["recvWindow"] = self.recv_window
 
@@ -156,7 +143,6 @@ class BinanceFuturesClient:
         url = f"{self.base_url}{path}?{query}&signature={signature}"
         headers = {"X-MBX-APIKEY": self.api_key}
 
-        # First attempt
         if method == "GET":
             r = requests.get(url, headers=headers, timeout=20)
         elif method == "POST":
@@ -166,7 +152,6 @@ class BinanceFuturesClient:
         else:
             raise ValueError(f"Unsupported HTTP method: {method}")
 
-        # ✅ If timestamp error, sync + retry once
         if r.status_code == 400:
             try:
                 data = r.json()
@@ -174,7 +159,6 @@ class BinanceFuturesClient:
                 data = None
 
             if isinstance(data, dict) and data.get("code") == -1021:
-                # resync and retry once
                 self.sync_time()
                 params["timestamp"] = int(time.time() * 1000) + int(
                     self._time_offset_ms
@@ -197,12 +181,10 @@ class BinanceFuturesClient:
     # ---------------- PUBLIC ----------------
 
     def ping(self) -> dict:
-        # (left untouched)
         r = requests.get(f"{self.base_url}/fapi/v1/ping", timeout=20)
         return {"status_code": r.status_code}
 
     def exchange_info(self) -> dict:
-        # ✅ UPDATED to use _request helper
         return self._request("GET", "/fapi/v1/exchangeInfo")
 
     def exchange_info_cached(self, ttl_seconds: int = 60) -> dict:
@@ -219,12 +201,10 @@ class BinanceFuturesClient:
         return data
 
     def klines(self, symbol: str, interval: str = "1m", limit: int = 100) -> list:
-        # ✅ UPDATED to use _request helper
         params = {"symbol": symbol, "interval": interval, "limit": limit}
         return self._request("GET", "/fapi/v1/klines", params=params)
 
     def mark_price(self, symbol: str) -> dict:
-        # ✅ UPDATED to use _request helper
         return self._request(
             "GET",
             "/fapi/v1/premiumIndex",
@@ -232,17 +212,45 @@ class BinanceFuturesClient:
         )
 
     def all_prices(self) -> list:
-        # ✅ UPDATED to use _request helper
         return self._request("GET", "/fapi/v1/ticker/price")
 
+    # ---------------- SUBSTITUTED METHOD (ONLY CHANGE) ----------------
+
     def last_price(self, symbol: str) -> float:
-        # ✅ UPDATED to use _request helper
+        """
+        Return the last traded price for a symbol.
+
+        Binance can return either a dict (single symbol) or a list (all symbols),
+        and in rare cases can return an unexpected payload. We normalize it here.
+        """
         data = self._request(
             "GET",
             "/fapi/v1/ticker/price",
             params={"symbol": symbol},
         )
-        return float(data["price"])
+
+        if isinstance(data, dict):
+            if "price" in data:
+                return float(data["price"])
+            if "markPrice" in data:
+                return float(data["markPrice"])
+            raise RuntimeError(
+                f"Unexpected last_price payload (dict) for {symbol}: {data}"
+            )
+
+        if isinstance(data, list):
+            for item in data:
+                if (
+                    isinstance(item, dict)
+                    and item.get("symbol") == symbol
+                    and "price" in item
+                ):
+                    return float(item["price"])
+            raise RuntimeError(f"Symbol {symbol} not found in last_price list payload")
+
+        raise RuntimeError(
+            f"Unexpected last_price payload type for {symbol}: {type(data)}"
+        )
 
     # ---------------- ACCOUNT / TRADING ----------------
 
@@ -279,10 +287,6 @@ class BinanceFuturesClient:
         return self._signed_get("/fapi/v2/positionRisk", params)
 
     def position_risk_all(self) -> list:
-        """
-        Fetch ALL futures positions risk info (no symbol filter).
-        Binance returns a list of positionRisk entries.
-        """
         data = self._signed_get("/fapi/v2/positionRisk", {})
         return data if isinstance(data, list) else []
 
@@ -291,7 +295,6 @@ class BinanceFuturesClient:
         if not (isinstance(data, list) and data):
             return 0.0
 
-        # pick the entry with the largest absolute positionAmt
         best = 0.0
         for p in data:
             try:
@@ -304,8 +307,6 @@ class BinanceFuturesClient:
 
     def close_position_market(self, symbol: str) -> dict:
         amt = self.get_position_amt(symbol)
-
-        # float tolerance
         if abs(amt) < 1e-12:
             return {"status": "no_position", "symbol": symbol}
 

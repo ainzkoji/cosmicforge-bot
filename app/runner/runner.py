@@ -26,7 +26,8 @@ from app.execution.confirm import wait_until_flat
 from app.execution.position_manager import should_exit
 from app.execution.exit_rules import should_close_position
 from app.persistence.trade_fills import record_fill
-
+from app.policy.trade_policy import PolicyInputs, decide, Action
+from app.risk.realized_pnl import record_realized_pnl_for_symbol
 
 # ✅ ADD: wire RiskGate into runner (dependency injection)
 from app.risk.gate import RiskGate
@@ -35,9 +36,36 @@ from app.risk.gate import RiskGate
 from app.ops.context import set_cycle_id, clear_cycle_id
 
 
+def _norm_pos(p: str | None) -> str:
+    if not p:
+        return "flat"
+    p = str(p).upper()
+    if p in ("NONE", "FLAT"):
+        return "flat"
+    if p in ("LONG", "BUY"):
+        return "long"
+    if p in ("SHORT", "SELL"):
+        return "short"
+    # safe default
+    return "flat"
+
+
+def _norm_pending(x: str | None):
+    if not x:
+        return None
+    x = str(x).upper()
+    if x in ("NONE", "NULL", "0", ""):
+        return None
+    if x in ("BUY", "SELL"):
+        return x
+    return None
+
+
 class PaperRunner:
+
     def __init__(self, client: BinanceFuturesClient):
         self.client = client
+        self.settings = settings
 
         # ---- Basic config / strategy ----
 
@@ -303,20 +331,50 @@ class PaperRunner:
                 pass
 
     # ✅ ADD: helper to confirm position is flat
+
     def _is_flat(self, symbol: str) -> bool:
-        pos_info = self.executor.client.get_position_info(symbol)
-        if not pos_info:
-            return True
+        """True if ALL position sides for symbol are effectively flat.
+
+        Binance futures can return multiple rows for the same symbol (hedge mode LONG/SHORT).
+        Also, after a market close there can be tiny residual 'dust' amounts, so we use an epsilon.
+        """
+        symbol_u = symbol.upper()
+
         try:
-            amt = float(pos_info.get("positionAmt", "0") or 0.0)
+            data = self.executor.client.position_risk(
+                symbol_u
+            )  # returns list in most cases
         except Exception:
-            amt = 0.0
-        return amt == 0.0
+            # fallback to older helper
+            pos_info = self.executor.client.get_position_info(symbol_u)
+            if not pos_info:
+                return True
+            try:
+                amt = float(pos_info.get("positionAmt", "0") or 0.0)
+            except Exception:
+                amt = 0.0
+            return abs(amt) < 1e-8
+
+        if not data:
+            return True
+
+        total_abs = 0.0
+        rows = data if isinstance(data, list) else [data]
+        for row in rows:
+            if not isinstance(row, dict):
+                continue
+            if row.get("symbol", "").upper() != symbol_u:
+                continue
+            try:
+                amt = float(row.get("positionAmt", "0") or 0.0)
+            except Exception:
+                amt = 0.0
+            total_abs += abs(amt)
+
+        return total_abs < 1e-8
 
     def step_symbol(self, symbol: str) -> Dict[str, Any]:
-        symbol = symbol.upper()
 
-        # ✅ Robust fix: Wrap step_symbol() with a non-blocking lock (fail-fast)
         lock = self._symbol_locks[symbol]
         if not lock.acquire(timeout=10):
             try:
@@ -388,10 +446,13 @@ class PaperRunner:
                     "confidence": res.confidence,
                     "reason": res.reason,
                     "meta": res.meta,
+                    "policy_reason": res.reason,
                 },
             )
 
             price = self.client.last_price(symbol)
+            if price is None:
+                raise ValueError("price_unavailable")
 
             st = self.state[symbol]
             now_ms = int(time.time() * 1000)
@@ -451,9 +512,13 @@ class PaperRunner:
                 signal=sig,
             )
 
+            # ✅ FIXED FULL EXIT BLOCK (no placeholders, no logic removed — only adjustments)
             if exit_now and st.position in {"LONG", "SHORT"}:
                 decision = f"CLOSE_{st.position}_{exit_reason}"
                 exec_signal = "CLOSE"
+
+                # ✅ ADJUSTMENT: capture side BEFORE we potentially set st.position = "NONE"
+                pos_before_close = st.position
 
                 self.audit.event(
                     event_type="DECISION",
@@ -506,6 +571,106 @@ class PaperRunner:
                         },
                     },
                 )
+
+                # ✅ After closing, record realized pnl + update daily + allow kill switch to trigger
+                if exec_signal == "CLOSE" and exec_result.action in {
+                    "CLOSED_LONG",
+                    "CLOSED_SHORT",
+                    "CLOSED_POSITION",
+                }:
+                    try:
+                        # Prefer executor confirmed_flat, fallback to exchange check with retries
+                        confirmed_flat = bool(
+                            (exec_result.details or {}).get("confirmed_flat")
+                        )
+                        flat = False
+
+                        if confirmed_flat:
+                            flat = True
+                        else:
+                            for _ in range(5):
+                                if self._is_flat(symbol):
+                                    flat = True
+                                    break
+                                time.sleep(0.3)
+
+                        if flat:
+                            # Pull userTrades for a small recent window and dedup by last_user_trade_id
+                            end_ms = int(time.time() * 1000)
+                            start_ms = end_ms - (10 * 60 * 1000)  # last 10 minutes
+
+                            trades = (
+                                self.client.user_trades(
+                                    symbol=symbol, startTime=start_ms, endTime=end_ms
+                                )
+                                or []
+                            )
+
+                            last_id = int(getattr(st, "last_user_trade_id", 0) or 0)
+                            new_trades = []
+                            max_id = last_id
+
+                            for t in trades:
+                                tid = int(t.get("id", 0) or 0)
+                                if tid > last_id:
+                                    new_trades.append(t)
+                                    if tid > max_id:
+                                        max_id = tid
+
+                            pnl = float(realized_pnl_from_user_trades(new_trades))
+                            st.last_user_trade_id = max_id
+
+                            # ✅ write CLOSE fill (so /debug/db/trade_fills will finally show closes)
+                            try:
+                                record_fill(
+                                    self.db,
+                                    symbol=symbol,
+                                    # ✅ ADJUSTMENT: use side BEFORE close, not st.position (may already be NONE)
+                                    side=(
+                                        "LONG"
+                                        if pos_before_close == "LONG"
+                                        else "SHORT"
+                                    ),
+                                    action="CLOSE",
+                                    qty=float(st.entry_qty or 0.0),
+                                    price=float(price),
+                                    fee=None,
+                                    realized_pnl=pnl,
+                                )
+                            except Exception:
+                                pass
+
+                            # ✅ update daily pnl and kill switch state
+                            self.daily.reset_if_new_day()
+                            self.daily.realized_pnl = (
+                                float(self.daily.realized_pnl or 0.0) + pnl
+                            )
+
+                            if self.daily.realized_pnl <= -float(
+                                settings.DAILY_MAX_LOSS_USDT
+                            ):
+                                self.daily.kill = True
+
+                                self.audit.event(
+                                    event_type="RISK",
+                                    run_id=self.run_id,
+                                    symbol=symbol,
+                                    action="KILL_SWITCH_TRIGGERED",
+                                    details={
+                                        "day": str(self.daily.day),
+                                        "daily_realized_pnl": self.daily.realized_pnl,
+                                        "max_loss": float(settings.DAILY_MAX_LOSS_USDT),
+                                    },
+                                )
+
+                            # Persist daily (DB is source of truth)
+                            self.store.save_daily(
+                                self.daily.day, self.daily.realized_pnl, self.daily.kill
+                            )
+
+                    except Exception:
+                        # Don't crash the runner loop
+                        pass
 
                 return {
                     "symbol": symbol,
@@ -752,65 +917,69 @@ class PaperRunner:
                     },
                 )
 
-            # 4) Decide what to do
-            decision = "NOOP"
+            now_ms = int(time.time() * 1000)
+
+            # Always initialize so later code can't crash
+            decision = "HOLD"
             exec_signal = "HOLD"
+            reason = "default"
 
-            if sig == "BUY":
-                if (
-                    st.position == "NONE"
-                    and cooldown_ok
-                    and sl_cooldown_ok
-                    and reentry_confirm_ok
-                ):
-                    decision = "OPEN_LONG"
-                    exec_signal = "BUY"
+            res = decide(
+                PolicyInputs(
+                    position=_norm_pos(st.position),
+                    adds=st.adds,
+                    pending_open=_norm_pending(st.pending_open),
+                    reentry_confirm_signal=st.reentry_confirm_signal,
+                    reentry_confirm_count=st.reentry_confirm_count,
+                    last_trade_ms=st.last_trade_ms,
+                    last_stop_ms=st.last_stop_ms,
+                    signal=sig,
+                    cooldown_seconds=self.settings.COOLDOWN_SECONDS,
+                    sl_cooldown_seconds=self.settings.SL_COOLDOWN_SECONDS,
+                    max_adds=self.settings.MAX_ADDS_PER_POSITION,
+                    trade_mode=self.settings.TRADE_MODE,
+                    reentry_confirmations=int(
+                        getattr(self.settings, "REENTRY_CONFIRMATION_COUNT", 1) or 1
+                    ),
+                    now_ms=now_ms,
+                    kill_switch=self.daily.kill,
+                )
+            )
 
-                elif st.position == "SHORT" and cooldown_ok:
-                    # close short first; open long next cycle
-                    decision = "CLOSE_SHORT_FOR_FLIP"
-                    exec_signal = "BUY"
-                    st.pending_open = "BUY"
+            # Apply state updates from policy
+            st.pending_open = (
+                res.pending_open or "NONE"
+            )  # ✅ ADJUSTMENT: never persist NULL
+            st.reentry_confirm_signal = res.reentry_confirm_signal
+            st.reentry_confirm_count = res.reentry_confirm_count
 
-                elif st.position == "LONG":
-                    if (
-                        settings.TRADE_MODE == "repeat"
-                        and cooldown_ok
-                        and sl_cooldown_ok
-                        and reentry_confirm_ok
-                        and st.adds < settings.MAX_ADDS_PER_POSITION
-                    ):
-                        st.adds += 1
-                        decision = f"ADD_LONG_{st.adds}"
-                        exec_signal = "BUY"
+            # Map policy action -> runner variables used later
+            reason = res.reason
 
-            elif sig == "SELL":
-                if (
-                    st.position == "NONE"
-                    and cooldown_ok
-                    and sl_cooldown_ok
-                    and reentry_confirm_ok
-                ):
-                    decision = "OPEN_SHORT"
-                    exec_signal = "SELL"
-
-                elif st.position == "LONG" and cooldown_ok:
-                    # close long first; open short next cycle
-                    decision = "CLOSE_LONG_FOR_FLIP"
-                    exec_signal = "SELL"
-                    st.pending_open = "SELL"
-
-                elif st.position == "SHORT":
-                    if (
-                        settings.TRADE_MODE == "repeat"
-                        and cooldown_ok
-                        and sl_cooldown_ok
-                        and reentry_confirm_ok
-                        and st.adds < settings.MAX_ADDS_PER_POSITION
-                    ):
-                        st.adds += 1
-                        decision = f"ADD_SHORT_{st.adds}"
-                        exec_signal = "SELL"
+            if res.action == Action.OPEN_LONG:
+                decision = "OPEN"
+                exec_signal = "BUY"
+            elif res.action == Action.OPEN_SHORT:
+                decision = "OPEN"
+                exec_signal = "SELL"
+            elif res.action == Action.ADD_LONG:
+                decision = "ADD"
+                exec_signal = f"ADD_LONG_{st.adds + 1}"
+            elif res.action == Action.ADD_SHORT:
+                decision = "ADD"
+                exec_signal = f"ADD_SHORT_{st.adds + 1}"
+            elif res.action == Action.CLOSE:
+                decision = "CLOSE"
+                exec_signal = "CLOSE"
+            elif res.action == Action.FLIP_TO_LONG:
+                decision = "FLIP"
+                exec_signal = "BUY"
+            elif res.action == Action.FLIP_TO_SHORT:
+                decision = "FLIP"
+                exec_signal = "SELL"
+            else:
+                decision = "HOLD"
+                exec_signal = "HOLD"
 
             # Kill-switch (before executing any trade signal)
             if self.daily.kill:
@@ -925,10 +1094,11 @@ class PaperRunner:
             if exec_result.action in {"CLOSED_LONG", "CLOSED_SHORT", "CLOSED_POSITION"}:
                 # ✅ Confirm position is actually flat before counting realized pnl
                 flat = False
+                confirmed_flat = bool((exec_result.details or {}).get("confirmed_flat"))
                 try:
                     # small wait/retry because close fill can be slightly delayed
                     for _ in range(5):
-                        if self._is_flat(symbol):
+                        if confirmed_flat or self._is_flat(symbol):
                             flat = True
                             break
                         time.sleep(0.3)
@@ -1313,41 +1483,12 @@ class PaperRunner:
                 if tid_i > max_id:
                     max_id = tid_i
 
-        pnl_added = realized_pnl_from_user_trades(new_trades)
-        st.last_user_trade_id = max_id
+            record_realized_pnl_for_symbol(
+                runner=self,
+                symbol=symbol,
+                window_minutes=window_minutes,
+            )
 
-        # persist symbol state (dedup survives restart)
-        try:
-            self.store.save_symbol(symbol, st)
-        except Exception:
-            pass
-
-        # daily accounting
-        self.daily.reset_if_new_day()
-        self.daily.realized_pnl += pnl_added
-        if self.daily.realized_pnl <= -settings.DAILY_MAX_LOSS_USDT:
-            self.daily.kill = True
-
-        self.store.save_daily(self.daily.day, self.daily.realized_pnl, self.daily.kill)
-
-        # audit
-        self.audit.event(
-            event_type="REALIZED_PNL",
-            run_id=self.run_id,
-            symbol=symbol,
-            action="PNL_RECORDED_USERTRADES",
-            details={
-                "window_minutes": window_minutes,
-                "new_trades": len(new_trades),
-                "pnl_added": pnl_added,
-                "daily_realized_pnl": self.daily.realized_pnl,
-                "kill": self.daily.kill,
-            },
-        )
-
-        return pnl_added
-
-    # app/runner/runner.py (inside class PaperRunner)
     def reconcile_positions(self) -> None:
         """
         Startup reconciliation:

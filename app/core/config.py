@@ -178,12 +178,12 @@ class Settings(BaseSettings):
 
     # --- Strategy controls ---
     TRADE_MODE: str = "flip"
-    COOLDOWN_SECONDS: int = 60
+    COOLDOWN_SECONDS: int = 120
     MAX_ADDS_PER_POSITION: int = 2
 
     STOP_LOSS_PCT: float = 1.0
     TAKE_PROFIT_PCT: float = 2.0
-    SL_COOLDOWN_SECONDS: int = 60
+    SL_COOLDOWN_SECONDS: int = 600
 
     # --- Leverage ---
     DEFAULT_LEVERAGE: int = 5

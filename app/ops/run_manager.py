@@ -78,13 +78,17 @@ class RunManager:
 
     def stop(self, run_id: str, status: str = "STOPPED") -> None:
         stopped_at = utc_now_iso()
+
+        # ✅ SAME LOGIC, just avoid nested DB connections:
+        # 1) update run row
         with self.db.connect() as conn:
             conn.execute(
                 "UPDATE runs SET stopped_at = ?, status = ? WHERE run_id = ?",
                 (stopped_at, status, run_id),
             )
-            # refresh summary on stop
-            self.refresh_summary(run_id)
+
+        # 2) refresh summary after the write transaction is closed
+        self.refresh_summary(run_id)
 
     def refresh_summary(self, run_id: str) -> None:
         """
@@ -182,12 +186,23 @@ class RunManager:
             ).fetchone()
             if not run:
                 return None
-            self.refresh_summary(run["run_id"])
+            run_id = run["run_id"]
+
+        # ✅ refresh outside the previous connection
+        self.refresh_summary(run_id)
+
+        with self.db.connect() as conn:
+            run = conn.execute(
+                "SELECT * FROM runs WHERE run_id = ?", (run_id,)
+            ).fetchone()
             summary = conn.execute(
                 "SELECT * FROM run_summary WHERE run_id = ?",
-                (run["run_id"],),
+                (run_id,),
             ).fetchone()
-            return {"run": dict(run), "summary": dict(summary) if summary else None}
+            return {
+                "run": dict(run) if run else None,
+                "summary": dict(summary) if summary else None,
+            }
 
     def get_last(self) -> Optional[Dict[str, Any]]:
         with self.db.connect() as conn:
@@ -196,12 +211,23 @@ class RunManager:
             ).fetchone()
             if not run:
                 return None
-            self.refresh_summary(run["run_id"])
+            run_id = run["run_id"]
+
+        # ✅ refresh outside the previous connection
+        self.refresh_summary(run_id)
+
+        with self.db.connect() as conn:
+            run = conn.execute(
+                "SELECT * FROM runs WHERE run_id = ?", (run_id,)
+            ).fetchone()
             summary = conn.execute(
                 "SELECT * FROM run_summary WHERE run_id = ?",
-                (run["run_id"],),
+                (run_id,),
             ).fetchone()
-            return {"run": dict(run), "summary": dict(summary) if summary else None}
+            return {
+                "run": dict(run) if run else None,
+                "summary": dict(summary) if summary else None,
+            }
 
     @staticmethod
     def _interval_seconds(interval: str) -> int:

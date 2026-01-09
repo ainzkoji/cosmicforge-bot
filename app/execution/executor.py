@@ -275,7 +275,12 @@ class BinanceExecutor:
             close = self.client.close_position_market(symbol)
 
             # confirm flat (avoid partial-close / latency issues)
-            ok = self._wait_until_flat(symbol, timeout_sec=8.0, poll_sec=0.5)
+            ok = False
+            try:
+                pos_amt_after = self.client.get_position_amt(symbol)
+                ok = abs(float(pos_amt_after)) < 1e-8
+            except Exception:
+                ok = False
 
             return ExecResult(
                 "CLOSED_POSITION",

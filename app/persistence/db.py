@@ -37,8 +37,19 @@ class DB:
     # -------------------------
     @contextmanager
     def connect(self) -> Iterator[sqlite3.Connection]:
+        # ✅ keep same timeout + thread setting, just add pragmas to reduce "database is locked"
         conn = sqlite3.connect(self.path, timeout=30, check_same_thread=False)
         conn.row_factory = sqlite3.Row
+
+        # ✅ ADD: improve concurrent read/write + wait on locks instead of failing
+        try:
+            conn.execute("PRAGMA journal_mode=WAL;")
+            conn.execute("PRAGMA synchronous=NORMAL;")
+            conn.execute("PRAGMA busy_timeout=30000;")  # 30s wait on locks
+        except Exception:
+            # pragma failures shouldn't crash app; continue with defaults
+            pass
+
         try:
             yield conn
             conn.commit()
@@ -51,6 +62,14 @@ class DB:
     def _init(self) -> None:
         conn = sqlite3.connect(self.path, timeout=30)
         try:
+            # ✅ ADD: same hardening for init connection as well
+            try:
+                conn.execute("PRAGMA journal_mode=WAL;")
+                conn.execute("PRAGMA synchronous=NORMAL;")
+                conn.execute("PRAGMA busy_timeout=30000;")
+            except Exception:
+                pass
+
             # =========================
             # Runs (one per bot run)
             # =========================

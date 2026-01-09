@@ -894,7 +894,30 @@ def trade_close_record_usertrades(symbol: str = "ETHUSDT", window_minutes: int =
     runner = get_runner()
     client = runner.client
 
-    symbol = symbol.upper()
+    # ✅ normalize early (avoid whitespace / casing issues)
+    symbol = (symbol or "").upper().strip()
+    if not symbol:
+        return {"status": "error", "error": "symbol_required"}
+
+    # ✅ OPTIONAL (strongly recommended): reject symbols not in configured universe
+    try:
+        live_set = {
+            s.upper().strip() for s in getattr(settings, "LIVE_SYMBOLS", []) or []
+        }
+        trade_set = {
+            s.upper().strip() for s in getattr(settings, "TRADE_SYMBOLS", []) or []
+        }
+        universe = live_set | trade_set
+        if universe and symbol not in universe:
+            return {
+                "status": "error",
+                "error": "symbol_not_in_configured_universe",
+                "symbol": symbol,
+                "hint": "Add it to LIVE_SYMBOLS/TRADE_SYMBOLS or call the correct symbol.",
+            }
+    except Exception:
+        # don't block endpoint if settings parsing fails
+        pass
 
     # ✅ ADD: prevent collision with runner loop for same symbol
     with runner.symbol_guard(symbol, timeout_s=2.0) as ok:
@@ -905,18 +928,75 @@ def trade_close_record_usertrades(symbol: str = "ETHUSDT", window_minutes: int =
                 "symbol": symbol,
             }
 
-        # 1) Read current position
-        pos = client.get_position_info(symbol)
+        # 1) Read current position (✅ FIX: never crash on invalid symbol)
+        try:
+            pos = client.get_position_info(symbol)
+        except RuntimeError as e:
+            # Binance HTTP 400: {"code":-1121,"msg":"Invalid symbol."}
+            msg = str(e)
+            if "Invalid symbol" in msg or '"code":-1121' in msg or 'code":-1121' in msg:
+                return {
+                    "status": "error",
+                    "error": "BINANCE_INVALID_SYMBOL",
+                    "symbol": symbol,
+                    "detail": msg,
+                }
+            return {
+                "status": "error",
+                "error": "BINANCE_RUNTIME_ERROR",
+                "symbol": symbol,
+                "detail": msg,
+            }
+        except Exception as e:
+            return {
+                "status": "error",
+                "error": "POSITION_INFO_FAILED",
+                "symbol": symbol,
+                "detail": f"{type(e).__name__}: {e}",
+            }
+
         if not pos:
-            return {"status": "no_position_info"}
+            return {"status": "no_position_info", "symbol": symbol}
 
-        pos_amt = float(pos.get("positionAmt", "0") or 0.0)
-        if pos_amt == 0:
-            return {"status": "flat"}
+        try:
+            pos_amt = float(pos.get("positionAmt", "0") or 0.0)
+        except Exception:
+            pos_amt = 0.0
 
-        # 2) Close
-        close_order = client.close_position_market(symbol)
-        order_id = close_order.get("orderId")
+        if pos_amt == 0.0:
+            return {"status": "flat", "symbol": symbol}
+
+        # 2) Close (✅ FIX: catch Binance errors)
+        try:
+            close_order = client.close_position_market(symbol)
+        except RuntimeError as e:
+            msg = str(e)
+            if "Invalid symbol" in msg or '"code":-1121' in msg or 'code":-1121' in msg:
+                return {
+                    "status": "error",
+                    "error": "BINANCE_INVALID_SYMBOL",
+                    "symbol": symbol,
+                    "detail": msg,
+                }
+            return {
+                "status": "error",
+                "error": "CLOSE_FAILED_RUNTIME",
+                "symbol": symbol,
+                "detail": msg,
+            }
+        except Exception as e:
+            return {
+                "status": "error",
+                "error": "CLOSE_FAILED",
+                "symbol": symbol,
+                "detail": f"{type(e).__name__}: {e}",
+            }
+
+        order_id = None
+        try:
+            order_id = close_order.get("orderId")
+        except Exception:
+            order_id = None
 
         # 3) Wait for order filled + position flat (robust)
         import time
@@ -927,14 +1007,22 @@ def trade_close_record_usertrades(symbol: str = "ETHUSDT", window_minutes: int =
         for _ in range(20):  # ~6 seconds max (20 * 0.3)
             try:
                 if order_id is not None:
-                    od = client.get_order(symbol, int(order_id))
-                    if od.get("status") == "FILLED":
-                        filled = True
-                # also check flat
-                p2 = client.get_position_info(symbol)
-                amt2 = float(p2.get("positionAmt", "0") or 0.0) if p2 else 0.0
-                if amt2 == 0.0:
-                    flat = True
+                    try:
+                        od = client.get_order(symbol, int(order_id))
+                        if (od or {}).get("status") == "FILLED":
+                            filled = True
+                    except Exception:
+                        pass
+
+                # also check flat (✅ FIX: protect against invalid symbol / temporary errors)
+                try:
+                    p2 = client.get_position_info(symbol)
+                    amt2 = float(p2.get("positionAmt", "0") or 0.0) if p2 else 0.0
+                    if amt2 == 0.0:
+                        flat = True
+                except Exception:
+                    pass
+
                 if filled and flat:
                     break
             except Exception:
@@ -944,22 +1032,70 @@ def trade_close_record_usertrades(symbol: str = "ETHUSDT", window_minutes: int =
 
         # 4) Compute realized pnl from userTrades (dedup)
         end_ms = int(time.time() * 1000)
-        start_ms = end_ms - (max(1, window_minutes) * 60 * 1000)
+        start_ms = end_ms - (max(1, int(window_minutes)) * 60 * 1000)
 
         st = runner.state.get(symbol)
         if st is None:
             # if symbol not in runner list, create minimal state entry
-            from app.runner.runner import SymbolState
+            try:
+                from app.runner.models import SymbolState  # ✅ corrected import
+            except Exception:
+                # fallback (in case structure differs)
+                from app.runner.runner import SymbolState  # type: ignore
 
             st = SymbolState()
             runner.state[symbol] = st
 
-        trades = client.user_trades(
-            symbol, start_time_ms=start_ms, end_time_ms=end_ms, limit=1000
-        )
+        # ✅ FIX: user_trades call can also raise if symbol invalid / API issue
+        try:
+            trades = (
+                client.user_trades(
+                    symbol, start_time_ms=start_ms, end_time_ms=end_ms, limit=1000
+                )
+                or []
+            )
+        except RuntimeError as e:
+            msg = str(e)
+            if "Invalid symbol" in msg or '"code":-1121' in msg or 'code":-1121' in msg:
+                return {
+                    "status": "error",
+                    "error": "BINANCE_INVALID_SYMBOL",
+                    "symbol": symbol,
+                    "detail": msg,
+                    "filled": filled,
+                    "flat": flat,
+                    "order_id": order_id,
+                    "close_order": close_order,
+                }
+            return {
+                "status": "error",
+                "error": "USERTRADES_FAILED_RUNTIME",
+                "symbol": symbol,
+                "detail": msg,
+                "filled": filled,
+                "flat": flat,
+                "order_id": order_id,
+                "close_order": close_order,
+            }
+        except Exception as e:
+            return {
+                "status": "error",
+                "error": "USERTRADES_FAILED",
+                "symbol": symbol,
+                "detail": f"{type(e).__name__}: {e}",
+                "filled": filled,
+                "flat": flat,
+                "order_id": order_id,
+                "close_order": close_order,
+            }
 
         new_trades = []
-        max_id = st.last_user_trade_id
+        try:
+            last_id = int(getattr(st, "last_user_trade_id", 0) or 0)
+        except Exception:
+            last_id = 0
+
+        max_id = last_id
         for t in trades:
             tid = t.get("id")
             if tid is None:
@@ -968,12 +1104,17 @@ def trade_close_record_usertrades(symbol: str = "ETHUSDT", window_minutes: int =
                 tid_i = int(tid)
             except Exception:
                 continue
-            if tid_i > st.last_user_trade_id:
+            if tid_i > last_id:
                 new_trades.append(t)
                 if tid_i > max_id:
                     max_id = tid_i
 
-        pnl_added = realized_pnl_from_user_trades(new_trades)
+        pnl_added = 0.0
+        try:
+            pnl_added = float(realized_pnl_from_user_trades(new_trades) or 0.0)
+        except Exception:
+            pnl_added = 0.0
+
         st.last_user_trade_id = max_id
 
         # persist symbol state (so dedup survives restart)
@@ -984,13 +1125,23 @@ def trade_close_record_usertrades(symbol: str = "ETHUSDT", window_minutes: int =
 
         # 5) Update daily
         runner.daily.reset_if_new_day()
-        runner.daily.realized_pnl += pnl_added
-        if runner.daily.realized_pnl <= -settings.DAILY_MAX_LOSS_USDT:
+        try:
+            runner.daily.realized_pnl = float(runner.daily.realized_pnl or 0.0) + float(
+                pnl_added or 0.0
+            )
+        except Exception:
+            # if anything weird happens, don't crash endpoint
+            runner.daily.realized_pnl = float(pnl_added or 0.0)
+
+        if runner.daily.realized_pnl <= -float(settings.DAILY_MAX_LOSS_USDT):
             runner.daily.kill = True
 
-        runner.store.save_daily(
-            runner.daily.day, runner.daily.realized_pnl, runner.daily.kill
-        )
+        try:
+            runner.store.save_daily(
+                runner.daily.day, runner.daily.realized_pnl, runner.daily.kill
+            )
+        except Exception:
+            pass
 
         return {
             "status": "closed_recorded",
@@ -998,7 +1149,7 @@ def trade_close_record_usertrades(symbol: str = "ETHUSDT", window_minutes: int =
             "order_id": order_id,
             "filled": filled,
             "flat": flat,
-            "userTrades_window_minutes": window_minutes,
+            "userTrades_window_minutes": int(window_minutes),
             "userTrades_total": len(trades),
             "userTrades_new_count": len(new_trades),
             "pnl_added": pnl_added,
@@ -1006,108 +1157,6 @@ def trade_close_record_usertrades(symbol: str = "ETHUSDT", window_minutes: int =
             "kill": runner.daily.kill,
             "close_order": close_order,
         }
-
-
-@app.post("/trade/close-record-usertrades")
-def trade_close_record_usertrades(symbol: str = "ETHUSDT", window_minutes: int = 10):
-    """
-    Robust close endpoint:
-    - closes position
-    - waits until FLAT confirmation (via wait_until_flat)
-    - calculates realized pnl from userTrades (dedup via saved symbol_state.last_user_trade_id)
-    - updates daily_state
-    """
-    runner = get_runner()
-    client = runner.client
-
-    symbol = symbol.upper()
-
-    # 1) Read current position
-    pos = client.get_position_info(symbol)
-    if not pos:
-        return {"status": "no_position_info"}
-
-    pos_amt = float(pos.get("positionAmt", "0") or 0.0)
-    if pos_amt == 0:
-        return {"status": "flat"}
-
-    # 2) Close (send market close)
-    close_order = client.close_position_market(symbol)
-    order_id = close_order.get("orderId")
-
-    # 3) ✅ Wait until position is truly flat BEFORE recording PnL
-    flat_confirmed = wait_until_flat(client, symbol, timeout_s=12, poll_s=0.5)
-    if not flat_confirmed:
-        return {
-            "status": "close_sent_but_not_flat_confirmed",
-            "symbol": symbol.upper(),
-            "order_id": order_id,
-        }
-
-    # 4) Compute realized pnl from userTrades (dedup)
-    end_ms = int(time.time() * 1000)
-    start_ms = end_ms - (max(1, window_minutes) * 60 * 1000)
-
-    st = runner.state.get(symbol)
-    if st is None:
-        # if symbol not in runner list, create minimal state entry
-        from app.runner.runner import SymbolState
-
-        st = SymbolState()
-        runner.state[symbol] = st
-
-    trades = client.user_trades(
-        symbol, start_time_ms=start_ms, end_time_ms=end_ms, limit=1000
-    )
-
-    new_trades = []
-    max_id = st.last_user_trade_id
-    for t in trades:
-        tid = t.get("id")
-        if tid is None:
-            continue
-        try:
-            tid_i = int(tid)
-        except Exception:
-            continue
-
-        if tid_i > st.last_user_trade_id:
-            new_trades.append(t)
-            if tid_i > max_id:
-                max_id = tid_i
-
-    pnl_added = realized_pnl_from_user_trades(new_trades)
-    st.last_user_trade_id = max_id
-
-    # persist symbol state (so dedup survives restart)
-    try:
-        runner.store.save_symbol(symbol, st)
-    except Exception:
-        pass
-
-    # 5) Update daily
-    runner.daily.reset_if_new_day()
-    runner.daily.realized_pnl += pnl_added
-    if runner.daily.realized_pnl <= -settings.DAILY_MAX_LOSS_USDT:
-        runner.daily.kill = True
-
-    runner.store.save_daily(
-        runner.daily.day, runner.daily.realized_pnl, runner.daily.kill
-    )
-
-    return {
-        "status": "closed_recorded",
-        "symbol": symbol,
-        "order_id": order_id,
-        "flat_confirmed": True,
-        "userTrades_window_minutes": window_minutes,
-        "userTrades_total": len(trades),
-        "userTrades_new_count": len(new_trades),
-        "pnl_added": pnl_added,
-        "daily_realized_pnl": runner.daily.realized_pnl,
-        "kill": runner.daily.kill,
-        "close_order": close_order,
-    }
 
 
 @app.post("/risk/kill")
