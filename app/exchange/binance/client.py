@@ -312,6 +312,15 @@ class BinanceFuturesClient:
 
         side = "SELL" if amt > 0 else "BUY"
         qty = abs(amt)
+        # Round close quantity to step size to avoid LOT_SIZE errors.
+        # We round DOWN to avoid exceeding position size; executor confirms flat.
+        try:
+            exch = self.exchange_info_cached()
+            flt = extract_filters(exch, symbol)
+            qty = float(round_qty(qty, flt.step_size))
+        except Exception:
+            # If filters are unavailable, fall back to raw qty.
+            pass
 
         return self._signed_post(
             "/fapi/v1/order",

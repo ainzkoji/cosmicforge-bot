@@ -216,6 +216,73 @@ class BinanceExecutor:
         except Exception:
             pass
 
+    def _protection_is_sane(
+        self, position: str, entry_price: float, sl: float, tp: float
+    ) -> bool:
+        """
+        Sanity check for SL/TP relative to entry.
+        LONG:  sl < entry < tp
+        SHORT: tp < entry < sl
+        """
+        if not entry_price or entry_price <= 0:
+            return False
+        if position == "LONG":
+            return (sl < entry_price) and (entry_price < tp)
+        if position == "SHORT":
+            return (tp < entry_price) and (entry_price < sl)
+        return False
+
+    def place_protection_orders(
+        self,
+        symbol: str,
+        signal: str,
+        qty: float,
+        sl_price: float,
+        tp_price: float,
+    ) -> dict:
+        """
+        Place SL/TP protection orders using the same rounding/buffer + -2021 retry logic.
+        """
+        signal_u = str(signal or "").upper()
+        side = "BUY" if signal_u == "BUY" else "SELL"  # entry side
+        exit_side = "SELL" if side == "BUY" else "BUY"
+
+        exch = self.client.exchange_info_cached()
+        flt = extract_filters(exch, symbol)
+        entry_px = float(self.client.last_price(symbol))
+
+        tick = flt.tick_size
+        buffer_ticks = 2
+        sl_price, tp_price = _apply_sl_tp_rounding_with_buffer(
+            side=side,
+            entry_px=entry_px,
+            sl_price=float(sl_price),
+            tp_price=float(tp_price),
+            tick=tick,
+            buffer_ticks=buffer_ticks,
+        )
+
+        tick_f = float(tick)
+        buf = tick_f * float(buffer_ticks)
+
+        sl = _place_sl_with_retry_on_2021(
+            client=self.client,
+            symbol=symbol,
+            exit_side=exit_side,
+            sl_price=sl_price,
+            buf=buf,
+        )
+        tp = self.client.place_take_profit_market(symbol, exit_side, tp_price)
+
+        return {
+            "sl": sl,
+            "tp": tp,
+            "sl_price": float(sl_price),
+            "tp_price": float(tp_price),
+            "exit_side": exit_side,
+            "qty": float(qty),
+        }
+
     # ---------------- EXECUTION ----------------
 
     def execute_signal(self, symbol: str, signal: str, usdt: float) -> ExecResult:
@@ -275,12 +342,7 @@ class BinanceExecutor:
             close = self.client.close_position_market(symbol)
 
             # confirm flat (avoid partial-close / latency issues)
-            ok = False
-            try:
-                pos_amt_after = self.client.get_position_amt(symbol)
-                ok = abs(float(pos_amt_after)) < 1e-8
-            except Exception:
-                ok = False
+            ok = self._confirm_flat(symbol)
 
             return ExecResult(
                 "CLOSED_POSITION",
@@ -333,7 +395,19 @@ class BinanceExecutor:
 
         # SELL signal while LONG → close first (flip-close)
         if signal == "SELL" and current_position == "LONG":
+            # cancel TP/SL + any open orders first (do not block close if cancel fails)
+            try:
+                self.client.cancel_all_orders(symbol)
+            except Exception as e:
+                self._audit_warn(
+                    symbol,
+                    "CANCEL_ORDERS_FAILED",
+                    {"error": f"{type(e).__name__}: {e}"},
+                )
+
             close = self.client.close_position_market(symbol)
+            ok = self._confirm_flat(symbol)
+
             return ExecResult(
                 "CLOSED_LONG",
                 {
@@ -341,12 +415,25 @@ class BinanceExecutor:
                     "pos_amt": pos_amt,
                     **lev_info,
                     "close_order": close,
+                    "confirmed_flat": ok,
                 },
             )
 
         # BUY signal while SHORT → close first (flip-close)
         if signal == "BUY" and current_position == "SHORT":
+            # cancel TP/SL + any open orders first (do not block close if cancel fails)
+            try:
+                self.client.cancel_all_orders(symbol)
+            except Exception as e:
+                self._audit_warn(
+                    symbol,
+                    "CANCEL_ORDERS_FAILED",
+                    {"error": f"{type(e).__name__}: {e}"},
+                )
+
             close = self.client.close_position_market(symbol)
+            ok = self._confirm_flat(symbol)
+
             return ExecResult(
                 "CLOSED_SHORT",
                 {
@@ -354,6 +441,7 @@ class BinanceExecutor:
                     "pos_amt": pos_amt,
                     **lev_info,
                     "close_order": close,
+                    "confirmed_flat": ok,
                 },
             )
 
@@ -549,9 +637,14 @@ class BinanceExecutor:
             },
         )
 
-    # ---------------- PROTECTION REPAIR ----------------
-
-    def ensure_protection(self, symbol: str) -> dict:
+    def ensure_protection(
+        self,
+        symbol: str,
+        signal: str | None = None,
+        qty: float | None = None,
+        sl_price: float | None = None,
+        tp_price: float | None = None,
+    ) -> dict:
         pos_amt = self.client.get_position_amt(symbol)
 
         # If flat → cancel leftovers
@@ -561,11 +654,73 @@ class BinanceExecutor:
                 "cancel": self.client.cancel_all_orders(symbol),
             }
 
+        # Defaults (so this method can be called with only symbol)
+        position = "LONG" if pos_amt > 0 else "SHORT"
+        if signal is None:
+            signal = "BUY" if pos_amt > 0 else "SELL"
+        if qty is None:
+            qty = abs(float(pos_amt))
+
+        # If caller didn't pass desired SL/TP, compute them from live px + config
+        if sl_price is None or tp_price is None:
+            px = float(self.client.last_price(symbol))
+            sl_pct = settings.STOP_LOSS_PCT / 100.0
+            tp_pct = settings.TAKE_PROFIT_PCT / 100.0
+            if pos_amt > 0:
+                sl_price = px * (1.0 - sl_pct)
+                tp_price = px * (1.0 + tp_pct)
+            else:
+                sl_price = px * (1.0 + sl_pct)
+                tp_price = px * (1.0 - tp_pct)
+
         opens = self.client.open_orders(symbol)
         types = {o.get("type") for o in opens} if isinstance(opens, list) else set()
 
         has_sl = "STOP_MARKET" in types
         has_tp = "TAKE_PROFIT_MARKET" in types
+
+        # --- map to the names your injected block expects ---
+        sl_exists = has_sl
+        tp_exists = has_tp
+
+        # --- PROTECTION SANITY AUTO-REPAIR ---
+        # If SL/TP exists but is wrong-side (stale orders, rounding, flip), cancel + re-place.
+        try:
+            pos_amt = float(self.client.get_position_amt(symbol))
+            if abs(pos_amt) > 1e-12 and (sl_exists and tp_exists):
+                position = "LONG" if pos_amt > 0 else "SHORT"
+
+                entry_price = 0.0
+                try:
+                    info = self.client.get_position_info(symbol)
+                    entry_price = float(info.get("entryPrice", 0.0) or 0.0)
+                except Exception:
+                    entry_price = 0.0
+
+                if entry_price > 0:
+                    if not self._protection_is_sane(
+                        position, entry_price, float(sl_price), float(tp_price)
+                    ):
+                        # Best-effort cancel all protective orders, then re-place correct ones
+                        try:
+                            self.client.cancel_all_orders(symbol)
+                        except Exception:
+                            pass
+
+                        new_prot = self.place_protection_orders(
+                            symbol, signal, qty, sl_price, tp_price
+                        )
+                        return {
+                            "repaired": True,
+                            "reason": "WRONG_SIDE_PROTECTION",
+                            "position": position,
+                            "entry_price": entry_price,
+                            "sl_price": float(sl_price),
+                            "tp_price": float(tp_price),
+                            "new_protection": new_prot,
+                        }
+        except Exception:
+            pass
 
         if has_sl and has_tp:
             return {
@@ -578,56 +733,16 @@ class BinanceExecutor:
         # Missing protection → recreate
         self.client.cancel_all_orders(symbol)
 
-        exch = self.client.exchange_info_cached()
-        flt = extract_filters(exch, symbol)
-        px = float(self.client.last_price(symbol))
-
-        sl_pct = settings.STOP_LOSS_PCT / 100.0
-        tp_pct = settings.TAKE_PROFIT_PCT / 100.0
-
-        if pos_amt > 0:
-            # LONG
-            exit_side = "SELL"
-            sl_price = px * (1.0 - sl_pct)
-            tp_price = px * (1.0 + tp_pct)
-            entry_side = "BUY"
-        else:
-            # SHORT
-            exit_side = "BUY"
-            sl_price = px * (1.0 + sl_pct)
-            tp_price = px * (1.0 - tp_pct)
-            entry_side = "SELL"
-
-        tick = flt.tick_size
-        buffer_ticks = 2
-        sl_price, tp_price = _apply_sl_tp_rounding_with_buffer(
-            side=entry_side,
-            entry_px=px,
-            sl_price=sl_price,
-            tp_price=tp_price,
-            tick=tick,
-            buffer_ticks=buffer_ticks,
+        new_prot = self.place_protection_orders(
+            symbol, signal, qty, float(sl_price), float(tp_price)
         )
-
-        tick_f = float(tick)
-        buf = tick_f * float(buffer_ticks)
-
-        sl = _place_sl_with_retry_on_2021(
-            client=self.client,
-            symbol=symbol,
-            exit_side=exit_side,
-            sl_price=sl_price,
-            buf=buf,
-        )
-
-        tp = self.client.place_take_profit_market(symbol, exit_side, tp_price)
 
         return {
             "status": "repaired",
-            "sl_price": sl_price,
-            "tp_price": tp_price,
-            "sl": sl,
-            "tp": tp,
+            "sl_price": float(new_prot.get("sl_price")),
+            "tp_price": float(new_prot.get("tp_price")),
+            "sl": new_prot.get("sl"),
+            "tp": new_prot.get("tp"),
         }
 
     def _wait_until_flat(
@@ -641,4 +756,52 @@ class BinanceExecutor:
             if abs(amt) < 1e-12:
                 return True
             time.sleep(poll_sec)
+        return False
+
+    def _confirm_flat(
+        self, symbol: str, timeout_s: int = 12, poll_s: float = 0.5
+    ) -> bool:
+        """
+        Confirm position is flat.
+
+        Priority order:
+        1) Binance position_risk polling (most accurate)
+        2) Generic polling via get_position_info() if available (multi-broker friendly)
+        3) Fallback to get_position_amt() loop
+        """
+        # 1) Preferred: Binance-specific robust polling
+        try:
+            if hasattr(self.client, "position_risk"):
+                return wait_until_flat(
+                    self.client, symbol, timeout_s=timeout_s, poll_s=poll_s
+                )
+        except Exception:
+            pass
+
+        import time
+
+        deadline = time.time() + float(timeout_s)
+
+        # 2) Generic: poll get_position_info (your tests + many brokers support this style)
+        if hasattr(self.client, "get_position_info"):
+            while time.time() < deadline:
+                try:
+                    info = self.client.get_position_info(symbol)
+                    amt = float(info.get("positionAmt", 0.0))
+                    if abs(amt) < 1e-12:
+                        return True
+                except Exception:
+                    pass
+                time.sleep(poll_s)
+
+        # 3) Fallback: poll get_position_amt
+        while time.time() < deadline:
+            try:
+                amt = float(self.client.get_position_amt(symbol))
+                if abs(amt) < 1e-12:
+                    return True
+            except Exception:
+                pass
+            time.sleep(poll_s)
+
         return False

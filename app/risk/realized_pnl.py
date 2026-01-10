@@ -48,12 +48,28 @@ def record_realized_pnl_for_symbol(
     start_ms = end_ms - max(1, window_minutes) * 60 * 1000
 
     # broker adapter (Binance today, others later)
-    trades = runner.executor.client.user_trades(
-        symbol=symbol,
-        start_time_ms=start_ms,
-        end_time_ms=end_ms,
-        limit=1000,
-    )
+    # broker adapter (Binance today, others later)
+    # Support both param styles (some clients use startTime/endTime like Binance REST,
+    # others use start_time_ms/end_time_ms internally).
+    try:
+        trades = (
+            runner.executor.client.user_trades(
+                symbol=symbol,
+                startTime=start_ms,
+                endTime=end_ms,
+            )
+            or []
+        )
+    except TypeError:
+        trades = (
+            runner.executor.client.user_trades(
+                symbol=symbol,
+                start_time_ms=start_ms,
+                end_time_ms=end_ms,
+                limit=1000,
+            )
+            or []
+        )
 
     new_trades = []
     max_id = st.last_user_trade_id

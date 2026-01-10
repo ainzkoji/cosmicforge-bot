@@ -1655,3 +1655,17 @@ async def risk_daily_reset():
         "kill": runner.daily.kill,
         "realized_pnl": runner.daily.realized_pnl,
     }
+
+
+@app.get("/debug/routes")
+def debug_routes():
+    routes = []
+    for r in app.routes:
+        methods = sorted(list(getattr(r, "methods", []) or []))
+        path = getattr(r, "path", None)
+        name = getattr(r, "name", None)
+        if path:
+            routes.append({"methods": methods, "path": path, "name": name})
+    # Sort for readability
+    routes.sort(key=lambda x: x["path"])
+    return {"count": len(routes), "routes": routes}

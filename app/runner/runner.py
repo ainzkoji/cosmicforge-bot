@@ -127,6 +127,8 @@ class PaperRunner:
 
         # Track how many live trades were placed in the current run_once() cycle
         self.live_trades_this_cycle = 0
+        # Track symbols that were CLOSED this cycle (for post-cycle realized pnl sync)
+        self._closed_symbols_this_cycle: set[str] = set()
 
         # Daily loss kill-switch state
         self.daily = DailyLossState(day=date.today())
@@ -475,6 +477,57 @@ class PaperRunner:
             # 2) Sync from exchange (source of truth) + sync entry price & qty
             pos_info = self.executor.client.get_position_info(symbol)
             pos_amt = float(pos_info.get("positionAmt", "0")) if pos_info else 0.0
+            entry_price = float(pos_info.get("entryPrice", "0")) if pos_info else 0.0
+
+            # --- STATE SYNC HARDENING (broker truth wins) ---
+            # Normalize broker position
+            broker_pos = "NONE"
+            if abs(pos_amt) > 1e-12:
+                broker_pos = "LONG" if pos_amt > 0 else "SHORT"
+
+            # If broker says flat, hard reset local state
+            if broker_pos == "NONE":
+                if st.position != "NONE" or st.entry_qty or st.entry_price or st.adds:
+                    self.audit.event(
+                        event_type="STATE_SYNC",
+                        run_id=self.run_id,
+                        symbol=symbol,
+                        action="RESET_TO_FLAT",
+                        details={
+                            "prev_position": st.position,
+                            "prev_entry_price": st.entry_price,
+                            "prev_entry_qty": st.entry_qty,
+                            "prev_adds": st.adds,
+                        },
+                    )
+                st.position = "NONE"
+                st.entry_price = None
+                st.entry_qty = 0.0
+                st.adds = 0
+                st.pending_open = "NONE"
+
+            # If broker says in-position, enforce local to match broker
+            else:
+                if st.position != broker_pos:
+                    self.audit.event(
+                        event_type="STATE_SYNC",
+                        run_id=self.run_id,
+                        symbol=symbol,
+                        action="BROKER_OVERRIDES_LOCAL",
+                        details={
+                            "local_position": st.position,
+                            "broker_position": broker_pos,
+                            "pos_amt": float(pos_amt),
+                        },
+                    )
+                    st.position = broker_pos
+
+                # Keep entry consistent if broker provides it
+                if entry_price and float(entry_price) > 0:
+                    st.entry_price = float(entry_price)
+                st.entry_qty = abs(float(pos_amt))
+
+            """""
 
             if pos_amt > 0:
                 st.position = "LONG"
@@ -500,6 +553,7 @@ class PaperRunner:
                 st.entry_qty = 0.0
                 st.adds = 0
 
+            """ ""
             # Per-symbol USDT sizing
             trade_usdt = usdt_for(symbol, self.usdt_map, settings.TRADE_USDT_PER_ORDER)
 
@@ -572,105 +626,46 @@ class PaperRunner:
                     },
                 )
 
-                # ✅ After closing, record realized pnl + update daily + allow kill switch to trigger
+                # ✅ After closing: record realized pnl from fills (dedup-safe, works even if re-entry happens fast)
                 if exec_signal == "CLOSE" and exec_result.action in {
                     "CLOSED_LONG",
                     "CLOSED_SHORT",
                     "CLOSED_POSITION",
                 }:
+                    self._closed_symbols_this_cycle.add(symbol)
+
                     try:
-                        # Prefer executor confirmed_flat, fallback to exchange check with retries
-                        confirmed_flat = bool(
-                            (exec_result.details or {}).get("confirmed_flat")
-                        )
-                        flat = False
-
-                        if confirmed_flat:
-                            flat = True
-                        else:
-                            for _ in range(5):
-                                if self._is_flat(symbol):
-                                    flat = True
-                                    break
-                                time.sleep(0.3)
-
-                        if flat:
-                            # Pull userTrades for a small recent window and dedup by last_user_trade_id
-                            end_ms = int(time.time() * 1000)
-                            start_ms = end_ms - (10 * 60 * 1000)  # last 10 minutes
-
-                            trades = (
-                                self.client.user_trades(
-                                    symbol=symbol, startTime=start_ms, endTime=end_ms
-                                )
-                                or []
-                            )
-
-                            last_id = int(getattr(st, "last_user_trade_id", 0) or 0)
-                            new_trades = []
-                            max_id = last_id
-
-                            for t in trades:
-                                tid = int(t.get("id", 0) or 0)
-                                if tid > last_id:
-                                    new_trades.append(t)
-                                    if tid > max_id:
-                                        max_id = tid
-
-                            pnl = float(realized_pnl_from_user_trades(new_trades))
-                            st.last_user_trade_id = max_id
-
-                            # ✅ write CLOSE fill (so /debug/db/trade_fills will finally show closes)
-                            try:
-                                record_fill(
-                                    self.db,
+                        # userTrades can lag slightly; retry a few times
+                        pnl_added = 0.0
+                        for _ in range(6):
+                            pnl_added = float(
+                                record_realized_pnl_for_symbol(
+                                    runner=self,
                                     symbol=symbol,
-                                    # ✅ ADJUSTMENT: use side BEFORE close, not st.position (may already be NONE)
-                                    side=(
-                                        "LONG"
-                                        if pos_before_close == "LONG"
-                                        else "SHORT"
-                                    ),
-                                    action="CLOSE",
-                                    qty=float(st.entry_qty or 0.0),
-                                    price=float(price),
-                                    fee=None,
-                                    realized_pnl=pnl,
+                                    window_minutes=30,
                                 )
-                            except Exception:
-                                pass
-
-                            # ✅ update daily pnl and kill switch state
-                            self.daily.reset_if_new_day()
-                            self.daily.realized_pnl = (
-                                float(self.daily.realized_pnl or 0.0) + pnl
+                                or 0.0
                             )
+                            if abs(pnl_added) > 1e-12:
+                                break
+                            time.sleep(0.5)
 
-                            if self.daily.realized_pnl <= -float(
-                                settings.DAILY_MAX_LOSS_USDT
-                            ):
-                                self.daily.kill = True
+                        # If kill just triggered, activate it immediately
+                        if self.daily.kill:
+                            self.activate_kill_switch()
 
-                                self.audit.event(
-                                    event_type="RISK",
-                                    run_id=self.run_id,
-                                    symbol=symbol,
-                                    action="KILL_SWITCH_TRIGGERED",
-                                    details={
-                                        "day": str(self.daily.day),
-                                        "daily_realized_pnl": self.daily.realized_pnl,
-                                        "max_loss": float(settings.DAILY_MAX_LOSS_USDT),
-                                    },
-                                )
-
-                            # Persist daily (DB is source of truth)
-                            self.store.save_daily(
-                                self.daily.day, self.daily.realized_pnl, self.daily.kill
+                    except Exception as e:
+                        # don't crash the runner
+                        try:
+                            self.audit.event(
+                                event_type="REALIZED_PNL",
+                                run_id=self.run_id,
+                                symbol=symbol,
+                                action="PNL_RECORD_FAILED",
+                                details={"error": f"{type(e).__name__}: {e}"},
                             )
-
-                    except Exception:
-                        # Don't crash the runner loop
-                        pass
+                        except Exception:
+                            pass
 
                 return {
                     "symbol": symbol,
@@ -679,6 +674,12 @@ class PaperRunner:
                     "position": st.position,
                     "price": price,
                     "exit_reason": exit_reason,
+                    "execution": {
+                        "action": exec_result.action,
+                        "details": exec_result.details,
+                    },
+                    "daily_realized_pnl": self.daily.realized_pnl,
+                    "kill_switch": self.daily.kill,
                 }
 
             # ✅ B) STOP-LOSS RE-ENTRY CONTROL: cooldown + confirmation (no logic removed)
@@ -1090,146 +1091,112 @@ class PaperRunner:
                     st.reentry_confirm_signal = "NONE"
                     st.reentry_confirm_count = 0
 
-            # When a close happens: update realized PnL and trigger kill-switch if needed
+            # When a close happens: record realized PnL from broker fills (works even if re-entry happens fast)
             if exec_result.action in {"CLOSED_LONG", "CLOSED_SHORT", "CLOSED_POSITION"}:
-                # ✅ Confirm position is actually flat before counting realized pnl
-                flat = False
-                confirmed_flat = bool((exec_result.details or {}).get("confirmed_flat"))
-                try:
-                    # small wait/retry because close fill can be slightly delayed
-                    for _ in range(5):
-                        if confirmed_flat or self._is_flat(symbol):
-                            flat = True
-                            break
-                        time.sleep(0.3)
-                except Exception:
-                    pass
-
+                self._closed_symbols_this_cycle.add(symbol)
                 pnl = 0.0
-                if flat:
-                    try:
-                        end_ms = int(time.time() * 1000)
-                        start_ms = end_ms - (10 * 60 * 1000)  # last 10 minutes
 
-                        trades = self.executor.client.user_trades(
-                            symbol=symbol,
-                            start_time_ms=start_ms,
-                            end_time_ms=end_ms,
-                            limit=1000,
-                        )
-
-                        # Dedup: only count fills not processed yet
-                        new_trades = []
-                        max_id = st.last_user_trade_id
-
-                        for t in trades:
-                            tid = t.get("id")
-                            if tid is None:
-                                continue
-                            try:
-                                tid_i = int(tid)
-                            except Exception:
-                                continue
-
-                            if tid_i > st.last_user_trade_id:
-                                new_trades.append(t)
-                                if tid_i > max_id:
-                                    max_id = tid_i
-
-                        pnl = realized_pnl_from_user_trades(new_trades)
-                        st.last_user_trade_id = max_id
-
-                    except Exception as e:
-                        # ------------------------------------------------------------------
-                        # Fallback (keep your old estimate logic — NOT REMOVED)
-                        # ------------------------------------------------------------------
-                        exit_px = price
-                        qty = st.entry_qty
-                        entry_px = st.entry_price
-
-                        # Fallback: if for any reason entry/qty not available, try exchange risk endpoint
-                        if (entry_px is None) or (qty <= 0):
-                            try:
-                                pos_risk = self.executor.client.position_risk(symbol)
-                                if isinstance(pos_risk, list) and pos_risk:
-                                    if entry_px is None:
-                                        entry_px = float(
-                                            pos_risk[0].get("entryPrice", "0") or 0.0
-                                        )
-                                    if qty <= 0:
-                                        qty = abs(pos_amt)
-                            except Exception:
-                                pass
-
-                        if entry_px is not None and qty > 0:
-                            if exec_result.action == "CLOSED_LONG":
-                                pnl = (exit_px - entry_px) * qty
-                            else:  # CLOSED_SHORT
-                                pnl = (entry_px - exit_px) * qty
-
-                        # log the fallback
-                        try:
-                            self.audit.event(
-                                event_type="ERROR",
-                                run_id=self.run_id,
+                # 1) Prefer broker fill-based realized pnl (dedup-safe)
+                try:
+                    # Small retry loop because userTrades can lag slightly after a close
+                    for _ in range(6):
+                        pnl = float(
+                            record_realized_pnl_for_symbol(
+                                runner=self,
                                 symbol=symbol,
-                                action="REALIZED_PNL_USERTRADES_FAILED",
-                                details={
-                                    "error": f"{type(e).__name__}: {e}",
-                                    "fallback_pnl": pnl,
-                                },
+                                window_minutes=30,
                             )
-                        except Exception:
-                            pass
-
-                    # ✅ Keep your existing daily pnl/kill logic (NOT REMOVED)
-                    self.daily.realized_pnl += pnl
-                    if self.daily.realized_pnl < -settings.DAILY_MAX_LOSS_USDT:
-                        self.daily.kill = True
-
-                    # ✅ Now the REAL piece: record trade_fills so PnL + win rate work (CLOSE)
-                    try:
-                        _d = exec_result.details or {}
-                        filled_qty = (
-                            _d.get("filled_qty")
-                            or _d.get("executed_qty")
-                            or _d.get("qty")
-                            or _d.get("quantity")
-                            or st.entry_qty
                             or 0.0
                         )
-                        avg_price = (
-                            _d.get("avg_price")
-                            or _d.get("avgPrice")
-                            or _d.get("price")
-                            or price
-                        )
-                        fee = _d.get("fee")
+                        if abs(pnl) > 1e-12:
+                            break
+                        time.sleep(0.5)
+                except Exception as e:
+                    self.audit.event(
+                        event_type="REALIZED_PNL",
+                        run_id=self.run_id,
+                        symbol=symbol,
+                        action="PNL_RECORD_FAILED",
+                        details={"error": f"{type(e).__name__}: {e}"},
+                    )
 
-                        if exec_result.action == "CLOSED_LONG":
-                            side = "LONG"
-                        elif exec_result.action == "CLOSED_SHORT":
-                            side = "SHORT"
-                        else:
-                            if "LONG" in decision:
-                                side = "LONG"
-                            elif "SHORT" in decision:
-                                side = "SHORT"
+                # 2) If pnl still 0, keep your old fallback estimate logic (optional safety)
+                # IMPORTANT: fallback should NOT add to daily again; only use it for logging.
+                if abs(pnl) < 1e-12:
+                    try:
+                        exit_px = price
+                        qty = float(st.entry_qty or 0.0)
+                        entry_px = float(st.entry_price or 0.0)
+
+                        if qty > 0 and entry_px > 0:
+                            if exec_result.action == "CLOSED_LONG":
+                                est = (exit_px - entry_px) * qty
+                            elif exec_result.action == "CLOSED_SHORT":
+                                est = (entry_px - exit_px) * qty
                             else:
-                                side = "LONG"
+                                # Best guess: use decision hint
+                                if "SHORT" in decision:
+                                    est = (entry_px - exit_px) * qty
+                                else:
+                                    est = (exit_px - entry_px) * qty
 
-                        record_fill(
-                            self.db,
-                            symbol=symbol,
-                            side=side,
-                            action="CLOSE",
-                            qty=float(filled_qty),
-                            price=float(avg_price),
-                            fee=float(fee) if fee is not None else None,
-                            realized_pnl=float(pnl) if pnl is not None else None,
-                        )
+                            self.audit.event(
+                                event_type="REALIZED_PNL",
+                                run_id=self.run_id,
+                                symbol=symbol,
+                                action="PNL_FALLBACK_ESTIMATE_ONLY",
+                                details={
+                                    "estimate": float(est),
+                                    "note": "fill-based pnl was 0 (likely userTrades lag); estimate not added to daily.",
+                                },
+                            )
                     except Exception:
                         pass
+
+                # ✅ keep: record close fill (for win-rate/reports)
+                try:
+                    _d = exec_result.details or {}
+                    filled_qty = (
+                        _d.get("filled_qty")
+                        or _d.get("executed_qty")
+                        or _d.get("qty")
+                        or _d.get("quantity")
+                        or st.entry_qty
+                        or 0.0
+                    )
+                    avg_price = (
+                        _d.get("avg_price")
+                        or _d.get("avgPrice")
+                        or _d.get("price")
+                        or price
+                    )
+                    fee = _d.get("fee")
+
+                    if exec_result.action == "CLOSED_LONG":
+                        side = "LONG"
+                    elif exec_result.action == "CLOSED_SHORT":
+                        side = "SHORT"
+                    else:
+                        # best guess
+                        side = "LONG" if "LONG" in decision else "SHORT"
+
+                    record_fill(
+                        self.db,
+                        symbol=symbol,
+                        side=side,
+                        action="CLOSE",
+                        qty=float(filled_qty or 0.0),
+                        price=float(avg_price or 0.0),
+                        fee=float(fee or 0.0) if fee is not None else None,
+                        pnl=float(pnl or 0.0),
+                        notes={
+                            "exec_action": exec_result.action,
+                            "decision": decision,
+                            "signal": sig,
+                        },
+                    )
+                except Exception:
+                    pass
 
                     # ✅ Persist daily state immediately after any realized pnl update
                     self.store.save_daily(
@@ -1364,6 +1331,7 @@ class PaperRunner:
         try:
             # ✅ keep your existing run_once logic below
             self.live_trades_this_cycle = 0
+            self._closed_symbols_this_cycle.clear()
 
             # Daily reset (new day)
             self.daily.reset_if_new_day()
@@ -1414,6 +1382,47 @@ class PaperRunner:
                     results.append({"symbol": s, "ok": False, "error": repr(e)})
                     continue
 
+                    # --- POST-CYCLE REALIZED PNL SYNC ---
+            # Binance userTrades can lag inside step_symbol (especially with fast churn / flips).
+            # Sync again after the cycle so daily pnl + kill-switch see the closes.
+            for sym in list(self._closed_symbols_this_cycle):
+                try:
+                    pnl_added = float(
+                        record_realized_pnl_for_symbol(
+                            runner=self,
+                            symbol=sym,
+                            window_minutes=30,
+                        )
+                        or 0.0
+                    )
+
+                    if abs(pnl_added) > 1e-12:
+                        self.audit.event(
+                            event_type="REALIZED_PNL",
+                            run_id=self.run_id,
+                            symbol=sym,
+                            action="PNL_RECORDED_POST_CYCLE",
+                            details={"pnl_added": pnl_added},
+                        )
+
+                    # Persist daily state after syncing
+                    self.store.save_daily(
+                        self.daily.day, self.daily.realized_pnl, self.daily.kill
+                    )
+
+                    # Activate kill-switch immediately if needed
+                    if self.daily.kill:
+                        self.activate_kill_switch()
+
+                except Exception as e:
+                    self.audit.event(
+                        event_type="REALIZED_PNL",
+                        run_id=self.run_id,
+                        symbol=sym,
+                        action="PNL_POST_CYCLE_FAILED",
+                        details={"error": f"{type(e).__name__}: {e}"},
+                    )
+
             # --- CYCLE AUDIT END ---
             self.audit.event(
                 event_type="CYCLE_END",
@@ -1445,49 +1454,17 @@ class PaperRunner:
         self, symbol: str, window_minutes: int = 30
     ) -> float:
         """
-        Pull userTrades, dedup by SymbolState.last_user_trade_id, add realized pnl to daily.
-        Assumes position is already FLAT.
+        Compatibility wrapper. Uses the centralized recorder.
+        Safe to call after CLOSE/flip-close (even if re-entry is fast).
         """
-        import time
-
-        symbol = symbol.upper()
-        st = self.state.get(symbol)
-        if st is None:
-            st = SymbolState()
-            self.state[symbol] = st
-
-        end_ms = int(time.time() * 1000)
-        start_ms = end_ms - (max(1, window_minutes) * 60 * 1000)
-
-        trades = self.executor.client.user_trades(
-            symbol=symbol,
-            start_time_ms=start_ms,
-            end_time_ms=end_ms,
-            limit=1000,
-        )
-
-        new_trades = []
-        max_id = st.last_user_trade_id
-
-        for t in trades:
-            tid = t.get("id")
-            if tid is None:
-                continue
-            try:
-                tid_i = int(tid)
-            except Exception:
-                continue
-
-            if tid_i > st.last_user_trade_id:
-                new_trades.append(t)
-                if tid_i > max_id:
-                    max_id = tid_i
-
+        return float(
             record_realized_pnl_for_symbol(
                 runner=self,
                 symbol=symbol,
                 window_minutes=window_minutes,
             )
+            or 0.0
+        )
 
     def reconcile_positions(self) -> None:
         """
