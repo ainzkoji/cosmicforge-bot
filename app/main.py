@@ -8,6 +8,9 @@ from pathlib import Path
 from fastapi import Query
 from fastapi import Body
 from typing import Any, Dict, List
+import app.strategy
+from fastapi import Depends
+from uuid import uuid4
 
 
 from fastapi import FastAPI
@@ -23,6 +26,7 @@ from app.ops.context import set_run_id, clear_run_id
 from app.ops.run_tracker import RunTracker
 from app.persistence.db import DB
 from app.ops.context import set_cycle_id, clear_cycle_id
+from app.strategy.registry import list_strategies, get_strategy_spec
 
 
 from dataclasses import dataclass
@@ -31,6 +35,9 @@ from datetime import datetime, timezone
 from app.risk.realized_pnl import realized_pnl_from_user_trades
 from datetime import date
 from app.execution.confirm import wait_until_flat
+from app.persistence.migrations import migrate
+
+migrate()
 
 
 app = FastAPI(title="CosmicForge Bot MVP")
@@ -890,6 +897,10 @@ def trade_close_record_usertrades(symbol: str = "ETHUSDT", window_minutes: int =
     - waits for FILLED / flat confirmation
     - calculates realized pnl from userTrades (dedup via saved symbol_state.last_user_trade_id)
     - updates daily_state
+    - ✅ records CLOSE fill with attribution inherited from last OPEN
+    - ✅ writes signal_outcomes + strategy_performance rows
+    - ✅ stamps run_id/cycle_id for fills written by this endpoint
+    - ✅ avoids polluting confidence calibration when confidence is None
     """
     runner = get_runner()
     client = runner.client
@@ -932,7 +943,6 @@ def trade_close_record_usertrades(symbol: str = "ETHUSDT", window_minutes: int =
         try:
             pos = client.get_position_info(symbol)
         except RuntimeError as e:
-            # Binance HTTP 400: {"code":-1121,"msg":"Invalid symbol."}
             msg = str(e)
             if "Invalid symbol" in msg or '"code":-1121' in msg or 'code":-1121' in msg:
                 return {
@@ -1042,7 +1052,6 @@ def trade_close_record_usertrades(symbol: str = "ETHUSDT", window_minutes: int =
             except Exception:
                 # fallback (in case structure differs)
                 from app.runner.runner import SymbolState  # type: ignore
-
             st = SymbolState()
             runner.state[symbol] = st
 
@@ -1109,11 +1118,260 @@ def trade_close_record_usertrades(symbol: str = "ETHUSDT", window_minutes: int =
                 if tid_i > max_id:
                     max_id = tid_i
 
+        # ✅ FIX 1: always stamp ids for fills written by this endpoint
+        set_run_id(str(uuid.uuid4()))
+        set_cycle_id(str(uuid.uuid4()))
+
         pnl_added = 0.0
         try:
             pnl_added = float(realized_pnl_from_user_trades(new_trades) or 0.0)
         except Exception:
             pnl_added = 0.0
+
+        # ============================
+        # ✅ NEW ADJUSTMENT BLOCK START
+        # ============================
+
+        # ✅ Compute close fill stats from new_trades (qty/avg price/fees)
+        total_qty = 0.0
+        notional = 0.0
+        total_fee = 0.0
+
+        for t in new_trades:
+            try:
+                q = float(t.get("qty") or 0.0)
+                p = float(t.get("price") or 0.0)
+                total_qty += q
+                notional += q * p
+                if t.get("commission") is not None:
+                    total_fee += float(t.get("commission") or 0.0)
+            except Exception:
+                pass
+
+        avg_price = (notional / total_qty) if total_qty > 0 else 0.0
+
+        # ✅ Look up most recent "unmatched" OPEN to inherit attribution
+        db = getattr(runner, "db", None)
+        if db is None:
+            from app.persistence.db import DB
+
+            db = DB()
+
+        open_meta = None
+        with db.connect() as conn:
+            last_close = conn.execute(
+                "SELECT id FROM trade_fills WHERE symbol=? AND action='CLOSE' ORDER BY id DESC LIMIT 1",
+                (symbol,),
+            ).fetchone()
+            last_close_id = int(last_close["id"]) if last_close else 0
+
+            open_meta = conn.execute(
+                """
+                SELECT * FROM trade_fills
+                WHERE symbol=? AND action='OPEN' AND id > ?
+                ORDER BY id DESC
+                LIMIT 1
+                """,
+                (symbol, last_close_id),
+            ).fetchone()
+
+            if open_meta is None:
+                open_meta = conn.execute(
+                    """
+                    SELECT * FROM trade_fills
+                    WHERE symbol=? AND action='OPEN'
+                    ORDER BY id DESC
+                    LIMIT 1
+                    """,
+                    (symbol,),
+                ).fetchone()
+
+        def _row_get(row, key, default=None):
+            if row is None:
+                return default
+            try:
+                return row[key]
+            except Exception:
+                return default
+
+        # Defaults if we can't find a matching open row
+        strategy = getattr(getattr(runner, "strategy", None), "name", "unknown")
+        strategy_version = getattr(getattr(runner, "strategy", None), "version", "0")
+        broker_id = getattr(settings, "BROKER_ID", "binance_futures")
+        account_id = getattr(settings, "ACCOUNT_ID", "default")
+        asset_class = getattr(settings, "ASSET_CLASS", "CRYPTO")
+        timeframe = getattr(settings, "DEFAULT_INTERVAL", "1m")
+        confidence = None
+        side = "UNKNOWN"
+
+        if open_meta is not None:
+            try:
+                strategy = _row_get(open_meta, "strategy", strategy) or strategy
+            except Exception:
+                pass
+            try:
+                strategy_version = (
+                    _row_get(open_meta, "strategy_version", strategy_version)
+                    or strategy_version
+                )
+            except Exception:
+                pass
+            try:
+                broker_id = _row_get(open_meta, "broker_id", broker_id) or broker_id
+            except Exception:
+                pass
+            try:
+                account_id = _row_get(open_meta, "account_id", account_id) or account_id
+            except Exception:
+                pass
+            try:
+                asset_class = (
+                    _row_get(open_meta, "asset_class", asset_class) or asset_class
+                )
+            except Exception:
+                pass
+            try:
+                timeframe = _row_get(open_meta, "timeframe", timeframe) or timeframe
+            except Exception:
+                pass
+            try:
+                confidence = _row_get(open_meta, "confidence", None)
+                confidence = float(confidence) if confidence is not None else None
+            except Exception:
+                confidence = None
+            try:
+                side = _row_get(open_meta, "side", side) or side
+            except Exception:
+                pass
+
+        # ✅ Record CLOSE fill inheriting open attribution
+        from app.persistence.trade_fills import record_fill
+        from app.persistence.db import utc_now_iso
+
+        record_fill(
+            db,
+            symbol=symbol,
+            side=side,
+            action="CLOSE",
+            qty=float(total_qty) if total_qty > 0 else 0.0,
+            price=float(avg_price) if avg_price else 0.0,
+            fee=float(total_fee) if total_fee else None,
+            realized_pnl=float(pnl_added),
+            strategy=strategy,
+            strategy_version=strategy_version,
+            broker_id=broker_id,
+            account_id=account_id,
+            asset_class=asset_class,
+            timeframe=str(timeframe),
+            confidence=confidence,
+        )
+
+        # ✅ FIX 2: confidence calibration (don’t pollute with NULL confidence)
+        outcome = 1 if float(pnl_added) > 0 else 0
+        conf_for_row = None if confidence is None else float(confidence)
+
+        if conf_for_row is not None:
+            with db.connect() as conn:
+                conn.execute(
+                    """
+                    INSERT INTO signal_outcomes (
+                        strategy, strategy_version, symbol, asset_class, broker_id, account_id, timeframe,
+                        confidence, outcome, pnl, created_at
+                    ) VALUES (?,?,?,?,?,?,?,?,?,?,?)
+                    """,
+                    (
+                        strategy,
+                        strategy_version,
+                        symbol,
+                        asset_class,
+                        broker_id,
+                        account_id,
+                        str(timeframe),
+                        float(conf_for_row),
+                        int(outcome),
+                        float(pnl_added),
+                        utc_now_iso(),
+                    ),
+                )
+
+        # ✅ Update strategy_performance (simple upsert)
+        with db.connect() as conn:
+            row = conn.execute(
+                """
+                SELECT id, trades, wins, losses, net_pnl, fees
+                FROM strategy_performance
+                WHERE strategy=? AND strategy_version=? AND symbol=? AND asset_class=? AND broker_id=? AND account_id=? AND timeframe=?
+                LIMIT 1
+                """,
+                (
+                    strategy,
+                    strategy_version,
+                    symbol,
+                    asset_class,
+                    broker_id,
+                    account_id,
+                    str(timeframe),
+                ),
+            ).fetchone()
+
+            if row:
+                trades_n = int(row["trades"]) + 1
+                wins_n = int(row["wins"]) + (1 if outcome == 1 else 0)
+                losses_n = int(row["losses"]) + (1 if outcome == 0 else 0)
+                net_pnl_n = float(row["net_pnl"] or 0.0) + float(pnl_added or 0.0)
+
+                # ✅ OPTIONAL: safer NULL handling
+                fees_n = float(row["fees"] or 0.0) + float(total_fee or 0.0)
+
+                conn.execute(
+                    """
+                    UPDATE strategy_performance
+                    SET trades=?, wins=?, losses=?, net_pnl=?, gross_pnl=?, fees=?, updated_at=?
+                    WHERE id=?
+                    """,
+                    (
+                        trades_n,
+                        wins_n,
+                        losses_n,
+                        net_pnl_n,
+                        net_pnl_n,
+                        fees_n,
+                        utc_now_iso(),
+                        int(row["id"]),
+                    ),
+                )
+            else:
+                conn.execute(
+                    """
+                    INSERT INTO strategy_performance (
+                        strategy, strategy_version, symbol, asset_class, broker_id, account_id, timeframe,
+                        trades, wins, losses, net_pnl, gross_pnl, fees, avg_slippage, avg_r, max_drawdown, updated_at
+                    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                    """,
+                    (
+                        strategy,
+                        strategy_version,
+                        symbol,
+                        asset_class,
+                        broker_id,
+                        account_id,
+                        str(timeframe),
+                        1,
+                        1 if outcome == 1 else 0,
+                        1 if outcome == 0 else 0,
+                        float(pnl_added or 0.0),
+                        float(pnl_added or 0.0),
+                        float(total_fee or 0.0),
+                        0.0,
+                        0.0,
+                        0.0,
+                        utc_now_iso(),
+                    ),
+                )
+
+        # ==========================
+        # ✅ NEW ADJUSTMENT BLOCK END
+        # ==========================
 
         st.last_user_trade_id = max_id
 
@@ -1130,7 +1388,6 @@ def trade_close_record_usertrades(symbol: str = "ETHUSDT", window_minutes: int =
                 pnl_added or 0.0
             )
         except Exception:
-            # if anything weird happens, don't crash endpoint
             runner.daily.realized_pnl = float(pnl_added or 0.0)
 
         if runner.daily.realized_pnl <= -float(settings.DAILY_MAX_LOSS_USDT):
@@ -1669,3 +1926,135 @@ def debug_routes():
     # Sort for readability
     routes.sort(key=lambda x: x["path"])
     return {"count": len(routes), "routes": routes}
+
+
+@app.get("/metrics/strategy")
+def metrics_strategy(strategy: str | None = None, symbol: str | None = None):
+    db = DB()
+    q = "SELECT * FROM strategy_performance WHERE 1=1"
+    params = []
+    if strategy:
+        q += " AND strategy=?"
+        params.append(strategy)
+    if symbol:
+        q += " AND symbol=?"
+        params.append(symbol)
+    q += " ORDER BY updated_at DESC LIMIT 200"
+    with db.connect() as conn:
+        rows = [dict(r) for r in conn.execute(q, params).fetchall()]
+    return {"rows": rows}
+
+
+@app.get("/metrics/confidence")
+def metrics_confidence(strategy: str | None = None, symbol: str | None = None):
+    db = DB()
+    q = "SELECT confidence, outcome FROM signal_outcomes WHERE 1=1"
+    params = []
+    if strategy:
+        q += " AND strategy=?"
+        params.append(strategy)
+    if symbol:
+        q += " AND symbol=?"
+        params.append(symbol)
+
+    with db.connect() as conn:
+        rows = conn.execute(q, params).fetchall()
+
+    buckets = {}
+    for r in rows:
+        c = float(r["confidence"])
+        o = int(r["outcome"])
+        b = min(9, max(0, int(c * 10)))
+        key = f"{b/10:.1f}-{(b+1)/10:.1f}"
+        if key not in buckets:
+            buckets[key] = {"trades": 0, "wins": 0}
+        buckets[key]["trades"] += 1
+        buckets[key]["wins"] += o
+
+    out = []
+    for k in sorted(buckets.keys()):
+        t = buckets[k]["trades"]
+        w = buckets[k]["wins"]
+        out.append({"bucket": k, "trades": t, "win_rate": (w / t) if t else 0.0})
+
+    return {"buckets": out, "samples": len(rows)}
+
+
+@app.get("/strategies")
+def strategies_list():
+    return {
+        "strategies": [
+            {
+                "name": s.name,
+                "version": s.version,
+                "supports_asset_classes": s.supports_asset_classes,
+                "description": s.description,
+                "params_schema": s.params_schema,
+            }
+            for s in list_strategies()
+        ]
+    }
+
+
+@app.get("/strategies/{name}")
+def strategy_detail(name: str):
+    spec = get_strategy_spec(name)
+    if not spec:
+        return {"error": "strategy_not_found", "name": name}
+    return {
+        "name": spec.name,
+        "version": spec.version,
+        "supports_asset_classes": spec.supports_asset_classes,
+        "description": spec.description,
+        "params_schema": spec.params_schema,
+    }
+
+
+@app.get("/debug/db_counts")
+def debug_db_counts():
+    db = DB()
+    with db.connect() as conn:
+
+        def count(table: str) -> int:
+            try:
+                return int(
+                    conn.execute(f"SELECT COUNT(*) AS c FROM {table}").fetchone()["c"]
+                )
+            except Exception:
+                return -1
+
+        return {
+            "trade_fills": count("trade_fills"),
+            "strategy_performance": count("strategy_performance"),
+            "signal_outcomes": count("signal_outcomes"),
+        }
+
+
+@app.get("/debug/recent_fills")
+def debug_recent_fills(limit: int = 20):
+    db = DB()
+    with db.connect() as conn:
+        rows = conn.execute(
+            "SELECT * FROM trade_fills ORDER BY timestamp_utc DESC LIMIT ?",
+            (int(limit),),
+        ).fetchall()
+        return {"rows": [dict(r) for r in rows]}
+
+
+@app.get("/debug/table_info/trade_fills")
+def debug_table_info_trade_fills():
+    db = DB()
+    with db.connect() as conn:
+        rows = conn.execute("PRAGMA table_info(trade_fills)").fetchall()
+        return {"columns": [dict(r) for r in rows]}
+
+
+@app.get("/debug/recent_closes")
+def debug_recent_closes(limit: int = 50):
+    db = DB()
+    with db.connect() as conn:
+        rows = conn.execute(
+            "SELECT * FROM trade_fills WHERE action='CLOSE' ORDER BY timestamp_utc DESC LIMIT ?",
+            (int(limit),),
+        ).fetchall()
+        return {"rows": [dict(r) for r in rows]}

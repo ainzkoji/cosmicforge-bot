@@ -1,18 +1,36 @@
 from __future__ import annotations
 
 from app.strategy.base import Strategy, Signal, SignalResult
+from app.strategy.registry import register_strategy
 from app.strategy.indicators import ema, rsi, sma
 
 
+@register_strategy(
+    name="robust_ensemble",
+    version="1.0.1",
+    supports_asset_classes=["CRYPTO", "FOREX"],
+    description="EMA trend + SMA trend filter + RSI filter ensemble with confidence gating.",
+    params_schema={
+        "type": "object",
+        "properties": {
+            "min_confidence": {
+                "type": "number",
+                "minimum": 0.0,
+                "maximum": 1.0,
+                "default": 0.50,
+            },
+            "interval": {"type": "string", "default": "1m"},
+        },
+    },
+)
 class RobustEnsembleStrategy(Strategy):
     name = "robust_ensemble"
+    version = "1.0.1"
 
-    def __init__(self, client, interval: str = "1m"):
+    def __init__(self, client, interval: str = "1m", min_confidence: float = 0.50):
         self.client = client
         self.interval = interval
-
-        # stricter = fewer trades, higher selectivity
-        self.min_confidence = 0.50
+        self.min_confidence = float(min_confidence)
 
     def get_signal(self, symbol: str) -> SignalResult:
         klines = self.client.klines(symbol=symbol, interval=self.interval, limit=200)
@@ -26,13 +44,11 @@ class RobustEnsembleStrategy(Strategy):
         except Exception as e:
             return SignalResult(Signal.HOLD, 0.0, f"data_error:{e}", meta=None)
 
-        # Module scores
         trend_up = ema_fast > ema_slow and closes[-1] > trend_sma
         trend_down = ema_fast < ema_slow and closes[-1] < trend_sma
 
-        # filter: avoid chasing when RSI extreme
         overbought = strength_rsi > 75
-        oversold = strength_rsi < 100
+        oversold = strength_rsi < 25
 
         score_buy = 0
         score_sell = 0
@@ -52,8 +68,6 @@ class RobustEnsembleStrategy(Strategy):
             score_sell += 1
             reasons.append("overbought_in_downtrend")
 
-        # confidence calculation (simple but structured)
-        # max possible score is 3
         if score_buy > score_sell:
             confidence = score_buy / 3.0
             sig = Signal.BUY
@@ -64,36 +78,12 @@ class RobustEnsembleStrategy(Strategy):
             confidence = 0.0
             sig = Signal.HOLD
 
-        # strict gating
         if confidence < self.min_confidence:
-            return SignalResult(
-                Signal.HOLD,
-                confidence,
-                "low_confidence_no_trade",
-                meta={
-                    "ema_fast": ema_fast,
-                    "ema_slow": ema_slow,
-                    "sma50": trend_sma,
-                    "rsi14": strength_rsi,
-                    "score_buy": score_buy,
-                    "score_sell": score_sell,
-                    "min_conf": self.min_confidence,
-                    "reasons": reasons,
-                },
-            )
+            return SignalResult(Signal.HOLD, 0.0, "gated", meta={"reasons": reasons})
 
         return SignalResult(
             sig,
-            confidence,
-            "ensemble_alignment",
-            meta={
-                "ema_fast": ema_fast,
-                "ema_slow": ema_slow,
-                "sma50": trend_sma,
-                "rsi14": strength_rsi,
-                "score_buy": score_buy,
-                "score_sell": score_sell,
-                "min_conf": self.min_confidence,
-                "reasons": reasons,
-            },
+            float(confidence),
+            "robust_ensemble",
+            meta={"reasons": reasons, "rsi": strength_rsi},
         )

@@ -185,6 +185,15 @@ class Settings(BaseSettings):
     TAKE_PROFIT_PCT: float = 2.0
     SL_COOLDOWN_SECONDS: int = 600
 
+    # Strategy selection (broker-agnostic)
+    STRATEGY_NAME: str = Field(default="robust_ensemble")
+    STRATEGY_PARAMS_JSON: str = Field(default="")
+
+    # Attribution defaults (future-proof for multi-broker)
+    BROKER_ID: str = Field(default="binance_futures")
+    ACCOUNT_ID: str = Field(default="default")
+    ASSET_CLASS: str = Field(default="CRYPTO")
+
     # --- Leverage ---
     DEFAULT_LEVERAGE: int = 5
     MIN_LEVERAGE: int = 5

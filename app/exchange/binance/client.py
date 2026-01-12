@@ -211,46 +211,115 @@ class BinanceFuturesClient:
             params={"symbol": symbol},
         )
 
-    def all_prices(self) -> list:
-        return self._request("GET", "/fapi/v1/ticker/price")
+    def book_ticker(self, symbol: str) -> dict:
+        """
+        Best bid/ask snapshot. Useful fallback when last price endpoint misbehaves.
+        """
+        return self._request(
+            "GET",
+            "/fapi/v1/ticker/bookTicker",
+            params={"symbol": symbol.upper()},
+        )
 
     # ---------------- SUBSTITUTED METHOD (ONLY CHANGE) ----------------
 
     def last_price(self, symbol: str) -> float:
         """
-        Return the last traded price for a symbol.
+        Robust price getter.
 
-        Binance can return either a dict (single symbol) or a list (all symbols),
-        and in rare cases can return an unexpected payload. We normalize it here.
+        Primary: /fapi/v1/ticker/price (last traded)
+        Fallback 1: /fapi/v1/premiumIndex (markPrice)
+        Fallback 2: /fapi/v1/ticker/bookTicker (mid of bid/ask)
+
+        Handles rare cases where Binance returns {} or missing fields.
         """
-        data = self._request(
-            "GET",
-            "/fapi/v1/ticker/price",
-            params={"symbol": symbol},
-        )
+        symbol = symbol.upper().strip()
 
-        if isinstance(data, dict):
-            if "price" in data:
-                return float(data["price"])
-            if "markPrice" in data:
-                return float(data["markPrice"])
-            raise RuntimeError(
-                f"Unexpected last_price payload (dict) for {symbol}: {data}"
-            )
+        def _to_float(x):
+            try:
+                v = float(x)
+                if v > 0:
+                    return v
+            except Exception:
+                return None
+            return None
 
-        if isinstance(data, list):
-            for item in data:
-                if (
-                    isinstance(item, dict)
-                    and item.get("symbol") == symbol
-                    and "price" in item
-                ):
-                    return float(item["price"])
-            raise RuntimeError(f"Symbol {symbol} not found in last_price list payload")
+        last_err = None
+        data = None  # ✅ ensures error messages can reference data safely
 
-        raise RuntimeError(
-            f"Unexpected last_price payload type for {symbol}: {type(data)}"
-        )
+        # small retry loop for transient {} payloads
+        for _ in range(3):
+            try:
+                data = self._request(
+                    "GET",
+                    "/fapi/v1/ticker/price",
+                    params={"symbol": symbol},
+                )
+
+                # Handle both raw float and dict payloads
+                if isinstance(data, (int, float, str)):
+                    return float(data)
+
+                if isinstance(data, dict):
+                    # ✅ FIX: Binance sometimes returns {} for ticker/price
+                    px = data.get("price") if data else None
+                    if px is None or px == "":
+                        # ✅ fallback to mark price (premiumIndex)
+                        mp = self.mark_price(symbol)
+                        if isinstance(mp, dict):
+                            mp_px = mp.get("markPrice")  # markPrice is the one we want
+                            if mp_px is not None and mp_px != "":
+                                return float(mp_px)
+                        raise RuntimeError(
+                            f"last_price unavailable for {symbol} "
+                            f"(ticker returned {data}, premiumIndex returned {mp})"
+                        )
+                    return float(px)
+
+                if isinstance(data, list):
+                    for item in data:
+                        if isinstance(item, dict) and item.get("symbol") == symbol:
+                            p = _to_float(item.get("price"))
+                            if p is not None:
+                                return p
+                    last_err = f"ticker/price list payload missing symbol {symbol}"
+                    time.sleep(0.15)
+                    continue
+
+                # ✅ do NOT raise here; preserve retry + fallbacks
+                last_err = f"Unexpected last_price payload ({type(data).__name__}) for {symbol}: {data}"
+                time.sleep(0.15)
+                continue
+
+            except Exception as e:
+                last_err = str(e)
+                time.sleep(0.15)
+                continue
+
+        # Fallback 1: mark price
+        try:
+            mp = self.mark_price(symbol)
+            p = _to_float((mp or {}).get("markPrice"))
+            if p is not None:
+                return p
+            last_err = f"premiumIndex missing markPrice for {symbol}: {mp}"
+        except Exception as e:
+            last_err = f"premiumIndex failed: {e}"
+
+        # Fallback 2: bid/ask mid
+        try:
+            bt = self.book_ticker(symbol)
+            bid = _to_float((bt or {}).get("bidPrice"))
+            ask = _to_float((bt or {}).get("askPrice"))
+            if bid is not None and ask is not None:
+                mid = (bid + ask) / 2.0
+                if mid > 0:
+                    return mid
+            last_err = f"bookTicker missing bid/ask for {symbol}: {bt}"
+        except Exception as e:
+            last_err = f"bookTicker failed: {e}"
+
+        raise RuntimeError(f"Price fetch failed for {symbol}. Last error: {last_err}")
 
     # ---------------- ACCOUNT / TRADING ----------------
 
@@ -319,7 +388,6 @@ class BinanceFuturesClient:
             flt = extract_filters(exch, symbol)
             qty = float(round_qty(qty, flt.step_size))
         except Exception:
-            # If filters are unavailable, fall back to raw qty.
             pass
 
         return self._signed_post(

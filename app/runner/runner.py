@@ -18,7 +18,7 @@ from app.persistence.state_store import StateStore
 from app.risk.daily_loss import DailyLossState
 from app.risk.realized_pnl import realized_pnl_from_user_trades
 from app.runner.models import SymbolState
-from app.strategy.robust_ensemble import RobustEnsembleStrategy
+from app.strategy.loader import build_strategy
 from app.strategy.sma_cross import signal_from_closes
 from app.symbols.sizing import parse_usdt_map, usdt_for
 from app.symbols.universe import parse_symbols
@@ -28,12 +28,14 @@ from app.execution.exit_rules import should_close_position
 from app.persistence.trade_fills import record_fill
 from app.policy.trade_policy import PolicyInputs, decide, Action
 from app.risk.realized_pnl import record_realized_pnl_for_symbol
+from app.metrics.hooks import on_trade_close_update_metrics
+
 
 # ✅ ADD: wire RiskGate into runner (dependency injection)
 from app.risk.gate import RiskGate
 
 # ✅ ADD: cycle context helpers
-from app.ops.context import set_cycle_id, clear_cycle_id
+from app.ops.context import set_cycle_id, clear_cycle_id, set_run_id, clear_run_id
 
 
 def _norm_pos(p: str | None) -> str:
@@ -66,6 +68,8 @@ class PaperRunner:
     def __init__(self, client: BinanceFuturesClient):
         self.client = client
         self.settings = settings
+        # ✅ Store last signal confidence per symbol (used on CLOSE)
+        self.last_signal_confidence: dict[str, float] = {}
 
         # ---- Basic config / strategy ----
 
@@ -73,7 +77,12 @@ class PaperRunner:
             ",".join(settings.TRADE_SYMBOLS), settings.MAX_SYMBOLS
         )
         self.interval = settings.DEFAULT_INTERVAL
-        self.strategy = RobustEnsembleStrategy(self.client, interval="1m")
+        self.strategy = build_strategy(
+            name=settings.STRATEGY_NAME,
+            client=self.client,
+            interval=self.interval,
+            params_json=settings.STRATEGY_PARAMS_JSON or None,
+        )
 
         # --- Execution locks (robust anti-overlap) ---
         self._cycle_lock = threading.Lock()
@@ -437,6 +446,11 @@ class PaperRunner:
                 res.meta = {"reason": "strategy_exception"}
             base_signal = (getattr(res.signal, "value", None) or "HOLD").upper()
             sig = base_signal
+            # ✅ STORE CONFIDENCE FOR THIS SYMBOL (used later on CLOSE)
+            try:
+                self.last_signal_confidence[symbol] = float(res.confidence or 0.0)
+            except Exception:
+                self.last_signal_confidence[symbol] = 0.0
 
             self.audit.event(
                 event_type="STRATEGY_SIGNAL",
@@ -885,6 +899,15 @@ class PaperRunner:
                             price=float(avg_price),
                             fee=float(fee) if fee is not None else None,
                             realized_pnl=None,
+                            # ✅ ADD: attribution (future-proof)
+                            strategy=getattr(self.strategy, "name", "unknown"),
+                            strategy_version=getattr(self.strategy, "version", "0"),
+                            broker_id=getattr(settings, "BROKER_ID", "binance_futures"),
+                            account_id=getattr(settings, "ACCOUNT_ID", "default"),
+                            asset_class=getattr(settings, "ASSET_CLASS", "CRYPTO"),
+                            timeframe=str(getattr(self, "interval", "")),
+                            # ✅ ADD: confidence at entry (calibration)
+                            confidence=float(getattr(res, "confidence", 0.0) or 0.0),
                         )
                     except Exception:
                         pass
@@ -1081,6 +1104,15 @@ class PaperRunner:
                         price=float(avg_price),
                         fee=float(fee) if fee is not None else None,
                         realized_pnl=None,
+                        # ✅ ADD: attribution (future-proof, multi-broker ready)
+                        strategy=getattr(self.strategy, "name", "unknown"),
+                        strategy_version=getattr(self.strategy, "version", "0"),
+                        broker_id=getattr(settings, "BROKER_ID", "binance_futures"),
+                        account_id=getattr(settings, "ACCOUNT_ID", "default"),
+                        asset_class=getattr(settings, "ASSET_CLASS", "CRYPTO"),
+                        timeframe=str(getattr(self, "interval", "") or self.interval),
+                        # ✅ IMPORTANT: use stored strategy confidence (NOT policy res)
+                        confidence=float(self.last_signal_confidence.get(symbol, 0.0)),
                     )
                 except Exception:
                     pass
@@ -1109,6 +1141,28 @@ class PaperRunner:
                             or 0.0
                         )
                         if abs(pnl) > 1e-12:
+                            # ✅ UPDATE STRATEGY PERFORMANCE + CONFIDENCE METRICS (EXACT PLACE)
+                            try:
+                                on_trade_close_update_metrics(
+                                    strategy=getattr(self.strategy, "name", "unknown"),
+                                    strategy_version=getattr(
+                                        self.strategy, "version", "0"
+                                    ),
+                                    symbol=symbol,
+                                    timeframe=self.interval,
+                                    confidence=self.last_signal_confidence.get(symbol),
+                                    realized_pnl=float(pnl),
+                                    fees=0.0,  # already netted in record_realized_pnl_for_symbol
+                                )
+                            except Exception as e:
+                                self.audit.event(
+                                    event_type="METRICS_ERROR",
+                                    run_id=self.run_id,
+                                    symbol=symbol,
+                                    action="METRICS_UPDATE_FAILED",
+                                    details={"error": repr(e)},
+                                )
+
                             break
                         time.sleep(0.5)
                 except Exception as e:
@@ -1194,6 +1248,17 @@ class PaperRunner:
                             "decision": decision,
                             "signal": sig,
                         },
+                        # ✅ Attribution
+                        strategy=getattr(self.strategy, "name", "unknown"),
+                        strategy_version=getattr(self.strategy, "version", "0"),
+                        broker_id=getattr(settings, "BROKER_ID", "binance_futures"),
+                        account_id=getattr(settings, "ACCOUNT_ID", "default"),
+                        asset_class=getattr(settings, "ASSET_CLASS", "CRYPTO"),
+                        timeframe=str(getattr(self, "interval", "") or self.interval),
+                        # best available at close time
+                        confidence=float(
+                            self.last_signal_confidence.get(symbol, 0.0) or 0.0
+                        ),
                     )
                 except Exception:
                     pass
@@ -1342,8 +1407,11 @@ class PaperRunner:
             )
 
             # --- CYCLE AUDIT START ---
+            self.run_id = self.run_id or str(uuid.uuid4())
+            set_run_id(self.run_id)
             cycle_id = str(uuid.uuid4())
             set_cycle_id(cycle_id)
+
             self.audit.event(
                 event_type="CYCLE_START",
                 run_id=self.run_id,
@@ -1448,6 +1516,7 @@ class PaperRunner:
 
         finally:
             clear_cycle_id()
+            clear_run_id()
             self._cycle_lock.release()
 
     def record_realized_pnl_from_usertrades(

@@ -21,6 +21,11 @@ class SignalResult:
 
 class Strategy:
     name: str = "base"
+    version: str = "1.0.0"
 
     def get_signal(self, symbol: str) -> SignalResult:
+        """
+        symbol must be canonical (e.g. EURUSD, BTCUSDT).
+        Broker-specific symbol mapping belongs in broker adapters later.
+        """
         raise NotImplementedError
