@@ -1,0 +1,353 @@
+/* Admin Dark Theme Variables */
+:root {
+    /* Dark Backgrounds */
+    --admin-bg-primary: #0F1117;
+    --admin-bg-card: #1E2330;
+    --admin-bg-sidebar: #1A1D29;
+    --admin-bg-hover: #252A3A;
+    --admin-bg-input: #1A1D29;
+
+    /* Accent Colors */
+    --admin-blue: #3B82F6;
+    --admin-blue-hover: #2563EB;
+    --admin-green: #10B981;
+    --admin-red: #EF4444;
+    --admin-yellow: #F59E0B;
+    --admin-purple: #8B5CF6;
+    --admin-cyan: #06B6D4;
+    --admin-gold: #F59E0B;
+
+    /* Text Colors */
+    --admin-text-primary: #F9FAFB;
+    --admin-text-secondary: #9CA3AF;
+    --admin-text-muted: #6B7280;
+
+    /* Borders */
+    --admin-border-color: #2D3748;
+    --admin-border-hover: #4A5568;
+
+    /* Shadows */
+    --admin-shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.3);
+    --admin-shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.4);
+    --admin-shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.5);
+
+    /* Spacing */
+    --admin-space-xs: 4px;
+    --admin-space-sm: 8px;
+    --admin-space-md: 16px;
+    --admin-space-lg: 24px;
+    --admin-space-xl: 32px;
+
+    /* Border Radius */
+    --admin-radius-sm: 4px;
+    --admin-radius-md: 8px;
+    --admin-radius-lg: 12px;
+    --admin-radius-xl: 16px;
+}
+
+/* Admin Layout Base Styles */
+.admin-layout {
+    min-height: 100vh;
+    background: var(--admin-bg-primary);
+    color: var(--admin-text-primary);
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+}
+
+.admin-sidebar {
+    width: 240px;
+    background: var(--admin-bg-sidebar);
+    border-right: 1px solid var(--admin-border-color);
+    height: 100vh;
+    position: fixed;
+    left: 0;
+    top: 0;
+    overflow-y: auto;
+}
+
+.admin-main {
+    margin-left: 240px;
+    min-height: 100vh;
+}
+
+.admin-header {
+    background: var(--admin-bg-card);
+    border-bottom: 1px solid var(--admin-border-color);
+    padding: var(--admin-space-md) var(--admin-space-xl);
+    position: sticky;
+    top: 0;
+    z-index: 40;
+}
+
+.admin-content {
+    padding: var(--admin-space-xl);
+}
+
+/* Admin Card Styles */
+.admin-card {
+    background: var(--admin-bg-card);
+    border-radius: var(--admin-radius-lg);
+    padding: var(--admin-space-lg);
+    border: 1px solid var(--admin-border-color);
+    box-shadow: var(--admin-shadow-sm);
+}
+
+.admin-card:hover {
+    border-color: var(--admin-border-hover);
+}
+
+/* Metric Card */
+.admin-metric-card {
+    background: var(--admin-bg-card);
+    border-radius: var(--admin-radius-lg);
+    padding: var(--admin-space-lg);
+    border: 1px solid var(--admin-border-color);
+    transition: all 0.2s ease;
+}
+
+.admin-metric-card:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--admin-shadow-md);
+}
+
+.admin-metric-value {
+    font-size: 2rem;
+    font-weight: 700;
+    color: var(--admin-text-primary);
+}
+
+.admin-metric-label {
+    font-size: 0.875rem;
+    color: var(--admin-text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.admin-metric-change {
+    font-size: 0.875rem;
+    font-weight: 600;
+}
+
+.admin-metric-change.positive {
+    color: var(--admin-green);
+}
+
+.admin-metric-change.negative {
+    color: var(--admin-red);
+}
+
+/* Admin Table Styles */
+.admin-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.admin-table thead {
+    background: var(--admin-bg-sidebar);
+    border-bottom: 1px solid var(--admin-border-color);
+}
+
+.admin-table th {
+    padding: var(--admin-space-md);
+    text-align: left;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--admin-text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.admin-table td {
+    padding: var(--admin-space-md);
+    border-bottom: 1px solid var(--admin-border-color);
+    color: var(--admin-text-primary);
+}
+
+.admin-table tbody tr {
+    transition: background-color 0.15s ease;
+}
+
+.admin-table tbody tr:hover {
+    background: var(--admin-bg-hover);
+}
+
+/* Admin Buttons */
+.admin-btn {
+    padding: var(--admin-space-sm) var(--admin-space-md);
+    border-radius: var(--admin-radius-md);
+    font-weight: 600;
+    font-size: 0.875rem;
+    transition: all 0.2s ease;
+    cursor: pointer;
+    border: none;
+    display: inline-flex;
+    align-items: center;
+    gap: var(--admin-space-sm);
+}
+
+.admin-btn-primary {
+    background: var(--admin-blue);
+    color: white;
+}
+
+.admin-btn-primary:hover {
+    background: var(--admin-blue-hover);
+}
+
+.admin-btn-secondary {
+    background: transparent;
+    color: var(--admin-text-primary);
+    border: 1px solid var(--admin-border-color);
+}
+
+.admin-btn-secondary:hover {
+    background: var(--admin-bg-hover);
+    border-color: var(--admin-border-hover);
+}
+
+.admin-btn-danger {
+    background: var(--admin-red);
+    color: white;
+}
+
+.admin-btn-danger:hover {
+    background: #DC2626;
+}
+
+/* Admin Badges */
+.admin-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 4px 12px;
+    border-radius: 12px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.admin-badge-success {
+    background: rgba(16, 185, 129, 0.15);
+    color: var(--admin-green);
+}
+
+.admin-badge-warning {
+    background: rgba(245, 158, 11, 0.15);
+    color: var(--admin-yellow);
+}
+
+.admin-badge-danger {
+    background: rgba(239, 68, 68, 0.15);
+    color: var(--admin-red);
+}
+
+.admin-badge-info {
+    background: rgba(59, 130, 246, 0.15);
+    color: var(--admin-blue);
+}
+
+/* Admin Input Styles */
+.admin-input {
+    width: 100%;
+    padding: var(--admin-space-sm) var(--admin-space-md);
+    background: var(--admin-bg-input);
+    border: 1px solid var(--admin-border-color);
+    border-radius: var(--admin-radius-md);
+    color: var(--admin-text-primary);
+    font-size: 0.875rem;
+    transition: all 0.2s ease;
+}
+
+.admin-input:focus {
+    outline: none;
+    border-color: var(--admin-blue);
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+.admin-input::placeholder {
+    color: var(--admin-text-muted);
+}
+
+/* Admin Nav Items */
+.admin-nav-item {
+    display: flex;
+    align-items: center;
+    gap: var(--admin-space-md);
+    padding: var(--admin-space-md) var(--admin-space-lg);
+    color: var(--admin-text-secondary);
+    text-decoration: none;
+    border-left: 3px solid transparent;
+    transition: all 0.2s ease;
+    font-size: 0.875rem;
+    font-weight: 500;
+}
+
+.admin-nav-item:hover {
+    background: var(--admin-bg-hover);
+    color: var(--admin-text-primary);
+}
+
+.admin-nav-item.active {
+    background: var(--admin-bg-hover);
+    color: var(--admin-blue);
+    border-left-color: var(--admin-blue);
+}
+
+/* Scrollbar Styling */
+.admin-layout ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+
+.admin-layout ::-webkit-scrollbar-track {
+    background: var(--admin-bg-sidebar);
+}
+
+.admin-layout ::-webkit-scrollbar-thumb {
+    background: var(--admin-border-color);
+    border-radius: 4px;
+}
+
+.admin-layout ::-webkit-scrollbar-thumb:hover {
+    background: var(--admin-border-hover);
+}
+
+/* Utility Classes */
+.admin-text-xs {
+    font-size: 0.75rem;
+}
+
+.admin-text-sm {
+    font-size: 0.875rem;
+}
+
+.admin-text-base {
+    font-size: 1rem;
+}
+
+.admin-text-lg {
+    font-size: 1.125rem;
+}
+
+.admin-text-xl {
+    font-size: 1.25rem;
+}
+
+.admin-text-2xl {
+    font-size: 1.5rem;
+}
+
+.admin-text-3xl {
+    font-size: 1.875rem;
+}
+
+.admin-font-medium {
+    font-weight: 500;
+}
+
+.admin-font-semibold {
+    font-weight: 600;
+}
+
+.admin-font-bold {
+    font-weight: 700;
+}

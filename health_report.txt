@@ -1,0 +1,4 @@
+Verified 111 modules.
+🚫 FOUND 2 BROKEN MODULES:
+   - app.main: no such table: users
+   - app.strategy.timeframe: cannot import name 'calculate_ema_slope' from 'app.strategy.regime' (C:\Users\favou\OneDrive\Desktop\cosmicforge-bot\backend\app\strategy\regime.py)
