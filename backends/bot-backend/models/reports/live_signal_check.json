@@ -1,0 +1,3122 @@
+{
+  "generated_at": "2026-06-15T16:09:21.591464+00:00",
+  "scope": {
+    "symbols": [
+      "BTCUSDT",
+      "ETHUSDT"
+    ],
+    "lookback_decisions": 100,
+    "database_path": "C:\\Users\\favou\\OneDrive\\Desktop\\cosmicforge-bot\\backends\\shared\\shared_lib\\persistence\\cosmicforge.db",
+    "current_floor": 0.55,
+    "thresholds_tested": [
+      0.55,
+      0.5,
+      0.45
+    ]
+  },
+  "decision_summary": {
+    "total_decisions": 100,
+    "buy_count": 0,
+    "sell_count": 0,
+    "hold_count": 100,
+    "average_confidence": 0.0,
+    "max_confidence": 0.0,
+    "signals_just_below_threshold": 0,
+    "hold_reasons": {
+      "REGIME_BLOCKED": 95,
+      "NO_PATTERN": 1,
+      "SESSION_BLOCKED": 4
+    },
+    "confidence_distribution": {
+      "0.00-0.39": 100,
+      "0.40-0.49": 0,
+      "0.50-0.54": 0,
+      "0.55-0.59": 0,
+      "0.60+": 0
+    },
+    "regime_distribution": {
+      "STRONG_TREND": 95,
+      "WEAK_TREND": 5
+    },
+    "symbol_distribution": {
+      "ETHUSDT": 50,
+      "BTCUSDT": 50
+    },
+    "hour_utc_distribution": {
+      "16": 45,
+      "15": 46,
+      "5": 9
+    },
+    "session_distribution": {
+      "RUNTIME_ONLY_WINDOW": 45,
+      "NARROW_REPLAY_WINDOW": 46,
+      "OUTSIDE_RUNTIME_WINDOW": 9
+    },
+    "strategy_component_distribution": {
+      "supertrend": {
+        "HOLD": 1
+      },
+      "sma_cross": {
+        "HOLD": 1
+      },
+      "trend_pullback": {
+        "HOLD": 1
+      },
+      "donchian_breakout": {
+        "HOLD": 1
+      },
+      "bollinger_reversion": {
+        "DISABLED": 1
+      },
+      "squeeze_breakout": {
+        "DISABLED": 1
+      },
+      "vwap_reversion": {
+        "DISABLED": 1
+      }
+    },
+    "grouped_analysis": [
+      {
+        "symbol": "BTCUSDT",
+        "hour_utc": "15",
+        "session_window": "NARROW_REPLAY_WINDOW",
+        "regime": "STRONG_TREND",
+        "hold_reason": "REGIME_BLOCKED",
+        "confidence_bucket": "0.00-0.39",
+        "count": 23
+      },
+      {
+        "symbol": "BTCUSDT",
+        "hour_utc": "15",
+        "session_window": "NARROW_REPLAY_WINDOW",
+        "regime": "WEAK_TREND",
+        "hold_reason": "NO_PATTERN",
+        "confidence_bucket": "0.00-0.39",
+        "count": 1
+      },
+      {
+        "symbol": "BTCUSDT",
+        "hour_utc": "16",
+        "session_window": "RUNTIME_ONLY_WINDOW",
+        "regime": "STRONG_TREND",
+        "hold_reason": "REGIME_BLOCKED",
+        "confidence_bucket": "0.00-0.39",
+        "count": 22
+      },
+      {
+        "symbol": "BTCUSDT",
+        "hour_utc": "5",
+        "session_window": "OUTSIDE_RUNTIME_WINDOW",
+        "regime": "WEAK_TREND",
+        "hold_reason": "SESSION_BLOCKED",
+        "confidence_bucket": "0.00-0.39",
+        "count": 4
+      },
+      {
+        "symbol": "ETHUSDT",
+        "hour_utc": "15",
+        "session_window": "NARROW_REPLAY_WINDOW",
+        "regime": "STRONG_TREND",
+        "hold_reason": "REGIME_BLOCKED",
+        "confidence_bucket": "0.00-0.39",
+        "count": 22
+      },
+      {
+        "symbol": "ETHUSDT",
+        "hour_utc": "16",
+        "session_window": "RUNTIME_ONLY_WINDOW",
+        "regime": "STRONG_TREND",
+        "hold_reason": "REGIME_BLOCKED",
+        "confidence_bucket": "0.00-0.39",
+        "count": 23
+      },
+      {
+        "symbol": "ETHUSDT",
+        "hour_utc": "5",
+        "session_window": "OUTSIDE_RUNTIME_WINDOW",
+        "regime": "STRONG_TREND",
+        "hold_reason": "REGIME_BLOCKED",
+        "confidence_bucket": "0.00-0.39",
+        "count": 5
+      }
+    ],
+    "structured_hold_breakdowns": [
+      {
+        "symbol": "ETHUSDT",
+        "timestamp": "2026-06-15T16:08:08.257005+00:00",
+        "regime": "STRONG_TREND",
+        "session_window": "RUNTIME_ONLY_WINDOW",
+        "raw_strategy_signal": "hold",
+        "raw_confidence": 0.0,
+        "final_action": "HOLD",
+        "hold_reason": "REGIME_BLOCKED",
+        "indicator_values": {
+          "adx": 73.0,
+          "atr_pct": 0.627,
+          "ma_slope": 0.8098,
+          "compression_ratio": 1.0,
+          "breakout_pressure": 1.0,
+          "buy_score": 0.0,
+          "sell_score": 0.0,
+          "threshold": 0.55
+        },
+        "failed_conditions": [
+          "REGIME_BLOCKED"
+        ],
+        "threshold_floor": 0.55,
+        "blocked_regime": true,
+        "components": []
+      },
+      {
+        "symbol": "BTCUSDT",
+        "timestamp": "2026-06-15T16:07:23.442415+00:00",
+        "regime": "STRONG_TREND",
+        "session_window": "RUNTIME_ONLY_WINDOW",
+        "raw_strategy_signal": "hold",
+        "raw_confidence": 0.0,
+        "final_action": "HOLD",
+        "hold_reason": "REGIME_BLOCKED",
+        "indicator_values": {
+          "adx": 51.8,
+          "atr_pct": 0.407,
+          "ma_slope": 0.2819,
+          "compression_ratio": 1.0,
+          "breakout_pressure": 0.8913,
+          "buy_score": 0.0,
+          "sell_score": 0.0,
+          "threshold": 0.55
+        },
+        "failed_conditions": [
+          "REGIME_BLOCKED"
+        ],
+        "threshold_floor": 0.55,
+        "blocked_regime": true,
+        "components": []
+      },
+      {
+        "symbol": "ETHUSDT",
+        "timestamp": "2026-06-15T16:07:10.185073+00:00",
+        "regime": "STRONG_TREND",
+        "session_window": "RUNTIME_ONLY_WINDOW",
+        "raw_strategy_signal": "hold",
+        "raw_confidence": 0.0,
+        "final_action": "HOLD",
+        "hold_reason": "REGIME_BLOCKED",
+        "indicator_values": {
+          "adx": 73.0,
+          "atr_pct": 0.627,
+          "ma_slope": 0.8074,
+          "compression_ratio": 1.0,
+          "breakout_pressure": 1.0,
+          "buy_score": 0.0,
+          "sell_score": 0.0,
+          "threshold": 0.55
+        },
+        "failed_conditions": [
+          "REGIME_BLOCKED"
+        ],
+        "threshold_floor": 0.55,
+        "blocked_regime": true,
+        "components": []
+      },
+      {
+        "symbol": "BTCUSDT",
+        "timestamp": "2026-06-15T16:07:01.895143+00:00",
+        "regime": "STRONG_TREND",
+        "session_window": "RUNTIME_ONLY_WINDOW",
+        "raw_strategy_signal": "hold",
+        "raw_confidence": 0.0,
+        "final_action": "HOLD",
+        "hold_reason": "REGIME_BLOCKED",
+        "indicator_values": {
+          "adx": 51.8,
+          "atr_pct": 0.407,
+          "ma_slope": 0.2822,
+          "compression_ratio": 1.0,
+          "breakout_pressure": 0.9019,
+          "buy_score": 0.0,
+          "sell_score": 0.0,
+          "threshold": 0.55
+        },
+        "failed_conditions": [
+          "REGIME_BLOCKED"
+        ],
+        "threshold_floor": 0.55,
+        "blocked_regime": true,
+        "components": []
+      },
+      {
+        "symbol": "ETHUSDT",
+        "timestamp": "2026-06-15T16:06:51.206241+00:00",
+        "regime": "STRONG_TREND",
+        "session_window": "RUNTIME_ONLY_WINDOW",
+        "raw_strategy_signal": "hold",
+        "raw_confidence": 0.0,
+        "final_action": "HOLD",
+        "hold_reason": "REGIME_BLOCKED",
+        "indicator_values": {
+          "adx": 73.0,
+          "atr_pct": 0.627,
+          "ma_slope": 0.8074,
+          "compression_ratio": 1.0,
+          "breakout_pressure": 1.0,
+          "buy_score": 0.0,
+          "sell_score": 0.0,
+          "threshold": 0.55
+        },
+        "failed_conditions": [
+          "REGIME_BLOCKED"
+        ],
+        "threshold_floor": 0.55,
+        "blocked_regime": true,
+        "components": []
+      },
+      {
+        "symbol": "BTCUSDT",
+        "timestamp": "2026-06-15T16:06:43.658390+00:00",
+        "regime": "STRONG_TREND",
+        "session_window": "RUNTIME_ONLY_WINDOW",
+        "raw_strategy_signal": "hold",
+        "raw_confidence": 0.0,
+        "final_action": "HOLD",
+        "hold_reason": "REGIME_BLOCKED",
+        "indicator_values": {
+          "adx": 51.8,
+          "atr_pct": 0.407,
+          "ma_slope": 0.2818,
+          "compression_ratio": 1.0,
+          "breakout_pressure": 0.8889,
+          "buy_score": 0.0,
+          "sell_score": 0.0,
+          "threshold": 0.55
+        },
+        "failed_conditions": [
+          "REGIME_BLOCKED"
+        ],
+        "threshold_floor": 0.55,
+        "blocked_regime": true,
+        "components": []
+      },
+      {
+        "symbol": "ETHUSDT",
+        "timestamp": "2026-06-15T16:06:33.358799+00:00",
+        "regime": "STRONG_TREND",
+        "session_window": "RUNTIME_ONLY_WINDOW",
+        "raw_strategy_signal": "hold",
+        "raw_confidence": 0.0,
+        "final_action": "HOLD",
+        "hold_reason": "REGIME_BLOCKED",
+        "indicator_values": {
+          "adx": 73.0,
+          "atr_pct": 0.627,
+          "ma_slope": 0.8074,
+          "compression_ratio": 1.0,
+          "breakout_pressure": 1.0,
+          "buy_score": 0.0,
+          "sell_score": 0.0,
+          "threshold": 0.55
+        },
+        "failed_conditions": [
+          "REGIME_BLOCKED"
+        ],
+        "threshold_floor": 0.55,
+        "blocked_regime": true,
+        "components": []
+      },
+      {
+        "symbol": "BTCUSDT",
+        "timestamp": "2026-06-15T16:06:25.823045+00:00",
+        "regime": "STRONG_TREND",
+        "session_window": "RUNTIME_ONLY_WINDOW",
+        "raw_strategy_signal": "hold",
+        "raw_confidence": 0.0,
+        "final_action": "HOLD",
+        "hold_reason": "REGIME_BLOCKED",
+        "indicator_values": {
+          "adx": 51.8,
+          "atr_pct": 0.407,
+          "ma_slope": 0.2818,
+          "compression_ratio": 1.0,
+          "breakout_pressure": 0.8891,
+          "buy_score": 0.0,
+          "sell_score": 0.0,
+          "threshold": 0.55
+        },
+        "failed_conditions": [
+          "REGIME_BLOCKED"
+        ],
+        "threshold_floor": 0.55,
+        "blocked_regime": true,
+        "components": []
+      },
+      {
+        "symbol": "ETHUSDT",
+        "timestamp": "2026-06-15T16:06:15.125639+00:00",
+        "regime": "STRONG_TREND",
+        "session_window": "RUNTIME_ONLY_WINDOW",
+        "raw_strategy_signal": "hold",
+        "raw_confidence": 0.0,
+        "final_action": "HOLD",
+        "hold_reason": "REGIME_BLOCKED",
+        "indicator_values": {
+          "adx": 73.0,
+          "atr_pct": 0.627,
+          "ma_slope": 0.8065,
+          "compression_ratio": 1.0,
+          "breakout_pressure": 1.0,
+          "buy_score": 0.0,
+          "sell_score": 0.0,
+          "threshold": 0.55
+        },
+        "failed_conditions": [
+          "REGIME_BLOCKED"
+        ],
+        "threshold_floor": 0.55,
+        "blocked_regime": true,
+        "components": []
+      },
+      {
+        "symbol": "BTCUSDT",
+        "timestamp": "2026-06-15T16:06:07.839289+00:00",
+        "regime": "STRONG_TREND",
+        "session_window": "RUNTIME_ONLY_WINDOW",
+        "raw_strategy_signal": "hold",
+        "raw_confidence": 0.0,
+        "final_action": "HOLD",
+        "hold_reason": "REGIME_BLOCKED",
+        "indicator_values": {
+          "adx": 51.8,
+          "atr_pct": 0.407,
+          "ma_slope": 0.2822,
+          "compression_ratio": 1.0,
+          "breakout_pressure": 0.9019,
+          "buy_score": 0.0,
+          "sell_score": 0.0,
+          "threshold": 0.55
+        },
+        "failed_conditions": [
+          "REGIME_BLOCKED"
+        ],
+        "threshold_floor": 0.55,
+        "blocked_regime": true,
+        "components": []
+      },
+      {
+        "symbol": "ETHUSDT",
+        "timestamp": "2026-06-15T16:05:55.979641+00:00",
+        "regime": "STRONG_TREND",
+        "session_window": "RUNTIME_ONLY_WINDOW",
+        "raw_strategy_signal": "hold",
+        "raw_confidence": 0.0,
+        "final_action": "HOLD",
+        "hold_reason": "REGIME_BLOCKED",
+        "indicator_values": {
+          "adx": 73.0,
+          "atr_pct": 0.627,
+          "ma_slope": 0.8065,
+          "compression_ratio": 1.0,
+          "breakout_pressure": 1.0,
+          "buy_score": 0.0,
+          "sell_score": 0.0,
+          "threshold": 0.55
+        },
+        "failed_conditions": [
+          "REGIME_BLOCKED"
+        ],
+        "threshold_floor": 0.55,
+        "blocked_regime": true,
+        "components": []
+      },
+      {
+        "symbol": "BTCUSDT",
+        "timestamp": "2026-06-15T16:05:47.206696+00:00",
+        "regime": "STRONG_TREND",
+        "session_window": "RUNTIME_ONLY_WINDOW",
+        "raw_strategy_signal": "hold",
+        "raw_confidence": 0.0,
+        "final_action": "HOLD",
+        "hold_reason": "REGIME_BLOCKED",
+        "indicator_values": {
+          "adx": 51.8,
+          "atr_pct": 0.407,
+          "ma_slope": 0.2818,
+          "compression_ratio": 1.0,
+          "breakout_pressure": 0.8891,
+          "buy_score": 0.0,
+          "sell_score": 0.0,
+          "threshold": 0.55
+        },
+        "failed_conditions": [
+          "REGIME_BLOCKED"
+        ],
+        "threshold_floor": 0.55,
+        "blocked_regime": true,
+        "components": []
+      },
+      {
+        "symbol": "ETHUSDT",
+        "timestamp": "2026-06-15T16:05:36.849499+00:00",
+        "regime": "STRONG_TREND",
+        "session_window": "RUNTIME_ONLY_WINDOW",
+        "raw_strategy_signal": "hold",
+        "raw_confidence": 0.0,
+        "final_action": "HOLD",
+        "hold_reason": "REGIME_BLOCKED",
+        "indicator_values": {
+          "adx": 73.0,
+          "atr_pct": 0.627,
+          "ma_slope": 0.8066,
+          "compression_ratio": 1.0,
+          "breakout_pressure": 1.0,
+          "buy_score": 0.0,
+          "sell_score": 0.0,
+          "threshold": 0.55
+        },
+        "failed_conditions": [
+          "REGIME_BLOCKED"
+        ],
+        "threshold_floor": 0.55,
+        "blocked_regime": true,
+        "components": []
+      },
+      {
+        "symbol": "BTCUSDT",
+        "timestamp": "2026-06-15T16:05:29.904421+00:00",
+        "regime": "STRONG_TREND",
+        "session_window": "RUNTIME_ONLY_WINDOW",
+        "raw_strategy_signal": "hold",
+        "raw_confidence": 0.0,
+        "final_action": "HOLD",
+        "hold_reason": "REGIME_BLOCKED",
+        "indicator_values": {
+          "adx": 51.8,
+          "atr_pct": 0.407,
+          "ma_slope": 0.282,
+          "compression_ratio": 1.0,
+          "breakout_pressure": 0.8936,
+          "buy_score": 0.0,
+          "sell_score": 0.0,
+          "threshold": 0.55
+        },
+        "failed_conditions": [
+          "REGIME_BLOCKED"
+        ],
+        "threshold_floor": 0.55,
+        "blocked_regime": true,
+        "components": []
+      },
+      {
+        "symbol": "ETHUSDT",
+        "timestamp": "2026-06-15T16:05:20.349545+00:00",
+        "regime": "STRONG_TREND",
+        "session_window": "RUNTIME_ONLY_WINDOW",
+        "raw_strategy_signal": "hold",
+        "raw_confidence": 0.0,
+        "final_action": "HOLD",
+        "hold_reason": "REGIME_BLOCKED",
+        "indicator_values": {
+          "adx": 73.0,
+          "atr_pct": 0.627,
+          "ma_slope": 0.8066,
+          "compression_ratio": 1.0,
+          "breakout_pressure": 1.0,
+          "buy_score": 0.0,
+          "sell_score": 0.0,
+          "threshold": 0.55
+        },
+        "failed_conditions": [
+          "REGIME_BLOCKED"
+        ],
+        "threshold_floor": 0.55,
+        "blocked_regime": true,
+        "components": []
+      },
+      {
+        "symbol": "BTCUSDT",
+        "timestamp": "2026-06-15T16:05:13.306885+00:00",
+        "regime": "STRONG_TREND",
+        "session_window": "RUNTIME_ONLY_WINDOW",
+        "raw_strategy_signal": "hold",
+        "raw_confidence": 0.0,
+        "final_action": "HOLD",
+        "hold_reason": "REGIME_BLOCKED",
+        "indicator_values": {
+          "adx": 51.8,
+          "atr_pct": 0.407,
+          "ma_slope": 0.2819,
+          "compression_ratio": 1.0,
+          "breakout_pressure": 0.8925,
+          "buy_score": 0.0,
+          "sell_score": 0.0,
+          "threshold": 0.55
+        },
+        "failed_conditions": [
+          "REGIME_BLOCKED"
+        ],
+        "threshold_floor": 0.55,
+        "blocked_regime": true,
+        "components": []
+      },
+      {
+        "symbol": "ETHUSDT",
+        "timestamp": "2026-06-15T16:05:03.502729+00:00",
+        "regime": "STRONG_TREND",
+        "session_window": "RUNTIME_ONLY_WINDOW",
+        "raw_strategy_signal": "hold",
+        "raw_confidence": 0.0,
+        "final_action": "HOLD",
+        "hold_reason": "REGIME_BLOCKED",
+        "indicator_values": {
+          "adx": 73.0,
+          "atr_pct": 0.627,
+          "ma_slope": 0.8066,
+          "compression_ratio": 1.0,
+          "breakout_pressure": 1.0,
+          "buy_score": 0.0,
+          "sell_score": 0.0,
+          "threshold": 0.55
+        },
+        "failed_conditions": [
+          "REGIME_BLOCKED"
+        ],
+        "threshold_floor": 0.55,
+        "blocked_regime": true,
+        "components": []
+      },
+      {
+        "symbol": "BTCUSDT",
+        "timestamp": "2026-06-15T16:04:56.632775+00:00",
+        "regime": "STRONG_TREND",
+        "session_window": "RUNTIME_ONLY_WINDOW",
+        "raw_strategy_signal": "hold",
+        "raw_confidence": 0.0,
+        "final_action": "HOLD",
+        "hold_reason": "REGIME_BLOCKED",
+        "indicator_values": {
+          "adx": 51.8,
+          "atr_pct": 0.407,
+          "ma_slope": 0.2822,
+          "compression_ratio": 1.0,
+          "breakout_pressure": 0.9017,
+          "buy_score": 0.0,
+          "sell_score": 0.0,
+          "threshold": 0.55
+        },
+        "failed_conditions": [
+          "REGIME_BLOCKED"
+        ],
+        "threshold_floor": 0.55,
+        "blocked_regime": true,
+        "components": []
+      },
+      {
+        "symbol": "ETHUSDT",
+        "timestamp": "2026-06-15T16:04:46.661752+00:00",
+        "regime": "STRONG_TREND",
+        "session_window": "RUNTIME_ONLY_WINDOW",
+        "raw_strategy_signal": "hold",
+        "raw_confidence": 0.0,
+        "final_action": "HOLD",
+        "hold_reason": "REGIME_BLOCKED",
+        "indicator_values": {
+          "adx": 73.0,
+          "atr_pct": 0.626,
+          "ma_slope": 0.8069,
+          "compression_ratio": 1.0,
+          "breakout_pressure": 1.0,
+          "buy_score": 0.0,
+          "sell_score": 0.0,
+          "threshold": 0.55
+        },
+        "failed_conditions": [
+          "REGIME_BLOCKED"
+        ],
+        "threshold_floor": 0.55,
+        "blocked_regime": true,
+        "components": []
+      },
+      {
+        "symbol": "BTCUSDT",
+        "timestamp": "2026-06-15T16:04:39.210445+00:00",
+        "regime": "STRONG_TREND",
+        "session_window": "RUNTIME_ONLY_WINDOW",
+        "raw_strategy_signal": "hold",
+        "raw_confidence": 0.0,
+        "final_action": "HOLD",
+        "hold_reason": "REGIME_BLOCKED",
+        "indicator_values": {
+          "adx": 51.8,
+          "atr_pct": 0.407,
+          "ma_slope": 0.2822,
+          "compression_ratio": 1.0,
+          "breakout_pressure": 0.9017,
+          "buy_score": 0.0,
+          "sell_score": 0.0,
+          "threshold": 0.55
+        },
+        "failed_conditions": [
+          "REGIME_BLOCKED"
+        ],
+        "threshold_floor": 0.55,
+        "blocked_regime": true,
+        "components": []
+      },
+      {
+        "symbol": "ETHUSDT",
+        "timestamp": "2026-06-15T16:04:29.583852+00:00",
+        "regime": "STRONG_TREND",
+        "session_window": "RUNTIME_ONLY_WINDOW",
+        "raw_strategy_signal": "hold",
+        "raw_confidence": 0.0,
+        "final_action": "HOLD",
+        "hold_reason": "REGIME_BLOCKED",
+        "indicator_values": {
+          "adx": 73.0,
+          "atr_pct": 0.626,
+          "ma_slope": 0.807,
+          "compression_ratio": 1.0,
+          "breakout_pressure": 1.0,
+          "buy_score": 0.0,
+          "sell_score": 0.0,
+          "threshold": 0.55
+        },
+        "failed_conditions": [
+          "REGIME_BLOCKED"
+        ],
+        "threshold_floor": 0.55,
+        "blocked_regime": true,
+        "components": []
+      },
+      {
+        "symbol": "BTCUSDT",
+        "timestamp": "2026-06-15T16:04:22.690415+00:00",
+        "regime": "STRONG_TREND",
+        "session_window": "RUNTIME_ONLY_WINDOW",
+        "raw_strategy_signal": "hold",
+        "raw_confidence": 0.0,
+        "final_action": "HOLD",
+        "hold_reason": "REGIME_BLOCKED",
+        "indicator_values": {
+          "adx": 51.8,
+          "atr_pct": 0.407,
+          "ma_slope": 0.2818,
+          "compression_ratio": 1.0,
+          "breakout_pressure": 0.8905,
+          "buy_score": 0.0,
+          "sell_score": 0.0,
+          "threshold": 0.55
+        },
+        "failed_conditions": [
+          "REGIME_BLOCKED"
+        ],
+        "threshold_floor": 0.55,
+        "blocked_regime": true,
+        "components": []
+      },
+      {
+        "symbol": "ETHUSDT",
+        "timestamp": "2026-06-15T16:04:12.677967+00:00",
+        "regime": "STRONG_TREND",
+        "session_window": "RUNTIME_ONLY_WINDOW",
+        "raw_strategy_signal": "hold",
+        "raw_confidence": 0.0,
+        "final_action": "HOLD",
+        "hold_reason": "REGIME_BLOCKED",
+        "indicator_values": {
+          "adx": 73.0,
+          "atr_pct": 0.626,
+          "ma_slope": 0.8074,
+          "compression_ratio": 1.0,
+          "breakout_pressure": 1.0,
+          "buy_score": 0.0,
+          "sell_score": 0.0,
+          "threshold": 0.55
+        },
+        "failed_conditions": [
+          "REGIME_BLOCKED"
+        ],
+        "threshold_floor": 0.55,
+        "blocked_regime": true,
+        "components": []
+      },
+      {
+        "symbol": "BTCUSDT",
+        "timestamp": "2026-06-15T16:04:05.673316+00:00",
+        "regime": "STRONG_TREND",
+        "session_window": "RUNTIME_ONLY_WINDOW",
+        "raw_strategy_signal": "hold",
+        "raw_confidence": 0.0,
+        "final_action": "HOLD",
+        "hold_reason": "REGIME_BLOCKED",
+        "indicator_values": {
+          "adx": 51.8,
+          "atr_pct": 0.406,
+          "ma_slope": 0.2822,
+          "compression_ratio": 1.0,
+          "breakout_pressure": 0.9022,
+          "buy_score": 0.0,
+          "sell_score": 0.0,
+          "threshold": 0.55
+        },
+        "failed_conditions": [
+          "REGIME_BLOCKED"
+        ],
+        "threshold_floor": 0.55,
+        "blocked_regime": true,
+        "components": []
+      },
+      {
+        "symbol": "ETHUSDT",
+        "timestamp": "2026-06-15T16:03:55.447016+00:00",
+        "regime": "STRONG_TREND",
+        "session_window": "RUNTIME_ONLY_WINDOW",
+        "raw_strategy_signal": "hold",
+        "raw_confidence": 0.0,
+        "final_action": "HOLD",
+        "hold_reason": "REGIME_BLOCKED",
+        "indicator_values": {
+          "adx": 73.0,
+          "atr_pct": 0.626,
+          "ma_slope": 0.8074,
+          "compression_ratio": 1.0,
+          "breakout_pressure": 1.0,
+          "buy_score": 0.0,
+          "sell_score": 0.0,
+          "threshold": 0.55
+        },
+        "failed_conditions": [
+          "REGIME_BLOCKED"
+        ],
+        "threshold_floor": 0.55,
+        "blocked_regime": true,
+        "components": []
+      },
+      {
+        "symbol": "BTCUSDT",
+        "timestamp": "2026-06-15T16:03:48.313401+00:00",
+        "regime": "STRONG_TREND",
+        "session_window": "RUNTIME_ONLY_WINDOW",
+        "raw_strategy_signal": "hold",
+        "raw_confidence": 0.0,
+        "final_action": "HOLD",
+        "hold_reason": "REGIME_BLOCKED",
+        "indicator_values": {
+          "adx": 51.8,
+          "atr_pct": 0.406,
+          "ma_slope": 0.2822,
+          "compression_ratio": 1.0,
+          "breakout_pressure": 0.9024,
+          "buy_score": 0.0,
+          "sell_score": 0.0,
+          "threshold": 0.55
+        },
+        "failed_conditions": [
+          "REGIME_BLOCKED"
+        ],
+        "threshold_floor": 0.55,
+        "blocked_regime": true,
+        "components": []
+      },
+      {
+        "symbol": "ETHUSDT",
+        "timestamp": "2026-06-15T16:03:38.772120+00:00",
+        "regime": "STRONG_TREND",
+        "session_window": "RUNTIME_ONLY_WINDOW",
+        "raw_strategy_signal": "hold",
+        "raw_confidence": 0.0,
+        "final_action": "HOLD",
+        "hold_reason": "REGIME_BLOCKED",
+        "indicator_values": {
+          "adx": 73.0,
+          "atr_pct": 0.626,
+          "ma_slope": 0.8069,
+          "compression_ratio": 1.0,
+          "breakout_pressure": 1.0,
+          "buy_score": 0.0,
+          "sell_score": 0.0,
+          "threshold": 0.55
+        },
+        "failed_conditions": [
+          "REGIME_BLOCKED"
+        ],
+        "threshold_floor": 0.55,
+        "blocked_regime": true,
+        "components": []
+      },
+      {
+        "symbol": "BTCUSDT",
+        "timestamp": "2026-06-15T16:03:31.781874+00:00",
+        "regime": "STRONG_TREND",
+        "session_window": "RUNTIME_ONLY_WINDOW",
+        "raw_strategy_signal": "hold",
+        "raw_confidence": 0.0,
+        "final_action": "HOLD",
+        "hold_reason": "REGIME_BLOCKED",
+        "indicator_values": {
+          "adx": 51.8,
+          "atr_pct": 0.406,
+          "ma_slope": 0.2819,
+          "compression_ratio": 1.0,
+          "breakout_pressure": 0.8938,
+          "buy_score": 0.0,
+          "sell_score": 0.0,
+          "threshold": 0.55
+        },
+        "failed_conditions": [
+          "REGIME_BLOCKED"
+        ],
+        "threshold_floor": 0.55,
+        "blocked_regime": true,
+        "components": []
+      },
+      {
+        "symbol": "ETHUSDT",
+        "timestamp": "2026-06-15T16:03:22.107128+00:00",
+        "regime": "STRONG_TREND",
+        "session_window": "RUNTIME_ONLY_WINDOW",
+        "raw_strategy_signal": "hold",
+        "raw_confidence": 0.0,
+        "final_action": "HOLD",
+        "hold_reason": "REGIME_BLOCKED",
+        "indicator_values": {
+          "adx": 73.0,
+          "atr_pct": 0.626,
+          "ma_slope": 0.8072,
+          "compression_ratio": 1.0,
+          "breakout_pressure": 1.0,
+          "buy_score": 0.0,
+          "sell_score": 0.0,
+          "threshold": 0.55
+        },
+        "failed_conditions": [
+          "REGIME_BLOCKED"
+        ],
+        "threshold_floor": 0.55,
+        "blocked_regime": true,
+        "components": []
+      },
+      {
+        "symbol": "BTCUSDT",
+        "timestamp": "2026-06-15T16:03:15.261830+00:00",
+        "regime": "STRONG_TREND",
+        "session_window": "RUNTIME_ONLY_WINDOW",
+        "raw_strategy_signal": "hold",
+        "raw_confidence": 0.0,
+        "final_action": "HOLD",
+        "hold_reason": "REGIME_BLOCKED",
+        "indicator_values": {
+          "adx": 51.8,
+          "atr_pct": 0.406,
+          "ma_slope": 0.2822,
+          "compression_ratio": 1.0,
+          "breakout_pressure": 0.9024,
+          "buy_score": 0.0,
+          "sell_score": 0.0,
+          "threshold": 0.55
+        },
+        "failed_conditions": [
+          "REGIME_BLOCKED"
+        ],
+        "threshold_floor": 0.55,
+        "blocked_regime": true,
+        "components": []
+      },
+      {
+        "symbol": "ETHUSDT",
+        "timestamp": "2026-06-15T16:03:05.532526+00:00",
+        "regime": "STRONG_TREND",
+        "session_window": "RUNTIME_ONLY_WINDOW",
+        "raw_strategy_signal": "hold",
+        "raw_confidence": 0.0,
+        "final_action": "HOLD",
+        "hold_reason": "REGIME_BLOCKED",
+        "indicator_values": {
+          "adx": 73.0,
+          "atr_pct": 0.626,
+          "ma_slope": 0.8069,
+          "compression_ratio": 1.0,
+          "breakout_pressure": 1.0,
+          "buy_score": 0.0,
+          "sell_score": 0.0,
+          "threshold": 0.55
+        },
+        "failed_conditions": [
+          "REGIME_BLOCKED"
+        ],
+        "threshold_floor": 0.55,
+        "blocked_regime": true,
+        "components": []
+      },
+      {
+        "symbol": "BTCUSDT",
+        "timestamp": "2026-06-15T16:02:57.960653+00:00",
+        "regime": "STRONG_TREND",
+        "session_window": "RUNTIME_ONLY_WINDOW",
+        "raw_strategy_signal": "hold",
+        "raw_confidence": 0.0,
+        "final_action": "HOLD",
+        "hold_reason": "REGIME_BLOCKED",
+        "indicator_values": {
+          "adx": 51.8,
+          "atr_pct": 0.405,
+          "ma_slope": 0.2825,
+          "compression_ratio": 1.0,
+          "breakout_pressure": 0.9148,
+          "buy_score": 0.0,
+          "sell_score": 0.0,
+          "threshold": 0.55
+        },
+        "failed_conditions": [
+          "REGIME_BLOCKED"
+        ],
+        "threshold_floor": 0.55,
+        "blocked_regime": true,
+        "components": []
+      },
+      {
+        "symbol": "ETHUSDT",
+        "timestamp": "2026-06-15T16:02:21.586269+00:00",
+        "regime": "STRONG_TREND",
+        "session_window": "RUNTIME_ONLY_WINDOW",
+        "raw_strategy_signal": "hold",
+        "raw_confidence": 0.0,
+        "final_action": "HOLD",
+        "hold_reason": "REGIME_BLOCKED",
+        "indicator_values": {
+          "adx": 73.0,
+          "atr_pct": 0.626,
+          "ma_slope": 0.8073,
+          "compression_ratio": 1.0,
+          "breakout_pressure": 1.0,
+          "buy_score": 0.0,
+          "sell_score": 0.0,
+          "threshold": 0.55
+        },
+        "failed_conditions": [
+          "REGIME_BLOCKED"
+        ],
+        "threshold_floor": 0.55,
+        "blocked_regime": true,
+        "components": []
+      },
+      {
+        "symbol": "BTCUSDT",
+        "timestamp": "2026-06-15T16:01:45.274891+00:00",
+        "regime": "STRONG_TREND",
+        "session_window": "RUNTIME_ONLY_WINDOW",
+        "raw_strategy_signal": "hold",
+        "raw_confidence": 0.0,
+        "final_action": "HOLD",
+        "hold_reason": "REGIME_BLOCKED",
+        "indicator_values": {
+          "adx": 51.8,
+          "atr_pct": 0.404,
+          "ma_slope": 0.2834,
+          "compression_ratio": 1.0,
+          "breakout_pressure": 0.9449,
+          "buy_score": 0.0,
+          "sell_score": 0.0,
+          "threshold": 0.55
+        },
+        "failed_conditions": [
+          "REGIME_BLOCKED"
+        ],
+        "threshold_floor": 0.55,
+        "blocked_regime": true,
+        "components": []
+      },
+      {
+        "symbol": "ETHUSDT",
+        "timestamp": "2026-06-15T16:01:34.950254+00:00",
+        "regime": "STRONG_TREND",
+        "session_window": "RUNTIME_ONLY_WINDOW",
+        "raw_strategy_signal": "hold",
+        "raw_confidence": 0.0,
+        "final_action": "HOLD",
+        "hold_reason": "REGIME_BLOCKED",
+        "indicator_values": {
+          "adx": 73.0,
+          "atr_pct": 0.622,
+          "ma_slope": 0.8112,
+          "compression_ratio": 1.0,
+          "breakout_pressure": 1.0,
+          "buy_score": 0.0,
+          "sell_score": 0.0,
+          "threshold": 0.55
+        },
+        "failed_conditions": [
+          "REGIME_BLOCKED"
+        ],
+        "threshold_floor": 0.55,
+        "blocked_regime": true,
+        "components": []
+      },
+      {
+        "symbol": "BTCUSDT",
+        "timestamp": "2026-06-15T16:01:28.153233+00:00",
+        "regime": "STRONG_TREND",
+        "session_window": "RUNTIME_ONLY_WINDOW",
+        "raw_strategy_signal": "hold",
+        "raw_confidence": 0.0,
+        "final_action": "HOLD",
+        "hold_reason": "REGIME_BLOCKED",
+        "indicator_values": {
+          "adx": 51.8,
+          "atr_pct": 0.403,
+          "ma_slope": 0.2837,
+          "compression_ratio": 1.0,
+          "breakout_pressure": 0.9529,
+          "buy_score": 0.0,
+          "sell_score": 0.0,
+          "threshold": 0.55
+        },
+        "failed_conditions": [
+          "REGIME_BLOCKED"
+        ],
+        "threshold_floor": 0.55,
+        "blocked_regime": true,
+        "components": []
+      },
+      {
+        "symbol": "ETHUSDT",
+        "timestamp": "2026-06-15T16:01:18.435702+00:00",
+        "regime": "STRONG_TREND",
+        "session_window": "RUNTIME_ONLY_WINDOW",
+        "raw_strategy_signal": "hold",
+        "raw_confidence": 0.0,
+        "final_action": "HOLD",
+        "hold_reason": "REGIME_BLOCKED",
+        "indicator_values": {
+          "adx": 73.0,
+          "atr_pct": 0.618,
+          "ma_slope": 0.8116,
+          "compression_ratio": 1.0,
+          "breakout_pressure": 1.0,
+          "buy_score": 0.0,
+          "sell_score": 0.0,
+          "threshold": 0.55
+        },
+        "failed_conditions": [
+          "REGIME_BLOCKED"
+        ],
+        "threshold_floor": 0.55,
+        "blocked_regime": true,
+        "components": []
+      },
+      {
+        "symbol": "BTCUSDT",
+        "timestamp": "2026-06-15T16:01:11.376162+00:00",
+        "regime": "STRONG_TREND",
+        "session_window": "RUNTIME_ONLY_WINDOW",
+        "raw_strategy_signal": "hold",
+        "raw_confidence": 0.0,
+        "final_action": "HOLD",
+        "hold_reason": "REGIME_BLOCKED",
+        "indicator_values": {
+          "adx": 51.8,
+          "atr_pct": 0.403,
+          "ma_slope": 0.2835,
+          "compression_ratio": 1.0,
+          "breakout_pressure": 0.9473,
+          "buy_score": 0.0,
+          "sell_score": 0.0,
+          "threshold": 0.55
+        },
+        "failed_conditions": [
+          "REGIME_BLOCKED"
+        ],
+        "threshold_floor": 0.55,
+        "blocked_regime": true,
+        "components": []
+      },
+      {
+        "symbol": "ETHUSDT",
+        "timestamp": "2026-06-15T16:01:01.751075+00:00",
+        "regime": "STRONG_TREND",
+        "session_window": "RUNTIME_ONLY_WINDOW",
+        "raw_strategy_signal": "hold",
+        "raw_confidence": 0.0,
+        "final_action": "HOLD",
+        "hold_reason": "REGIME_BLOCKED",
+        "indicator_values": {
+          "adx": 73.0,
+          "atr_pct": 0.615,
+          "ma_slope": 0.8132,
+          "compression_ratio": 1.0,
+          "breakout_pressure": 1.0,
+          "buy_score": 0.0,
+          "sell_score": 0.0,
+          "threshold": 0.55
+        },
+        "failed_conditions": [
+          "REGIME_BLOCKED"
+        ],
+        "threshold_floor": 0.55,
+        "blocked_regime": true,
+        "components": []
+      },
+      {
+        "symbol": "BTCUSDT",
+        "timestamp": "2026-06-15T16:00:45.781918+00:00",
+        "regime": "STRONG_TREND",
+        "session_window": "RUNTIME_ONLY_WINDOW",
+        "raw_strategy_signal": "hold",
+        "raw_confidence": 0.0,
+        "final_action": "HOLD",
+        "hold_reason": "REGIME_BLOCKED",
+        "indicator_values": {
+          "adx": 51.8,
+          "atr_pct": 0.403,
+          "ma_slope": 0.2835,
+          "compression_ratio": 1.0,
+          "breakout_pressure": 0.9475,
+          "buy_score": 0.0,
+          "sell_score": 0.0,
+          "threshold": 0.55
+        },
+        "failed_conditions": [
+          "REGIME_BLOCKED"
+        ],
+        "threshold_floor": 0.55,
+        "blocked_regime": true,
+        "components": []
+      },
+      {
+        "symbol": "ETHUSDT",
+        "timestamp": "2026-06-15T16:00:36.022375+00:00",
+        "regime": "STRONG_TREND",
+        "session_window": "RUNTIME_ONLY_WINDOW",
+        "raw_strategy_signal": "hold",
+        "raw_confidence": 0.0,
+        "final_action": "HOLD",
+        "hold_reason": "REGIME_BLOCKED",
+        "indicator_values": {
+          "adx": 73.0,
+          "atr_pct": 0.615,
+          "ma_slope": 0.8132,
+          "compression_ratio": 1.0,
+          "breakout_pressure": 1.0,
+          "buy_score": 0.0,
+          "sell_score": 0.0,
+          "threshold": 0.55
+        },
+        "failed_conditions": [
+          "REGIME_BLOCKED"
+        ],
+        "threshold_floor": 0.55,
+        "blocked_regime": true,
+        "components": []
+      },
+      {
+        "symbol": "BTCUSDT",
+        "timestamp": "2026-06-15T16:00:29.238662+00:00",
+        "regime": "STRONG_TREND",
+        "session_window": "RUNTIME_ONLY_WINDOW",
+        "raw_strategy_signal": "hold",
+        "raw_confidence": 0.0,
+        "final_action": "HOLD",
+        "hold_reason": "REGIME_BLOCKED",
+        "indicator_values": {
+          "adx": 51.8,
+          "atr_pct": 0.395,
+          "ma_slope": 0.2881,
+          "compression_ratio": 1.0,
+          "breakout_pressure": 1.0,
+          "buy_score": 0.0,
+          "sell_score": 0.0,
+          "threshold": 0.55
+        },
+        "failed_conditions": [
+          "REGIME_BLOCKED"
+        ],
+        "threshold_floor": 0.55,
+        "blocked_regime": true,
+        "components": []
+      },
+      {
+        "symbol": "ETHUSDT",
+        "timestamp": "2026-06-15T16:00:19.031189+00:00",
+        "regime": "STRONG_TREND",
+        "session_window": "RUNTIME_ONLY_WINDOW",
+        "raw_strategy_signal": "hold",
+        "raw_confidence": 0.0,
+        "final_action": "HOLD",
+        "hold_reason": "REGIME_BLOCKED",
+        "indicator_values": {
+          "adx": 73.0,
+          "atr_pct": 0.609,
+          "ma_slope": 0.8165,
+          "compression_ratio": 1.0,
+          "breakout_pressure": 1.0,
+          "buy_score": 0.0,
+          "sell_score": 0.0,
+          "threshold": 0.55
+        },
+        "failed_conditions": [
+          "REGIME_BLOCKED"
+        ],
+        "threshold_floor": 0.55,
+        "blocked_regime": true,
+        "components": []
+      },
+      {
+        "symbol": "BTCUSDT",
+        "timestamp": "2026-06-15T16:00:11.687390+00:00",
+        "regime": "STRONG_TREND",
+        "session_window": "RUNTIME_ONLY_WINDOW",
+        "raw_strategy_signal": "hold",
+        "raw_confidence": 0.0,
+        "final_action": "HOLD",
+        "hold_reason": "REGIME_BLOCKED",
+        "indicator_values": {
+          "adx": 51.8,
+          "atr_pct": 0.395,
+          "ma_slope": 0.2881,
+          "compression_ratio": 1.0,
+          "breakout_pressure": 1.0,
+          "buy_score": 0.0,
+          "sell_score": 0.0,
+          "threshold": 0.55
+        },
+        "failed_conditions": [
+          "REGIME_BLOCKED"
+        ],
+        "threshold_floor": 0.55,
+        "blocked_regime": true,
+        "components": []
+      },
+      {
+        "symbol": "ETHUSDT",
+        "timestamp": "2026-06-15T16:00:02.302586+00:00",
+        "regime": "STRONG_TREND",
+        "session_window": "RUNTIME_ONLY_WINDOW",
+        "raw_strategy_signal": "hold",
+        "raw_confidence": 0.0,
+        "final_action": "HOLD",
+        "hold_reason": "REGIME_BLOCKED",
+        "indicator_values": {
+          "adx": 71.8,
+          "atr_pct": 0.63,
+          "ma_slope": 0.7829,
+          "compression_ratio": 1.0,
+          "breakout_pressure": 1.0,
+          "buy_score": 0.0,
+          "sell_score": 0.0,
+          "threshold": 0.5519
+        },
+        "failed_conditions": [
+          "REGIME_BLOCKED"
+        ],
+        "threshold_floor": 0.55,
+        "blocked_regime": true,
+        "components": []
+      },
+      {
+        "symbol": "BTCUSDT",
+        "timestamp": "2026-06-15T15:59:55.071023+00:00",
+        "regime": "STRONG_TREND",
+        "session_window": "NARROW_REPLAY_WINDOW",
+        "raw_strategy_signal": "hold",
+        "raw_confidence": 0.0,
+        "final_action": "HOLD",
+        "hold_reason": "REGIME_BLOCKED",
+        "indicator_values": {
+          "adx": 50.3,
+          "atr_pct": 0.418,
+          "ma_slope": 0.2591,
+          "compression_ratio": 1.0,
+          "breakout_pressure": 1.0,
+          "buy_score": 0.0,
+          "sell_score": 0.0,
+          "threshold": 0.55
+        },
+        "failed_conditions": [
+          "REGIME_BLOCKED"
+        ],
+        "threshold_floor": 0.55,
+        "blocked_regime": true,
+        "components": []
+      },
+      {
+        "symbol": "ETHUSDT",
+        "timestamp": "2026-06-15T15:59:44.858240+00:00",
+        "regime": "STRONG_TREND",
+        "session_window": "NARROW_REPLAY_WINDOW",
+        "raw_strategy_signal": "hold",
+        "raw_confidence": 0.0,
+        "final_action": "HOLD",
+        "hold_reason": "REGIME_BLOCKED",
+        "indicator_values": {
+          "adx": 71.8,
+          "atr_pct": 0.63,
+          "ma_slope": 0.7827,
+          "compression_ratio": 1.0,
+          "breakout_pressure": 1.0,
+          "buy_score": 0.0,
+          "sell_score": 0.0,
+          "threshold": 0.5541
+        },
+        "failed_conditions": [
+          "REGIME_BLOCKED"
+        ],
+        "threshold_floor": 0.55,
+        "blocked_regime": true,
+        "components": []
+      },
+      {
+        "symbol": "BTCUSDT",
+        "timestamp": "2026-06-15T15:59:37.380189+00:00",
+        "regime": "STRONG_TREND",
+        "session_window": "NARROW_REPLAY_WINDOW",
+        "raw_strategy_signal": "hold",
+        "raw_confidence": 0.0,
+        "final_action": "HOLD",
+        "hold_reason": "REGIME_BLOCKED",
+        "indicator_values": {
+          "adx": 50.3,
+          "atr_pct": 0.417,
+          "ma_slope": 0.258,
+          "compression_ratio": 1.0,
+          "breakout_pressure": 1.0,
+          "buy_score": 0.0,
+          "sell_score": 0.0,
+          "threshold": 0.55
+        },
+        "failed_conditions": [
+          "REGIME_BLOCKED"
+        ],
+        "threshold_floor": 0.55,
+        "blocked_regime": true,
+        "components": []
+      },
+      {
+        "symbol": "ETHUSDT",
+        "timestamp": "2026-06-15T15:59:27.465171+00:00",
+        "regime": "STRONG_TREND",
+        "session_window": "NARROW_REPLAY_WINDOW",
+        "raw_strategy_signal": "hold",
+        "raw_confidence": 0.0,
+        "final_action": "HOLD",
+        "hold_reason": "REGIME_BLOCKED",
+        "indicator_values": {
+          "adx": 71.8,
+          "atr_pct": 0.63,
+          "ma_slope": 0.7824,
+          "compression_ratio": 1.0,
+          "breakout_pressure": 1.0,
+          "buy_score": 0.0,
+          "sell_score": 0.0,
+          "threshold": 0.5564
+        },
+        "failed_conditions": [
+          "REGIME_BLOCKED"
+        ],
+        "threshold_floor": 0.55,
+        "blocked_regime": true,
+        "components": []
+      },
+      {
+        "symbol": "BTCUSDT",
+        "timestamp": "2026-06-15T15:59:20.013798+00:00",
+        "regime": "STRONG_TREND",
+        "session_window": "NARROW_REPLAY_WINDOW",
+        "raw_strategy_signal": "hold",
+        "raw_confidence": 0.0,
+        "final_action": "HOLD",
+        "hold_reason": "REGIME_BLOCKED",
+        "indicator_values": {
+          "adx": 50.3,
+          "atr_pct": 0.417,
+          "ma_slope": 0.258,
+          "compression_ratio": 1.0,
+          "breakout_pressure": 1.0,
+          "buy_score": 0.0,
+          "sell_score": 0.0,
+          "threshold": 0.55
+        },
+        "failed_conditions": [
+          "REGIME_BLOCKED"
+        ],
+        "threshold_floor": 0.55,
+        "blocked_regime": true,
+        "components": []
+      },
+      {
+        "symbol": "ETHUSDT",
+        "timestamp": "2026-06-15T15:59:09.843974+00:00",
+        "regime": "STRONG_TREND",
+        "session_window": "NARROW_REPLAY_WINDOW",
+        "raw_strategy_signal": "hold",
+        "raw_confidence": 0.0,
+        "final_action": "HOLD",
+        "hold_reason": "REGIME_BLOCKED",
+        "indicator_values": {
+          "adx": 71.8,
+          "atr_pct": 0.63,
+          "ma_slope": 0.7825,
+          "compression_ratio": 1.0,
+          "breakout_pressure": 1.0,
+          "buy_score": 0.0,
+          "sell_score": 0.0,
+          "threshold": 0.5589
+        },
+        "failed_conditions": [
+          "REGIME_BLOCKED"
+        ],
+        "threshold_floor": 0.55,
+        "blocked_regime": true,
+        "components": []
+      },
+      {
+        "symbol": "BTCUSDT",
+        "timestamp": "2026-06-15T15:59:02.786722+00:00",
+        "regime": "STRONG_TREND",
+        "session_window": "NARROW_REPLAY_WINDOW",
+        "raw_strategy_signal": "hold",
+        "raw_confidence": 0.0,
+        "final_action": "HOLD",
+        "hold_reason": "REGIME_BLOCKED",
+        "indicator_values": {
+          "adx": 50.3,
+          "atr_pct": 0.417,
+          "ma_slope": 0.2567,
+          "compression_ratio": 1.0,
+          "breakout_pressure": 1.0,
+          "buy_score": 0.0,
+          "sell_score": 0.0,
+          "threshold": 0.55
+        },
+        "failed_conditions": [
+          "REGIME_BLOCKED"
+        ],
+        "threshold_floor": 0.55,
+        "blocked_regime": true,
+        "components": []
+      },
+      {
+        "symbol": "ETHUSDT",
+        "timestamp": "2026-06-15T15:58:53.045379+00:00",
+        "regime": "STRONG_TREND",
+        "session_window": "NARROW_REPLAY_WINDOW",
+        "raw_strategy_signal": "hold",
+        "raw_confidence": 0.0,
+        "final_action": "HOLD",
+        "hold_reason": "REGIME_BLOCKED",
+        "indicator_values": {
+          "adx": 71.8,
+          "atr_pct": 0.63,
+          "ma_slope": 0.7834,
+          "compression_ratio": 1.0,
+          "breakout_pressure": 1.0,
+          "buy_score": 0.0,
+          "sell_score": 0.0,
+          "threshold": 0.5614
+        },
+        "failed_conditions": [
+          "REGIME_BLOCKED"
+        ],
+        "threshold_floor": 0.55,
+        "blocked_regime": true,
+        "components": []
+      },
+      {
+        "symbol": "BTCUSDT",
+        "timestamp": "2026-06-15T15:58:45.852014+00:00",
+        "regime": "STRONG_TREND",
+        "session_window": "NARROW_REPLAY_WINDOW",
+        "raw_strategy_signal": "hold",
+        "raw_confidence": 0.0,
+        "final_action": "HOLD",
+        "hold_reason": "REGIME_BLOCKED",
+        "indicator_values": {
+          "adx": 50.3,
+          "atr_pct": 0.418,
+          "ma_slope": 0.253,
+          "compression_ratio": 1.0,
+          "breakout_pressure": 0.9367,
+          "buy_score": 0.0,
+          "sell_score": 0.0,
+          "threshold": 0.55
+        },
+        "failed_conditions": [
+          "REGIME_BLOCKED"
+        ],
+        "threshold_floor": 0.55,
+        "blocked_regime": true,
+        "components": []
+      },
+      {
+        "symbol": "ETHUSDT",
+        "timestamp": "2026-06-15T15:58:35.863034+00:00",
+        "regime": "STRONG_TREND",
+        "session_window": "NARROW_REPLAY_WINDOW",
+        "raw_strategy_signal": "hold",
+        "raw_confidence": 0.0,
+        "final_action": "HOLD",
+        "hold_reason": "REGIME_BLOCKED",
+        "indicator_values": {
+          "adx": 71.8,
+          "atr_pct": 0.629,
+          "ma_slope": 0.7868,
+          "compression_ratio": 1.0,
+          "breakout_pressure": 1.0,
+          "buy_score": 0.0,
+          "sell_score": 0.0,
+          "threshold": 0.5642
+        },
+        "failed_conditions": [
+          "REGIME_BLOCKED"
+        ],
+        "threshold_floor": 0.55,
+        "blocked_regime": true,
+        "components": []
+      },
+      {
+        "symbol": "BTCUSDT",
+        "timestamp": "2026-06-15T15:58:28.439712+00:00",
+        "regime": "STRONG_TREND",
+        "session_window": "NARROW_REPLAY_WINDOW",
+        "raw_strategy_signal": "hold",
+        "raw_confidence": 0.0,
+        "final_action": "HOLD",
+        "hold_reason": "REGIME_BLOCKED",
+        "indicator_values": {
+          "adx": 50.3,
+          "atr_pct": 0.417,
+          "ma_slope": 0.2563,
+          "compression_ratio": 1.0,
+          "breakout_pressure": 1.0,
+          "buy_score": 0.0,
+          "sell_score": 0.0,
+          "threshold": 0.55
+        },
+        "failed_conditions": [
+          "REGIME_BLOCKED"
+        ],
+        "threshold_floor": 0.55,
+        "blocked_regime": true,
+        "components": []
+      },
+      {
+        "symbol": "ETHUSDT",
+        "timestamp": "2026-06-15T15:58:17.794611+00:00",
+        "regime": "STRONG_TREND",
+        "session_window": "NARROW_REPLAY_WINDOW",
+        "raw_strategy_signal": "hold",
+        "raw_confidence": 0.0,
+        "final_action": "HOLD",
+        "hold_reason": "REGIME_BLOCKED",
+        "indicator_values": {
+          "adx": 71.8,
+          "atr_pct": 0.629,
+          "ma_slope": 0.7872,
+          "compression_ratio": 1.0,
+          "breakout_pressure": 1.0,
+          "buy_score": 0.0,
+          "sell_score": 0.0,
+          "threshold": 0.567
+        },
+        "failed_conditions": [
+          "REGIME_BLOCKED"
+        ],
+        "threshold_floor": 0.55,
+        "blocked_regime": true,
+        "components": []
+      },
+      {
+        "symbol": "BTCUSDT",
+        "timestamp": "2026-06-15T15:58:09.919621+00:00",
+        "regime": "STRONG_TREND",
+        "session_window": "NARROW_REPLAY_WINDOW",
+        "raw_strategy_signal": "hold",
+        "raw_confidence": 0.0,
+        "final_action": "HOLD",
+        "hold_reason": "REGIME_BLOCKED",
+        "indicator_values": {
+          "adx": 50.3,
+          "atr_pct": 0.417,
+          "ma_slope": 0.256,
+          "compression_ratio": 1.0,
+          "breakout_pressure": 1.0,
+          "buy_score": 0.0,
+          "sell_score": 0.0,
+          "threshold": 0.55
+        },
+        "failed_conditions": [
+          "REGIME_BLOCKED"
+        ],
+        "threshold_floor": 0.55,
+        "blocked_regime": true,
+        "components": []
+      },
+      {
+        "symbol": "ETHUSDT",
+        "timestamp": "2026-06-15T15:57:56.835234+00:00",
+        "regime": "STRONG_TREND",
+        "session_window": "NARROW_REPLAY_WINDOW",
+        "raw_strategy_signal": "hold",
+        "raw_confidence": 0.0,
+        "final_action": "HOLD",
+        "hold_reason": "REGIME_BLOCKED",
+        "indicator_values": {
+          "adx": 71.8,
+          "atr_pct": 0.628,
+          "ma_slope": 0.7861,
+          "compression_ratio": 1.0,
+          "breakout_pressure": 1.0,
+          "buy_score": 0.0,
+          "sell_score": 0.0,
+          "threshold": 0.57
+        },
+        "failed_conditions": [
+          "REGIME_BLOCKED"
+        ],
+        "threshold_floor": 0.55,
+        "blocked_regime": true,
+        "components": []
+      },
+      {
+        "symbol": "BTCUSDT",
+        "timestamp": "2026-06-15T15:56:17.373240+00:00",
+        "regime": "STRONG_TREND",
+        "session_window": "NARROW_REPLAY_WINDOW",
+        "raw_strategy_signal": "hold",
+        "raw_confidence": 0.0,
+        "final_action": "HOLD",
+        "hold_reason": "REGIME_BLOCKED",
+        "indicator_values": {
+          "adx": 50.3,
+          "atr_pct": 0.418,
+          "ma_slope": 0.2531,
+          "compression_ratio": 1.0,
+          "breakout_pressure": 0.9368,
+          "buy_score": 0.0,
+          "sell_score": 0.0,
+          "threshold": 0.55
+        },
+        "failed_conditions": [
+          "REGIME_BLOCKED"
+        ],
+        "threshold_floor": 0.55,
+        "blocked_regime": true,
+        "components": []
+      },
+      {
+        "symbol": "BTCUSDT",
+        "timestamp": "2026-06-15T15:55:09.611267+00:00",
+        "regime": "STRONG_TREND",
+        "session_window": "NARROW_REPLAY_WINDOW",
+        "raw_strategy_signal": "hold",
+        "raw_confidence": 0.0,
+        "final_action": "HOLD",
+        "hold_reason": "REGIME_BLOCKED",
+        "indicator_values": {
+          "adx": 50.3,
+          "atr_pct": 0.417,
+          "ma_slope": 0.2567,
+          "compression_ratio": 1.0,
+          "breakout_pressure": 1.0,
+          "buy_score": 0.0,
+          "sell_score": 0.0,
+          "threshold": 0.55
+        },
+        "failed_conditions": [
+          "REGIME_BLOCKED"
+        ],
+        "threshold_floor": 0.55,
+        "blocked_regime": true,
+        "components": []
+      },
+      {
+        "symbol": "ETHUSDT",
+        "timestamp": "2026-06-15T15:54:57.964387+00:00",
+        "regime": "STRONG_TREND",
+        "session_window": "NARROW_REPLAY_WINDOW",
+        "raw_strategy_signal": "hold",
+        "raw_confidence": 0.0,
+        "final_action": "HOLD",
+        "hold_reason": "REGIME_BLOCKED",
+        "indicator_values": {
+          "adx": 71.7,
+          "atr_pct": 0.624,
+          "ma_slope": 0.774,
+          "compression_ratio": 1.0,
+          "breakout_pressure": 1.0,
+          "buy_score": 0.0,
+          "sell_score": 0.0,
+          "threshold": 0.55
+        },
+        "failed_conditions": [
+          "REGIME_BLOCKED"
+        ],
+        "threshold_floor": 0.55,
+        "blocked_regime": true,
+        "components": []
+      },
+      {
+        "symbol": "BTCUSDT",
+        "timestamp": "2026-06-15T15:54:49.910707+00:00",
+        "regime": "STRONG_TREND",
+        "session_window": "NARROW_REPLAY_WINDOW",
+        "raw_strategy_signal": "hold",
+        "raw_confidence": 0.0,
+        "final_action": "HOLD",
+        "hold_reason": "REGIME_BLOCKED",
+        "indicator_values": {
+          "adx": 50.3,
+          "atr_pct": 0.417,
+          "ma_slope": 0.2573,
+          "compression_ratio": 1.0,
+          "breakout_pressure": 1.0,
+          "buy_score": 0.0,
+          "sell_score": 0.0,
+          "threshold": 0.55
+        },
+        "failed_conditions": [
+          "REGIME_BLOCKED"
+        ],
+        "threshold_floor": 0.55,
+        "blocked_regime": true,
+        "components": []
+      },
+      {
+        "symbol": "ETHUSDT",
+        "timestamp": "2026-06-15T15:54:38.876274+00:00",
+        "regime": "STRONG_TREND",
+        "session_window": "NARROW_REPLAY_WINDOW",
+        "raw_strategy_signal": "hold",
+        "raw_confidence": 0.0,
+        "final_action": "HOLD",
+        "hold_reason": "REGIME_BLOCKED",
+        "indicator_values": {
+          "adx": 71.7,
+          "atr_pct": 0.623,
+          "ma_slope": 0.783,
+          "compression_ratio": 1.0,
+          "breakout_pressure": 1.0,
+          "buy_score": 0.0,
+          "sell_score": 0.0,
+          "threshold": 0.55
+        },
+        "failed_conditions": [
+          "REGIME_BLOCKED"
+        ],
+        "threshold_floor": 0.55,
+        "blocked_regime": true,
+        "components": []
+      },
+      {
+        "symbol": "BTCUSDT",
+        "timestamp": "2026-06-15T15:54:30.069285+00:00",
+        "regime": "STRONG_TREND",
+        "session_window": "NARROW_REPLAY_WINDOW",
+        "raw_strategy_signal": "hold",
+        "raw_confidence": 0.0,
+        "final_action": "HOLD",
+        "hold_reason": "REGIME_BLOCKED",
+        "indicator_values": {
+          "adx": 50.3,
+          "atr_pct": 0.417,
+          "ma_slope": 0.2573,
+          "compression_ratio": 1.0,
+          "breakout_pressure": 1.0,
+          "buy_score": 0.0,
+          "sell_score": 0.0,
+          "threshold": 0.55
+        },
+        "failed_conditions": [
+          "REGIME_BLOCKED"
+        ],
+        "threshold_floor": 0.55,
+        "blocked_regime": true,
+        "components": []
+      },
+      {
+        "symbol": "ETHUSDT",
+        "timestamp": "2026-06-15T15:54:18.517376+00:00",
+        "regime": "STRONG_TREND",
+        "session_window": "NARROW_REPLAY_WINDOW",
+        "raw_strategy_signal": "hold",
+        "raw_confidence": 0.0,
+        "final_action": "HOLD",
+        "hold_reason": "REGIME_BLOCKED",
+        "indicator_values": {
+          "adx": 71.7,
+          "atr_pct": 0.623,
+          "ma_slope": 0.783,
+          "compression_ratio": 1.0,
+          "breakout_pressure": 1.0,
+          "buy_score": 0.0,
+          "sell_score": 0.0,
+          "threshold": 0.55
+        },
+        "failed_conditions": [
+          "REGIME_BLOCKED"
+        ],
+        "threshold_floor": 0.55,
+        "blocked_regime": true,
+        "components": []
+      },
+      {
+        "symbol": "BTCUSDT",
+        "timestamp": "2026-06-15T15:54:10.458818+00:00",
+        "regime": "STRONG_TREND",
+        "session_window": "NARROW_REPLAY_WINDOW",
+        "raw_strategy_signal": "hold",
+        "raw_confidence": 0.0,
+        "final_action": "HOLD",
+        "hold_reason": "REGIME_BLOCKED",
+        "indicator_values": {
+          "adx": 50.3,
+          "atr_pct": 0.417,
+          "ma_slope": 0.2573,
+          "compression_ratio": 1.0,
+          "breakout_pressure": 1.0,
+          "buy_score": 0.0,
+          "sell_score": 0.0,
+          "threshold": 0.55
+        },
+        "failed_conditions": [
+          "REGIME_BLOCKED"
+        ],
+        "threshold_floor": 0.55,
+        "blocked_regime": true,
+        "components": []
+      },
+      {
+        "symbol": "ETHUSDT",
+        "timestamp": "2026-06-15T15:53:58.895211+00:00",
+        "regime": "STRONG_TREND",
+        "session_window": "NARROW_REPLAY_WINDOW",
+        "raw_strategy_signal": "hold",
+        "raw_confidence": 0.0,
+        "final_action": "HOLD",
+        "hold_reason": "REGIME_BLOCKED",
+        "indicator_values": {
+          "adx": 71.7,
+          "atr_pct": 0.615,
+          "ma_slope": 0.7778,
+          "compression_ratio": 1.0,
+          "breakout_pressure": 1.0,
+          "buy_score": 0.0,
+          "sell_score": 0.0,
+          "threshold": 0.55
+        },
+        "failed_conditions": [
+          "REGIME_BLOCKED"
+        ],
+        "threshold_floor": 0.55,
+        "blocked_regime": true,
+        "components": []
+      },
+      {
+        "symbol": "BTCUSDT",
+        "timestamp": "2026-06-15T15:53:18.790490+00:00",
+        "regime": "STRONG_TREND",
+        "session_window": "NARROW_REPLAY_WINDOW",
+        "raw_strategy_signal": "hold",
+        "raw_confidence": 0.0,
+        "final_action": "HOLD",
+        "hold_reason": "REGIME_BLOCKED",
+        "indicator_values": {
+          "adx": 50.3,
+          "atr_pct": 0.417,
+          "ma_slope": 0.2573,
+          "compression_ratio": 1.0,
+          "breakout_pressure": 1.0,
+          "buy_score": 0.0,
+          "sell_score": 0.0,
+          "threshold": 0.55
+        },
+        "failed_conditions": [
+          "REGIME_BLOCKED"
+        ],
+        "threshold_floor": 0.55,
+        "blocked_regime": true,
+        "components": []
+      },
+      {
+        "symbol": "ETHUSDT",
+        "timestamp": "2026-06-15T15:51:27.325998+00:00",
+        "regime": "STRONG_TREND",
+        "session_window": "NARROW_REPLAY_WINDOW",
+        "raw_strategy_signal": "hold",
+        "raw_confidence": 0.0,
+        "final_action": "HOLD",
+        "hold_reason": "REGIME_BLOCKED",
+        "indicator_values": {
+          "adx": 71.7,
+          "atr_pct": 0.614,
+          "ma_slope": 0.7777,
+          "compression_ratio": 1.0,
+          "breakout_pressure": 1.0,
+          "buy_score": 0.0,
+          "sell_score": 0.0,
+          "threshold": 0.55
+        },
+        "failed_conditions": [
+          "REGIME_BLOCKED"
+        ],
+        "threshold_floor": 0.55,
+        "blocked_regime": true,
+        "components": []
+      },
+      {
+        "symbol": "BTCUSDT",
+        "timestamp": "2026-06-15T15:49:40.097369+00:00",
+        "regime": "STRONG_TREND",
+        "session_window": "NARROW_REPLAY_WINDOW",
+        "raw_strategy_signal": "hold",
+        "raw_confidence": 0.0,
+        "final_action": "HOLD",
+        "hold_reason": "REGIME_BLOCKED",
+        "indicator_values": {
+          "adx": 50.3,
+          "atr_pct": 0.418,
+          "ma_slope": 0.2539,
+          "compression_ratio": 1.0,
+          "breakout_pressure": 0.9625,
+          "buy_score": 0.0,
+          "sell_score": 0.0,
+          "threshold": 0.55
+        },
+        "failed_conditions": [
+          "REGIME_BLOCKED"
+        ],
+        "threshold_floor": 0.55,
+        "blocked_regime": true,
+        "components": []
+      },
+      {
+        "symbol": "ETHUSDT",
+        "timestamp": "2026-06-15T15:49:26.981556+00:00",
+        "regime": "STRONG_TREND",
+        "session_window": "NARROW_REPLAY_WINDOW",
+        "raw_strategy_signal": "hold",
+        "raw_confidence": 0.0,
+        "final_action": "HOLD",
+        "hold_reason": "REGIME_BLOCKED",
+        "indicator_values": {
+          "adx": 71.7,
+          "atr_pct": 0.615,
+          "ma_slope": 0.7736,
+          "compression_ratio": 1.0,
+          "breakout_pressure": 1.0,
+          "buy_score": 0.0,
+          "sell_score": 0.0,
+          "threshold": 0.55
+        },
+        "failed_conditions": [
+          "REGIME_BLOCKED"
+        ],
+        "threshold_floor": 0.55,
+        "blocked_regime": true,
+        "components": []
+      },
+      {
+        "symbol": "BTCUSDT",
+        "timestamp": "2026-06-15T15:49:04.391007+00:00",
+        "regime": "STRONG_TREND",
+        "session_window": "NARROW_REPLAY_WINDOW",
+        "raw_strategy_signal": "hold",
+        "raw_confidence": 0.0,
+        "final_action": "HOLD",
+        "hold_reason": "REGIME_BLOCKED",
+        "indicator_values": {
+          "adx": 49.8,
+          "atr_pct": 0.386,
+          "ma_slope": 0.2404,
+          "compression_ratio": 1.0,
+          "breakout_pressure": 0.6073,
+          "buy_score": 0.0,
+          "sell_score": 0.0,
+          "threshold": 0.55
+        },
+        "failed_conditions": [
+          "REGIME_BLOCKED"
+        ],
+        "threshold_floor": 0.55,
+        "blocked_regime": true,
+        "components": []
+      },
+      {
+        "symbol": "ETHUSDT",
+        "timestamp": "2026-06-15T15:47:15.597695+00:00",
+        "regime": "STRONG_TREND",
+        "session_window": "NARROW_REPLAY_WINDOW",
+        "raw_strategy_signal": "hold",
+        "raw_confidence": 0.0,
+        "final_action": "HOLD",
+        "hold_reason": "REGIME_BLOCKED",
+        "indicator_values": {
+          "adx": 71.7,
+          "atr_pct": 0.615,
+          "ma_slope": 0.7732,
+          "compression_ratio": 1.0,
+          "breakout_pressure": 1.0,
+          "buy_score": 0.0,
+          "sell_score": 0.0,
+          "threshold": 0.55
+        },
+        "failed_conditions": [
+          "REGIME_BLOCKED"
+        ],
+        "threshold_floor": 0.55,
+        "blocked_regime": true,
+        "components": []
+      },
+      {
+        "symbol": "BTCUSDT",
+        "timestamp": "2026-06-15T15:46:47.612001+00:00",
+        "regime": "STRONG_TREND",
+        "session_window": "NARROW_REPLAY_WINDOW",
+        "raw_strategy_signal": "hold",
+        "raw_confidence": 0.0,
+        "final_action": "HOLD",
+        "hold_reason": "REGIME_BLOCKED",
+        "indicator_values": {
+          "adx": 49.7,
+          "atr_pct": 0.384,
+          "ma_slope": 0.2353,
+          "compression_ratio": 1.0,
+          "breakout_pressure": 0.4412,
+          "buy_score": 0.0,
+          "sell_score": 0.0,
+          "threshold": 0.55
+        },
+        "failed_conditions": [
+          "REGIME_BLOCKED"
+        ],
+        "threshold_floor": 0.55,
+        "blocked_regime": true,
+        "components": []
+      },
+      {
+        "symbol": "ETHUSDT",
+        "timestamp": "2026-06-15T15:46:36.370398+00:00",
+        "regime": "STRONG_TREND",
+        "session_window": "NARROW_REPLAY_WINDOW",
+        "raw_strategy_signal": "hold",
+        "raw_confidence": 0.0,
+        "final_action": "HOLD",
+        "hold_reason": "REGIME_BLOCKED",
+        "indicator_values": {
+          "adx": 71.5,
+          "atr_pct": 0.562,
+          "ma_slope": 0.7448,
+          "compression_ratio": 1.0,
+          "breakout_pressure": 1.0,
+          "buy_score": 0.0,
+          "sell_score": 0.0,
+          "threshold": 0.55
+        },
+        "failed_conditions": [
+          "REGIME_BLOCKED"
+        ],
+        "threshold_floor": 0.55,
+        "blocked_regime": true,
+        "components": []
+      },
+      {
+        "symbol": "BTCUSDT",
+        "timestamp": "2026-06-15T15:46:27.790168+00:00",
+        "regime": "STRONG_TREND",
+        "session_window": "NARROW_REPLAY_WINDOW",
+        "raw_strategy_signal": "hold",
+        "raw_confidence": 0.0,
+        "final_action": "HOLD",
+        "hold_reason": "REGIME_BLOCKED",
+        "indicator_values": {
+          "adx": 49.7,
+          "atr_pct": 0.384,
+          "ma_slope": 0.2353,
+          "compression_ratio": 1.0,
+          "breakout_pressure": 0.4412,
+          "buy_score": 0.0,
+          "sell_score": 0.0,
+          "threshold": 0.55
+        },
+        "failed_conditions": [
+          "REGIME_BLOCKED"
+        ],
+        "threshold_floor": 0.55,
+        "blocked_regime": true,
+        "components": []
+      },
+      {
+        "symbol": "ETHUSDT",
+        "timestamp": "2026-06-15T15:46:16.022709+00:00",
+        "regime": "STRONG_TREND",
+        "session_window": "NARROW_REPLAY_WINDOW",
+        "raw_strategy_signal": "hold",
+        "raw_confidence": 0.0,
+        "final_action": "HOLD",
+        "hold_reason": "REGIME_BLOCKED",
+        "indicator_values": {
+          "adx": 71.5,
+          "atr_pct": 0.56,
+          "ma_slope": 0.7434,
+          "compression_ratio": 1.0,
+          "breakout_pressure": 1.0,
+          "buy_score": 0.0,
+          "sell_score": 0.0,
+          "threshold": 0.55
+        },
+        "failed_conditions": [
+          "REGIME_BLOCKED"
+        ],
+        "threshold_floor": 0.55,
+        "blocked_regime": true,
+        "components": []
+      },
+      {
+        "symbol": "BTCUSDT",
+        "timestamp": "2026-06-15T15:46:07.715620+00:00",
+        "regime": "STRONG_TREND",
+        "session_window": "NARROW_REPLAY_WINDOW",
+        "raw_strategy_signal": "hold",
+        "raw_confidence": 0.0,
+        "final_action": "HOLD",
+        "hold_reason": "REGIME_BLOCKED",
+        "indicator_values": {
+          "adx": 49.7,
+          "atr_pct": 0.384,
+          "ma_slope": 0.2392,
+          "compression_ratio": 1.0,
+          "breakout_pressure": 0.5699,
+          "buy_score": 0.0,
+          "sell_score": 0.0,
+          "threshold": 0.55
+        },
+        "failed_conditions": [
+          "REGIME_BLOCKED"
+        ],
+        "threshold_floor": 0.55,
+        "blocked_regime": true,
+        "components": []
+      },
+      {
+        "symbol": "ETHUSDT",
+        "timestamp": "2026-06-15T15:45:56.141028+00:00",
+        "regime": "STRONG_TREND",
+        "session_window": "NARROW_REPLAY_WINDOW",
+        "raw_strategy_signal": "hold",
+        "raw_confidence": 0.0,
+        "final_action": "HOLD",
+        "hold_reason": "REGIME_BLOCKED",
+        "indicator_values": {
+          "adx": 71.5,
+          "atr_pct": 0.558,
+          "ma_slope": 0.7396,
+          "compression_ratio": 1.0,
+          "breakout_pressure": 1.0,
+          "buy_score": 0.0,
+          "sell_score": 0.0,
+          "threshold": 0.55
+        },
+        "failed_conditions": [
+          "REGIME_BLOCKED"
+        ],
+        "threshold_floor": 0.55,
+        "blocked_regime": true,
+        "components": []
+      },
+      {
+        "symbol": "BTCUSDT",
+        "timestamp": "2026-06-15T15:45:46.187495+00:00",
+        "regime": "STRONG_TREND",
+        "session_window": "NARROW_REPLAY_WINDOW",
+        "raw_strategy_signal": "hold",
+        "raw_confidence": 0.0,
+        "final_action": "HOLD",
+        "hold_reason": "REGIME_BLOCKED",
+        "indicator_values": {
+          "adx": 49.7,
+          "atr_pct": 0.383,
+          "ma_slope": 0.2392,
+          "compression_ratio": 1.0,
+          "breakout_pressure": 0.5707,
+          "buy_score": 0.0,
+          "sell_score": 0.0,
+          "threshold": 0.55
+        },
+        "failed_conditions": [
+          "REGIME_BLOCKED"
+        ],
+        "threshold_floor": 0.55,
+        "blocked_regime": true,
+        "components": []
+      },
+      {
+        "symbol": "ETHUSDT",
+        "timestamp": "2026-06-15T15:45:30.035848+00:00",
+        "regime": "STRONG_TREND",
+        "session_window": "NARROW_REPLAY_WINDOW",
+        "raw_strategy_signal": "hold",
+        "raw_confidence": 0.0,
+        "final_action": "HOLD",
+        "hold_reason": "REGIME_BLOCKED",
+        "indicator_values": {
+          "adx": 71.5,
+          "atr_pct": 0.558,
+          "ma_slope": 0.7423,
+          "compression_ratio": 1.0,
+          "breakout_pressure": 1.0,
+          "buy_score": 0.0,
+          "sell_score": 0.0,
+          "threshold": 0.55
+        },
+        "failed_conditions": [
+          "REGIME_BLOCKED"
+        ],
+        "threshold_floor": 0.55,
+        "blocked_regime": true,
+        "components": []
+      },
+      {
+        "symbol": "BTCUSDT",
+        "timestamp": "2026-06-15T15:45:13.750011+00:00",
+        "regime": "STRONG_TREND",
+        "session_window": "NARROW_REPLAY_WINDOW",
+        "raw_strategy_signal": "hold",
+        "raw_confidence": 0.0,
+        "final_action": "HOLD",
+        "hold_reason": "REGIME_BLOCKED",
+        "indicator_values": {
+          "adx": 49.6,
+          "atr_pct": 0.377,
+          "ma_slope": 0.2358,
+          "compression_ratio": 1.0,
+          "breakout_pressure": 0.4684,
+          "buy_score": 0.0,
+          "sell_score": 0.0,
+          "threshold": 0.55
+        },
+        "failed_conditions": [
+          "REGIME_BLOCKED"
+        ],
+        "threshold_floor": 0.55,
+        "blocked_regime": true,
+        "components": []
+      },
+      {
+        "symbol": "ETHUSDT",
+        "timestamp": "2026-06-15T15:45:03.267907+00:00",
+        "regime": "STRONG_TREND",
+        "session_window": "NARROW_REPLAY_WINDOW",
+        "raw_strategy_signal": "hold",
+        "raw_confidence": 0.0,
+        "final_action": "HOLD",
+        "hold_reason": "REGIME_BLOCKED",
+        "indicator_values": {
+          "adx": 70.5,
+          "atr_pct": 0.572,
+          "ma_slope": 0.7429,
+          "compression_ratio": 1.0,
+          "breakout_pressure": 1.0,
+          "buy_score": 0.0,
+          "sell_score": 0.0,
+          "threshold": 0.55
+        },
+        "failed_conditions": [
+          "REGIME_BLOCKED"
+        ],
+        "threshold_floor": 0.55,
+        "blocked_regime": true,
+        "components": []
+      },
+      {
+        "symbol": "BTCUSDT",
+        "timestamp": "2026-06-15T15:44:43.855815+00:00",
+        "regime": "STRONG_TREND",
+        "session_window": "NARROW_REPLAY_WINDOW",
+        "raw_strategy_signal": "hold",
+        "raw_confidence": 0.0,
+        "final_action": "HOLD",
+        "hold_reason": "REGIME_BLOCKED",
+        "indicator_values": {
+          "adx": 48.6,
+          "atr_pct": 0.39,
+          "ma_slope": 0.2256,
+          "compression_ratio": 1.0,
+          "breakout_pressure": 0.5972,
+          "buy_score": 0.0,
+          "sell_score": 0.0,
+          "threshold": 0.55
+        },
+        "failed_conditions": [
+          "REGIME_BLOCKED"
+        ],
+        "threshold_floor": 0.55,
+        "blocked_regime": true,
+        "components": []
+      },
+      {
+        "symbol": "ETHUSDT",
+        "timestamp": "2026-06-15T15:42:46.265567+00:00",
+        "regime": "STRONG_TREND",
+        "session_window": "NARROW_REPLAY_WINDOW",
+        "raw_strategy_signal": "hold",
+        "raw_confidence": 0.0,
+        "final_action": "HOLD",
+        "hold_reason": "REGIME_BLOCKED",
+        "indicator_values": {
+          "adx": 70.5,
+          "atr_pct": 0.572,
+          "ma_slope": 0.742,
+          "compression_ratio": 1.0,
+          "breakout_pressure": 1.0,
+          "buy_score": 0.0,
+          "sell_score": 0.0,
+          "threshold": 0.55
+        },
+        "failed_conditions": [
+          "REGIME_BLOCKED"
+        ],
+        "threshold_floor": 0.55,
+        "blocked_regime": true,
+        "components": []
+      },
+      {
+        "symbol": "BTCUSDT",
+        "timestamp": "2026-06-15T15:40:42.834656+00:00",
+        "regime": "STRONG_TREND",
+        "session_window": "NARROW_REPLAY_WINDOW",
+        "raw_strategy_signal": "hold",
+        "raw_confidence": 0.0,
+        "final_action": "HOLD",
+        "hold_reason": "REGIME_BLOCKED",
+        "indicator_values": {
+          "adx": 48.6,
+          "atr_pct": 0.39,
+          "ma_slope": 0.2252,
+          "compression_ratio": 1.0,
+          "breakout_pressure": 0.5841,
+          "buy_score": 0.0,
+          "sell_score": 0.0,
+          "threshold": 0.55
+        },
+        "failed_conditions": [
+          "REGIME_BLOCKED"
+        ],
+        "threshold_floor": 0.55,
+        "blocked_regime": true,
+        "components": []
+      },
+      {
+        "symbol": "ETHUSDT",
+        "timestamp": "2026-06-15T15:39:07.216994+00:00",
+        "regime": "STRONG_TREND",
+        "session_window": "NARROW_REPLAY_WINDOW",
+        "raw_strategy_signal": "hold",
+        "raw_confidence": 0.0,
+        "final_action": "HOLD",
+        "hold_reason": "REGIME_BLOCKED",
+        "indicator_values": {
+          "adx": 70.5,
+          "atr_pct": 0.567,
+          "ma_slope": 0.7396,
+          "compression_ratio": 1.0,
+          "breakout_pressure": 1.0,
+          "buy_score": 0.0,
+          "sell_score": 0.0,
+          "threshold": 0.55
+        },
+        "failed_conditions": [
+          "REGIME_BLOCKED"
+        ],
+        "threshold_floor": 0.55,
+        "blocked_regime": true,
+        "components": []
+      },
+      {
+        "symbol": "BTCUSDT",
+        "timestamp": "2026-06-15T15:37:57.919312+00:00",
+        "regime": "STRONG_TREND",
+        "session_window": "NARROW_REPLAY_WINDOW",
+        "raw_strategy_signal": "hold",
+        "raw_confidence": 0.0,
+        "final_action": "HOLD",
+        "hold_reason": "REGIME_BLOCKED",
+        "indicator_values": {
+          "adx": 48.3,
+          "atr_pct": 0.376,
+          "ma_slope": 0.2173,
+          "compression_ratio": 1.0,
+          "breakout_pressure": 0.3442,
+          "buy_score": 0.0,
+          "sell_score": 0.0,
+          "threshold": 0.55
+        },
+        "failed_conditions": [
+          "REGIME_BLOCKED"
+        ],
+        "threshold_floor": 0.55,
+        "blocked_regime": true,
+        "components": []
+      },
+      {
+        "symbol": "ETHUSDT",
+        "timestamp": "2026-06-15T15:37:03.232426+00:00",
+        "regime": "STRONG_TREND",
+        "session_window": "NARROW_REPLAY_WINDOW",
+        "raw_strategy_signal": "hold",
+        "raw_confidence": 0.0,
+        "final_action": "HOLD",
+        "hold_reason": "REGIME_BLOCKED",
+        "indicator_values": {
+          "adx": 70.4,
+          "atr_pct": 0.561,
+          "ma_slope": 0.733,
+          "compression_ratio": 1.0,
+          "breakout_pressure": 1.0,
+          "buy_score": 0.0,
+          "sell_score": 0.0,
+          "threshold": 0.55
+        },
+        "failed_conditions": [
+          "REGIME_BLOCKED"
+        ],
+        "threshold_floor": 0.55,
+        "blocked_regime": true,
+        "components": []
+      },
+      {
+        "symbol": "BTCUSDT",
+        "timestamp": "2026-06-15T15:36:12.896477+00:00",
+        "regime": "WEAK_TREND",
+        "session_window": "NARROW_REPLAY_WINDOW",
+        "raw_strategy_signal": "hold",
+        "raw_confidence": 0.0,
+        "final_action": "HOLD",
+        "hold_reason": "NO_PATTERN",
+        "indicator_values": {
+          "adx": 48.3,
+          "atr_pct": 0.376,
+          "ma_slope": 0.213,
+          "compression_ratio": 1.0,
+          "breakout_pressure": 0.1982,
+          "buy_score": 0.0,
+          "sell_score": 0.0,
+          "threshold": 0.55
+        },
+        "failed_conditions": [
+          "NO_PATTERN",
+          "TREND_FILTER_FAILED"
+        ],
+        "threshold_floor": 0.55,
+        "blocked_regime": false,
+        "components": [
+          {
+            "symbol": "BTCUSDT",
+            "timestamp": "2026-06-15T15:37:01.865180+00:00",
+            "timeframe": "15m",
+            "market_regime": "WEAK_TREND",
+            "session_allowed": true,
+            "component_name": "supertrend",
+            "component_enabled": true,
+            "component_signal": "HOLD",
+            "component_confidence": 0.0,
+            "component_reason": "gated_low_confidence",
+            "component_required_conditions": [
+              "supertrend_flip_or_continuation",
+              "ema_slope_confirmation"
+            ],
+            "component_failed_conditions": [
+              "supertrend_flip_or_continuation"
+            ],
+            "indicator_snapshot": {
+              "reasons": [],
+              "ema_slope": 0.1661538916244665,
+              "supertrend_dir": 1,
+              "previous_supertrend_dir": 1,
+              "close": 66611.5,
+              "ema": 66372.24573573342,
+              "supertrend": 66133.48000000001
+            },
+            "strategy": "supertrend",
+            "signal": "HOLD",
+            "confidence": 0.0,
+            "reason": "gated_low_confidence",
+            "indicator_values": {
+              "reasons": [],
+              "ema_slope": 0.1661538916244665,
+              "supertrend_dir": 1,
+              "previous_supertrend_dir": 1,
+              "close": 66611.5,
+              "ema": 66372.24573573342,
+              "supertrend": 66133.48000000001
+            },
+            "failed_conditions": [
+              "NO_PATTERN"
+            ]
+          },
+          {
+            "symbol": "BTCUSDT",
+            "timestamp": "2026-06-15T15:37:01.867691+00:00",
+            "timeframe": "15m",
+            "market_regime": "WEAK_TREND",
+            "session_allowed": true,
+            "component_name": "sma_cross",
+            "component_enabled": true,
+            "component_signal": "HOLD",
+            "component_confidence": 0.0,
+            "component_reason": "no_cross",
+            "component_required_conditions": [
+              "fresh_fast_slow_sma_cross"
+            ],
+            "component_failed_conditions": [
+              "fresh_fast_slow_sma_cross"
+            ],
+            "indicator_snapshot": {
+              "fast_sma_previous": 66560.94,
+              "fast_sma_current": 66563.2,
+              "slow_sma_previous": 66145.28666666667,
+              "slow_sma_current": 66172.67333333332,
+              "candle_count": 120
+            },
+            "strategy": "sma_cross",
+            "signal": "HOLD",
+            "confidence": 0.0,
+            "reason": "no_cross",
+            "indicator_values": {
+              "fast_sma_previous": 66560.94,
+              "fast_sma_current": 66563.2,
+              "slow_sma_previous": 66145.28666666667,
+              "slow_sma_current": 66172.67333333332,
+              "candle_count": 120
+            },
+            "failed_conditions": [
+              "NO_PATTERN"
+            ]
+          },
+          {
+            "symbol": "BTCUSDT",
+            "timestamp": "2026-06-15T15:37:01.869691+00:00",
+            "timeframe": "15m",
+            "market_regime": "WEAK_TREND",
+            "session_allowed": true,
+            "component_name": "trend_pullback",
+            "component_enabled": true,
+            "component_signal": "HOLD",
+            "component_confidence": 0.0,
+            "component_reason": "no_signal",
+            "component_required_conditions": [
+              "adx_above_threshold",
+              "ema_trend_alignment",
+              "rsi_reset_and_turn",
+              "ema_reaction"
+            ],
+            "component_failed_conditions": [
+              "rsi_reset_and_turn"
+            ],
+            "indicator_snapshot": {
+              "reasons": [
+                "adx_strong:48.3",
+                "uptrend"
+              ],
+              "adx": 48.27616436460369,
+              "rsi": 62.93222925184138,
+              "rsi_previous": 63.17515601631017,
+              "ema_fast": 66372.24573573342,
+              "ema_fast_previous": 66347.06107633693,
+              "ema_slow": 65945.31100485995,
+              "close": 66611.5,
+              "previous_close": 66617.1
+            },
+            "strategy": "trend_pullback",
+            "signal": "HOLD",
+            "confidence": 0.0,
+            "reason": "no_signal",
+            "indicator_values": {
+              "reasons": [
+                "adx_strong:48.3",
+                "uptrend"
+              ],
+              "adx": 48.27616436460369,
+              "rsi": 62.93222925184138,
+              "rsi_previous": 63.17515601631017,
+              "ema_fast": 66372.24573573342,
+              "ema_fast_previous": 66347.06107633693,
+              "ema_slow": 65945.31100485995,
+              "close": 66611.5,
+              "previous_close": 66617.1
+            },
+            "failed_conditions": [
+              "TREND_FILTER_FAILED"
+            ]
+          },
+          {
+            "symbol": "BTCUSDT",
+            "timestamp": "2026-06-15T15:37:03.177452+00:00",
+            "timeframe": "15m",
+            "market_regime": "WEAK_TREND",
+            "session_allowed": true,
+            "component_name": "donchian_breakout",
+            "component_enabled": true,
+            "component_signal": "HOLD",
+            "component_confidence": 0.0,
+            "component_reason": "no_signal",
+            "component_required_conditions": [
+              "adx_above_threshold",
+              "ema50_ema200_trend_alignment",
+              "fresh_donchian_breakout",
+              "confirmed_close_within_atr_distance"
+            ],
+            "component_failed_conditions": [
+              "fresh_donchian_breakout"
+            ],
+            "indicator_snapshot": {
+              "reasons": [
+                "adx_strong:48.3"
+              ],
+              "adx": 48.27616436460369,
+              "dc_upper": 67338.8,
+              "dc_lower": 65685.4,
+              "dc_upper_previous": 67338.8,
+              "dc_lower_previous": 65673.2,
+              "atr": 250.71428571428467,
+              "trend_up": true,
+              "trend_down": false,
+              "close": 66611.5,
+              "high": 66684.7,
+              "low": 66609.2
+            },
+            "strategy": "donchian_breakout",
+            "signal": "HOLD",
+            "confidence": 0.0,
+            "reason": "no_signal",
+            "indicator_values": {
+              "reasons": [
+                "adx_strong:48.3"
+              ],
+              "adx": 48.27616436460369,
+              "dc_upper": 67338.8,
+              "dc_lower": 65685.4,
+              "dc_upper_previous": 67338.8,
+              "dc_lower_previous": 65673.2,
+              "atr": 250.71428571428467,
+              "trend_up": true,
+              "trend_down": false,
+              "close": 66611.5,
+              "high": 66684.7,
+              "low": 66609.2
+            },
+            "failed_conditions": [
+              "TREND_FILTER_FAILED"
+            ]
+          },
+          {
+            "symbol": "BTCUSDT",
+            "timestamp": "2026-06-15T15:37:03.178451+00:00",
+            "timeframe": "15m",
+            "market_regime": "WEAK_TREND",
+            "session_allowed": true,
+            "component_name": "bollinger_reversion",
+            "component_enabled": false,
+            "component_signal": "DISABLED",
+            "component_confidence": 0.0,
+            "component_reason": "disabled_for_regime:WEAK_TREND",
+            "component_required_conditions": [
+              "bollinger_extreme",
+              "rsi_extreme",
+              "reversal_candle"
+            ],
+            "component_failed_conditions": [],
+            "indicator_snapshot": {},
+            "strategy": "bollinger_reversion",
+            "signal": "DISABLED",
+            "confidence": 0.0,
+            "reason": "disabled_for_regime:WEAK_TREND",
+            "indicator_values": {},
+            "failed_conditions": []
+          },
+          {
+            "symbol": "BTCUSDT",
+            "timestamp": "2026-06-15T15:37:03.178451+00:00",
+            "timeframe": "15m",
+            "market_regime": "WEAK_TREND",
+            "session_allowed": true,
+            "component_name": "squeeze_breakout",
+            "component_enabled": false,
+            "component_signal": "DISABLED",
+            "component_confidence": 0.0,
+            "component_reason": "disabled_for_regime:WEAK_TREND",
+            "component_required_conditions": [
+              "recent_squeeze",
+              "squeeze_release",
+              "directional_momentum"
+            ],
+            "component_failed_conditions": [],
+            "indicator_snapshot": {},
+            "strategy": "squeeze_breakout",
+            "signal": "DISABLED",
+            "confidence": 0.0,
+            "reason": "disabled_for_regime:WEAK_TREND",
+            "indicator_values": {},
+            "failed_conditions": []
+          },
+          {
+            "symbol": "BTCUSDT",
+            "timestamp": "2026-06-15T15:37:03.178451+00:00",
+            "timeframe": "5m",
+            "market_regime": "WEAK_TREND",
+            "session_allowed": true,
+            "component_name": "vwap_reversion",
+            "component_enabled": false,
+            "component_signal": "DISABLED",
+            "component_confidence": 0.0,
+            "component_reason": "disabled_for_regime:WEAK_TREND",
+            "component_required_conditions": [
+              "adx_below_reversion_max",
+              "vwap_deviation",
+              "rsi_extreme",
+              "reversion_candle"
+            ],
+            "component_failed_conditions": [],
+            "indicator_snapshot": {},
+            "strategy": "vwap_reversion",
+            "signal": "DISABLED",
+            "confidence": 0.0,
+            "reason": "disabled_for_regime:WEAK_TREND",
+            "indicator_values": {},
+            "failed_conditions": []
+          }
+        ]
+      },
+      {
+        "symbol": "ETHUSDT",
+        "timestamp": "2026-06-15T05:52:39.163492+00:00",
+        "regime": "STRONG_TREND",
+        "session_window": "OUTSIDE_RUNTIME_WINDOW",
+        "raw_strategy_signal": "hold",
+        "raw_confidence": 0.0,
+        "final_action": "HOLD",
+        "hold_reason": "REGIME_BLOCKED",
+        "indicator_values": {
+          "adx": 70.3,
+          "atr_pct": 0.546,
+          "ma_slope": 0.7186,
+          "compression_ratio": 1.0,
+          "breakout_pressure": 1.0,
+          "buy_score": 0.0,
+          "sell_score": 0.0,
+          "threshold": 0.55
+        },
+        "failed_conditions": [
+          "REGIME_BLOCKED"
+        ],
+        "threshold_floor": 0.55,
+        "blocked_regime": true,
+        "components": []
+      },
+      {
+        "symbol": "BTCUSDT",
+        "timestamp": "2026-06-15T05:52:31.666096+00:00",
+        "regime": "WEAK_TREND",
+        "session_window": "OUTSIDE_RUNTIME_WINDOW",
+        "raw_strategy_signal": "hold",
+        "raw_confidence": 0.0,
+        "final_action": "HOLD",
+        "hold_reason": "SESSION_BLOCKED",
+        "indicator_values": {
+          "adx": 29.0,
+          "atr_pct": 1.222,
+          "ma_slope": 0.0546,
+          "compression_ratio": 0.204,
+          "breakout_pressure": 0.0044,
+          "buy_score": 0.0,
+          "sell_score": 0.0,
+          "threshold": 0.55
+        },
+        "failed_conditions": [
+          "SESSION_BLOCKED"
+        ],
+        "threshold_floor": 0.55,
+        "blocked_regime": false,
+        "components": []
+      },
+      {
+        "symbol": "ETHUSDT",
+        "timestamp": "2026-06-15T05:52:21.625826+00:00",
+        "regime": "STRONG_TREND",
+        "session_window": "OUTSIDE_RUNTIME_WINDOW",
+        "raw_strategy_signal": "hold",
+        "raw_confidence": 0.0,
+        "final_action": "HOLD",
+        "hold_reason": "REGIME_BLOCKED",
+        "indicator_values": {
+          "adx": 42.2,
+          "atr_pct": 0.62,
+          "ma_slope": 0.2475,
+          "compression_ratio": 0.8255,
+          "breakout_pressure": 0.3123,
+          "buy_score": 0.0,
+          "sell_score": 0.0,
+          "threshold": 0.55
+        },
+        "failed_conditions": [
+          "REGIME_BLOCKED"
+        ],
+        "threshold_floor": 0.55,
+        "blocked_regime": true,
+        "components": []
+      },
+      {
+        "symbol": "BTCUSDT",
+        "timestamp": "2026-06-15T05:52:14.325235+00:00",
+        "regime": "WEAK_TREND",
+        "session_window": "OUTSIDE_RUNTIME_WINDOW",
+        "raw_strategy_signal": "hold",
+        "raw_confidence": 0.0,
+        "final_action": "HOLD",
+        "hold_reason": "SESSION_BLOCKED",
+        "indicator_values": {
+          "adx": 29.0,
+          "atr_pct": 1.222,
+          "ma_slope": 0.0546,
+          "compression_ratio": 0.204,
+          "breakout_pressure": 0.0044,
+          "buy_score": 0.0,
+          "sell_score": 0.0,
+          "threshold": 0.55
+        },
+        "failed_conditions": [
+          "SESSION_BLOCKED"
+        ],
+        "threshold_floor": 0.55,
+        "blocked_regime": false,
+        "components": []
+      },
+      {
+        "symbol": "ETHUSDT",
+        "timestamp": "2026-06-15T05:52:03.301579+00:00",
+        "regime": "STRONG_TREND",
+        "session_window": "OUTSIDE_RUNTIME_WINDOW",
+        "raw_strategy_signal": "hold",
+        "raw_confidence": 0.0,
+        "final_action": "HOLD",
+        "hold_reason": "REGIME_BLOCKED",
+        "indicator_values": {
+          "adx": 42.2,
+          "atr_pct": 0.62,
+          "ma_slope": 0.2475,
+          "compression_ratio": 0.8255,
+          "breakout_pressure": 0.3123,
+          "buy_score": 0.0,
+          "sell_score": 0.0,
+          "threshold": 0.55
+        },
+        "failed_conditions": [
+          "REGIME_BLOCKED"
+        ],
+        "threshold_floor": 0.55,
+        "blocked_regime": true,
+        "components": []
+      },
+      {
+        "symbol": "BTCUSDT",
+        "timestamp": "2026-06-15T05:51:55.781585+00:00",
+        "regime": "WEAK_TREND",
+        "session_window": "OUTSIDE_RUNTIME_WINDOW",
+        "raw_strategy_signal": "hold",
+        "raw_confidence": 0.0,
+        "final_action": "HOLD",
+        "hold_reason": "SESSION_BLOCKED",
+        "indicator_values": {
+          "adx": 29.0,
+          "atr_pct": 1.231,
+          "ma_slope": 0.0238,
+          "compression_ratio": 0.1914,
+          "breakout_pressure": -0.3147,
+          "buy_score": 0.0,
+          "sell_score": 0.0,
+          "threshold": 0.55
+        },
+        "failed_conditions": [
+          "SESSION_BLOCKED"
+        ],
+        "threshold_floor": 0.55,
+        "blocked_regime": false,
+        "components": []
+      },
+      {
+        "symbol": "ETHUSDT",
+        "timestamp": "2026-06-15T05:51:45.507781+00:00",
+        "regime": "STRONG_TREND",
+        "session_window": "OUTSIDE_RUNTIME_WINDOW",
+        "raw_strategy_signal": "hold",
+        "raw_confidence": 0.0,
+        "final_action": "HOLD",
+        "hold_reason": "REGIME_BLOCKED",
+        "indicator_values": {
+          "adx": 42.2,
+          "atr_pct": 0.621,
+          "ma_slope": 0.2356,
+          "compression_ratio": 0.8139,
+          "breakout_pressure": 0.0704,
+          "buy_score": 0.0,
+          "sell_score": 0.0,
+          "threshold": 0.55
+        },
+        "failed_conditions": [
+          "REGIME_BLOCKED"
+        ],
+        "threshold_floor": 0.55,
+        "blocked_regime": true,
+        "components": []
+      },
+      {
+        "symbol": "BTCUSDT",
+        "timestamp": "2026-06-15T05:51:38.054669+00:00",
+        "regime": "WEAK_TREND",
+        "session_window": "OUTSIDE_RUNTIME_WINDOW",
+        "raw_strategy_signal": "hold",
+        "raw_confidence": 0.0,
+        "final_action": "HOLD",
+        "hold_reason": "SESSION_BLOCKED",
+        "indicator_values": {
+          "adx": 29.0,
+          "atr_pct": 1.232,
+          "ma_slope": 0.0222,
+          "compression_ratio": 0.1922,
+          "breakout_pressure": -0.3309,
+          "buy_score": 0.0,
+          "sell_score": 0.0,
+          "threshold": 0.55
+        },
+        "failed_conditions": [
+          "SESSION_BLOCKED"
+        ],
+        "threshold_floor": 0.55,
+        "blocked_regime": false,
+        "components": []
+      },
+      {
+        "symbol": "ETHUSDT",
+        "timestamp": "2026-06-15T05:51:26.776217+00:00",
+        "regime": "STRONG_TREND",
+        "session_window": "OUTSIDE_RUNTIME_WINDOW",
+        "raw_strategy_signal": "hold",
+        "raw_confidence": 0.0,
+        "final_action": "HOLD",
+        "hold_reason": "REGIME_BLOCKED",
+        "indicator_values": {
+          "adx": 42.2,
+          "atr_pct": 0.62,
+          "ma_slope": 0.2475,
+          "compression_ratio": 0.8255,
+          "breakout_pressure": 0.3123,
+          "buy_score": 0.0,
+          "sell_score": 0.0,
+          "threshold": 0.55
+        },
+        "failed_conditions": [
+          "REGIME_BLOCKED"
+        ],
+        "threshold_floor": 0.55,
+        "blocked_regime": true,
+        "components": []
+      }
+    ]
+  },
+  "threshold_sensitivity": {
+    "0.55": {
+      "possible_buy_signals": 0,
+      "possible_sell_signals": 0,
+      "total_possible_signals": 0,
+      "regime_distribution": {},
+      "session_distribution": {
+        "runtime_window": 0
+      },
+      "would_be_blocked_by_iofs_shadow": 0,
+      "outcome_status": "NO_OUTCOME_DATA_FOR_THRESHOLD_EXPECTANCY",
+      "win_rate": null,
+      "profit_factor": null,
+      "expectancy": null,
+      "additional_vs_current_floor": 0
+    },
+    "0.50": {
+      "possible_buy_signals": 0,
+      "possible_sell_signals": 0,
+      "total_possible_signals": 0,
+      "regime_distribution": {},
+      "session_distribution": {
+        "runtime_window": 0
+      },
+      "would_be_blocked_by_iofs_shadow": 0,
+      "outcome_status": "NO_OUTCOME_DATA_FOR_THRESHOLD_EXPECTANCY",
+      "win_rate": null,
+      "profit_factor": null,
+      "expectancy": null,
+      "additional_vs_current_floor": 0
+    },
+    "0.45": {
+      "possible_buy_signals": 0,
+      "possible_sell_signals": 0,
+      "total_possible_signals": 0,
+      "regime_distribution": {},
+      "session_distribution": {
+        "runtime_window": 0
+      },
+      "would_be_blocked_by_iofs_shadow": 0,
+      "outcome_status": "NO_OUTCOME_DATA_FOR_THRESHOLD_EXPECTANCY",
+      "win_rate": null,
+      "profit_factor": null,
+      "expectancy": null,
+      "additional_vs_current_floor": 0
+    }
+  },
+  "regime_impact": {
+    "decisions": {
+      "STRONG_TREND": 95,
+      "WEAK_TREND": 5,
+      "RANGE": 0,
+      "HIGH_VOLATILITY": 0
+    },
+    "signals_before_regime_block": 0,
+    "signals_after_regime_block": 0,
+    "strong_trend_block_impact_in_sample": 95,
+    "conclusion": "STRONG_TREND decisions were present; retain the block until outcome evidence improves."
+  },
+  "session_impact": {
+    "runtime_window": "06:00-19:00",
+    "narrow_replay_windows": "07:00-10:00,13:00-16:00",
+    "runtime": {
+      "decisions": 91,
+      "nonzero_confidence": 0,
+      "valid_signals_at_current_floor": 0
+    },
+    "narrow_replay": {
+      "decisions": 46,
+      "nonzero_confidence": 0,
+      "valid_signals_at_current_floor": 0
+    },
+    "outside_runtime_decisions": 9,
+    "valid_signals_outside_runtime": 0,
+    "runtime_missing_valid_signals": false
+  },
+  "recommendation": {
+    "decision": "NO_SAFE_TUNING_FOUND",
+    "reasons": [
+      "Lowering the ensemble floor to 0.50 or 0.45 creates no additional signals.",
+      "No valid signals were found outside the current runtime session.",
+      "No linked outcome data exists for newly eligible threshold candidates."
+    ],
+    "paper_only": true,
+    "ml_enabled": false,
+    "live_enabled": false
+  },
+  "safety": {
+    "active_env_hash_before": "1cf36622dd75b4ab091bb0d35ce9950fc641749a9857ba916b2435617e13d97c",
+    "active_env_hash_after": "1cf36622dd75b4ab091bb0d35ce9950fc641749a9857ba916b2435617e13d97c",
+    "active_env_unchanged": true,
+    "execution_mode_is_paper": true,
+    "ml_disabled": true,
+    "iofs_shadow": true,
+    "read_only_database": true,
+    "executor_called": false,
+    "active_env_modified": false
+  },
+  "conclusion": "HOLD dominates because active strategy components rarely produce any directional pattern on BTCUSDT/ETHUSDT 15m. The current floor, STRONG_TREND block, and runtime session are not the primary cause in the analyzed sample."
+}

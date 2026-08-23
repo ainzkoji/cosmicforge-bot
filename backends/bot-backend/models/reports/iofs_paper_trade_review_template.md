@@ -1,0 +1,22 @@
+# IOFS Paper Trade Review
+
+- trade_id:
+- symbol:
+- entry_time_utc:
+- session: London / NY
+- IOFS score:
+- IOFS pass/fail reason:
+- trend condition result:
+- structure condition result:
+- trigger condition result:
+- was setup visually obvious on chart: Yes / No
+- entry price:
+- SL price:
+- TP1 price:
+- TP2 price:
+- actual exit:
+- exit reason:
+- did break-even buffer work: Yes / No / Not applicable
+- risk profile:
+- reviewer notes:
+- reviewed_within_24h: Yes / No

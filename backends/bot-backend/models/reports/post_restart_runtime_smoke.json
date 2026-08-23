@@ -1,0 +1,88 @@
+{
+  "restart_time_utc": "2026-06-15T04:46:39.294507+00:00",
+  "run_id": "793bebf7-55f0-4c92-b867-1f5d5f3d69b6",
+  "bot_instance_id": "bot_e5fe913972a9",
+  "selected_full_cycle_count": 10,
+  "selected_trace_count": 20,
+  "observed_cycle_count_at_initial_query": 18,
+  "observed_full_cycle_count_at_final_audit": 36,
+  "observed_trace_count_at_final_audit": 72,
+  "market_data_loaded": true,
+  "selected_runtime_counts": {
+    "BUY": 0,
+    "SELL": 0,
+    "HOLD": 20,
+    "submit_attempted": 0,
+    "paper_orders_created": 0,
+    "positions_opened": 0,
+    "trade_fills_after_restart": 0
+  },
+  "final_runtime_counts": {
+    "BUY": 0,
+    "SELL": 0,
+    "HOLD": 72,
+    "submit_attempted": 0,
+    "paper_orders_created": 0,
+    "positions_opened": 0,
+    "trade_fills_after_restart": 0
+  },
+  "common_trace_fields": {
+    "session_allowed": false,
+    "regime_candidate": "not_persisted",
+    "component_outputs": {
+      "status": "not_evaluated_due_to_earlier_safety_gate",
+      "runtime_gate_diagnostics_are_explicit": true
+    },
+    "raw_action": "HOLD",
+    "confidence": 0.0,
+    "final_action": "HOLD",
+    "iofs_shadow_result": "not_reached_after_earlier_gate",
+    "executor_reached": false,
+    "paper_order_created": false
+  },
+  "cycles": [
+    {"cycle":1,"cycle_id":"62265b69-ea08-4a76-8017-c866be892284","symbols":[{"timestamp":"2026-06-15T04:46:51.244501+00:00","symbol":"BTCUSDT","last_price":65400.0,"regime":"WEAK_TREND","regime_stable_state":"WEAK_TREND","regime_confidence":1.0,"hold_reason":"SESSION_BLOCKED"},{"timestamp":"2026-06-15T04:47:28.625595+00:00","symbol":"ETHUSDT","last_price":1724.94,"regime":"STRONG_TREND","regime_stable_state":"STRONG_TREND","regime_confidence":0.958,"hold_reason":"REGIME_BLOCKED_STRONG_TREND"}]},
+    {"cycle":2,"cycle_id":"ebe9c796-0b82-416f-9e93-59686257ea1f","symbols":[{"timestamp":"2026-06-15T04:47:38.375199+00:00","symbol":"BTCUSDT","last_price":65400.0,"regime":"WEAK_TREND","regime_stable_state":"WEAK_TREND","regime_confidence":1.0,"hold_reason":"SESSION_BLOCKED"},{"timestamp":"2026-06-15T04:47:45.291137+00:00","symbol":"ETHUSDT","last_price":1715.63,"regime":"STRONG_TREND","regime_stable_state":"STRONG_TREND","regime_confidence":0.8,"hold_reason":"REGIME_BLOCKED_STRONG_TREND"}]},
+    {"cycle":3,"cycle_id":"86761eed-c21f-47c2-b5c4-ddcbbf9b04f6","symbols":[{"timestamp":"2026-06-15T04:47:54.527185+00:00","symbol":"BTCUSDT","last_price":65900.0,"regime":"WEAK_TREND","regime_stable_state":"WEAK_TREND","regime_confidence":1.0,"hold_reason":"SESSION_BLOCKED"},{"timestamp":"2026-06-15T04:48:01.380424+00:00","symbol":"ETHUSDT","last_price":1712.54,"regime":"WEAK_TREND","regime_stable_state":"WEAK_TREND","regime_confidence":1.0,"hold_reason":"SESSION_BLOCKED"}]},
+    {"cycle":4,"cycle_id":"956e35d8-d6e9-42e1-8b0a-40af6798960e","symbols":[{"timestamp":"2026-06-15T04:48:10.836226+00:00","symbol":"BTCUSDT","last_price":65600.0,"regime":"WEAK_TREND","regime_stable_state":"WEAK_TREND","regime_confidence":1.0,"hold_reason":"SESSION_BLOCKED"},{"timestamp":"2026-06-15T04:48:17.341307+00:00","symbol":"ETHUSDT","last_price":1720.44,"regime":"WEAK_TREND","regime_stable_state":"WEAK_TREND","regime_confidence":1.0,"hold_reason":"SESSION_BLOCKED"}]},
+    {"cycle":5,"cycle_id":"86f3e34b-313d-4eb3-aa0c-77e2390a7999","symbols":[{"timestamp":"2026-06-15T04:48:26.567214+00:00","symbol":"BTCUSDT","last_price":65000.0,"regime":"WEAK_TREND","regime_stable_state":"WEAK_TREND","regime_confidence":1.0,"hold_reason":"SESSION_BLOCKED"},{"timestamp":"2026-06-15T04:48:33.251098+00:00","symbol":"ETHUSDT","last_price":1720.1,"regime":"WEAK_TREND","regime_stable_state":"WEAK_TREND","regime_confidence":0.766,"hold_reason":"SESSION_BLOCKED"}]},
+    {"cycle":6,"cycle_id":"fce551a8-2ae7-475b-82ed-ba229f65571c","symbols":[{"timestamp":"2026-06-15T04:48:42.855691+00:00","symbol":"BTCUSDT","last_price":65200.0,"regime":"WEAK_TREND","regime_stable_state":"WEAK_TREND","regime_confidence":1.0,"hold_reason":"SESSION_BLOCKED"},{"timestamp":"2026-06-15T04:48:50.118190+00:00","symbol":"ETHUSDT","last_price":1724.94,"regime":"STRONG_TREND","regime_stable_state":"STRONG_TREND","regime_confidence":0.958,"hold_reason":"REGIME_BLOCKED_STRONG_TREND"}]},
+    {"cycle":7,"cycle_id":"4bb3ce8f-fcee-491e-aaeb-a83342a5c985","symbols":[{"timestamp":"2026-06-15T04:49:00.471634+00:00","symbol":"BTCUSDT","last_price":65000.0,"regime":"WEAK_TREND","regime_stable_state":"WEAK_TREND","regime_confidence":1.0,"hold_reason":"SESSION_BLOCKED"},{"timestamp":"2026-06-15T04:49:07.205555+00:00","symbol":"ETHUSDT","last_price":1712.56,"regime":"STRONG_TREND","regime_stable_state":"STRONG_TREND","regime_confidence":0.8,"hold_reason":"REGIME_BLOCKED_STRONG_TREND"}]},
+    {"cycle":8,"cycle_id":"0ff97829-8de5-4b75-8289-d4eabbe8883d","symbols":[{"timestamp":"2026-06-15T04:49:16.485128+00:00","symbol":"BTCUSDT","last_price":65000.0,"regime":"WEAK_TREND","regime_stable_state":"WEAK_TREND","regime_confidence":1.0,"hold_reason":"SESSION_BLOCKED"},{"timestamp":"2026-06-15T04:49:23.720446+00:00","symbol":"ETHUSDT","last_price":1724.94,"regime":"STRONG_TREND","regime_stable_state":"STRONG_TREND","regime_confidence":0.958,"hold_reason":"REGIME_BLOCKED_STRONG_TREND"}]},
+    {"cycle":9,"cycle_id":"aca569f6-8c5d-4fb1-bdc8-1c28ece47e79","symbols":[{"timestamp":"2026-06-15T04:49:33.288079+00:00","symbol":"BTCUSDT","last_price":65200.0,"regime":"WEAK_TREND","regime_stable_state":"WEAK_TREND","regime_confidence":1.0,"hold_reason":"SESSION_BLOCKED"},{"timestamp":"2026-06-15T04:49:41.014132+00:00","symbol":"ETHUSDT","last_price":1712.55,"regime":"STRONG_TREND","regime_stable_state":"STRONG_TREND","regime_confidence":0.8,"hold_reason":"REGIME_BLOCKED_STRONG_TREND"}]},
+    {"cycle":10,"cycle_id":"2e994947-6787-401d-84c7-6ff0df1d8a4c","symbols":[{"timestamp":"2026-06-15T04:49:50.774837+00:00","symbol":"BTCUSDT","last_price":64844.3,"regime":"WEAK_TREND","regime_stable_state":"WEAK_TREND","regime_confidence":1.0,"hold_reason":"SESSION_BLOCKED"},{"timestamp":"2026-06-15T04:49:57.145160+00:00","symbol":"ETHUSDT","last_price":1724.91,"regime":"STRONG_TREND","regime_stable_state":"STRONG_TREND","regime_confidence":0.958,"hold_reason":"REGIME_BLOCKED_STRONG_TREND"}]}
+  ],
+  "regime_hysteresis": {
+    "startup_regime": {"BTCUSDT":"WEAK_TREND","ETHUSDT":"STRONG_TREND"},
+    "observed_regime_changes": {"BTCUSDT":[],"ETHUSDT":["STRONG_TREND->WEAK_TREND","WEAK_TREND->STRONG_TREND"]},
+    "candidate_counter_behavior": "Damped-confidence transition calls followed by stable-state updates are consistent with the repaired two-call candidate counter. Candidate metadata is not persisted, so this is an inference.",
+    "stable_regime_updates_observed": true,
+    "regime_fix_not_active": false
+  },
+  "post_restart_component_diagnostic": {
+    "generated_at_utc": "2026-06-15T04:54:57.436062+00:00",
+    "diagnostic_only": true,
+    "executor_called": false,
+    "component_buy_sell_activity": true,
+    "ensemble_counts": {"BUY":5,"SELL":11,"HOLD":1984},
+    "most_common_failed_condition": "fresh_fast_slow_sma_cross",
+    "source": "models/reports/post_restart_component_diagnostic.json"
+  },
+  "paper_executor_reachability": {
+    "diagnostic_only": true,
+    "executor_would_be_called": true,
+    "blockers": [],
+    "iofs_shadow_non_blocking": true,
+    "ml_disabled_non_blocking": true,
+    "executor_actually_called": false
+  },
+  "acceptance": {
+    "controlled_restart": true,
+    "safe_runtime_config": true,
+    "repaired_classifier_active": true,
+    "signal_path_alive_diagnostic": true,
+    "paper_executor_reachable": true,
+    "runtime_component_outputs_persisted_in_session": false,
+    "strict_acceptance_pending_reason": "Selected smoke ran before 06:00 UTC; configured session/regime gates intentionally prevented component evaluation."
+  }
+}

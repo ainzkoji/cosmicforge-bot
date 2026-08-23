@@ -1,0 +1,82 @@
+event_id,title,event_type,country_currency,impact_level,scheduled_utc,source,is_global,affected_symbols,confidence,notes
+hist_ISM_MFG_20251202_1500,ISM Manufacturing PMI Nov 2025,ISM_MANUFACTURING_PMI,USD,HIGH,2025-12-02T15:00:00+00:00,manual_historical_backfill,true,,HIGH,US ISM Manufacturing PMI for November 2025
+hist_ISM_SVC_20251204_1500,ISM Services PMI Nov 2025,ISM_SERVICES_PMI,USD,HIGH,2025-12-04T15:00:00+00:00,manual_historical_backfill,true,,HIGH,US ISM Services PMI for November 2025
+hist_NFP_20251206_1330,Non-Farm Payrolls Nov 2025,NFP,USD,HIGH,2025-12-05T13:30:00+00:00,manual_historical_backfill,true,,HIGH,US Employment Situation Report November 2025
+hist_UNEMP_20251206_1330,Unemployment Rate Nov 2025,UNEMPLOYMENT_RATE,USD,HIGH,2025-12-05T13:30:00+00:00,manual_historical_backfill,true,,HIGH,US Unemployment Rate November 2025
+hist_AHE_20251206_1330,Average Hourly Earnings Nov 2025,AVERAGE_HOURLY_EARNINGS,USD,MEDIUM,2025-12-05T13:30:00+00:00,manual_historical_backfill,true,,HIGH,US Average Hourly Earnings November 2025
+hist_CPI_20251211_1330,CPI Nov 2025,CPI,USD,HIGH,2025-12-11T13:30:00+00:00,manual_historical_backfill,true,,HIGH,US Consumer Price Index November 2025
+hist_CORE_CPI_20251211_1330,Core CPI Nov 2025,CORE_CPI,USD,HIGH,2025-12-11T13:30:00+00:00,manual_historical_backfill,true,,HIGH,US Core CPI ex Food and Energy November 2025
+hist_PPI_20251212_1330,PPI Nov 2025,PPI,USD,MEDIUM,2025-12-12T13:30:00+00:00,manual_historical_backfill,true,,HIGH,US Producer Price Index November 2025
+hist_CORE_PPI_20251212_1330,Core PPI Nov 2025,CORE_PPI,USD,MEDIUM,2025-12-12T13:30:00+00:00,manual_historical_backfill,true,,HIGH,US Core PPI November 2025
+hist_FOMC_20251218_1900,FOMC Rate Decision Dec 2025,FOMC,USD,HIGH,2025-12-18T19:00:00+00:00,manual_historical_backfill,true,,HIGH,Federal Open Market Committee interest rate decision December 2025
+hist_GDP_20251219_1330,GDP Q3 2025 Final Estimate,GDP,USD,HIGH,2025-12-19T13:30:00+00:00,manual_historical_backfill,true,,HIGH,US GDP Third Estimate Q3 2025
+hist_PCE_20251219_1330,PCE Price Index Nov 2025,PCE,USD,HIGH,2025-12-19T13:30:00+00:00,manual_historical_backfill,true,,HIGH,US Personal Consumption Expenditures Price Index November 2025
+hist_CORE_PCE_20251219_1330,Core PCE Nov 2025,CORE_PCE,USD,HIGH,2025-12-19T13:30:00+00:00,manual_historical_backfill,true,,HIGH,US Core PCE November 2025
+hist_ISM_MFG_20260102_1500,ISM Manufacturing PMI Dec 2025,ISM_MANUFACTURING_PMI,USD,HIGH,2026-01-02T15:00:00+00:00,manual_historical_backfill,true,,HIGH,US ISM Manufacturing PMI for December 2025
+hist_FOMC_MIN_20260108_1900,FOMC Minutes Dec 2025,FOMC_MINUTES,USD,HIGH,2026-01-08T19:00:00+00:00,manual_historical_backfill,true,,HIGH,Federal Reserve minutes from December 2025 meeting
+hist_ISM_SVC_20260107_1500,ISM Services PMI Dec 2025,ISM_SERVICES_PMI,USD,HIGH,2026-01-07T15:00:00+00:00,manual_historical_backfill,true,,HIGH,US ISM Services PMI for December 2025
+hist_NFP_20260109_1330,Non-Farm Payrolls Dec 2025,NFP,USD,HIGH,2026-01-09T13:30:00+00:00,manual_historical_backfill,true,,HIGH,US Employment Situation Report December 2025
+hist_UNEMP_20260109_1330,Unemployment Rate Dec 2025,UNEMPLOYMENT_RATE,USD,HIGH,2026-01-09T13:30:00+00:00,manual_historical_backfill,true,,HIGH,US Unemployment Rate December 2025
+hist_AHE_20260109_1330,Average Hourly Earnings Dec 2025,AVERAGE_HOURLY_EARNINGS,USD,MEDIUM,2026-01-09T13:30:00+00:00,manual_historical_backfill,true,,HIGH,US Average Hourly Earnings December 2025
+hist_CPI_20260115_1330,CPI Dec 2025,CPI,USD,HIGH,2026-01-15T13:30:00+00:00,manual_historical_backfill,true,,HIGH,US Consumer Price Index December 2025
+hist_CORE_CPI_20260115_1330,Core CPI Dec 2025,CORE_CPI,USD,HIGH,2026-01-15T13:30:00+00:00,manual_historical_backfill,true,,HIGH,US Core CPI ex Food and Energy December 2025
+hist_PPI_20260116_1330,PPI Dec 2025,PPI,USD,MEDIUM,2026-01-16T13:30:00+00:00,manual_historical_backfill,true,,HIGH,US Producer Price Index December 2025
+hist_CORE_PPI_20260116_1330,Core PPI Dec 2025,CORE_PPI,USD,MEDIUM,2026-01-16T13:30:00+00:00,manual_historical_backfill,true,,HIGH,US Core PPI December 2025
+hist_FOMC_20260129_1900,FOMC Rate Decision Jan 2026,FOMC,USD,HIGH,2026-01-29T19:00:00+00:00,manual_historical_backfill,true,,HIGH,Federal Open Market Committee interest rate decision January 2026
+hist_GDP_ADV_20260130_1330,GDP Q4 2025 Advance Estimate,GDP,USD,HIGH,2026-01-30T13:30:00+00:00,manual_historical_backfill,true,,HIGH,US GDP Advance Estimate Q4 2025
+hist_PCE_20260130_1330,PCE Price Index Dec 2025,PCE,USD,HIGH,2026-01-30T13:30:00+00:00,manual_historical_backfill,true,,HIGH,US Personal Consumption Expenditures Price Index December 2025
+hist_CORE_PCE_20260130_1330,Core PCE Dec 2025,CORE_PCE,USD,HIGH,2026-01-30T13:30:00+00:00,manual_historical_backfill,true,,HIGH,US Core PCE December 2025
+hist_ISM_MFG_20260203_1500,ISM Manufacturing PMI Jan 2026,ISM_MANUFACTURING_PMI,USD,HIGH,2026-02-03T15:00:00+00:00,manual_historical_backfill,true,,HIGH,US ISM Manufacturing PMI for January 2026
+hist_ISM_SVC_20260205_1500,ISM Services PMI Jan 2026,ISM_SERVICES_PMI,USD,HIGH,2026-02-05T15:00:00+00:00,manual_historical_backfill,true,,HIGH,US ISM Services PMI for January 2026
+hist_NFP_20260206_1330,Non-Farm Payrolls Jan 2026,NFP,USD,HIGH,2026-02-06T13:30:00+00:00,manual_historical_backfill,true,,HIGH,US Employment Situation Report January 2026
+hist_UNEMP_20260206_1330,Unemployment Rate Jan 2026,UNEMPLOYMENT_RATE,USD,HIGH,2026-02-06T13:30:00+00:00,manual_historical_backfill,true,,HIGH,US Unemployment Rate January 2026
+hist_AHE_20260206_1330,Average Hourly Earnings Jan 2026,AVERAGE_HOURLY_EARNINGS,USD,MEDIUM,2026-02-06T13:30:00+00:00,manual_historical_backfill,true,,HIGH,US Average Hourly Earnings January 2026
+hist_FED_CHAIR_20260211_1500,Fed Chair Testimony Day 1 Feb 2026,FED_CHAIR_SPEECH,USD,HIGH,2026-02-11T15:00:00+00:00,manual_historical_backfill,true,,MEDIUM,Semi-annual monetary policy report to Senate
+hist_FED_CHAIR_20260212_1500,Fed Chair Testimony Day 2 Feb 2026,FED_CHAIR_SPEECH,USD,HIGH,2026-02-12T15:00:00+00:00,manual_historical_backfill,true,,MEDIUM,Semi-annual monetary policy report to House
+hist_CPI_20260212_1330,CPI Jan 2026,CPI,USD,HIGH,2026-02-12T13:30:00+00:00,manual_historical_backfill,true,,HIGH,US Consumer Price Index January 2026
+hist_CORE_CPI_20260212_1330,Core CPI Jan 2026,CORE_CPI,USD,HIGH,2026-02-12T13:30:00+00:00,manual_historical_backfill,true,,HIGH,US Core CPI ex Food and Energy January 2026
+hist_PPI_20260213_1330,PPI Jan 2026,PPI,USD,MEDIUM,2026-02-13T13:30:00+00:00,manual_historical_backfill,true,,HIGH,US Producer Price Index January 2026
+hist_CORE_PPI_20260213_1330,Core PPI Jan 2026,CORE_PPI,USD,MEDIUM,2026-02-13T13:30:00+00:00,manual_historical_backfill,true,,HIGH,US Core PPI January 2026
+hist_FOMC_MIN_20260219_1900,FOMC Minutes Jan 2026,FOMC_MINUTES,USD,HIGH,2026-02-19T19:00:00+00:00,manual_historical_backfill,true,,HIGH,Federal Reserve minutes from January 2026 meeting
+hist_GDP_PREL_20260227_1330,GDP Q4 2025 Preliminary Estimate,GDP,USD,HIGH,2026-02-27T13:30:00+00:00,manual_historical_backfill,true,,HIGH,US GDP Second Estimate Q4 2025
+hist_PCE_20260227_1330,PCE Price Index Jan 2026,PCE,USD,HIGH,2026-02-27T13:30:00+00:00,manual_historical_backfill,true,,HIGH,US Personal Consumption Expenditures Price Index January 2026
+hist_CORE_PCE_20260227_1330,Core PCE Jan 2026,CORE_PCE,USD,HIGH,2026-02-27T13:30:00+00:00,manual_historical_backfill,true,,HIGH,US Core PCE January 2026
+hist_ISM_MFG_20260302_1500,ISM Manufacturing PMI Feb 2026,ISM_MANUFACTURING_PMI,USD,HIGH,2026-03-02T15:00:00+00:00,manual_historical_backfill,true,,HIGH,US ISM Manufacturing PMI for February 2026
+hist_ISM_SVC_20260304_1500,ISM Services PMI Feb 2026,ISM_SERVICES_PMI,USD,HIGH,2026-03-04T15:00:00+00:00,manual_historical_backfill,true,,HIGH,US ISM Services PMI for February 2026
+hist_NFP_20260306_1330,Non-Farm Payrolls Feb 2026,NFP,USD,HIGH,2026-03-06T13:30:00+00:00,manual_historical_backfill,true,,HIGH,US Employment Situation Report February 2026
+hist_UNEMP_20260306_1330,Unemployment Rate Feb 2026,UNEMPLOYMENT_RATE,USD,HIGH,2026-03-06T13:30:00+00:00,manual_historical_backfill,true,,HIGH,US Unemployment Rate February 2026
+hist_AHE_20260306_1330,Average Hourly Earnings Feb 2026,AVERAGE_HOURLY_EARNINGS,USD,MEDIUM,2026-03-06T13:30:00+00:00,manual_historical_backfill,true,,HIGH,US Average Hourly Earnings February 2026
+hist_CPI_20260312_1330,CPI Feb 2026,CPI,USD,HIGH,2026-03-12T13:30:00+00:00,manual_historical_backfill,true,,HIGH,US Consumer Price Index February 2026
+hist_CORE_CPI_20260312_1330,Core CPI Feb 2026,CORE_CPI,USD,HIGH,2026-03-12T13:30:00+00:00,manual_historical_backfill,true,,HIGH,US Core CPI ex Food and Energy February 2026
+hist_PPI_20260313_1330,PPI Feb 2026,PPI,USD,MEDIUM,2026-03-13T13:30:00+00:00,manual_historical_backfill,true,,HIGH,US Producer Price Index February 2026
+hist_CORE_PPI_20260313_1330,Core PPI Feb 2026,CORE_PPI,USD,MEDIUM,2026-03-13T13:30:00+00:00,manual_historical_backfill,true,,HIGH,US Core PPI February 2026
+hist_FOMC_20260319_1900,FOMC Rate Decision Mar 2026,FOMC,USD,HIGH,2026-03-19T19:00:00+00:00,manual_historical_backfill,true,,HIGH,Federal Open Market Committee interest rate decision March 2026
+hist_GDP_FINAL_20260326_1330,GDP Q4 2025 Final Estimate,GDP,USD,HIGH,2026-03-26T13:30:00+00:00,manual_historical_backfill,true,,HIGH,US GDP Third Estimate Q4 2025
+hist_PCE_20260327_1330,PCE Price Index Feb 2026,PCE,USD,HIGH,2026-03-27T13:30:00+00:00,manual_historical_backfill,true,,HIGH,US Personal Consumption Expenditures Price Index February 2026
+hist_CORE_PCE_20260327_1330,Core PCE Feb 2026,CORE_PCE,USD,HIGH,2026-03-27T13:30:00+00:00,manual_historical_backfill,true,,HIGH,US Core PCE February 2026
+hist_ISM_MFG_20260401_1500,ISM Manufacturing PMI Mar 2026,ISM_MANUFACTURING_PMI,USD,HIGH,2026-04-01T15:00:00+00:00,manual_historical_backfill,true,,HIGH,US ISM Manufacturing PMI for March 2026
+hist_ISM_SVC_20260403_1500,ISM Services PMI Mar 2026,ISM_SERVICES_PMI,USD,HIGH,2026-04-03T15:00:00+00:00,manual_historical_backfill,true,,HIGH,US ISM Services PMI for March 2026
+hist_NFP_20260403_1330,Non-Farm Payrolls Mar 2026,NFP,USD,HIGH,2026-04-03T13:30:00+00:00,manual_historical_backfill,true,,HIGH,US Employment Situation Report March 2026
+hist_UNEMP_20260403_1330,Unemployment Rate Mar 2026,UNEMPLOYMENT_RATE,USD,HIGH,2026-04-03T13:30:00+00:00,manual_historical_backfill,true,,HIGH,US Unemployment Rate March 2026
+hist_AHE_20260403_1330,Average Hourly Earnings Mar 2026,AVERAGE_HOURLY_EARNINGS,USD,MEDIUM,2026-04-03T13:30:00+00:00,manual_historical_backfill,true,,HIGH,US Average Hourly Earnings March 2026
+hist_FOMC_MIN_20260408_1900,FOMC Minutes Mar 2026,FOMC_MINUTES,USD,HIGH,2026-04-08T19:00:00+00:00,manual_historical_backfill,true,,HIGH,Federal Reserve minutes from March 2026 meeting
+hist_CPI_20260410_1330,CPI Mar 2026,CPI,USD,HIGH,2026-04-10T13:30:00+00:00,manual_historical_backfill,true,,HIGH,US Consumer Price Index March 2026
+hist_CORE_CPI_20260410_1330,Core CPI Mar 2026,CORE_CPI,USD,HIGH,2026-04-10T13:30:00+00:00,manual_historical_backfill,true,,HIGH,US Core CPI ex Food and Energy March 2026
+hist_PPI_20260411_1330,PPI Mar 2026,PPI,USD,MEDIUM,2026-04-11T13:30:00+00:00,manual_historical_backfill,true,,HIGH,US Producer Price Index March 2026
+hist_CORE_PPI_20260411_1330,Core PPI Mar 2026,CORE_PPI,USD,MEDIUM,2026-04-11T13:30:00+00:00,manual_historical_backfill,true,,HIGH,US Core PPI March 2026
+hist_GDP_ADV_20260430_1330,GDP Q1 2026 Advance Estimate,GDP,USD,HIGH,2026-04-30T13:30:00+00:00,manual_historical_backfill,true,,HIGH,US GDP Advance Estimate Q1 2026
+hist_PCE_20260430_1330,PCE Price Index Mar 2026,PCE,USD,HIGH,2026-04-30T13:30:00+00:00,manual_historical_backfill,true,,HIGH,US Personal Consumption Expenditures Price Index March 2026
+hist_CORE_PCE_20260430_1330,Core PCE Mar 2026,CORE_PCE,USD,HIGH,2026-04-30T13:30:00+00:00,manual_historical_backfill,true,,HIGH,US Core PCE March 2026
+hist_ISM_MFG_20260501_1500,ISM Manufacturing PMI Apr 2026,ISM_MANUFACTURING_PMI,USD,HIGH,2026-05-01T15:00:00+00:00,manual_historical_backfill,true,,HIGH,US ISM Manufacturing PMI for April 2026
+hist_NFP_20260501_1330,Non-Farm Payrolls Apr 2026,NFP,USD,HIGH,2026-05-01T13:30:00+00:00,manual_historical_backfill,true,,HIGH,US Employment Situation Report April 2026
+hist_UNEMP_20260501_1330,Unemployment Rate Apr 2026,UNEMPLOYMENT_RATE,USD,HIGH,2026-05-01T13:30:00+00:00,manual_historical_backfill,true,,HIGH,US Unemployment Rate April 2026
+hist_AHE_20260501_1330,Average Hourly Earnings Apr 2026,AVERAGE_HOURLY_EARNINGS,USD,MEDIUM,2026-05-01T13:30:00+00:00,manual_historical_backfill,true,,HIGH,US Average Hourly Earnings April 2026
+hist_ISM_SVC_20260505_1500,ISM Services PMI Apr 2026,ISM_SERVICES_PMI,USD,HIGH,2026-05-05T15:00:00+00:00,manual_historical_backfill,true,,HIGH,US ISM Services PMI for April 2026
+hist_FOMC_20260507_1900,FOMC Rate Decision May 2026,FOMC,USD,HIGH,2026-05-07T19:00:00+00:00,manual_historical_backfill,true,,HIGH,Federal Open Market Committee interest rate decision May 2026
+hist_ETH_PECTRA_20260507_1200,Ethereum Pectra Mainnet Upgrade,ETH_UPGRADE,ETH,HIGH,2026-05-07T12:00:00+00:00,manual_historical_backfill,false,"[""ETHUSDT"",""ETHBTC""]",MEDIUM,Ethereum Pectra hard fork mainnet activation - approximate date
+hist_CPI_20260513_1330,CPI Apr 2026,CPI,USD,HIGH,2026-05-13T13:30:00+00:00,manual_historical_backfill,true,,HIGH,US Consumer Price Index April 2026
+hist_CORE_CPI_20260513_1330,Core CPI Apr 2026,CORE_CPI,USD,HIGH,2026-05-13T13:30:00+00:00,manual_historical_backfill,true,,HIGH,US Core CPI ex Food and Energy April 2026
+hist_PPI_20260514_1330,PPI Apr 2026,PPI,USD,MEDIUM,2026-05-14T13:30:00+00:00,manual_historical_backfill,true,,HIGH,US Producer Price Index April 2026
+hist_CORE_PPI_20260514_1330,Core PPI Apr 2026,CORE_PPI,USD,MEDIUM,2026-05-14T13:30:00+00:00,manual_historical_backfill,true,,HIGH,US Core PPI April 2026
+hist_PCE_20260529_1330,PCE Price Index Apr 2026,PCE,USD,HIGH,2026-05-29T13:30:00+00:00,manual_historical_backfill,true,,HIGH,US Personal Consumption Expenditures Price Index April 2026
+hist_CORE_PCE_20260529_1330,Core PCE Apr 2026,CORE_PCE,USD,HIGH,2026-05-29T13:30:00+00:00,manual_historical_backfill,true,,HIGH,US Core PCE April 2026

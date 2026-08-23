@@ -1,0 +1,45 @@
+{
+  "blocking_reasons": [
+    "ORGANIC_ROWS_BELOW_500",
+    "IOFS_ROWS_BELOW_300",
+    "CLOSED_IOFS_TRADES_BELOW_20"
+  ],
+  "candidate_metrics": {},
+  "candidate_model_path": null,
+  "candidate_validation_status": "not_attempted",
+  "closed_iofs_paper_trades": 0,
+  "current_production_model": null,
+  "dataset_build_attempted": false,
+  "dataset_build_result": null,
+  "dry_run": false,
+  "env_changed": false,
+  "force_check_only": true,
+  "generated_at_utc": "2026-06-15T19:07:35.234813+00:00",
+  "iofs_organic_rows": 0,
+  "ml_enabled_changed": false,
+  "organic_rows": 326,
+  "pipeline_error": null,
+  "production_comparison": {},
+  "production_files_after": [
+    "README.md"
+  ],
+  "production_files_before": [
+    "README.md"
+  ],
+  "promoted": false,
+  "promotion_allowed": false,
+  "promotion_attempted": false,
+  "promotion_preflight_result": null,
+  "promotion_result": null,
+  "ready_to_retrain": false,
+  "retrain_attempted": false,
+  "section5a_validation_result": null,
+  "section5b_status": "BLOCKED",
+  "strong_trend_experiment_changed": false,
+  "strong_trend_experiment_status": "ACTIVE",
+  "t25_status": "NOT_STARTED",
+  "training_attempted": false,
+  "training_result": null,
+  "validation_attempted": false,
+  "warnings": []
+}

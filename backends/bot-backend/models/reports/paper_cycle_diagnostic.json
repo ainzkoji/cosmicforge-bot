@@ -1,0 +1,589 @@
+{
+  "generated_at": "2026-07-15T21:17:01.582842+00:00",
+  "safety": {
+    "read_only_database": true,
+    "public_market_data_only": true,
+    "executor_imported_or_called": false,
+    "orders_placed": false,
+    "configuration_changed": false
+  },
+  "configuration": [
+    {
+      "field": "EXECUTION_MODE",
+      "env_value": "paper",
+      "runtime_loaded_value": "paper",
+      "active_run_snapshot_value": "paper",
+      "env_matches_runtime": true,
+      "runtime_matches_active_run": true
+    },
+    {
+      "field": "ML_ENABLED",
+      "env_value": "False",
+      "runtime_loaded_value": false,
+      "active_run_snapshot_value": false,
+      "env_matches_runtime": true,
+      "runtime_matches_active_run": true
+    },
+    {
+      "field": "ML_SHADOW_MODE",
+      "env_value": null,
+      "runtime_loaded_value": false,
+      "active_run_snapshot_value": false,
+      "env_matches_runtime": null,
+      "runtime_matches_active_run": true
+    },
+    {
+      "field": "IOFS_GATE_ENABLED",
+      "env_value": "True",
+      "runtime_loaded_value": true,
+      "active_run_snapshot_value": true,
+      "env_matches_runtime": true,
+      "runtime_matches_active_run": true
+    },
+    {
+      "field": "IOFS_GATE_MODE",
+      "env_value": "shadow",
+      "runtime_loaded_value": "shadow",
+      "active_run_snapshot_value": "shadow",
+      "env_matches_runtime": true,
+      "runtime_matches_active_run": true
+    },
+    {
+      "field": "TRADE_SYMBOLS",
+      "env_value": "BTCUSDT,ETHUSDT",
+      "runtime_loaded_value": "BTCUSDT,ETHUSDT",
+      "active_run_snapshot_value": "BTCUSDT,ETHUSDT",
+      "env_matches_runtime": true,
+      "runtime_matches_active_run": true
+    },
+    {
+      "field": "MAX_TRADES_DAILY",
+      "env_value": "3",
+      "runtime_loaded_value": 3,
+      "active_run_snapshot_value": 3,
+      "env_matches_runtime": true,
+      "runtime_matches_active_run": true
+    },
+    {
+      "field": "ENSEMBLE_BLOCKED_REGIMES",
+      "env_value": "",
+      "runtime_loaded_value": "",
+      "active_run_snapshot_value": "",
+      "env_matches_runtime": true,
+      "runtime_matches_active_run": true
+    },
+    {
+      "field": "ENSEMBLE_MIN_THRESHOLD_FLOOR",
+      "env_value": "0.55",
+      "runtime_loaded_value": 0.55,
+      "active_run_snapshot_value": 0.55,
+      "env_matches_runtime": true,
+      "runtime_matches_active_run": true
+    },
+    {
+      "field": "ENSEMBLE_SESSION_FILTER_ENABLED",
+      "env_value": "True",
+      "runtime_loaded_value": true,
+      "active_run_snapshot_value": true,
+      "env_matches_runtime": true,
+      "runtime_matches_active_run": true
+    },
+    {
+      "field": "ENSEMBLE_SESSION_WINDOWS_UTC",
+      "env_value": "06:00-19:00",
+      "runtime_loaded_value": "06:00-19:00",
+      "active_run_snapshot_value": "06:00-19:00",
+      "env_matches_runtime": true,
+      "runtime_matches_active_run": true
+    },
+    {
+      "field": "IOFS_SESSION_FILTER_ENABLED",
+      "env_value": "True",
+      "runtime_loaded_value": true,
+      "active_run_snapshot_value": true,
+      "env_matches_runtime": true,
+      "runtime_matches_active_run": true
+    },
+    {
+      "field": "IOFS_SESSION_WINDOWS_UTC",
+      "env_value": "07:00-10:00,13:00-16:00",
+      "runtime_loaded_value": "07:00-10:00,13:00-16:00",
+      "active_run_snapshot_value": "07:00-10:00,13:00-16:00",
+      "env_matches_runtime": true,
+      "runtime_matches_active_run": true
+    },
+    {
+      "field": "KILL_SWITCH_CLOSE_POSITIONS",
+      "env_value": "true",
+      "runtime_loaded_value": true,
+      "active_run_snapshot_value": true,
+      "env_matches_runtime": true,
+      "runtime_matches_active_run": true
+    },
+    {
+      "field": "DAILY_MAX_LOSS_USDT",
+      "env_value": "50",
+      "runtime_loaded_value": 50.0,
+      "active_run_snapshot_value": 50.0,
+      "env_matches_runtime": true,
+      "runtime_matches_active_run": true
+    },
+    {
+      "field": "MAX_OPEN_POSITIONS",
+      "env_value": "3",
+      "runtime_loaded_value": 3,
+      "active_run_snapshot_value": 3,
+      "env_matches_runtime": true,
+      "runtime_matches_active_run": true
+    },
+    {
+      "field": "KILL_SWITCH",
+      "env_value": null,
+      "runtime_loaded_value": "runtime state; see daily_state.kill",
+      "active_run_snapshot_value": null,
+      "env_matches_runtime": null,
+      "runtime_matches_active_run": null,
+      "note": "No literal KILL_SWITCH setting; KILL_SWITCH_CLOSE_POSITIONS is configuration."
+    },
+    {
+      "field": "CIRCUIT_BREAKER",
+      "env_value": null,
+      "runtime_loaded_value": "runtime registry; see circuit_breaker section",
+      "active_run_snapshot_value": null,
+      "env_matches_runtime": null,
+      "runtime_matches_active_run": null,
+      "note": "No literal CIRCUIT_BREAKER setting; breaker state is runtime state."
+    },
+    {
+      "field": "DAILY_LOSS_LIMIT",
+      "env_value": "50",
+      "runtime_loaded_value": 50.0,
+      "active_run_snapshot_value": 50.0,
+      "env_matches_runtime": true,
+      "runtime_matches_active_run": true,
+      "note": "DAILY_MAX_LOSS_USDT is the implemented daily loss limit."
+    }
+  ],
+  "sessions": {
+    "current_utc": "2026-07-15T21:17:01.582842+00:00",
+    "ensemble_windows": "06:00-19:00",
+    "ensemble_allowed_now": false,
+    "iofs_windows": "07:00-10:00,13:00-16:00",
+    "iofs_allowed_now": false
+  },
+  "runtime": {
+    "database_path": "C:\\Users\\favou\\OneDrive\\Desktop\\cosmicforge-bot\\backends\\shared\\shared_lib\\persistence\\cosmicforge.db",
+    "runner_trace_age_seconds": 15.4,
+    "latest_trace_at": "2026-07-15T21:16:46.173812+00:00",
+    "active_bot_id": null,
+    "active_bot_status": null,
+    "active_bot_last_run_at": null,
+    "active_bot_last_error": null,
+    "active_run": {
+      "run_id": "de71fd14-f327-4cc5-af84-7a59e501edbf",
+      "started_at": "2026-07-15T21:13:38.590729+00:00",
+      "stopped_at": null,
+      "mode": "paper",
+      "interval_seconds": 900,
+      "max_symbols": 2,
+      "status": "RUNNING"
+    },
+    "current_daily": {
+      "day": "2026-07-15",
+      "realized_pnl": 0.0,
+      "kill": 0,
+      "trade_count": 0,
+      "last_updated_at": "2026-07-15T17:10:44.333617+00:00",
+      "consecutive_losses": 0,
+      "consec_loss_cooldown_until_ms": 0
+    },
+    "latest_fill": {
+      "id": 17562,
+      "run_id": "paper_execution_smoke",
+      "cycle_id": "paper_smoke_cycle_2026-07-15T21:16:46.173812+00:00",
+      "symbol": "BTCUSDT",
+      "side": "LONG",
+      "action": "OPEN",
+      "qty": 0.0002499500099980004,
+      "price": 100020.0,
+      "fee": 0.01,
+      "realized_pnl": null,
+      "timestamp_utc": "2026-07-15T21:16:46.173812+00:00",
+      "user_id": null,
+      "bot_instance_id": "paper_smoke",
+      "broker_account_id": null,
+      "quote_currency": "USDT",
+      "base_currency": null,
+      "order_id": "paper_order_90ffb0ef3db24e18a8da8dc2f34b727c",
+      "strategy": "paper_execution_smoke",
+      "strategy_version": "0",
+      "timeframe": "15m",
+      "confidence": null,
+      "broker_id": "paper_simulator",
+      "account_id": "paper_smoke",
+      "asset_class": "CRYPTO",
+      "slippage_pct": 0.02,
+      "entry_price_expected": 100000.0,
+      "stop_loss_price": null,
+      "position_id": "paper_position_cb08561bd5554e3ca61de93edd97bb85",
+      "r_multiple": null,
+      "exit_reason": null,
+      "mfe_pct": null,
+      "mae_pct": null,
+      "exit_regime": null,
+      "exit_regime_confidence": null,
+      "initiator_type": null,
+      "trigger_source": null,
+      "position_phase": "SEEKING_TP1",
+      "time_in_trade_sec": null,
+      "sl_at_exit": null,
+      "tp_at_exit": null,
+      "market_price_used": null,
+      "price_source": null,
+      "opposite_signal_detected": null,
+      "ensemble_decision": null,
+      "risk_force_close": null,
+      "sync_state_before": null,
+      "sync_state_after": null,
+      "close_order_type": null,
+      "broker_response": "{\"avg_price\": 100020.0, \"execution_status\": \"PAPER_POSITION_OPENED\", \"fee\": 0.01, \"fee_bps\": 4.0, \"fill_id\": \"paper_fill_57c0cd524d99481287350dac6c036db0\", \"filled_qty\": 0.0002499500099980004, \"mode\": \"paper\", \"order_id\": \"paper_order_90ffb0ef3db24e18a8da8dc2f34b727c\", \"position_id\": \"paper_position_cb08561bd5554e3ca61de93edd97bb85\", \"protection\": {\"sl_order_id\": null, \"status\": \"PAPER_PROTECTION_ATTACHED\", \"tp_order_id\": null}, \"qty\": 0.0002499500099980004, \"reference_price\": 100000.0, \"side\": \"BUY\", \"sl_price\": null, \"slippage_bps\": 2.0, \"status\": \"PAPER_FILLED\", \"symbol\": \"BTCUSDT\", \"tp_price\": null}",
+      "expected_close": null,
+      "trace_id": "paper_smoke_trace_20260715T211646173812+0000",
+      "gross_pnl": null,
+      "total_fees": null,
+      "funding_fees": null,
+      "net_pnl": null,
+      "net_pnl_percent": null,
+      "entry_fee": null,
+      "exit_fee": null,
+      "fees_estimated": null,
+      "slippage_estimated": null
+    },
+    "iofs_summary": {
+      "sample_size": 100,
+      "modes": {
+        "shadow": 100
+      },
+      "reasons": {
+        "OUTSIDE_SESSION": 100
+      },
+      "blocked_trade_true": 0,
+      "latest_multitimeframe_evidence": {
+        "BTCUSDT": {
+          "timestamp_utc": "2026-06-20T08:32:37.646444+00:00",
+          "reason": "STRUCTURE_NOT_ACTIVE",
+          "trend_adx": 25.454712908317635,
+          "proves_complete_4h_1h_15m_fetch": true
+        },
+        "ETHUSDT": {
+          "timestamp_utc": "2026-06-20T08:32:11.729006+00:00",
+          "reason": "STRUCTURE_NOT_ACTIVE",
+          "trend_adx": 26.28629061850131,
+          "proves_complete_4h_1h_15m_fetch": true
+        }
+      }
+    },
+    "circuit_states": {}
+  },
+  "market_data": {
+    "BTCUSDT": {
+      "all_timeframes_healthy": true,
+      "timeframes": {
+        "15m": {
+          "timeframe": "15m",
+          "expected_count": 120,
+          "candle_count": 120,
+          "empty": false,
+          "critical_values_finite": true,
+          "latest_closed_candle_at": "2026-07-15T21:14:59.999000+00:00",
+          "age_seconds": 121.6,
+          "stale": false,
+          "status": "OK"
+        },
+        "1h": {
+          "timeframe": "1h",
+          "expected_count": 50,
+          "candle_count": 50,
+          "empty": false,
+          "critical_values_finite": true,
+          "latest_closed_candle_at": "2026-07-15T20:59:59.999000+00:00",
+          "age_seconds": 1021.6,
+          "stale": false,
+          "status": "OK"
+        },
+        "4h": {
+          "timeframe": "4h",
+          "expected_count": 220,
+          "candle_count": 220,
+          "empty": false,
+          "critical_values_finite": true,
+          "latest_closed_candle_at": "2026-07-15T19:59:59.999000+00:00",
+          "age_seconds": 4621.6,
+          "stale": false,
+          "status": "OK"
+        }
+      },
+      "runtime_feed_healthy": true,
+      "runtime_evidence": {
+        "fresh_15m_strategy_trace": true,
+        "latest_trace_at": "2026-07-15T21:16:46.173812+00:00",
+        "latest_trace_price": 100000.0,
+        "complete_4h_1h_15m_iofs_fetch_today": false,
+        "iofs_evidence": {
+          "timestamp_utc": "2026-06-20T08:32:37.646444+00:00",
+          "reason": "STRUCTURE_NOT_ACTIVE",
+          "trend_adx": 25.454712908317635,
+          "proves_complete_4h_1h_15m_fetch": true
+        }
+      }
+    },
+    "ETHUSDT": {
+      "all_timeframes_healthy": true,
+      "timeframes": {
+        "15m": {
+          "timeframe": "15m",
+          "expected_count": 120,
+          "candle_count": 120,
+          "empty": false,
+          "critical_values_finite": true,
+          "latest_closed_candle_at": "2026-07-15T21:14:59.999000+00:00",
+          "age_seconds": 121.6,
+          "stale": false,
+          "status": "OK"
+        },
+        "1h": {
+          "timeframe": "1h",
+          "expected_count": 50,
+          "candle_count": 50,
+          "empty": false,
+          "critical_values_finite": true,
+          "latest_closed_candle_at": "2026-07-15T20:59:59.999000+00:00",
+          "age_seconds": 1021.6,
+          "stale": false,
+          "status": "OK"
+        },
+        "4h": {
+          "timeframe": "4h",
+          "expected_count": 220,
+          "candle_count": 220,
+          "empty": false,
+          "critical_values_finite": true,
+          "latest_closed_candle_at": "2026-07-15T19:59:59.999000+00:00",
+          "age_seconds": 4621.6,
+          "stale": false,
+          "status": "OK"
+        }
+      },
+      "runtime_feed_healthy": false,
+      "runtime_evidence": {
+        "fresh_15m_strategy_trace": false,
+        "latest_trace_at": "2026-07-15T20:56:26.569847+00:00",
+        "latest_trace_price": 1923.2,
+        "complete_4h_1h_15m_iofs_fetch_today": false,
+        "iofs_evidence": {
+          "timestamp_utc": "2026-06-20T08:32:11.729006+00:00",
+          "reason": "STRUCTURE_NOT_ACTIVE",
+          "trend_adx": 26.28629061850131,
+          "proves_complete_4h_1h_15m_fetch": true
+        }
+      }
+    }
+  },
+  "block_summary": {
+    "generated_at": "2026-07-15T21:17:01.582842+00:00",
+    "sample_size": 100,
+    "scope": "latest BTCUSDT/ETHUSDT decision traces",
+    "counts": {
+      "session_blocked": 32,
+      "symbol_blocked": 0,
+      "regime_blocked": 12,
+      "threshold_blocked": 0,
+      "risk_budget_blocked": 0,
+      "max_daily_trades_blocked": 0,
+      "max_open_positions_blocked": 0,
+      "circuit_breaker_blocked": 0,
+      "kill_switch_blocked": 0,
+      "spread_blocked": 0,
+      "volume_blocked": 0,
+      "market_data_failed": 0,
+      "strategy_no_signal": 56,
+      "iofs_blocked": 0,
+      "ml_blocked": 0,
+      "executor_error": 0
+    },
+    "top_blocker": "strategy_no_signal",
+    "submitted_attempts": 2,
+    "executor_errors": 0
+  },
+  "wider_history": {
+    "sample_size": 2000,
+    "in_session_sample_size": 763,
+    "in_session_actions": {
+      "HOLD": 763
+    },
+    "in_session_submit_attempts": 0,
+    "in_session_block_counts": {
+      "session_blocked": 1,
+      "symbol_blocked": 0,
+      "regime_blocked": 0,
+      "threshold_blocked": 0,
+      "risk_budget_blocked": 0,
+      "max_daily_trades_blocked": 0,
+      "max_open_positions_blocked": 0,
+      "circuit_breaker_blocked": 0,
+      "kill_switch_blocked": 0,
+      "spread_blocked": 0,
+      "volume_blocked": 0,
+      "market_data_failed": 0,
+      "strategy_no_signal": 762,
+      "iofs_blocked": 0,
+      "ml_blocked": 0,
+      "executor_error": 0
+    }
+  },
+  "cycles": [
+    {
+      "cycle_id": "paper_smoke_cycle_2026-07-15T21:16:46.173812+00:00",
+      "symbols": [
+        {
+          "cycle_started": "2026-07-15T21:16:46.173812+00:00",
+          "symbol": "BTCUSDT",
+          "timestamp": "2026-07-15T21:16:46.173812+00:00",
+          "market_data_loaded": true,
+          "strategy_decision_created": true,
+          "decision_action": "BUY",
+          "decision_confidence": 1.0,
+          "blocked": false,
+          "block_reason": "strategy_no_signal",
+          "raw_gate_reason": "PAPER_EXECUTION_SMOKE",
+          "executor_called": true,
+          "executor_would_be_called": true,
+          "paper_order_created": true,
+          "cycle_completed": true,
+          "execution_status": "PAPER_POSITION_OPENED"
+        }
+      ]
+    },
+    {
+      "cycle_id": "36ff074d-5244-4062-9dc3-719131357d8b",
+      "symbols": [
+        {
+          "cycle_started": "2026-07-15T21:14:29.525856+00:00",
+          "symbol": "BTCUSDT",
+          "timestamp": "2026-07-15T21:14:29.525856+00:00",
+          "market_data_loaded": true,
+          "strategy_decision_created": true,
+          "decision_action": "HOLD",
+          "decision_confidence": 0.0,
+          "blocked": true,
+          "block_reason": "session_blocked",
+          "raw_gate_reason": "SESSION_BLOCKED",
+          "executor_called": false,
+          "executor_would_be_called": false,
+          "paper_order_created": false,
+          "cycle_completed": true,
+          "execution_status": "None"
+        }
+      ]
+    },
+    {
+      "cycle_id": "5d697672-ccd0-426a-a5e7-e85062b55857",
+      "symbols": [
+        {
+          "cycle_started": "2026-07-15T20:58:39.946546+00:00",
+          "symbol": "BTCUSDT",
+          "timestamp": "2026-07-15T20:58:39.946546+00:00",
+          "market_data_loaded": true,
+          "strategy_decision_created": true,
+          "decision_action": "HOLD",
+          "decision_confidence": 0.0,
+          "blocked": true,
+          "block_reason": "session_blocked",
+          "raw_gate_reason": "SESSION_BLOCKED",
+          "executor_called": false,
+          "executor_would_be_called": false,
+          "paper_order_created": false,
+          "cycle_completed": true,
+          "execution_status": "None"
+        }
+      ]
+    },
+    {
+      "cycle_id": "paper_smoke_cycle_2026-07-15T20:56:31.046205+00:00",
+      "symbols": [
+        {
+          "cycle_started": "2026-07-15T20:56:31.046205+00:00",
+          "symbol": "BTCUSDT",
+          "timestamp": "2026-07-15T20:56:31.046205+00:00",
+          "market_data_loaded": true,
+          "strategy_decision_created": true,
+          "decision_action": "BUY",
+          "decision_confidence": 1.0,
+          "blocked": false,
+          "block_reason": "strategy_no_signal",
+          "raw_gate_reason": "PAPER_EXECUTION_SMOKE",
+          "executor_called": true,
+          "executor_would_be_called": true,
+          "paper_order_created": true,
+          "cycle_completed": true,
+          "execution_status": "PAPER_POSITION_OPENED"
+        }
+      ]
+    },
+    {
+      "cycle_id": "e95ebfbc-9034-499c-a5a9-798a7fa71624",
+      "symbols": [
+        {
+          "cycle_started": "2026-07-15T20:54:24.656269+00:00",
+          "symbol": "BTCUSDT",
+          "timestamp": "2026-07-15T20:54:24.656269+00:00",
+          "market_data_loaded": true,
+          "strategy_decision_created": true,
+          "decision_action": "HOLD",
+          "decision_confidence": 0.0,
+          "blocked": true,
+          "block_reason": "session_blocked",
+          "raw_gate_reason": "SESSION_BLOCKED",
+          "executor_called": false,
+          "executor_would_be_called": false,
+          "paper_order_created": false,
+          "cycle_completed": true,
+          "execution_status": "None"
+        },
+        {
+          "cycle_started": "2026-07-15T20:56:26.569847+00:00",
+          "symbol": "ETHUSDT",
+          "timestamp": "2026-07-15T20:56:26.569847+00:00",
+          "market_data_loaded": false,
+          "strategy_decision_created": true,
+          "decision_action": "HOLD",
+          "decision_confidence": 0.0,
+          "blocked": true,
+          "block_reason": "regime_blocked",
+          "raw_gate_reason": "REGIME_LOW_VOL_CHOP_SUSPENDED",
+          "executor_called": false,
+          "executor_would_be_called": false,
+          "paper_order_created": false,
+          "cycle_completed": true,
+          "execution_status": "None"
+        }
+      ]
+    }
+  ],
+  "findings": {
+    "runner_loop_alive": true,
+    "market_data_loading": false,
+    "strategy_decisions_created": true,
+    "paper_executor_reached": true,
+    "paper_orders_attempted": 2,
+    "top_blocking_reason": "strategy_no_signal",
+    "iofs_shadow_blocking_bug": false,
+    "ml_disabled_blocking_bug": false,
+    "session_filter_blocking_all_cycles": false,
+    "latest_sample_all_session_blocked": false,
+    "circuit_or_daily_limit_stuck": false,
+    "executor_reachable_when_gates_pass": true
+  },
+  "exact_root_cause": "Exact root cause: during the configured 06:00-19:00 UTC runtime window, the master ensemble generated only HOLD/no-setup decisions for BTCUSDT and ETHUSDT, so execution was never eligible. After 19:00 UTC, the intentional ensemble session gate blocks cycles. IOFS shadow, disabled ML, daily limits, and circuit breakers are not the cause.",
+  "fix_applied": "Added this read-only diagnostic and explicit block-reason evidence. No trading thresholds or safety configuration were loosened."
+}

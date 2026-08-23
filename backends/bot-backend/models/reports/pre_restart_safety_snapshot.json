@@ -1,0 +1,50 @@
+{
+  "captured_at_utc": "2026-06-15T04:43:37.1774343Z",
+  "active_env_sha256": "1CF36622DD75B4AB091BB0D35CE9950FC641749A9857BA916B2435617E13D97C",
+  "active_env": {
+    "EXECUTION_MODE": "paper",
+    "ML_ENABLED": false,
+    "IOFS_GATE_MODE": "shadow",
+    "TRADE_SYMBOLS": "BTCUSDT,ETHUSDT",
+    "ENSEMBLE_SESSION_FILTER_ENABLED": true,
+    "ENSEMBLE_SESSION_WINDOWS_UTC": "06:00-19:00",
+    "MAX_TRADES_DAILY": 3,
+    "STRATEGY_NAME": "master_ensemble"
+  },
+  "models_production": {
+    "files": [
+      "README.md"
+    ],
+    "pkl_model_count": 0,
+    "production_model_exists": false
+  },
+  "runtime": {
+    "service": "bot-backend",
+    "port": 9000,
+    "healthy": true,
+    "execution_mode": "paper",
+    "exchange_environment": "testnet",
+    "working_directory": "C:\\Users\\favou\\OneDrive\\Desktop\\cosmicforge-bot\\backends\\bot-backend",
+    "uvicorn_root_pid": 26472,
+    "worker_pid": 77832,
+    "process_started_at_utc": "2026-06-14T21:30:40.522025+00:00",
+    "runner_running": true,
+    "bot_instance_id": "bot_e5fe913972a9",
+    "bot_instance_mode": "paper",
+    "bot_instance_symbols": [
+      "BTCUSDT",
+      "ETHUSDT"
+    ]
+  },
+  "git_status": {
+    "summary": "The top-level repository reports backends/bot-backend as untracked; active .env has no separate status entry.",
+    "active_env_changed": false
+  },
+  "safety_confirmation": {
+    "paper_only": true,
+    "ml_disabled": true,
+    "iofs_shadow": true,
+    "no_production_model": true,
+    "no_live_capital": true
+  }
+}

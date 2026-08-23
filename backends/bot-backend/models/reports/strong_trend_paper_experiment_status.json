@@ -1,0 +1,103 @@
+{
+  "BTC_strong_trend_trades": 0,
+  "BUY_count": 32,
+  "ETH_strong_trend_trades": 0,
+  "SELL_count": 36,
+  "STRONG_TREND_ALLOWED_ONLY_IN_PAPER": true,
+  "auto_restore_performed": false,
+  "auto_restore_reason": null,
+  "auto_stop_rules_configured": true,
+  "experiment_start_time": "2026-06-15T17:21:40.112591Z",
+  "false_positive_reason": "",
+  "filtering": {
+    "active_bot_instance_id": null,
+    "decision_traces_bot_instance_filter_applied": false,
+    "experiment_start_time": "2026-06-15T17:21:40.112591Z",
+    "symbols": [
+      "BTCUSDT",
+      "ETHUSDT"
+    ],
+    "trade_fills_bot_instance_filter_applied": false
+  },
+  "generated_at_utc": "2026-07-15T21:17:34.200091+00:00",
+  "non_strong_trend_metrics": {
+    "SL_count": 0,
+    "TP1_count": 0,
+    "TP2_count": 0,
+    "break_even_buffer_count": 0,
+    "closed_trades": 0,
+    "expectancy_R": null,
+    "max_consecutive_losses": 0,
+    "max_drawdown_R": 0.0,
+    "profit_factor": null,
+    "time_exit_count": 0,
+    "win_rate": null
+  },
+  "order_consistency_note": "Historical submit_attempted rows are failed attempts, not created paper orders.",
+  "order_count_diagnosis_path": "C:\\Users\\favou\\OneDrive\\Desktop\\cosmicforge-bot\\backends\\bot-backend\\models\\reports\\strong_trend_order_count_diagnosis.json",
+  "order_count_diagnosis_summary": {
+    "duplicate_orders": 0,
+    "failed_attempts": 68,
+    "historical_paper_only_skipped_attempts": 68,
+    "old_orders_before_clean_start": 347,
+    "old_orders_before_experiment": 0,
+    "test_fixture_rows": 0,
+    "total_reported_paper_orders": 68,
+    "unknown_rows": 0,
+    "valid_post_experiment_strong_trend_orders": 0,
+    "wrong_bot_instance_orders": 0,
+    "wrong_regime_orders": 3,
+    "wrong_symbol_orders": 0
+  },
+  "paper_order_errors": 68,
+  "previous_stop_was_false_positive": false,
+  "runtime_safety": {
+    "execution_mode": "paper",
+    "iofs_gate_mode": "shadow",
+    "live_symbols_count": 0,
+    "ml_enabled": false,
+    "strong_trend_guard": {
+      "allowed_only_in_paper": true,
+      "configured_unblocked": true,
+      "effective_blocked_regimes": [],
+      "effective_unblocked": true,
+      "execution_mode_paper": true,
+      "forced_blocked": false,
+      "live_symbols_count": 0,
+      "ml_disabled": true,
+      "reason": "paper_only_requirements_met"
+    },
+    "trade_symbols": "BTCUSDT,ETHUSDT"
+  },
+  "scope": "paper_only",
+  "stop_reason": "strong_trend_order_errors_since_experiment_start >= 2",
+  "stop_recommended": true,
+  "stop_rules": [
+    "closed STRONG_TREND trades >= 5 and expectancy_R <= 0",
+    "closed STRONG_TREND trades >= 5 and profit_factor < 1.0",
+    "max_drawdown_R >= 3.0",
+    "three consecutive STRONG_TREND losses",
+    "strong_trend_order_errors_since_experiment_start >= 2"
+  ],
+  "strong_trend_closed_trades": 0,
+  "strong_trend_cycles": 2699,
+  "strong_trend_fills": 0,
+  "strong_trend_metrics": {
+    "SL_count": 0,
+    "TP1_count": 0,
+    "TP2_count": 0,
+    "break_even_buffer_count": 0,
+    "closed_trades": 0,
+    "expectancy_R": null,
+    "max_consecutive_losses": 0,
+    "max_drawdown_R": 0.0,
+    "profit_factor": null,
+    "time_exit_count": 0,
+    "win_rate": null
+  },
+  "strong_trend_order_attempts": 68,
+  "strong_trend_order_errors": 68,
+  "strong_trend_paper_orders": 0,
+  "strong_trend_paper_orders_created": 0,
+  "strong_trend_signals": 68
+}

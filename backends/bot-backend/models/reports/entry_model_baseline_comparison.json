@@ -1,0 +1,35 @@
+{
+  "generated_at": "2026-06-14T15:48:28.299032+00:00",
+  "dataset_path": "C:\\Users\\favou\\OneDrive\\Desktop\\cosmicforge-bot\\backends\\bot-backend\\models\\datasets\\training_v2_organic.parquet",
+  "row_count": 326,
+  "train_rows": 278,
+  "holdout_rows": 48,
+  "models": {
+    "logistic_regression": {
+      "holdout_auc": 0.574939,
+      "walk_forward_auc_mean": 0.60708,
+      "walk_forward_auc_std": 0.036721,
+      "walk_forward_fold_count": 3,
+      "quartile_gap": 0.166667,
+      "precision_top_quartile": 0.333333,
+      "tp_hit_rate_top_quartile": 0.25,
+      "win_rate_gap": 0.166667,
+      "profit_factor_proxy_top_quartile": 0.940185
+    },
+    "lightgbm_fixed_baseline": {
+      "holdout_auc": 0.675676,
+      "walk_forward_auc_mean": 0.605287,
+      "walk_forward_auc_std": 0.062657,
+      "walk_forward_fold_count": 3,
+      "quartile_gap": 0.416667,
+      "precision_top_quartile": 0.416667,
+      "tp_hit_rate_top_quartile": 0.25,
+      "win_rate_gap": 0.416667,
+      "profit_factor_proxy_top_quartile": 1.102406
+    }
+  },
+  "best_holdout_auc_model": "lightgbm_fixed_baseline",
+  "lightgbm_beats_logistic_by": 0.100737,
+  "lightgbm_beats_logistic_walk_forward_by": -0.001793,
+  "recommendation": "Do not continue with LightGBM; logistic baseline performs better."
+}

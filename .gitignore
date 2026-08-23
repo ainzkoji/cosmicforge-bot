@@ -1,0 +1,105 @@
+# Legacy singular app roots removed after monorepo split.
+/backend/
+/frontend/
+
+# Virtual environments / dependencies.
+venv/
+.venv/
+env/
+ENV/
+**/venv/
+**/.venv/
+**/node_modules/
+
+# Build outputs.
+dist/
+build/
+**/dist/
+**/build/
+dist-ssr/
+**/dist-ssr/
+
+# Python caches / test caches.
+__pycache__/
+**/__pycache__/
+.pytest_cache/
+**/.pytest_cache/
+*.pyc
+*.pyo
+*.pyd
+
+# Runtime databases / local state.
+*.db
+*.db-wal
+*.db-shm
+*.db-journal
+*.sqlite
+*.sqlite3
+data/*.db
+**/data/*.db
+**/data/*.db-wal
+**/data/*.db-shm
+**/*.db-journal
+
+# Logs and transient command output.
+*.log
+logs/
+**/logs/
+*_out.txt
+*out*.txt
+out*.txt
+final_run*.txt
+test_results*.txt
+*results*.txt
+pytest_out.txt
+pytest_val_out.txt
+tests_out.txt
+test_out.txt
+test_final*.txt
+*_fail.txt
+*fail*.txt
+exec_out.txt
+exec_fail.txt
+format_fail.txt
+log_fail.txt
+debug_output.txt
+
+# Generated reports / ML artifacts.
+tmp_*.py
+debug_*.py
+dump_*.py
+diagnose_*.py
+audit_*.py
+check_schema*.py
+report.xml
+error.txt
+rccomponentsui
+/tmp_event_feature_build/
+/reports/
+**/audit_report*.json
+**/audit_*report*.json
+**/debug_results.json
+**/validation_report*.json
+**/models/artifacts/
+**/models/datasets/
+**/models/experiments/
+**/*.parquet
+**/*.pkl
+
+# Local cleanup archives.
+/repo_cleanup_backup_*/
+
+# Local env / secrets.
+.env
+.env.*
+!.env.example
+!.env.shadow_mode.example
+
+# OS / editor noise.
+.DS_Store
+Thumbs.db
+desktop.ini
+.idea/
+.vscode/
+
+data/bot.db

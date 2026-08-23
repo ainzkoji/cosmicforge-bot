@@ -1,0 +1,148 @@
+{
+  "IOFS_GATE_MODE": "shadow",
+  "ML_ENABLED": false,
+  "active_bot": {
+    "active_positions": 0,
+    "id": "bot_e5fe913972a9",
+    "last_error": null,
+    "last_run_at": "2026-07-17T23:29:53.360469+00:00",
+    "mode": "paper",
+    "status": "active"
+  },
+  "active_positions": 0,
+  "alerts": [
+    {
+      "alert_name": "NO_TRADES_AFTER_24H",
+      "evidence": "Zero closed paper trades after 786.7 hours from clean start.",
+      "recommended_action": "continue_monitoring",
+      "severity": "warning"
+    },
+    {
+      "alert_name": "NO_TRADES_AFTER_72H",
+      "evidence": "Zero closed paper trades after 786.7 hours from clean start.",
+      "recommended_action": "run_signal_audit",
+      "severity": "warning"
+    },
+    {
+      "alert_name": "NO_TRADES_AFTER_7D",
+      "evidence": "Zero closed paper trades after 786.7 hours from clean start.",
+      "recommended_action": "run_signal_audit",
+      "severity": "critical"
+    },
+    {
+      "alert_name": "REGIME_BLOCKING_DOMINATES",
+      "evidence": "Regime blocks are 50/100 latest traces.",
+      "recommended_action": "review_strong_trend_experiment",
+      "severity": "info"
+    },
+    {
+      "alert_name": "STRONG_TREND_STOP_RECOMMENDED",
+      "evidence": "strong_trend_order_errors_since_experiment_start >= 2",
+      "recommended_action": "review_strong_trend_experiment",
+      "severity": "critical"
+    }
+  ],
+  "binance_env": "testnet",
+  "blocking_reasons": [
+    "Organic rows 326 are below retry threshold 500.",
+    "IOFS organic/paper rows 0 are below retry threshold 300.",
+    "Closed IOFS paper trades 0 are below retry threshold 20.",
+    "No accepted validated runtime-compatible v2 .pkl artifact exists.",
+    "Section 5B promotion guard does not allow deployment."
+  ],
+  "bot_process_running": true,
+  "circuit_breaker_count": 0,
+  "clean_start_utc": "2026-06-15T04:46:39.294507Z",
+  "closed_iofs_paper_trades": 0,
+  "closed_paper_trades_since_clean_start": 0,
+  "closed_paper_trades_today": 0,
+  "closed_paper_trades_total": 3280,
+  "crash_loop_count": 28,
+  "daily_loss_status": {
+    "daily_loss_limit_usdt": 50.0,
+    "kill_switch_active": false,
+    "realized_pnl": 0.0,
+    "status": "OK"
+  },
+  "env_changed": false,
+  "execution_mode": "paper",
+  "experiment_start_time": "2026-06-15T17:21:40.112591Z",
+  "generated_at_utc": "2026-07-17T23:30:00.012139+00:00",
+  "health_error": null,
+  "health_ok": true,
+  "iofs_organic_rows": 0,
+  "last_closed_trade_time": "2026-06-04T16:54:02.265398+00:00",
+  "last_decision_time": "2026-07-17T23:29:43.209958+00:00",
+  "last_fill_time": "2026-06-07T23:33:27.177152+00:00",
+  "last_order_time": "2026-06-17T12:30:44.589545+00:00",
+  "latest_block_reasons": {
+    "regime_blocked": 50,
+    "session_blocked": 50
+  },
+  "latest_component_failures": {
+    "adx_above_threshold": 1028,
+    "bollinger_extreme": 102,
+    "confirmed_close_within_atr_distance": 86,
+    "directional_momentum": 7,
+    "ema50_ema200_trend_alignment": 56,
+    "ema_reaction": 26,
+    "ema_slope_confirmation": 20,
+    "ema_trend_alignment": 514,
+    "fresh_donchian_breakout": 1340,
+    "fresh_fast_slow_sma_cross": 1508,
+    "recent_squeeze": 82,
+    "reversal_candle": 1,
+    "reversion_candle": 4,
+    "rsi_extreme": 114,
+    "rsi_reset_and_turn": 941
+  },
+  "latest_hold_reasons": {
+    "regime_blocked": 50,
+    "session_blocked": 50
+  },
+  "latest_regime_distribution": {
+    "LOW_VOLATILITY_CHOP": 50,
+    "WEAK_TREND": 50
+  },
+  "latest_trace_sample_size": 100,
+  "live_symbols_count": 0,
+  "max_daily_trades_status": {
+    "limit": 3,
+    "status": "OK",
+    "trade_count": 0
+  },
+  "organic_rows": 326,
+  "paper_fills_today": 0,
+  "paper_orders_today": 0,
+  "pipeline_error": null,
+  "production_changed": false,
+  "ready_for_5b": false,
+  "ready_to_retry_5a": false,
+  "section4_status": "In Progress",
+  "section5b_status": "BLOCKED",
+  "stop_reason": "strong_trend_order_errors_since_experiment_start >= 2",
+  "stop_recommended": true,
+  "strong_trend_closed_trades": 0,
+  "strong_trend_cycles": 3138,
+  "strong_trend_expectancy_R": null,
+  "strong_trend_experiment_active": true,
+  "strong_trend_experiment_changed": false,
+  "strong_trend_fills": 0,
+  "strong_trend_max_drawdown_R": 0.0,
+  "strong_trend_order_attempts": 68,
+  "strong_trend_order_consistency_note": "Historical submit_attempted rows are failed attempts, not created paper orders.",
+  "strong_trend_order_count_diagnosis_summary": {
+    "failed_attempts": 68,
+    "historical_paper_only_skipped_attempts": 68,
+    "total_reported_paper_orders": 68,
+    "valid_post_experiment_strong_trend_orders": 0
+  },
+  "strong_trend_order_errors": 68,
+  "strong_trend_paper_orders": 0,
+  "strong_trend_paper_orders_created": 0,
+  "strong_trend_profit_factor": null,
+  "strong_trend_signals": 68,
+  "strong_trend_win_rate": null,
+  "t25_status": "NOT_STARTED",
+  "trade_symbols": "BTCUSDT,ETHUSDT"
+}

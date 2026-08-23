@@ -1,0 +1,2912 @@
+{
+  "BREAK_EVEN_BUFFER_count": 1,
+  "BUY_count": 1,
+  "HOLD_count": 991,
+  "SELL_count": 8,
+  "SL_count": 4,
+  "TIME_EXIT_count": 0,
+  "TP1_count": 4,
+  "TP2_count": 3,
+  "accepted_trades": [
+    {
+      "action": "SELL",
+      "adaptive_weight_adjustments": {},
+      "ambiguous_candle": true,
+      "buy_score": 0.0,
+      "candle_mode": "closed",
+      "candles_held": 8,
+      "component_breakdown": [
+        {
+          "component_confidence": 0.8,
+          "component_enabled": true,
+          "component_failed_conditions": [],
+          "component_name": "supertrend",
+          "component_reason": "supertrend_ema",
+          "component_required_conditions": [
+            "supertrend_flip_or_continuation",
+            "ema_slope_confirmation"
+          ],
+          "component_signal": "SELL",
+          "confidence": 0.8,
+          "failed_conditions": [],
+          "indicator_snapshot": {
+            "ema_slope": -0.7711806462991199,
+            "reasons": [
+              "supertrend_bearish",
+              "strong_ema_slope"
+            ],
+            "strategy_type": "TREND",
+            "supertrend": 88645.81,
+            "supertrend_dir": -1
+          },
+          "indicator_values": {
+            "ema_slope": -0.7711806462991199,
+            "reasons": [
+              "supertrend_bearish",
+              "strong_ema_slope"
+            ],
+            "strategy_type": "TREND",
+            "supertrend": 88645.81,
+            "supertrend_dir": -1
+          },
+          "market_regime": "STRONG_TREND",
+          "reason": "supertrend_ema",
+          "session_allowed": true,
+          "signal": "SELL",
+          "strategy": "supertrend",
+          "symbol": "BTCUSDT",
+          "timeframe": "15m",
+          "timestamp": "2026-06-16T19:11:02.137380+00:00"
+        },
+        {
+          "component_confidence": 0.0,
+          "component_enabled": true,
+          "component_failed_conditions": [
+            "rsi_reset_and_turn"
+          ],
+          "component_name": "trend_pullback",
+          "component_reason": "no_signal",
+          "component_required_conditions": [
+            "adx_above_threshold",
+            "ema_trend_alignment",
+            "rsi_reset_and_turn",
+            "ema_reaction"
+          ],
+          "component_signal": "HOLD",
+          "confidence": 0.0,
+          "failed_conditions": [
+            "TREND_FILTER_FAILED"
+          ],
+          "indicator_snapshot": {
+            "adx": 47.236417459377826,
+            "close": 86288.4,
+            "ema_fast": 88114.06000974662,
+            "ema_fast_previous": 88306.2347476147,
+            "ema_slow": 88796.56105571102,
+            "previous_close": 86870.3,
+            "reasons": [
+              "adx_strong:47.2",
+              "downtrend"
+            ],
+            "rsi": 17.099991168501475,
+            "rsi_previous": 20.574723796924218
+          },
+          "indicator_values": {
+            "adx": 47.236417459377826,
+            "close": 86288.4,
+            "ema_fast": 88114.06000974662,
+            "ema_fast_previous": 88306.2347476147,
+            "ema_slow": 88796.56105571102,
+            "previous_close": 86870.3,
+            "reasons": [
+              "adx_strong:47.2",
+              "downtrend"
+            ],
+            "rsi": 17.099991168501475,
+            "rsi_previous": 20.574723796924218
+          },
+          "market_regime": "STRONG_TREND",
+          "reason": "no_signal",
+          "session_allowed": true,
+          "signal": "HOLD",
+          "strategy": "trend_pullback",
+          "symbol": "BTCUSDT",
+          "timeframe": "15m",
+          "timestamp": "2026-06-16T19:11:02.137380+00:00"
+        },
+        {
+          "component_confidence": 0.0,
+          "component_enabled": true,
+          "component_failed_conditions": [
+            "fresh_fast_slow_sma_cross"
+          ],
+          "component_name": "sma_cross",
+          "component_reason": "no_cross",
+          "component_required_conditions": [
+            "fresh_fast_slow_sma_cross"
+          ],
+          "component_signal": "HOLD",
+          "confidence": 0.0,
+          "failed_conditions": [
+            "NO_PATTERN"
+          ],
+          "indicator_snapshot": {
+            "candle_count": 120,
+            "fast_sma_current": 87501.79000000001,
+            "fast_sma_previous": 87829.93000000001,
+            "slow_sma_current": 88932.05333333333,
+            "slow_sma_previous": 89049.10666666667
+          },
+          "indicator_values": {
+            "candle_count": 120,
+            "fast_sma_current": 87501.79000000001,
+            "fast_sma_previous": 87829.93000000001,
+            "slow_sma_current": 88932.05333333333,
+            "slow_sma_previous": 89049.10666666667
+          },
+          "market_regime": "STRONG_TREND",
+          "reason": "no_cross",
+          "session_allowed": true,
+          "signal": "HOLD",
+          "strategy": "sma_cross",
+          "symbol": "BTCUSDT",
+          "timeframe": "15m",
+          "timestamp": "2026-06-16T19:11:02.137380+00:00"
+        },
+        {
+          "component_confidence": 0.853224553224551,
+          "component_enabled": true,
+          "component_failed_conditions": [],
+          "component_name": "donchian_breakout",
+          "component_reason": "donchian_breakout",
+          "component_required_conditions": [
+            "adx_above_threshold",
+            "ema50_ema200_trend_alignment",
+            "fresh_donchian_breakout",
+            "confirmed_close_within_atr_distance"
+          ],
+          "component_signal": "SELL",
+          "confidence": 0.853224553224551,
+          "failed_conditions": [],
+          "indicator_snapshot": {
+            "adx": 47.236417459377826,
+            "atr": 588.3428571428542,
+            "dc_lower": 86000.0,
+            "dc_upper": 89845.0,
+            "reasons": [
+              "adx_strong:47.2",
+              "breakout_below_donchian",
+              "trend_aligned_down",
+              "valid_distance:0.47atr",
+              "confirmed_close"
+            ],
+            "strategy_type": "BREAKOUT"
+          },
+          "indicator_values": {
+            "adx": 47.236417459377826,
+            "atr": 588.3428571428542,
+            "dc_lower": 86000.0,
+            "dc_upper": 89845.0,
+            "reasons": [
+              "adx_strong:47.2",
+              "breakout_below_donchian",
+              "trend_aligned_down",
+              "valid_distance:0.47atr",
+              "confirmed_close"
+            ],
+            "strategy_type": "BREAKOUT"
+          },
+          "market_regime": "STRONG_TREND",
+          "reason": "donchian_breakout",
+          "session_allowed": true,
+          "signal": "SELL",
+          "strategy": "donchian_breakout",
+          "symbol": "BTCUSDT",
+          "timeframe": "15m",
+          "timestamp": "2026-06-16T19:11:02.138381+00:00"
+        },
+        {
+          "component_confidence": 0.0,
+          "component_enabled": false,
+          "component_failed_conditions": [],
+          "component_name": "bollinger_reversion",
+          "component_reason": "disabled_for_regime:STRONG_TREND",
+          "component_required_conditions": [
+            "bollinger_extreme",
+            "rsi_extreme",
+            "reversal_candle"
+          ],
+          "component_signal": "DISABLED",
+          "confidence": 0.0,
+          "failed_conditions": [],
+          "indicator_snapshot": {},
+          "indicator_values": {},
+          "market_regime": "STRONG_TREND",
+          "reason": "disabled_for_regime:STRONG_TREND",
+          "session_allowed": true,
+          "signal": "DISABLED",
+          "strategy": "bollinger_reversion",
+          "symbol": "BTCUSDT",
+          "timeframe": "15m",
+          "timestamp": "2026-06-16T19:11:02.138381+00:00"
+        },
+        {
+          "component_confidence": 0.0,
+          "component_enabled": false,
+          "component_failed_conditions": [],
+          "component_name": "squeeze_breakout",
+          "component_reason": "disabled_for_regime:STRONG_TREND",
+          "component_required_conditions": [
+            "recent_squeeze",
+            "squeeze_release",
+            "directional_momentum"
+          ],
+          "component_signal": "DISABLED",
+          "confidence": 0.0,
+          "failed_conditions": [],
+          "indicator_snapshot": {},
+          "indicator_values": {},
+          "market_regime": "STRONG_TREND",
+          "reason": "disabled_for_regime:STRONG_TREND",
+          "session_allowed": true,
+          "signal": "DISABLED",
+          "strategy": "squeeze_breakout",
+          "symbol": "BTCUSDT",
+          "timeframe": "15m",
+          "timestamp": "2026-06-16T19:11:02.138381+00:00"
+        },
+        {
+          "component_confidence": 0.0,
+          "component_enabled": false,
+          "component_failed_conditions": [],
+          "component_name": "vwap_reversion",
+          "component_reason": "disabled_for_regime:STRONG_TREND",
+          "component_required_conditions": [
+            "adx_below_reversion_max",
+            "vwap_deviation",
+            "rsi_extreme",
+            "reversion_candle"
+          ],
+          "component_signal": "DISABLED",
+          "confidence": 0.0,
+          "failed_conditions": [],
+          "indicator_snapshot": {},
+          "indicator_values": {},
+          "market_regime": "STRONG_TREND",
+          "reason": "disabled_for_regime:STRONG_TREND",
+          "session_allowed": true,
+          "signal": "DISABLED",
+          "strategy": "vwap_reversion",
+          "symbol": "BTCUSDT",
+          "timeframe": "5m",
+          "timestamp": "2026-06-16T19:11:02.138381+00:00"
+        }
+      ],
+      "confidence": 0.8897306397306389,
+      "entry": 86288.3,
+      "entry_open_time": "2025-12-15T16:45:00+00:00",
+      "entry_time": "2025-12-15T16:45:00+00:00",
+      "execution_block_reason": null,
+      "exit_time": 1765823400000,
+      "fees_impact_r": 0.117331,
+      "gross_r_multiple": 1.5,
+      "hold_reason": null,
+      "outcome": "TP2",
+      "r_multiple": 1.324004,
+      "reason": "master_ensemble_v2",
+      "regime": "STRONG_TREND",
+      "risk": 588.34285714,
+      "sell_score": 0.8897,
+      "session_allowed": true,
+      "side": "SELL",
+      "signal_open_time": "2025-12-15T16:30:00+00:00",
+      "signal_time": "2025-12-15T16:45:00+00:00",
+      "slippage_impact_r": 0.058665,
+      "symbol": "BTCUSDT",
+      "threshold": 0.55,
+      "tp1_hit": true
+    },
+    {
+      "action": "SELL",
+      "adaptive_weight_adjustments": {},
+      "ambiguous_candle": false,
+      "buy_score": 0.0,
+      "candle_mode": "closed",
+      "candles_held": 2,
+      "component_breakdown": [
+        {
+          "component_confidence": 0.0,
+          "component_enabled": true,
+          "component_failed_conditions": [
+            "rsi_reset_and_turn"
+          ],
+          "component_name": "trend_pullback",
+          "component_reason": "no_signal",
+          "component_required_conditions": [
+            "adx_above_threshold",
+            "ema_trend_alignment",
+            "rsi_reset_and_turn",
+            "ema_reaction"
+          ],
+          "component_signal": "HOLD",
+          "confidence": 0.0,
+          "failed_conditions": [
+            "TREND_FILTER_FAILED"
+          ],
+          "indicator_snapshot": {
+            "adx": 60.82555915211781,
+            "close": 85558.1,
+            "ema_fast": 86999.87145797786,
+            "ema_fast_previous": 87151.63687460711,
+            "ema_slow": 88096.77564642018,
+            "previous_close": 85849.5,
+            "reasons": [
+              "adx_strong:60.8",
+              "downtrend"
+            ],
+            "rsi": 16.905808522997532,
+            "rsi_previous": 18.73737437113381
+          },
+          "indicator_values": {
+            "adx": 60.82555915211781,
+            "close": 85558.1,
+            "ema_fast": 86999.87145797786,
+            "ema_fast_previous": 87151.63687460711,
+            "ema_slow": 88096.77564642018,
+            "previous_close": 85849.5,
+            "reasons": [
+              "adx_strong:60.8",
+              "downtrend"
+            ],
+            "rsi": 16.905808522997532,
+            "rsi_previous": 18.73737437113381
+          },
+          "market_regime": "STRONG_TREND",
+          "reason": "no_signal",
+          "session_allowed": true,
+          "signal": "HOLD",
+          "strategy": "trend_pullback",
+          "symbol": "BTCUSDT",
+          "timeframe": "15m",
+          "timestamp": "2026-06-16T19:11:02.304266+00:00"
+        },
+        {
+          "component_confidence": 0.8,
+          "component_enabled": true,
+          "component_failed_conditions": [],
+          "component_name": "supertrend",
+          "component_reason": "supertrend_ema",
+          "component_required_conditions": [
+            "supertrend_flip_or_continuation",
+            "ema_slope_confirmation"
+          ],
+          "component_signal": "SELL",
+          "confidence": 0.8,
+          "failed_conditions": [],
+          "indicator_snapshot": {
+            "ema_slope": -0.714059487761911,
+            "reasons": [
+              "supertrend_bearish",
+              "strong_ema_slope"
+            ],
+            "strategy_type": "TREND",
+            "supertrend": 87024.60999999999,
+            "supertrend_dir": -1
+          },
+          "indicator_values": {
+            "ema_slope": -0.714059487761911,
+            "reasons": [
+              "supertrend_bearish",
+              "strong_ema_slope"
+            ],
+            "strategy_type": "TREND",
+            "supertrend": 87024.60999999999,
+            "supertrend_dir": -1
+          },
+          "market_regime": "STRONG_TREND",
+          "reason": "supertrend_ema",
+          "session_allowed": true,
+          "signal": "SELL",
+          "strategy": "supertrend",
+          "symbol": "BTCUSDT",
+          "timeframe": "15m",
+          "timestamp": "2026-06-16T19:11:02.304266+00:00"
+        },
+        {
+          "component_confidence": 0.0,
+          "component_enabled": true,
+          "component_failed_conditions": [
+            "fresh_fast_slow_sma_cross"
+          ],
+          "component_name": "sma_cross",
+          "component_reason": "no_cross",
+          "component_required_conditions": [
+            "fresh_fast_slow_sma_cross"
+          ],
+          "component_signal": "HOLD",
+          "confidence": 0.0,
+          "failed_conditions": [
+            "NO_PATTERN"
+          ],
+          "indicator_snapshot": {
+            "candle_count": 120,
+            "fast_sma_current": 86166.26999999999,
+            "fast_sma_previous": 86310.12,
+            "slow_sma_current": 88032.9,
+            "slow_sma_previous": 88174.68
+          },
+          "indicator_values": {
+            "candle_count": 120,
+            "fast_sma_current": 86166.26999999999,
+            "fast_sma_previous": 86310.12,
+            "slow_sma_current": 88032.9,
+            "slow_sma_previous": 88174.68
+          },
+          "market_regime": "STRONG_TREND",
+          "reason": "no_cross",
+          "session_allowed": true,
+          "signal": "HOLD",
+          "strategy": "sma_cross",
+          "symbol": "BTCUSDT",
+          "timeframe": "15m",
+          "timestamp": "2026-06-16T19:11:02.304266+00:00"
+        },
+        {
+          "component_confidence": 0.8996382133725054,
+          "component_enabled": true,
+          "component_failed_conditions": [],
+          "component_name": "donchian_breakout",
+          "component_reason": "donchian_breakout",
+          "component_required_conditions": [
+            "adx_above_threshold",
+            "ema50_ema200_trend_alignment",
+            "fresh_donchian_breakout",
+            "confirmed_close_within_atr_distance"
+          ],
+          "component_signal": "SELL",
+          "confidence": 0.8996382133725054,
+          "failed_conditions": [],
+          "indicator_snapshot": {
+            "adx": 60.82555915211781,
+            "atr": 525.1714285714271,
+            "dc_lower": 85500.4,
+            "dc_upper": 89845.0,
+            "reasons": [
+              "adx_strong:60.8",
+              "breakout_below_donchian",
+              "trend_aligned_down",
+              "valid_distance:0.00atr",
+              "confirmed_close"
+            ],
+            "strategy_type": "BREAKOUT"
+          },
+          "indicator_values": {
+            "adx": 60.82555915211781,
+            "atr": 525.1714285714271,
+            "dc_lower": 85500.4,
+            "dc_upper": 89845.0,
+            "reasons": [
+              "adx_strong:60.8",
+              "breakout_below_donchian",
+              "trend_aligned_down",
+              "valid_distance:0.00atr",
+              "confirmed_close"
+            ],
+            "strategy_type": "BREAKOUT"
+          },
+          "market_regime": "STRONG_TREND",
+          "reason": "donchian_breakout",
+          "session_allowed": true,
+          "signal": "SELL",
+          "strategy": "donchian_breakout",
+          "symbol": "BTCUSDT",
+          "timeframe": "15m",
+          "timestamp": "2026-06-16T19:11:02.307439+00:00"
+        },
+        {
+          "component_confidence": 0.0,
+          "component_enabled": false,
+          "component_failed_conditions": [],
+          "component_name": "bollinger_reversion",
+          "component_reason": "disabled_for_regime:STRONG_TREND",
+          "component_required_conditions": [
+            "bollinger_extreme",
+            "rsi_extreme",
+            "reversal_candle"
+          ],
+          "component_signal": "DISABLED",
+          "confidence": 0.0,
+          "failed_conditions": [],
+          "indicator_snapshot": {},
+          "indicator_values": {},
+          "market_regime": "STRONG_TREND",
+          "reason": "disabled_for_regime:STRONG_TREND",
+          "session_allowed": true,
+          "signal": "DISABLED",
+          "strategy": "bollinger_reversion",
+          "symbol": "BTCUSDT",
+          "timeframe": "15m",
+          "timestamp": "2026-06-16T19:11:02.307439+00:00"
+        },
+        {
+          "component_confidence": 0.0,
+          "component_enabled": false,
+          "component_failed_conditions": [],
+          "component_name": "squeeze_breakout",
+          "component_reason": "disabled_for_regime:STRONG_TREND",
+          "component_required_conditions": [
+            "recent_squeeze",
+            "squeeze_release",
+            "directional_momentum"
+          ],
+          "component_signal": "DISABLED",
+          "confidence": 0.0,
+          "failed_conditions": [],
+          "indicator_snapshot": {},
+          "indicator_values": {},
+          "market_regime": "STRONG_TREND",
+          "reason": "disabled_for_regime:STRONG_TREND",
+          "session_allowed": true,
+          "signal": "DISABLED",
+          "strategy": "squeeze_breakout",
+          "symbol": "BTCUSDT",
+          "timeframe": "15m",
+          "timestamp": "2026-06-16T19:11:02.307439+00:00"
+        },
+        {
+          "component_confidence": 0.0,
+          "component_enabled": false,
+          "component_failed_conditions": [],
+          "component_name": "vwap_reversion",
+          "component_reason": "disabled_for_regime:STRONG_TREND",
+          "component_required_conditions": [
+            "adx_below_reversion_max",
+            "vwap_deviation",
+            "rsi_extreme",
+            "reversion_candle"
+          ],
+          "component_signal": "DISABLED",
+          "confidence": 0.0,
+          "failed_conditions": [],
+          "indicator_snapshot": {},
+          "indicator_values": {},
+          "market_regime": "STRONG_TREND",
+          "reason": "disabled_for_regime:STRONG_TREND",
+          "session_allowed": true,
+          "signal": "DISABLED",
+          "strategy": "vwap_reversion",
+          "symbol": "BTCUSDT",
+          "timeframe": "5m",
+          "timestamp": "2026-06-16T19:11:02.307439+00:00"
+        }
+      ],
+      "confidence": 0.9098432257947525,
+      "entry": 85558.1,
+      "entry_open_time": "2025-12-15T18:30:00+00:00",
+      "entry_time": "2025-12-15T18:30:00+00:00",
+      "execution_block_reason": null,
+      "exit_time": 1765824300000,
+      "fees_impact_r": 0.130332,
+      "gross_r_multiple": -1.0,
+      "hold_reason": null,
+      "outcome": "SL",
+      "r_multiple": -1.195498,
+      "reason": "master_ensemble_v2",
+      "regime": "STRONG_TREND",
+      "risk": 525.17142857,
+      "sell_score": 0.9098,
+      "session_allowed": true,
+      "side": "SELL",
+      "signal_open_time": "2025-12-15T18:15:00+00:00",
+      "signal_time": "2025-12-15T18:30:00+00:00",
+      "slippage_impact_r": 0.065166,
+      "symbol": "BTCUSDT",
+      "threshold": 0.55,
+      "tp1_hit": false
+    },
+    {
+      "action": "SELL",
+      "adaptive_weight_adjustments": {},
+      "ambiguous_candle": true,
+      "buy_score": 0.0,
+      "candle_mode": "closed",
+      "candles_held": 2,
+      "component_breakdown": [
+        {
+          "component_confidence": 0.8568863931287235,
+          "component_enabled": true,
+          "component_failed_conditions": [],
+          "component_name": "supertrend",
+          "component_reason": "supertrend_ema",
+          "component_required_conditions": [
+            "supertrend_flip_or_continuation",
+            "ema_slope_confirmation"
+          ],
+          "component_signal": "SELL",
+          "confidence": 0.8568863931287235,
+          "failed_conditions": [],
+          "indicator_snapshot": {
+            "ema_slope": -0.15688639312872352,
+            "reasons": [
+              "supertrend_bearish_cross",
+              "ema_slope_confirms"
+            ],
+            "strategy_type": "TREND",
+            "supertrend": 89270.41999999998,
+            "supertrend_dir": -1
+          },
+          "indicator_values": {
+            "ema_slope": -0.15688639312872352,
+            "reasons": [
+              "supertrend_bearish_cross",
+              "ema_slope_confirms"
+            ],
+            "strategy_type": "TREND",
+            "supertrend": 89270.41999999998,
+            "supertrend_dir": -1
+          },
+          "market_regime": "STRONG_TREND",
+          "reason": "supertrend_ema",
+          "session_allowed": true,
+          "signal": "SELL",
+          "strategy": "supertrend",
+          "symbol": "BTCUSDT",
+          "timeframe": "15m",
+          "timestamp": "2026-06-16T19:11:05.115977+00:00"
+        },
+        {
+          "component_confidence": 0.0,
+          "component_enabled": true,
+          "component_failed_conditions": [
+            "rsi_reset_and_turn"
+          ],
+          "component_name": "trend_pullback",
+          "component_reason": "no_signal",
+          "component_required_conditions": [
+            "adx_above_threshold",
+            "ema_trend_alignment",
+            "rsi_reset_and_turn",
+            "ema_reaction"
+          ],
+          "component_signal": "HOLD",
+          "confidence": 0.0,
+          "failed_conditions": [
+            "TREND_FILTER_FAILED"
+          ],
+          "indicator_snapshot": {
+            "adx": 30.962067938155247,
+            "close": 86349.7,
+            "ema_fast": 87872.66950757352,
+            "ema_fast_previous": 88032.9820873181,
+            "ema_slow": 87481.16261205092,
+            "previous_close": 87984.6,
+            "reasons": [
+              "adx_strong:31.0",
+              "uptrend"
+            ],
+            "rsi": 36.449961308210206,
+            "rsi_previous": 51.164982588321614
+          },
+          "indicator_values": {
+            "adx": 30.962067938155247,
+            "close": 86349.7,
+            "ema_fast": 87872.66950757352,
+            "ema_fast_previous": 88032.9820873181,
+            "ema_slow": 87481.16261205092,
+            "previous_close": 87984.6,
+            "reasons": [
+              "adx_strong:31.0",
+              "uptrend"
+            ],
+            "rsi": 36.449961308210206,
+            "rsi_previous": 51.164982588321614
+          },
+          "market_regime": "STRONG_TREND",
+          "reason": "no_signal",
+          "session_allowed": true,
+          "signal": "HOLD",
+          "strategy": "trend_pullback",
+          "symbol": "BTCUSDT",
+          "timeframe": "15m",
+          "timestamp": "2026-06-16T19:11:05.115977+00:00"
+        },
+        {
+          "component_confidence": 0.0,
+          "component_enabled": true,
+          "component_failed_conditions": [
+            "fresh_fast_slow_sma_cross"
+          ],
+          "component_name": "sma_cross",
+          "component_reason": "no_cross",
+          "component_required_conditions": [
+            "fresh_fast_slow_sma_cross"
+          ],
+          "component_signal": "HOLD",
+          "confidence": 0.0,
+          "failed_conditions": [
+            "NO_PATTERN"
+          ],
+          "indicator_snapshot": {
+            "candle_count": 120,
+            "fast_sma_current": 88130.29000000001,
+            "fast_sma_previous": 88275.19,
+            "slow_sma_current": 87749.32,
+            "slow_sma_previous": 87781.92666666667
+          },
+          "indicator_values": {
+            "candle_count": 120,
+            "fast_sma_current": 88130.29000000001,
+            "fast_sma_previous": 88275.19,
+            "slow_sma_current": 87749.32,
+            "slow_sma_previous": 87781.92666666667
+          },
+          "market_regime": "STRONG_TREND",
+          "reason": "no_cross",
+          "session_allowed": true,
+          "signal": "HOLD",
+          "strategy": "sma_cross",
+          "symbol": "BTCUSDT",
+          "timeframe": "15m",
+          "timestamp": "2026-06-16T19:11:05.115977+00:00"
+        },
+        {
+          "component_confidence": 0.0,
+          "component_enabled": true,
+          "component_failed_conditions": [
+            "ema50_ema200_trend_alignment"
+          ],
+          "component_name": "donchian_breakout",
+          "component_reason": "no_signal",
+          "component_required_conditions": [
+            "adx_above_threshold",
+            "ema50_ema200_trend_alignment",
+            "fresh_donchian_breakout",
+            "confirmed_close_within_atr_distance"
+          ],
+          "component_signal": "HOLD",
+          "confidence": 0.0,
+          "failed_conditions": [
+            "TREND_FILTER_FAILED"
+          ],
+          "indicator_snapshot": {
+            "adx": 30.962067938155247,
+            "atr": 808.0928571428532,
+            "close": 86349.7,
+            "dc_lower": 86238.1,
+            "dc_lower_previous": 87068.0,
+            "dc_upper": 89447.9,
+            "dc_upper_previous": 89447.9,
+            "high": 87999.9,
+            "low": 86238.1,
+            "reasons": [
+              "adx_strong:31.0",
+              "breakout_below_donchian",
+              "trend_not_aligned"
+            ],
+            "trend_down": false,
+            "trend_up": true
+          },
+          "indicator_values": {
+            "adx": 30.962067938155247,
+            "atr": 808.0928571428532,
+            "close": 86349.7,
+            "dc_lower": 86238.1,
+            "dc_lower_previous": 87068.0,
+            "dc_upper": 89447.9,
+            "dc_upper_previous": 89447.9,
+            "high": 87999.9,
+            "low": 86238.1,
+            "reasons": [
+              "adx_strong:31.0",
+              "breakout_below_donchian",
+              "trend_not_aligned"
+            ],
+            "trend_down": false,
+            "trend_up": true
+          },
+          "market_regime": "STRONG_TREND",
+          "reason": "no_signal",
+          "session_allowed": true,
+          "signal": "HOLD",
+          "strategy": "donchian_breakout",
+          "symbol": "BTCUSDT",
+          "timeframe": "15m",
+          "timestamp": "2026-06-16T19:11:05.117131+00:00"
+        },
+        {
+          "component_confidence": 0.0,
+          "component_enabled": false,
+          "component_failed_conditions": [],
+          "component_name": "bollinger_reversion",
+          "component_reason": "disabled_for_regime:STRONG_TREND",
+          "component_required_conditions": [
+            "bollinger_extreme",
+            "rsi_extreme",
+            "reversal_candle"
+          ],
+          "component_signal": "DISABLED",
+          "confidence": 0.0,
+          "failed_conditions": [],
+          "indicator_snapshot": {},
+          "indicator_values": {},
+          "market_regime": "STRONG_TREND",
+          "reason": "disabled_for_regime:STRONG_TREND",
+          "session_allowed": true,
+          "signal": "DISABLED",
+          "strategy": "bollinger_reversion",
+          "symbol": "BTCUSDT",
+          "timeframe": "15m",
+          "timestamp": "2026-06-16T19:11:05.117131+00:00"
+        },
+        {
+          "component_confidence": 0.0,
+          "component_enabled": false,
+          "component_failed_conditions": [],
+          "component_name": "squeeze_breakout",
+          "component_reason": "disabled_for_regime:STRONG_TREND",
+          "component_required_conditions": [
+            "recent_squeeze",
+            "squeeze_release",
+            "directional_momentum"
+          ],
+          "component_signal": "DISABLED",
+          "confidence": 0.0,
+          "failed_conditions": [],
+          "indicator_snapshot": {},
+          "indicator_values": {},
+          "market_regime": "STRONG_TREND",
+          "reason": "disabled_for_regime:STRONG_TREND",
+          "session_allowed": true,
+          "signal": "DISABLED",
+          "strategy": "squeeze_breakout",
+          "symbol": "BTCUSDT",
+          "timeframe": "15m",
+          "timestamp": "2026-06-16T19:11:05.117131+00:00"
+        },
+        {
+          "component_confidence": 0.0,
+          "component_enabled": false,
+          "component_failed_conditions": [],
+          "component_name": "vwap_reversion",
+          "component_reason": "disabled_for_regime:STRONG_TREND",
+          "component_required_conditions": [
+            "adx_below_reversion_max",
+            "vwap_deviation",
+            "rsi_extreme",
+            "reversion_candle"
+          ],
+          "component_signal": "DISABLED",
+          "confidence": 0.0,
+          "failed_conditions": [],
+          "indicator_snapshot": {},
+          "indicator_values": {},
+          "market_regime": "STRONG_TREND",
+          "reason": "disabled_for_regime:STRONG_TREND",
+          "session_allowed": true,
+          "signal": "DISABLED",
+          "strategy": "vwap_reversion",
+          "symbol": "BTCUSDT",
+          "timeframe": "5m",
+          "timestamp": "2026-06-16T19:11:05.117131+00:00"
+        }
+      ],
+      "confidence": 0.5569761555336703,
+      "entry": 86349.8,
+      "entry_open_time": "2025-12-18T17:15:00+00:00",
+      "entry_time": "2025-12-18T17:15:00+00:00",
+      "execution_block_reason": null,
+      "exit_time": 1766079000000,
+      "fees_impact_r": 0.085485,
+      "gross_r_multiple": 0.6,
+      "hold_reason": null,
+      "outcome": "BREAK_EVEN_BUFFER",
+      "r_multiple": 0.471772,
+      "reason": "master_ensemble_v2",
+      "regime": "STRONG_TREND",
+      "risk": 808.09285714,
+      "sell_score": 0.557,
+      "session_allowed": true,
+      "side": "SELL",
+      "signal_open_time": "2025-12-18T17:00:00+00:00",
+      "signal_time": "2025-12-18T17:15:00+00:00",
+      "slippage_impact_r": 0.042743,
+      "symbol": "BTCUSDT",
+      "threshold": 0.55,
+      "tp1_hit": true
+    },
+    {
+      "action": "SELL",
+      "adaptive_weight_adjustments": {},
+      "ambiguous_candle": false,
+      "buy_score": 0.0,
+      "candle_mode": "closed",
+      "candles_held": 7,
+      "component_breakdown": [
+        {
+          "component_confidence": 0.0,
+          "component_enabled": true,
+          "component_failed_conditions": [
+            "rsi_reset_and_turn"
+          ],
+          "component_name": "trend_pullback",
+          "component_reason": "no_signal",
+          "component_required_conditions": [
+            "adx_above_threshold",
+            "ema_trend_alignment",
+            "rsi_reset_and_turn",
+            "ema_reaction"
+          ],
+          "component_signal": "HOLD",
+          "confidence": 0.0,
+          "failed_conditions": [
+            "TREND_FILTER_FAILED"
+          ],
+          "indicator_snapshot": {
+            "adx": 32.66813718016672,
+            "close": 86443.6,
+            "ema_fast": 87454.4190639921,
+            "ema_fast_previous": 87560.82107072811,
+            "ema_slow": 87341.84309189241,
+            "previous_close": 86417.8,
+            "reasons": [
+              "adx_strong:32.7",
+              "uptrend"
+            ],
+            "rsi": 39.91730766290795,
+            "rsi_previous": 39.634888851911874
+          },
+          "indicator_values": {
+            "adx": 32.66813718016672,
+            "close": 86443.6,
+            "ema_fast": 87454.4190639921,
+            "ema_fast_previous": 87560.82107072811,
+            "ema_slow": 87341.84309189241,
+            "previous_close": 86417.8,
+            "reasons": [
+              "adx_strong:32.7",
+              "uptrend"
+            ],
+            "rsi": 39.91730766290795,
+            "rsi_previous": 39.634888851911874
+          },
+          "market_regime": "WEAK_TREND",
+          "reason": "no_signal",
+          "session_allowed": true,
+          "signal": "HOLD",
+          "strategy": "trend_pullback",
+          "symbol": "BTCUSDT",
+          "timeframe": "15m",
+          "timestamp": "2026-06-16T19:11:05.232448+00:00"
+        },
+        {
+          "component_confidence": 0.8,
+          "component_enabled": true,
+          "component_failed_conditions": [],
+          "component_name": "supertrend",
+          "component_reason": "supertrend_ema",
+          "component_required_conditions": [
+            "supertrend_flip_or_continuation",
+            "ema_slope_confirmation"
+          ],
+          "component_signal": "SELL",
+          "confidence": 0.8,
+          "failed_conditions": [],
+          "indicator_snapshot": {
+            "ema_slope": -0.6572116603087579,
+            "reasons": [
+              "supertrend_bearish",
+              "strong_ema_slope"
+            ],
+            "strategy_type": "TREND",
+            "supertrend": 88101.2,
+            "supertrend_dir": -1
+          },
+          "indicator_values": {
+            "ema_slope": -0.6572116603087579,
+            "reasons": [
+              "supertrend_bearish",
+              "strong_ema_slope"
+            ],
+            "strategy_type": "TREND",
+            "supertrend": 88101.2,
+            "supertrend_dir": -1
+          },
+          "market_regime": "WEAK_TREND",
+          "reason": "supertrend_ema",
+          "session_allowed": true,
+          "signal": "SELL",
+          "strategy": "supertrend",
+          "symbol": "BTCUSDT",
+          "timeframe": "15m",
+          "timestamp": "2026-06-16T19:11:05.232448+00:00"
+        },
+        {
+          "component_confidence": 0.65,
+          "component_enabled": true,
+          "component_failed_conditions": [],
+          "component_name": "sma_cross",
+          "component_reason": "sma_cross",
+          "component_required_conditions": [
+            "fresh_fast_slow_sma_cross"
+          ],
+          "component_signal": "SELL",
+          "confidence": 0.65,
+          "failed_conditions": [],
+          "indicator_snapshot": {
+            "candle_count": 120,
+            "fast_sma_current": 87505.26999999999,
+            "fast_sma_previous": 87718.06,
+            "slow_sma_current": 87644.88666666667,
+            "slow_sma_previous": 87674.23333333334
+          },
+          "indicator_values": {
+            "candle_count": 120,
+            "fast_sma_current": 87505.26999999999,
+            "fast_sma_previous": 87718.06,
+            "slow_sma_current": 87644.88666666667,
+            "slow_sma_previous": 87674.23333333334
+          },
+          "market_regime": "WEAK_TREND",
+          "reason": "sma_cross",
+          "session_allowed": true,
+          "signal": "SELL",
+          "strategy": "sma_cross",
+          "symbol": "BTCUSDT",
+          "timeframe": "15m",
+          "timestamp": "2026-06-16T19:11:05.232448+00:00"
+        },
+        {
+          "component_confidence": 0.0,
+          "component_enabled": true,
+          "component_failed_conditions": [
+            "fresh_donchian_breakout"
+          ],
+          "component_name": "donchian_breakout",
+          "component_reason": "no_signal",
+          "component_required_conditions": [
+            "adx_above_threshold",
+            "ema50_ema200_trend_alignment",
+            "fresh_donchian_breakout",
+            "confirmed_close_within_atr_distance"
+          ],
+          "component_signal": "HOLD",
+          "confidence": 0.0,
+          "failed_conditions": [
+            "TREND_FILTER_FAILED"
+          ],
+          "indicator_snapshot": {
+            "adx": 32.66813718016672,
+            "atr": 789.3142857142832,
+            "close": 86443.6,
+            "dc_lower": 85427.5,
+            "dc_lower_previous": 85427.5,
+            "dc_upper": 89447.9,
+            "dc_upper_previous": 89447.9,
+            "high": 86546.7,
+            "low": 86063.5,
+            "reasons": [
+              "adx_strong:32.7"
+            ],
+            "trend_down": false,
+            "trend_up": true
+          },
+          "indicator_values": {
+            "adx": 32.66813718016672,
+            "atr": 789.3142857142832,
+            "close": 86443.6,
+            "dc_lower": 85427.5,
+            "dc_lower_previous": 85427.5,
+            "dc_upper": 89447.9,
+            "dc_upper_previous": 89447.9,
+            "high": 86546.7,
+            "low": 86063.5,
+            "reasons": [
+              "adx_strong:32.7"
+            ],
+            "trend_down": false,
+            "trend_up": true
+          },
+          "market_regime": "WEAK_TREND",
+          "reason": "no_signal",
+          "session_allowed": true,
+          "signal": "HOLD",
+          "strategy": "donchian_breakout",
+          "symbol": "BTCUSDT",
+          "timeframe": "15m",
+          "timestamp": "2026-06-16T19:11:05.241404+00:00"
+        },
+        {
+          "component_confidence": 0.0,
+          "component_enabled": false,
+          "component_failed_conditions": [],
+          "component_name": "bollinger_reversion",
+          "component_reason": "disabled_for_regime:WEAK_TREND",
+          "component_required_conditions": [
+            "bollinger_extreme",
+            "rsi_extreme",
+            "reversal_candle"
+          ],
+          "component_signal": "DISABLED",
+          "confidence": 0.0,
+          "failed_conditions": [],
+          "indicator_snapshot": {},
+          "indicator_values": {},
+          "market_regime": "WEAK_TREND",
+          "reason": "disabled_for_regime:WEAK_TREND",
+          "session_allowed": true,
+          "signal": "DISABLED",
+          "strategy": "bollinger_reversion",
+          "symbol": "BTCUSDT",
+          "timeframe": "15m",
+          "timestamp": "2026-06-16T19:11:05.242227+00:00"
+        },
+        {
+          "component_confidence": 0.0,
+          "component_enabled": false,
+          "component_failed_conditions": [],
+          "component_name": "squeeze_breakout",
+          "component_reason": "disabled_for_regime:WEAK_TREND",
+          "component_required_conditions": [
+            "recent_squeeze",
+            "squeeze_release",
+            "directional_momentum"
+          ],
+          "component_signal": "DISABLED",
+          "confidence": 0.0,
+          "failed_conditions": [],
+          "indicator_snapshot": {},
+          "indicator_values": {},
+          "market_regime": "WEAK_TREND",
+          "reason": "disabled_for_regime:WEAK_TREND",
+          "session_allowed": true,
+          "signal": "DISABLED",
+          "strategy": "squeeze_breakout",
+          "symbol": "BTCUSDT",
+          "timeframe": "15m",
+          "timestamp": "2026-06-16T19:11:05.242227+00:00"
+        },
+        {
+          "component_confidence": 0.0,
+          "component_enabled": false,
+          "component_failed_conditions": [],
+          "component_name": "vwap_reversion",
+          "component_reason": "disabled_for_regime:WEAK_TREND",
+          "component_required_conditions": [
+            "adx_below_reversion_max",
+            "vwap_deviation",
+            "rsi_extreme",
+            "reversion_candle"
+          ],
+          "component_signal": "DISABLED",
+          "confidence": 0.0,
+          "failed_conditions": [],
+          "indicator_snapshot": {},
+          "indicator_values": {},
+          "market_regime": "WEAK_TREND",
+          "reason": "disabled_for_regime:WEAK_TREND",
+          "session_allowed": true,
+          "signal": "DISABLED",
+          "strategy": "vwap_reversion",
+          "symbol": "BTCUSDT",
+          "timeframe": "5m",
+          "timestamp": "2026-06-16T19:11:05.242227+00:00"
+        }
+      ],
+      "confidence": 0.5950000000000001,
+      "entry": 86443.6,
+      "entry_open_time": "2025-12-18T18:00:00+00:00",
+      "entry_time": "2025-12-18T18:00:00+00:00",
+      "execution_block_reason": null,
+      "exit_time": 1766086200000,
+      "fees_impact_r": 0.087614,
+      "gross_r_multiple": 1.5,
+      "hold_reason": null,
+      "outcome": "TP2",
+      "r_multiple": 1.368579,
+      "reason": "master_ensemble_v2",
+      "regime": "WEAK_TREND",
+      "risk": 789.31428571,
+      "sell_score": 0.595,
+      "session_allowed": true,
+      "side": "SELL",
+      "signal_open_time": "2025-12-18T17:45:00+00:00",
+      "signal_time": "2025-12-18T18:00:00+00:00",
+      "slippage_impact_r": 0.043807,
+      "symbol": "BTCUSDT",
+      "threshold": 0.55,
+      "tp1_hit": true
+    },
+    {
+      "action": "SELL",
+      "adaptive_weight_adjustments": {},
+      "ambiguous_candle": false,
+      "buy_score": 0.0,
+      "candle_mode": "closed",
+      "candles_held": 8,
+      "component_breakdown": [
+        {
+          "component_confidence": 0.0,
+          "component_enabled": true,
+          "component_failed_conditions": [
+            "rsi_reset_and_turn"
+          ],
+          "component_name": "trend_pullback",
+          "component_reason": "no_signal",
+          "component_required_conditions": [
+            "adx_above_threshold",
+            "ema_trend_alignment",
+            "rsi_reset_and_turn",
+            "ema_reaction"
+          ],
+          "component_signal": "HOLD",
+          "confidence": 0.0,
+          "failed_conditions": [
+            "TREND_FILTER_FAILED"
+          ],
+          "indicator_snapshot": {
+            "adx": 30.44537653384329,
+            "close": 87087.0,
+            "ema_fast": 87991.27532879158,
+            "ema_fast_previous": 88086.46220550648,
+            "ema_slow": 87754.8426940725,
+            "previous_close": 87592.8,
+            "reasons": [
+              "adx_strong:30.4",
+              "uptrend"
+            ],
+            "rsi": 36.40550900601505,
+            "rsi_previous": 42.550477013407246
+          },
+          "indicator_values": {
+            "adx": 30.44537653384329,
+            "close": 87087.0,
+            "ema_fast": 87991.27532879158,
+            "ema_fast_previous": 88086.46220550648,
+            "ema_slow": 87754.8426940725,
+            "previous_close": 87592.8,
+            "reasons": [
+              "adx_strong:30.4",
+              "uptrend"
+            ],
+            "rsi": 36.40550900601505,
+            "rsi_previous": 42.550477013407246
+          },
+          "market_regime": "WEAK_TREND",
+          "reason": "no_signal",
+          "session_allowed": true,
+          "signal": "HOLD",
+          "strategy": "trend_pullback",
+          "symbol": "BTCUSDT",
+          "timeframe": "15m",
+          "timestamp": "2026-06-16T19:11:06.631268+00:00"
+        },
+        {
+          "component_confidence": 0.65,
+          "component_enabled": true,
+          "component_failed_conditions": [],
+          "component_name": "sma_cross",
+          "component_reason": "sma_cross",
+          "component_required_conditions": [
+            "fresh_fast_slow_sma_cross"
+          ],
+          "component_signal": "SELL",
+          "confidence": 0.65,
+          "failed_conditions": [],
+          "indicator_snapshot": {
+            "candle_count": 120,
+            "fast_sma_current": 88000.59,
+            "fast_sma_previous": 88164.3,
+            "slow_sma_current": 88089.51333333334,
+            "slow_sma_previous": 88124.94666666667
+          },
+          "indicator_values": {
+            "candle_count": 120,
+            "fast_sma_current": 88000.59,
+            "fast_sma_previous": 88164.3,
+            "slow_sma_current": 88089.51333333334,
+            "slow_sma_previous": 88124.94666666667
+          },
+          "market_regime": "WEAK_TREND",
+          "reason": "sma_cross",
+          "session_allowed": true,
+          "signal": "SELL",
+          "strategy": "sma_cross",
+          "symbol": "BTCUSDT",
+          "timeframe": "15m",
+          "timestamp": "2026-06-16T19:11:06.631268+00:00"
+        },
+        {
+          "component_confidence": 0.8990509947154696,
+          "component_enabled": true,
+          "component_failed_conditions": [],
+          "component_name": "supertrend",
+          "component_reason": "supertrend_ema",
+          "component_required_conditions": [
+            "supertrend_flip_or_continuation",
+            "ema_slope_confirmation"
+          ],
+          "component_signal": "SELL",
+          "confidence": 0.8990509947154696,
+          "failed_conditions": [],
+          "indicator_snapshot": {
+            "ema_slope": -0.19905099471546958,
+            "reasons": [
+              "supertrend_bearish_cross",
+              "ema_slope_confirms"
+            ],
+            "strategy_type": "TREND",
+            "supertrend": 89181.46,
+            "supertrend_dir": -1
+          },
+          "indicator_values": {
+            "ema_slope": -0.19905099471546958,
+            "reasons": [
+              "supertrend_bearish_cross",
+              "ema_slope_confirms"
+            ],
+            "strategy_type": "TREND",
+            "supertrend": 89181.46,
+            "supertrend_dir": -1
+          },
+          "market_regime": "WEAK_TREND",
+          "reason": "supertrend_ema",
+          "session_allowed": true,
+          "signal": "SELL",
+          "strategy": "supertrend",
+          "symbol": "BTCUSDT",
+          "timeframe": "15m",
+          "timestamp": "2026-06-16T19:11:06.631268+00:00"
+        },
+        {
+          "component_confidence": 0.0,
+          "component_enabled": true,
+          "component_failed_conditions": [
+            "ema50_ema200_trend_alignment"
+          ],
+          "component_name": "donchian_breakout",
+          "component_reason": "no_signal",
+          "component_required_conditions": [
+            "adx_above_threshold",
+            "ema50_ema200_trend_alignment",
+            "fresh_donchian_breakout",
+            "confirmed_close_within_atr_distance"
+          ],
+          "component_signal": "HOLD",
+          "confidence": 0.0,
+          "failed_conditions": [
+            "TREND_FILTER_FAILED"
+          ],
+          "indicator_snapshot": {
+            "adx": 30.44537653384329,
+            "atr": 686.1499999999994,
+            "close": 87087.0,
+            "dc_lower": 86795.5,
+            "dc_lower_previous": 87487.7,
+            "dc_upper": 89374.6,
+            "dc_upper_previous": 89374.6,
+            "high": 87694.6,
+            "low": 86795.5,
+            "reasons": [
+              "adx_strong:30.4",
+              "breakout_below_donchian",
+              "trend_not_aligned"
+            ],
+            "trend_down": false,
+            "trend_up": true
+          },
+          "indicator_values": {
+            "adx": 30.44537653384329,
+            "atr": 686.1499999999994,
+            "close": 87087.0,
+            "dc_lower": 86795.5,
+            "dc_lower_previous": 87487.7,
+            "dc_upper": 89374.6,
+            "dc_upper_previous": 89374.6,
+            "high": 87694.6,
+            "low": 86795.5,
+            "reasons": [
+              "adx_strong:30.4",
+              "breakout_below_donchian",
+              "trend_not_aligned"
+            ],
+            "trend_down": false,
+            "trend_up": true
+          },
+          "market_regime": "WEAK_TREND",
+          "reason": "no_signal",
+          "session_allowed": true,
+          "signal": "HOLD",
+          "strategy": "donchian_breakout",
+          "symbol": "BTCUSDT",
+          "timeframe": "15m",
+          "timestamp": "2026-06-16T19:11:06.635221+00:00"
+        },
+        {
+          "component_confidence": 0.0,
+          "component_enabled": false,
+          "component_failed_conditions": [],
+          "component_name": "bollinger_reversion",
+          "component_reason": "disabled_for_regime:WEAK_TREND",
+          "component_required_conditions": [
+            "bollinger_extreme",
+            "rsi_extreme",
+            "reversal_candle"
+          ],
+          "component_signal": "DISABLED",
+          "confidence": 0.0,
+          "failed_conditions": [],
+          "indicator_snapshot": {},
+          "indicator_values": {},
+          "market_regime": "WEAK_TREND",
+          "reason": "disabled_for_regime:WEAK_TREND",
+          "session_allowed": true,
+          "signal": "DISABLED",
+          "strategy": "bollinger_reversion",
+          "symbol": "BTCUSDT",
+          "timeframe": "15m",
+          "timestamp": "2026-06-16T19:11:06.635779+00:00"
+        },
+        {
+          "component_confidence": 0.0,
+          "component_enabled": false,
+          "component_failed_conditions": [],
+          "component_name": "squeeze_breakout",
+          "component_reason": "disabled_for_regime:WEAK_TREND",
+          "component_required_conditions": [
+            "recent_squeeze",
+            "squeeze_release",
+            "directional_momentum"
+          ],
+          "component_signal": "DISABLED",
+          "confidence": 0.0,
+          "failed_conditions": [],
+          "indicator_snapshot": {},
+          "indicator_values": {},
+          "market_regime": "WEAK_TREND",
+          "reason": "disabled_for_regime:WEAK_TREND",
+          "session_allowed": true,
+          "signal": "DISABLED",
+          "strategy": "squeeze_breakout",
+          "symbol": "BTCUSDT",
+          "timeframe": "15m",
+          "timestamp": "2026-06-16T19:11:06.635779+00:00"
+        },
+        {
+          "component_confidence": 0.0,
+          "component_enabled": false,
+          "component_failed_conditions": [],
+          "component_name": "vwap_reversion",
+          "component_reason": "disabled_for_regime:WEAK_TREND",
+          "component_required_conditions": [
+            "adx_below_reversion_max",
+            "vwap_deviation",
+            "rsi_extreme",
+            "reversion_candle"
+          ],
+          "component_signal": "DISABLED",
+          "confidence": 0.0,
+          "failed_conditions": [],
+          "indicator_snapshot": {},
+          "indicator_values": {},
+          "market_regime": "WEAK_TREND",
+          "reason": "disabled_for_regime:WEAK_TREND",
+          "session_allowed": true,
+          "signal": "DISABLED",
+          "strategy": "vwap_reversion",
+          "symbol": "BTCUSDT",
+          "timeframe": "5m",
+          "timestamp": "2026-06-16T19:11:06.635779+00:00"
+        }
+      ],
+      "confidence": 0.6445254973577348,
+      "entry": 87087.0,
+      "entry_open_time": "2025-12-19T17:45:00+00:00",
+      "entry_time": "2025-12-19T17:45:00+00:00",
+      "execution_block_reason": null,
+      "exit_time": 1766172600000,
+      "fees_impact_r": 0.101537,
+      "gross_r_multiple": -1.0,
+      "hold_reason": null,
+      "outcome": "SL",
+      "r_multiple": -1.152305,
+      "reason": "master_ensemble_v2",
+      "regime": "WEAK_TREND",
+      "risk": 686.15,
+      "sell_score": 0.6445,
+      "session_allowed": true,
+      "side": "SELL",
+      "signal_open_time": "2025-12-19T17:30:00+00:00",
+      "signal_time": "2025-12-19T17:45:00+00:00",
+      "slippage_impact_r": 0.050768,
+      "symbol": "BTCUSDT",
+      "threshold": 0.55,
+      "tp1_hit": false
+    },
+    {
+      "action": "BUY",
+      "adaptive_weight_adjustments": {},
+      "ambiguous_candle": true,
+      "buy_score": 0.7495,
+      "candle_mode": "closed",
+      "candles_held": 1,
+      "component_breakdown": [
+        {
+          "component_confidence": 0.6041283991470039,
+          "component_enabled": true,
+          "component_failed_conditions": [],
+          "component_name": "supertrend",
+          "component_reason": "supertrend_ema",
+          "component_required_conditions": [
+            "supertrend_flip_or_continuation",
+            "ema_slope_confirmation"
+          ],
+          "component_signal": "BUY",
+          "confidence": 0.6041283991470039,
+          "failed_conditions": [],
+          "indicator_snapshot": {
+            "ema_slope": 0.2082567982940077,
+            "reasons": [
+              "supertrend_bullish",
+              "strong_ema_slope"
+            ],
+            "strategy_type": "TREND",
+            "supertrend": 89486.54999999999,
+            "supertrend_dir": 1
+          },
+          "indicator_values": {
+            "ema_slope": 0.2082567982940077,
+            "reasons": [
+              "supertrend_bullish",
+              "strong_ema_slope"
+            ],
+            "strategy_type": "TREND",
+            "supertrend": 89486.54999999999,
+            "supertrend_dir": 1
+          },
+          "market_regime": "STRONG_TREND",
+          "reason": "supertrend_ema",
+          "session_allowed": true,
+          "signal": "BUY",
+          "strategy": "supertrend",
+          "symbol": "BTCUSDT",
+          "timeframe": "15m",
+          "timestamp": "2026-06-16T19:11:08.898592+00:00"
+        },
+        {
+          "component_confidence": 0.0,
+          "component_enabled": true,
+          "component_failed_conditions": [
+            "rsi_reset_and_turn"
+          ],
+          "component_name": "trend_pullback",
+          "component_reason": "no_signal",
+          "component_required_conditions": [
+            "adx_above_threshold",
+            "ema_trend_alignment",
+            "rsi_reset_and_turn",
+            "ema_reaction"
+          ],
+          "component_signal": "HOLD",
+          "confidence": 0.0,
+          "failed_conditions": [
+            "TREND_FILTER_FAILED"
+          ],
+          "indicator_snapshot": {
+            "adx": 32.327775936377925,
+            "close": 90268.4,
+            "ema_fast": 89650.11359378256,
+            "ema_fast_previous": 89585.03081418073,
+            "ema_slow": 89226.71131155186,
+            "previous_close": 90039.4,
+            "reasons": [
+              "adx_strong:32.3",
+              "uptrend"
+            ],
+            "rsi": 74.20748763398505,
+            "rsi_previous": 70.06561722217725
+          },
+          "indicator_values": {
+            "adx": 32.327775936377925,
+            "close": 90268.4,
+            "ema_fast": 89650.11359378256,
+            "ema_fast_previous": 89585.03081418073,
+            "ema_slow": 89226.71131155186,
+            "previous_close": 90039.4,
+            "reasons": [
+              "adx_strong:32.3",
+              "uptrend"
+            ],
+            "rsi": 74.20748763398505,
+            "rsi_previous": 70.06561722217725
+          },
+          "market_regime": "STRONG_TREND",
+          "reason": "no_signal",
+          "session_allowed": true,
+          "signal": "HOLD",
+          "strategy": "trend_pullback",
+          "symbol": "BTCUSDT",
+          "timeframe": "15m",
+          "timestamp": "2026-06-16T19:11:08.898592+00:00"
+        },
+        {
+          "component_confidence": 0.0,
+          "component_enabled": true,
+          "component_failed_conditions": [
+            "fresh_fast_slow_sma_cross"
+          ],
+          "component_name": "sma_cross",
+          "component_reason": "no_cross",
+          "component_required_conditions": [
+            "fresh_fast_slow_sma_cross"
+          ],
+          "component_signal": "HOLD",
+          "confidence": 0.0,
+          "failed_conditions": [
+            "NO_PATTERN"
+          ],
+          "indicator_snapshot": {
+            "candle_count": 120,
+            "fast_sma_current": 89841.99,
+            "fast_sma_previous": 89793.68000000001,
+            "slow_sma_current": 89383.10333333333,
+            "slow_sma_previous": 89336.27333333335
+          },
+          "indicator_values": {
+            "candle_count": 120,
+            "fast_sma_current": 89841.99,
+            "fast_sma_previous": 89793.68000000001,
+            "slow_sma_current": 89383.10333333333,
+            "slow_sma_previous": 89336.27333333335
+          },
+          "market_regime": "STRONG_TREND",
+          "reason": "no_cross",
+          "session_allowed": true,
+          "signal": "HOLD",
+          "strategy": "sma_cross",
+          "symbol": "BTCUSDT",
+          "timeframe": "15m",
+          "timestamp": "2026-06-16T19:11:08.898592+00:00"
+        },
+        {
+          "component_confidence": 0.823480852331995,
+          "component_enabled": true,
+          "component_failed_conditions": [],
+          "component_name": "donchian_breakout",
+          "component_reason": "donchian_breakout",
+          "component_required_conditions": [
+            "adx_above_threshold",
+            "ema50_ema200_trend_alignment",
+            "fresh_donchian_breakout",
+            "confirmed_close_within_atr_distance"
+          ],
+          "component_signal": "BUY",
+          "confidence": 0.823480852331995,
+          "failed_conditions": [],
+          "indicator_snapshot": {
+            "adx": 32.327775936377925,
+            "atr": 239.67857142857247,
+            "dc_lower": 88982.8,
+            "dc_upper": 90286.7,
+            "reasons": [
+              "adx_strong:32.3",
+              "breakout_above_donchian",
+              "trend_aligned_up",
+              "valid_distance:0.77atr",
+              "confirmed_close"
+            ],
+            "strategy_type": "BREAKOUT"
+          },
+          "indicator_values": {
+            "adx": 32.327775936377925,
+            "atr": 239.67857142857247,
+            "dc_lower": 88982.8,
+            "dc_upper": 90286.7,
+            "reasons": [
+              "adx_strong:32.3",
+              "breakout_above_donchian",
+              "trend_aligned_up",
+              "valid_distance:0.77atr",
+              "confirmed_close"
+            ],
+            "strategy_type": "BREAKOUT"
+          },
+          "market_regime": "STRONG_TREND",
+          "reason": "donchian_breakout",
+          "session_allowed": true,
+          "signal": "BUY",
+          "strategy": "donchian_breakout",
+          "symbol": "BTCUSDT",
+          "timeframe": "15m",
+          "timestamp": "2026-06-16T19:11:08.901696+00:00"
+        },
+        {
+          "component_confidence": 0.0,
+          "component_enabled": false,
+          "component_failed_conditions": [],
+          "component_name": "bollinger_reversion",
+          "component_reason": "disabled_for_regime:STRONG_TREND",
+          "component_required_conditions": [
+            "bollinger_extreme",
+            "rsi_extreme",
+            "reversal_candle"
+          ],
+          "component_signal": "DISABLED",
+          "confidence": 0.0,
+          "failed_conditions": [],
+          "indicator_snapshot": {},
+          "indicator_values": {},
+          "market_regime": "STRONG_TREND",
+          "reason": "disabled_for_regime:STRONG_TREND",
+          "session_allowed": true,
+          "signal": "DISABLED",
+          "strategy": "bollinger_reversion",
+          "symbol": "BTCUSDT",
+          "timeframe": "15m",
+          "timestamp": "2026-06-16T19:11:08.901696+00:00"
+        },
+        {
+          "component_confidence": 0.0,
+          "component_enabled": false,
+          "component_failed_conditions": [],
+          "component_name": "squeeze_breakout",
+          "component_reason": "disabled_for_regime:STRONG_TREND",
+          "component_required_conditions": [
+            "recent_squeeze",
+            "squeeze_release",
+            "directional_momentum"
+          ],
+          "component_signal": "DISABLED",
+          "confidence": 0.0,
+          "failed_conditions": [],
+          "indicator_snapshot": {},
+          "indicator_values": {},
+          "market_regime": "STRONG_TREND",
+          "reason": "disabled_for_regime:STRONG_TREND",
+          "session_allowed": true,
+          "signal": "DISABLED",
+          "strategy": "squeeze_breakout",
+          "symbol": "BTCUSDT",
+          "timeframe": "15m",
+          "timestamp": "2026-06-16T19:11:08.901696+00:00"
+        },
+        {
+          "component_confidence": 0.0,
+          "component_enabled": false,
+          "component_failed_conditions": [],
+          "component_name": "vwap_reversion",
+          "component_reason": "disabled_for_regime:STRONG_TREND",
+          "component_required_conditions": [
+            "adx_below_reversion_max",
+            "vwap_deviation",
+            "rsi_extreme",
+            "reversion_candle"
+          ],
+          "component_signal": "DISABLED",
+          "confidence": 0.0,
+          "failed_conditions": [],
+          "indicator_snapshot": {},
+          "indicator_values": {},
+          "market_regime": "STRONG_TREND",
+          "reason": "disabled_for_regime:STRONG_TREND",
+          "session_allowed": true,
+          "signal": "DISABLED",
+          "strategy": "vwap_reversion",
+          "symbol": "BTCUSDT",
+          "timeframe": "5m",
+          "timestamp": "2026-06-16T19:11:08.901696+00:00"
+        }
+      ],
+      "confidence": 0.7495251621227504,
+      "entry": 90268.4,
+      "entry_open_time": "2025-12-22T12:30:00+00:00",
+      "entry_time": "2025-12-22T12:30:00+00:00",
+      "execution_block_reason": null,
+      "exit_time": 1766406600000,
+      "fees_impact_r": 0.301298,
+      "gross_r_multiple": -1.0,
+      "hold_reason": null,
+      "outcome": "SL",
+      "r_multiple": -1.451947,
+      "reason": "master_ensemble_v2",
+      "regime": "STRONG_TREND",
+      "risk": 239.67857143,
+      "sell_score": 0.0,
+      "session_allowed": true,
+      "side": "BUY",
+      "signal_open_time": "2025-12-22T12:15:00+00:00",
+      "signal_time": "2025-12-22T12:30:00+00:00",
+      "slippage_impact_r": 0.150649,
+      "symbol": "BTCUSDT",
+      "threshold": 0.55,
+      "tp1_hit": false
+    },
+    {
+      "action": "SELL",
+      "adaptive_weight_adjustments": {},
+      "ambiguous_candle": true,
+      "buy_score": 0.0,
+      "candle_mode": "closed",
+      "candles_held": 1,
+      "component_breakdown": [
+        {
+          "component_confidence": 0.0,
+          "component_enabled": true,
+          "component_failed_conditions": [
+            "fresh_fast_slow_sma_cross"
+          ],
+          "component_name": "sma_cross",
+          "component_reason": "no_cross",
+          "component_required_conditions": [
+            "fresh_fast_slow_sma_cross"
+          ],
+          "component_signal": "HOLD",
+          "confidence": 0.0,
+          "failed_conditions": [
+            "NO_PATTERN"
+          ],
+          "indicator_snapshot": {
+            "candle_count": 120,
+            "fast_sma_current": 87940.54000000001,
+            "fast_sma_previous": 88019.3,
+            "slow_sma_current": 88301.28666666667,
+            "slow_sma_previous": 88328.85666666667
+          },
+          "indicator_values": {
+            "candle_count": 120,
+            "fast_sma_current": 87940.54000000001,
+            "fast_sma_previous": 88019.3,
+            "slow_sma_current": 88301.28666666667,
+            "slow_sma_previous": 88328.85666666667
+          },
+          "market_regime": "STRONG_TREND",
+          "reason": "no_cross",
+          "session_allowed": true,
+          "signal": "HOLD",
+          "strategy": "sma_cross",
+          "symbol": "BTCUSDT",
+          "timeframe": "15m",
+          "timestamp": "2026-06-16T19:11:09.303020+00:00"
+        },
+        {
+          "component_confidence": 0.0,
+          "component_enabled": true,
+          "component_failed_conditions": [
+            "rsi_reset_and_turn"
+          ],
+          "component_name": "trend_pullback",
+          "component_reason": "no_signal",
+          "component_required_conditions": [
+            "adx_above_threshold",
+            "ema_trend_alignment",
+            "rsi_reset_and_turn",
+            "ema_reaction"
+          ],
+          "component_signal": "HOLD",
+          "confidence": 0.0,
+          "failed_conditions": [
+            "TREND_FILTER_FAILED"
+          ],
+          "indicator_snapshot": {
+            "adx": 36.637268772383905,
+            "close": 87503.2,
+            "ema_fast": 88080.06503974939,
+            "ema_fast_previous": 88140.78767551247,
+            "ema_slow": 88421.56533577478,
+            "previous_close": 87726.6,
+            "reasons": [
+              "adx_strong:36.6",
+              "downtrend"
+            ],
+            "rsi": 29.001796050681463,
+            "rsi_previous": 33.30387873701564
+          },
+          "indicator_values": {
+            "adx": 36.637268772383905,
+            "close": 87503.2,
+            "ema_fast": 88080.06503974939,
+            "ema_fast_previous": 88140.78767551247,
+            "ema_slow": 88421.56533577478,
+            "previous_close": 87726.6,
+            "reasons": [
+              "adx_strong:36.6",
+              "downtrend"
+            ],
+            "rsi": 29.001796050681463,
+            "rsi_previous": 33.30387873701564
+          },
+          "market_regime": "STRONG_TREND",
+          "reason": "no_signal",
+          "session_allowed": true,
+          "signal": "HOLD",
+          "strategy": "trend_pullback",
+          "symbol": "BTCUSDT",
+          "timeframe": "15m",
+          "timestamp": "2026-06-16T19:11:09.303020+00:00"
+        },
+        {
+          "component_confidence": 0.6008395674183116,
+          "component_enabled": true,
+          "component_failed_conditions": [],
+          "component_name": "supertrend",
+          "component_reason": "supertrend_ema",
+          "component_required_conditions": [
+            "supertrend_flip_or_continuation",
+            "ema_slope_confirmation"
+          ],
+          "component_signal": "SELL",
+          "confidence": 0.6008395674183116,
+          "failed_conditions": [],
+          "indicator_snapshot": {
+            "ema_slope": -0.20167913483662325,
+            "reasons": [
+              "supertrend_bearish",
+              "strong_ema_slope"
+            ],
+            "strategy_type": "TREND",
+            "supertrend": 88260.46,
+            "supertrend_dir": -1
+          },
+          "indicator_values": {
+            "ema_slope": -0.20167913483662325,
+            "reasons": [
+              "supertrend_bearish",
+              "strong_ema_slope"
+            ],
+            "strategy_type": "TREND",
+            "supertrend": 88260.46,
+            "supertrend_dir": -1
+          },
+          "market_regime": "STRONG_TREND",
+          "reason": "supertrend_ema",
+          "session_allowed": true,
+          "signal": "SELL",
+          "strategy": "supertrend",
+          "symbol": "BTCUSDT",
+          "timeframe": "15m",
+          "timestamp": "2026-06-16T19:11:09.303020+00:00"
+        },
+        {
+          "component_confidence": 0.8821525768470508,
+          "component_enabled": true,
+          "component_failed_conditions": [],
+          "component_name": "donchian_breakout",
+          "component_reason": "donchian_breakout",
+          "component_required_conditions": [
+            "adx_above_threshold",
+            "ema50_ema200_trend_alignment",
+            "fresh_donchian_breakout",
+            "confirmed_close_within_atr_distance"
+          ],
+          "component_signal": "SELL",
+          "confidence": 0.8821525768470508,
+          "failed_conditions": [],
+          "indicator_snapshot": {
+            "adx": 36.637268772383905,
+            "atr": 249.3357142857151,
+            "dc_lower": 87333.7,
+            "dc_upper": 88722.0,
+            "reasons": [
+              "adx_strong:36.6",
+              "breakout_below_donchian",
+              "trend_aligned_down",
+              "valid_distance:0.18atr",
+              "confirmed_close"
+            ],
+            "strategy_type": "BREAKOUT"
+          },
+          "indicator_values": {
+            "adx": 36.637268772383905,
+            "atr": 249.3357142857151,
+            "dc_lower": 87333.7,
+            "dc_upper": 88722.0,
+            "reasons": [
+              "adx_strong:36.6",
+              "breakout_below_donchian",
+              "trend_aligned_down",
+              "valid_distance:0.18atr",
+              "confirmed_close"
+            ],
+            "strategy_type": "BREAKOUT"
+          },
+          "market_regime": "STRONG_TREND",
+          "reason": "donchian_breakout",
+          "session_allowed": true,
+          "signal": "SELL",
+          "strategy": "donchian_breakout",
+          "symbol": "BTCUSDT",
+          "timeframe": "15m",
+          "timestamp": "2026-06-16T19:11:09.304019+00:00"
+        },
+        {
+          "component_confidence": 0.0,
+          "component_enabled": false,
+          "component_failed_conditions": [],
+          "component_name": "bollinger_reversion",
+          "component_reason": "disabled_for_regime:STRONG_TREND",
+          "component_required_conditions": [
+            "bollinger_extreme",
+            "rsi_extreme",
+            "reversal_candle"
+          ],
+          "component_signal": "DISABLED",
+          "confidence": 0.0,
+          "failed_conditions": [],
+          "indicator_snapshot": {},
+          "indicator_values": {},
+          "market_regime": "STRONG_TREND",
+          "reason": "disabled_for_regime:STRONG_TREND",
+          "session_allowed": true,
+          "signal": "DISABLED",
+          "strategy": "bollinger_reversion",
+          "symbol": "BTCUSDT",
+          "timeframe": "15m",
+          "timestamp": "2026-06-16T19:11:09.304019+00:00"
+        },
+        {
+          "component_confidence": 0.0,
+          "component_enabled": false,
+          "component_failed_conditions": [],
+          "component_name": "squeeze_breakout",
+          "component_reason": "disabled_for_regime:STRONG_TREND",
+          "component_required_conditions": [
+            "recent_squeeze",
+            "squeeze_release",
+            "directional_momentum"
+          ],
+          "component_signal": "DISABLED",
+          "confidence": 0.0,
+          "failed_conditions": [],
+          "indicator_snapshot": {},
+          "indicator_values": {},
+          "market_regime": "STRONG_TREND",
+          "reason": "disabled_for_regime:STRONG_TREND",
+          "session_allowed": true,
+          "signal": "DISABLED",
+          "strategy": "squeeze_breakout",
+          "symbol": "BTCUSDT",
+          "timeframe": "15m",
+          "timestamp": "2026-06-16T19:11:09.304019+00:00"
+        },
+        {
+          "component_confidence": 0.0,
+          "component_enabled": false,
+          "component_failed_conditions": [],
+          "component_name": "vwap_reversion",
+          "component_reason": "disabled_for_regime:STRONG_TREND",
+          "component_required_conditions": [
+            "adx_below_reversion_max",
+            "vwap_deviation",
+            "rsi_extreme",
+            "reversion_candle"
+          ],
+          "component_signal": "DISABLED",
+          "confidence": 0.0,
+          "failed_conditions": [],
+          "indicator_snapshot": {},
+          "indicator_values": {},
+          "market_regime": "STRONG_TREND",
+          "reason": "disabled_for_regime:STRONG_TREND",
+          "session_allowed": true,
+          "signal": "DISABLED",
+          "strategy": "vwap_reversion",
+          "symbol": "BTCUSDT",
+          "timeframe": "5m",
+          "timestamp": "2026-06-16T19:11:09.304019+00:00"
+        }
+      ],
+      "confidence": 0.7728118354556246,
+      "entry": 87503.1,
+      "entry_open_time": "2025-12-23T06:15:00+00:00",
+      "entry_time": "2025-12-23T06:15:00+00:00",
+      "execution_block_reason": null,
+      "exit_time": 1766470500000,
+      "fees_impact_r": 0.280756,
+      "gross_r_multiple": 1.5,
+      "hold_reason": null,
+      "outcome": "TP2",
+      "r_multiple": 1.078866,
+      "reason": "master_ensemble_v2",
+      "regime": "STRONG_TREND",
+      "risk": 249.33571429,
+      "sell_score": 0.7728,
+      "session_allowed": true,
+      "side": "SELL",
+      "signal_open_time": "2025-12-23T06:00:00+00:00",
+      "signal_time": "2025-12-23T06:15:00+00:00",
+      "slippage_impact_r": 0.140378,
+      "symbol": "BTCUSDT",
+      "threshold": 0.55,
+      "tp1_hit": true
+    },
+    {
+      "action": "SELL",
+      "adaptive_weight_adjustments": {},
+      "ambiguous_candle": false,
+      "buy_score": 0.0,
+      "candle_mode": "closed",
+      "candles_held": 2,
+      "component_breakdown": [
+        {
+          "component_confidence": 0.0,
+          "component_enabled": true,
+          "component_failed_conditions": [
+            "rsi_reset_and_turn"
+          ],
+          "component_name": "trend_pullback",
+          "component_reason": "no_signal",
+          "component_required_conditions": [
+            "adx_above_threshold",
+            "ema_trend_alignment",
+            "rsi_reset_and_turn",
+            "ema_reaction"
+          ],
+          "component_signal": "HOLD",
+          "confidence": 0.0,
+          "failed_conditions": [
+            "TREND_FILTER_FAILED"
+          ],
+          "indicator_snapshot": {
+            "adx": 39.06424437560014,
+            "close": 87169.8,
+            "ema_fast": 87993.37313097251,
+            "ema_fast_previous": 88080.06503949594,
+            "ema_slow": 88372.48321976747,
+            "previous_close": 87503.2,
+            "reasons": [
+              "adx_strong:39.1",
+              "downtrend"
+            ],
+            "rsi": 24.015837457367738,
+            "rsi_previous": 29.001797368886713
+          },
+          "indicator_values": {
+            "adx": 39.06424437560014,
+            "close": 87169.8,
+            "ema_fast": 87993.37313097251,
+            "ema_fast_previous": 88080.06503949594,
+            "ema_slow": 88372.48321976747,
+            "previous_close": 87503.2,
+            "reasons": [
+              "adx_strong:39.1",
+              "downtrend"
+            ],
+            "rsi": 24.015837457367738,
+            "rsi_previous": 29.001797368886713
+          },
+          "market_regime": "STRONG_TREND",
+          "reason": "no_signal",
+          "session_allowed": true,
+          "signal": "HOLD",
+          "strategy": "trend_pullback",
+          "symbol": "BTCUSDT",
+          "timeframe": "15m",
+          "timestamp": "2026-06-16T19:11:09.321897+00:00"
+        },
+        {
+          "component_confidence": 0.6345164395703474,
+          "component_enabled": true,
+          "component_failed_conditions": [],
+          "component_name": "supertrend",
+          "component_reason": "supertrend_ema",
+          "component_required_conditions": [
+            "supertrend_flip_or_continuation",
+            "ema_slope_confirmation"
+          ],
+          "component_signal": "SELL",
+          "confidence": 0.6345164395703474,
+          "failed_conditions": [],
+          "indicator_snapshot": {
+            "ema_slope": -0.2690328791406949,
+            "reasons": [
+              "supertrend_bearish",
+              "strong_ema_slope"
+            ],
+            "strategy_type": "TREND",
+            "supertrend": 88126.62999999999,
+            "supertrend_dir": -1
+          },
+          "indicator_values": {
+            "ema_slope": -0.2690328791406949,
+            "reasons": [
+              "supertrend_bearish",
+              "strong_ema_slope"
+            ],
+            "strategy_type": "TREND",
+            "supertrend": 88126.62999999999,
+            "supertrend_dir": -1
+          },
+          "market_regime": "STRONG_TREND",
+          "reason": "supertrend_ema",
+          "session_allowed": true,
+          "signal": "SELL",
+          "strategy": "supertrend",
+          "symbol": "BTCUSDT",
+          "timeframe": "15m",
+          "timestamp": "2026-06-16T19:11:09.321897+00:00"
+        },
+        {
+          "component_confidence": 0.0,
+          "component_enabled": true,
+          "component_failed_conditions": [
+            "fresh_fast_slow_sma_cross"
+          ],
+          "component_name": "sma_cross",
+          "component_reason": "no_cross",
+          "component_required_conditions": [
+            "fresh_fast_slow_sma_cross"
+          ],
+          "component_signal": "HOLD",
+          "confidence": 0.0,
+          "failed_conditions": [
+            "NO_PATTERN"
+          ],
+          "indicator_snapshot": {
+            "candle_count": 120,
+            "fast_sma_current": 87844.7,
+            "fast_sma_previous": 87940.54000000001,
+            "slow_sma_current": 88253.07666666666,
+            "slow_sma_previous": 88301.28666666667
+          },
+          "indicator_values": {
+            "candle_count": 120,
+            "fast_sma_current": 87844.7,
+            "fast_sma_previous": 87940.54000000001,
+            "slow_sma_current": 88253.07666666666,
+            "slow_sma_previous": 88301.28666666667
+          },
+          "market_regime": "STRONG_TREND",
+          "reason": "no_cross",
+          "session_allowed": true,
+          "signal": "HOLD",
+          "strategy": "sma_cross",
+          "symbol": "BTCUSDT",
+          "timeframe": "15m",
+          "timestamp": "2026-06-16T19:11:09.321897+00:00"
+        },
+        {
+          "component_confidence": 0.8408165897191222,
+          "component_enabled": true,
+          "component_failed_conditions": [],
+          "component_name": "donchian_breakout",
+          "component_reason": "donchian_breakout",
+          "component_required_conditions": [
+            "adx_above_threshold",
+            "ema50_ema200_trend_alignment",
+            "fresh_donchian_breakout",
+            "confirmed_close_within_atr_distance"
+          ],
+          "component_signal": "SELL",
+          "confidence": 0.8408165897191222,
+          "failed_conditions": [],
+          "indicator_snapshot": {
+            "adx": 39.06424437560014,
+            "atr": 276.9357142857147,
+            "dc_lower": 86976.6,
+            "dc_upper": 88722.0,
+            "reasons": [
+              "adx_strong:39.1",
+              "breakout_below_donchian",
+              "trend_aligned_down",
+              "valid_distance:0.59atr",
+              "confirmed_close"
+            ],
+            "strategy_type": "BREAKOUT"
+          },
+          "indicator_values": {
+            "adx": 39.06424437560014,
+            "atr": 276.9357142857147,
+            "dc_lower": 86976.6,
+            "dc_upper": 88722.0,
+            "reasons": [
+              "adx_strong:39.1",
+              "breakout_below_donchian",
+              "trend_aligned_down",
+              "valid_distance:0.59atr",
+              "confirmed_close"
+            ],
+            "strategy_type": "BREAKOUT"
+          },
+          "market_regime": "STRONG_TREND",
+          "reason": "donchian_breakout",
+          "session_allowed": true,
+          "signal": "SELL",
+          "strategy": "donchian_breakout",
+          "symbol": "BTCUSDT",
+          "timeframe": "15m",
+          "timestamp": "2026-06-16T19:11:09.322897+00:00"
+        },
+        {
+          "component_confidence": 0.0,
+          "component_enabled": false,
+          "component_failed_conditions": [],
+          "component_name": "bollinger_reversion",
+          "component_reason": "disabled_for_regime:STRONG_TREND",
+          "component_required_conditions": [
+            "bollinger_extreme",
+            "rsi_extreme",
+            "reversal_candle"
+          ],
+          "component_signal": "DISABLED",
+          "confidence": 0.0,
+          "failed_conditions": [],
+          "indicator_snapshot": {},
+          "indicator_values": {},
+          "market_regime": "STRONG_TREND",
+          "reason": "disabled_for_regime:STRONG_TREND",
+          "session_allowed": true,
+          "signal": "DISABLED",
+          "strategy": "bollinger_reversion",
+          "symbol": "BTCUSDT",
+          "timeframe": "15m",
+          "timestamp": "2026-06-16T19:11:09.323898+00:00"
+        },
+        {
+          "component_confidence": 0.0,
+          "component_enabled": false,
+          "component_failed_conditions": [],
+          "component_name": "squeeze_breakout",
+          "component_reason": "disabled_for_regime:STRONG_TREND",
+          "component_required_conditions": [
+            "recent_squeeze",
+            "squeeze_release",
+            "directional_momentum"
+          ],
+          "component_signal": "DISABLED",
+          "confidence": 0.0,
+          "failed_conditions": [],
+          "indicator_snapshot": {},
+          "indicator_values": {},
+          "market_regime": "STRONG_TREND",
+          "reason": "disabled_for_regime:STRONG_TREND",
+          "session_allowed": true,
+          "signal": "DISABLED",
+          "strategy": "squeeze_breakout",
+          "symbol": "BTCUSDT",
+          "timeframe": "15m",
+          "timestamp": "2026-06-16T19:11:09.323898+00:00"
+        },
+        {
+          "component_confidence": 0.0,
+          "component_enabled": false,
+          "component_failed_conditions": [],
+          "component_name": "vwap_reversion",
+          "component_reason": "disabled_for_regime:STRONG_TREND",
+          "component_required_conditions": [
+            "adx_below_reversion_max",
+            "vwap_deviation",
+            "rsi_extreme",
+            "reversion_candle"
+          ],
+          "component_signal": "DISABLED",
+          "confidence": 0.0,
+          "failed_conditions": [],
+          "indicator_snapshot": {},
+          "indicator_values": {},
+          "market_regime": "STRONG_TREND",
+          "reason": "disabled_for_regime:STRONG_TREND",
+          "session_allowed": true,
+          "signal": "DISABLED",
+          "strategy": "vwap_reversion",
+          "symbol": "BTCUSDT",
+          "timeframe": "5m",
+          "timestamp": "2026-06-16T19:11:09.323898+00:00"
+        }
+      ],
+      "confidence": 0.7767895412656788,
+      "entry": 87169.9,
+      "entry_open_time": "2025-12-23T06:30:00+00:00",
+      "entry_time": "2025-12-23T06:30:00+00:00",
+      "execution_block_reason": null,
+      "exit_time": 1766472300000,
+      "fees_impact_r": 0.251813,
+      "gross_r_multiple": -1.0,
+      "hold_reason": null,
+      "outcome": "SL",
+      "r_multiple": -1.377719,
+      "reason": "master_ensemble_v2",
+      "regime": "STRONG_TREND",
+      "risk": 276.93571429,
+      "sell_score": 0.7768,
+      "session_allowed": true,
+      "side": "SELL",
+      "signal_open_time": "2025-12-23T06:15:00+00:00",
+      "signal_time": "2025-12-23T06:30:00+00:00",
+      "slippage_impact_r": 0.125906,
+      "symbol": "BTCUSDT",
+      "threshold": 0.55,
+      "tp1_hit": false
+    }
+  ],
+  "adaptive_cache_enabled": true,
+  "adaptive_cache_hits": 999,
+  "adaptive_multipliers_included": true,
+  "adaptive_non_empty_weight_cycles": 0,
+  "adaptive_provider_calls": 1,
+  "adaptive_states_seen": 1000,
+  "candle_mode": "closed",
+  "closed_trades": 8,
+  "cycle_counts": {
+    "BUY": 1,
+    "HOLD": 991,
+    "SELL": 8,
+    "by_regime": {
+      "LOW_VOLATILITY_CHOP": 297,
+      "STRONG_TREND": 135,
+      "WEAK_TREND": 568
+    },
+    "total": 1000
+  },
+  "date_range": {
+    "end": "2026-06-10",
+    "start": "2025-12-12"
+  },
+  "expectancy_r": -0.116781,
+  "fees_bps": 4.0,
+  "fees_impact_r": 1.356166,
+  "generated_at_utc": "2026-06-16T19:11:17.093002+00:00",
+  "master_ensemble_calls": 1000,
+  "max_cycles": 1000,
+  "max_cycles_reached": true,
+  "max_drawdown_r": 2.903105,
+  "metrics": {
+    "accepted_trades": 8,
+    "break_even_buffer_count": 1,
+    "closed_trades": 8,
+    "expectancy_r": -0.116781,
+    "fees_impact_r": 1.356166,
+    "gross_expectancy_r": 0.1375,
+    "loss_count": 4,
+    "max_drawdown_r": 2.903105,
+    "overlap_skipped_count": 1,
+    "profit_factor_r": 0.819555,
+    "risk_skipped": {
+      "max_cycles": 1,
+      "overlap": 1
+    },
+    "sl_count": 4,
+    "slippage_impact_r": 0.678082,
+    "time_exit_count": 0,
+    "tp1_count": 4,
+    "tp2_count": 3,
+    "win_count": 4,
+    "win_rate": 0.5
+  },
+  "missing_old_opportunities": [
+    {
+      "entry_time": "2026-06-05T06:00:00+00:00",
+      "missing_reason": "candle_timing_difference",
+      "old_component_sources": [
+        "supertrend",
+        "donchian_breakout"
+      ],
+      "old_primary_component": "supertrend",
+      "side": "SELL",
+      "signal_time": "2026-06-05T06:00:00+00:00",
+      "symbol": "ETHUSDT"
+    },
+    {
+      "entry_time": "2026-06-05T06:15:00+00:00",
+      "missing_reason": "candle_timing_difference",
+      "old_component_sources": [
+        "supertrend",
+        "donchian_breakout"
+      ],
+      "old_primary_component": "supertrend",
+      "side": "SELL",
+      "signal_time": "2026-06-05T06:15:00+00:00",
+      "symbol": "ETHUSDT"
+    },
+    {
+      "entry_time": "2026-06-05T06:30:00+00:00",
+      "missing_reason": "candle_timing_difference",
+      "old_component_sources": [
+        "supertrend",
+        "donchian_breakout"
+      ],
+      "old_primary_component": "supertrend",
+      "side": "SELL",
+      "signal_time": "2026-06-05T06:30:00+00:00",
+      "symbol": "ETHUSDT"
+    },
+    {
+      "entry_time": "2026-06-05T09:30:00+00:00",
+      "missing_reason": "candle_timing_difference",
+      "old_component_sources": [
+        "supertrend",
+        "trend_pullback"
+      ],
+      "old_primary_component": "trend_pullback",
+      "side": "SELL",
+      "signal_time": "2026-06-05T09:30:00+00:00",
+      "symbol": "ETHUSDT"
+    },
+    {
+      "entry_time": "2026-06-05T14:30:00+00:00",
+      "missing_reason": "candle_timing_difference",
+      "old_component_sources": [
+        "supertrend",
+        "donchian_breakout"
+      ],
+      "old_primary_component": "supertrend",
+      "side": "SELL",
+      "signal_time": "2026-06-05T14:30:00+00:00",
+      "symbol": "BTCUSDT"
+    },
+    {
+      "entry_time": "2026-06-05T15:15:00+00:00",
+      "missing_reason": "candle_timing_difference",
+      "old_component_sources": [
+        "supertrend",
+        "donchian_breakout"
+      ],
+      "old_primary_component": "supertrend",
+      "side": "SELL",
+      "signal_time": "2026-06-05T15:15:00+00:00",
+      "symbol": "ETHUSDT"
+    },
+    {
+      "entry_time": "2026-06-09T16:15:00+00:00",
+      "missing_reason": "candle_timing_difference",
+      "old_component_sources": [
+        "supertrend",
+        "donchian_breakout"
+      ],
+      "old_primary_component": "supertrend",
+      "side": "SELL",
+      "signal_time": "2026-06-09T16:15:00+00:00",
+      "symbol": "BTCUSDT"
+    }
+  ],
+  "missing_reasons": {
+    "candle_timing_difference": 7
+  },
+  "no_overlap": true,
+  "old_replay_trades": 7,
+  "old_vs_new_overlap_count": 0,
+  "old_vs_runtime_equivalent": {
+    "BUY_count": 1,
+    "HOLD_count": 991,
+    "SELL_count": 8,
+    "missing_old_opportunities": [
+      {
+        "entry_time": "2026-06-05T06:00:00+00:00",
+        "missing_reason": "candle_timing_difference",
+        "old_component_sources": [
+          "supertrend",
+          "donchian_breakout"
+        ],
+        "old_primary_component": "supertrend",
+        "side": "SELL",
+        "signal_time": "2026-06-05T06:00:00+00:00",
+        "symbol": "ETHUSDT"
+      },
+      {
+        "entry_time": "2026-06-05T06:15:00+00:00",
+        "missing_reason": "candle_timing_difference",
+        "old_component_sources": [
+          "supertrend",
+          "donchian_breakout"
+        ],
+        "old_primary_component": "supertrend",
+        "side": "SELL",
+        "signal_time": "2026-06-05T06:15:00+00:00",
+        "symbol": "ETHUSDT"
+      },
+      {
+        "entry_time": "2026-06-05T06:30:00+00:00",
+        "missing_reason": "candle_timing_difference",
+        "old_component_sources": [
+          "supertrend",
+          "donchian_breakout"
+        ],
+        "old_primary_component": "supertrend",
+        "side": "SELL",
+        "signal_time": "2026-06-05T06:30:00+00:00",
+        "symbol": "ETHUSDT"
+      },
+      {
+        "entry_time": "2026-06-05T09:30:00+00:00",
+        "missing_reason": "candle_timing_difference",
+        "old_component_sources": [
+          "supertrend",
+          "trend_pullback"
+        ],
+        "old_primary_component": "trend_pullback",
+        "side": "SELL",
+        "signal_time": "2026-06-05T09:30:00+00:00",
+        "symbol": "ETHUSDT"
+      },
+      {
+        "entry_time": "2026-06-05T14:30:00+00:00",
+        "missing_reason": "candle_timing_difference",
+        "old_component_sources": [
+          "supertrend",
+          "donchian_breakout"
+        ],
+        "old_primary_component": "supertrend",
+        "side": "SELL",
+        "signal_time": "2026-06-05T14:30:00+00:00",
+        "symbol": "BTCUSDT"
+      },
+      {
+        "entry_time": "2026-06-05T15:15:00+00:00",
+        "missing_reason": "candle_timing_difference",
+        "old_component_sources": [
+          "supertrend",
+          "donchian_breakout"
+        ],
+        "old_primary_component": "supertrend",
+        "side": "SELL",
+        "signal_time": "2026-06-05T15:15:00+00:00",
+        "symbol": "ETHUSDT"
+      },
+      {
+        "entry_time": "2026-06-09T16:15:00+00:00",
+        "missing_reason": "candle_timing_difference",
+        "old_component_sources": [
+          "supertrend",
+          "donchian_breakout"
+        ],
+        "old_primary_component": "supertrend",
+        "side": "SELL",
+        "signal_time": "2026-06-09T16:15:00+00:00",
+        "symbol": "BTCUSDT"
+      }
+    ],
+    "missing_reason_counts": {
+      "candle_timing_difference": 7
+    },
+    "new_runtime_opportunities": [
+      {
+        "entry_time": "2025-12-15T16:45:00+00:00",
+        "side": "SELL",
+        "signal_time": "2025-12-15T16:45:00+00:00",
+        "symbol": "BTCUSDT"
+      },
+      {
+        "entry_time": "2025-12-15T18:30:00+00:00",
+        "side": "SELL",
+        "signal_time": "2025-12-15T18:30:00+00:00",
+        "symbol": "BTCUSDT"
+      },
+      {
+        "entry_time": "2025-12-18T17:15:00+00:00",
+        "side": "SELL",
+        "signal_time": "2025-12-18T17:15:00+00:00",
+        "symbol": "BTCUSDT"
+      },
+      {
+        "entry_time": "2025-12-18T18:00:00+00:00",
+        "side": "SELL",
+        "signal_time": "2025-12-18T18:00:00+00:00",
+        "symbol": "BTCUSDT"
+      },
+      {
+        "entry_time": "2025-12-19T17:45:00+00:00",
+        "side": "SELL",
+        "signal_time": "2025-12-19T17:45:00+00:00",
+        "symbol": "BTCUSDT"
+      },
+      {
+        "entry_time": "2025-12-22T12:30:00+00:00",
+        "side": "BUY",
+        "signal_time": "2025-12-22T12:30:00+00:00",
+        "symbol": "BTCUSDT"
+      },
+      {
+        "entry_time": "2025-12-23T06:15:00+00:00",
+        "side": "SELL",
+        "signal_time": "2025-12-23T06:15:00+00:00",
+        "symbol": "BTCUSDT"
+      },
+      {
+        "entry_time": "2025-12-23T06:30:00+00:00",
+        "side": "SELL",
+        "signal_time": "2025-12-23T06:30:00+00:00",
+        "symbol": "BTCUSDT"
+      }
+    ],
+    "old_replay_trades": 7,
+    "overlap_count": 0,
+    "runtime_equivalent_replay_trades": 8
+  },
+  "options": {
+    "cache_adaptive_state": true,
+    "end_date": "2026-06-10",
+    "fees_bps": 4.0,
+    "max_cycles": 1000,
+    "max_daily_trades": 3,
+    "no_overlap": true,
+    "progress_every": 250,
+    "session_windows": "06:00-19:00",
+    "slippage_bps": 2.0,
+    "start_date": "2025-12-12",
+    "symbols": [
+      "BTCUSDT",
+      "ETHUSDT"
+    ]
+  },
+  "overlap_skipped_count": 1,
+  "profit_factor_r": 0.819555,
+  "rows_by_symbol": {
+    "BTCUSDT": 17280
+  },
+  "runtime_candle_timing_recommendation": "SWITCH_RUNTIME_TO_CLOSED_CANDLE_ONLY_IN_PAPER",
+  "runtime_candle_timing_recommendation_reasons": [
+    "Closed-candle replay is leakage-safe and the mismatch audit found runtime may use forming candles.",
+    "Any change should be paper-only and separately tested before Section 4 acceptance."
+  ],
+  "runtime_equivalent_trades": 8,
+  "safety": {
+    "active_env_modified": false,
+    "active_env_sha256_after": "6E3A3B649427C1162D021B6F9F8E992CDA0B21B200261E3D134C0A3AA8FCC4F9",
+    "active_env_sha256_before": "6E3A3B649427C1162D021B6F9F8E992CDA0B21B200261E3D134C0A3AA8FCC4F9",
+    "capital_deployment_recommended": false,
+    "iofs_shadow": true,
+    "live_mode_enabled": false,
+    "live_mode_recommended": false,
+    "ml_disabled": true,
+    "ml_enable_recommended": false,
+    "paper_only": true,
+    "production_changed": false,
+    "production_files": [
+      "README.md"
+    ],
+    "recommendation_allowed": true,
+    "strong_trend_experiment_left_running": true
+  },
+  "same_blocked_regime_logic": true,
+  "same_confidence_floor": true,
+  "same_runtime_gate_sequence": true,
+  "same_session_filter": true,
+  "same_symbol_config": true,
+  "sample_cycles": [
+    {
+      "action": "HOLD",
+      "adaptive_weight_adjustments": {},
+      "buy_score": 0.0,
+      "candle_mode": "closed",
+      "component_breakdown": [],
+      "confidence": 0.0,
+      "entry_open_time": "2025-12-15T02:30:00+00:00",
+      "entry_time": "2025-12-15T02:30:00+00:00",
+      "execution_block_reason": "SESSION_BLOCKED",
+      "hold_reason": "SESSION_BLOCKED",
+      "reason": "SESSION_BLOCKED",
+      "regime": "WEAK_TREND",
+      "sell_score": 0.0,
+      "session_allowed": false,
+      "signal_open_time": "2025-12-15T02:15:00+00:00",
+      "signal_time": "2025-12-15T02:30:00+00:00",
+      "symbol": "BTCUSDT",
+      "threshold": 0.55
+    },
+    {
+      "action": "HOLD",
+      "adaptive_weight_adjustments": {},
+      "buy_score": 0.0,
+      "candle_mode": "closed",
+      "component_breakdown": [],
+      "confidence": 0.0,
+      "entry_open_time": "2025-12-15T02:45:00+00:00",
+      "entry_time": "2025-12-15T02:45:00+00:00",
+      "execution_block_reason": "SESSION_BLOCKED",
+      "hold_reason": "SESSION_BLOCKED",
+      "reason": "SESSION_BLOCKED",
+      "regime": "WEAK_TREND",
+      "sell_score": 0.0,
+      "session_allowed": false,
+      "signal_open_time": "2025-12-15T02:30:00+00:00",
+      "signal_time": "2025-12-15T02:45:00+00:00",
+      "symbol": "BTCUSDT",
+      "threshold": 0.55
+    },
+    {
+      "action": "HOLD",
+      "adaptive_weight_adjustments": {},
+      "buy_score": 0.0,
+      "candle_mode": "closed",
+      "component_breakdown": [],
+      "confidence": 0.0,
+      "entry_open_time": "2025-12-15T03:00:00+00:00",
+      "entry_time": "2025-12-15T03:00:00+00:00",
+      "execution_block_reason": "SESSION_BLOCKED",
+      "hold_reason": "SESSION_BLOCKED",
+      "reason": "SESSION_BLOCKED",
+      "regime": "WEAK_TREND",
+      "sell_score": 0.0,
+      "session_allowed": false,
+      "signal_open_time": "2025-12-15T02:45:00+00:00",
+      "signal_time": "2025-12-15T03:00:00+00:00",
+      "symbol": "BTCUSDT",
+      "threshold": 0.55
+    },
+    {
+      "action": "HOLD",
+      "adaptive_weight_adjustments": {},
+      "buy_score": 0.0,
+      "candle_mode": "closed",
+      "component_breakdown": [],
+      "confidence": 0.0,
+      "entry_open_time": "2025-12-15T03:15:00+00:00",
+      "entry_time": "2025-12-15T03:15:00+00:00",
+      "execution_block_reason": "SESSION_BLOCKED",
+      "hold_reason": "SESSION_BLOCKED",
+      "reason": "SESSION_BLOCKED",
+      "regime": "WEAK_TREND",
+      "sell_score": 0.0,
+      "session_allowed": false,
+      "signal_open_time": "2025-12-15T03:00:00+00:00",
+      "signal_time": "2025-12-15T03:15:00+00:00",
+      "symbol": "BTCUSDT",
+      "threshold": 0.55
+    },
+    {
+      "action": "HOLD",
+      "adaptive_weight_adjustments": {},
+      "buy_score": 0.0,
+      "candle_mode": "closed",
+      "component_breakdown": [],
+      "confidence": 0.0,
+      "entry_open_time": "2025-12-15T03:30:00+00:00",
+      "entry_time": "2025-12-15T03:30:00+00:00",
+      "execution_block_reason": "SESSION_BLOCKED",
+      "hold_reason": "SESSION_BLOCKED",
+      "reason": "SESSION_BLOCKED",
+      "regime": "WEAK_TREND",
+      "sell_score": 0.0,
+      "session_allowed": false,
+      "signal_open_time": "2025-12-15T03:15:00+00:00",
+      "signal_time": "2025-12-15T03:30:00+00:00",
+      "symbol": "BTCUSDT",
+      "threshold": 0.55
+    }
+  ],
+  "session_windows": "06:00-19:00",
+  "slippage_bps": 2.0,
+  "slippage_impact_r": 0.678082,
+  "strong_trend_cycles": 135,
+  "strong_trend_expectancy_r": -0.191754,
+  "strong_trend_max_drawdown_r": 2.474526,
+  "strong_trend_profit_factor_r": 0.714168,
+  "strong_trend_recommendation": "STOP_STRONG_TREND_PAPER_EXPERIMENT",
+  "strong_trend_recommendation_reasons": [
+    "Strong Trend expectancy is not positive under runtime-equivalent replay."
+  ],
+  "strong_trend_runtime_equivalent": {
+    "BTC_strong_trend_trades": 6,
+    "BUY_count": 1,
+    "ETH_strong_trend_trades": 0,
+    "SELL_count": 5,
+    "accepted_trades": 6,
+    "break_even_buffer_count": 1,
+    "closed_trades": 6,
+    "expectancy_r": -0.191754,
+    "fees_impact_r": 1.167015,
+    "gross_expectancy_r": 0.1,
+    "loss_count": 3,
+    "max_drawdown_r": 2.474526,
+    "profit_factor_r": 0.714168,
+    "sl_count": 3,
+    "slippage_impact_r": 0.583507,
+    "strong_trend_cycles": 135,
+    "strong_trend_signals": 7,
+    "strong_trend_trades": 6,
+    "time_exit_count": 0,
+    "tp1_count": 3,
+    "tp2_count": 2,
+    "win_count": 3,
+    "win_rate": 0.5
+  },
+  "strong_trend_signals": 7,
+  "strong_trend_trades": 6,
+  "strong_trend_win_rate": 0.5,
+  "symbols": [
+    "BTCUSDT",
+    "ETHUSDT"
+  ],
+  "total_cycles": 1000,
+  "trust_replay_for_tuning": "yes_for_paper_research_only",
+  "uses_master_ensemble": true,
+  "win_rate": 0.5
+}

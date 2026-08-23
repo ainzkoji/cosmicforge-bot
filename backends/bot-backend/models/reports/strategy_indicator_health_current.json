@@ -1,0 +1,50 @@
+{
+  "source": "Binance public futures 15m klines",
+  "verification_note": "Read-only public market-data verification; no executor or active configuration used.",
+  "symbols": {
+    "BTCUSDT": {
+      "candle_count": 250,
+      "health_status": "HEALTHY",
+      "latest_candle_open_utc": "2026-06-14T21:15:00+00:00",
+      "verified_at_utc": "2026-06-14T21:16:38.946201+00:00",
+      "values": {
+        "adx_14": 32.13088828274317,
+        "atr_14": 123.32142857142857,
+        "bollinger_lower_20": 63523.89108066192,
+        "bollinger_middle_20": 63876.325,
+        "bollinger_upper_20": 64228.75891933808,
+        "bullish_candle_field": 1,
+        "ema_fast_20": 63962.46916922867,
+        "ema_long_200": 63982.023764646234,
+        "ema_slow_50": 64065.567665747614,
+        "macd_12_26": 2.761409923543397,
+        "resistance_20": 64493.2,
+        "rsi_14": 71.20715087295984,
+        "support_20": 63650.0,
+        "volume_average_20": 881.2749
+      }
+    },
+    "ETHUSDT": {
+      "candle_count": 250,
+      "health_status": "HEALTHY",
+      "latest_candle_open_utc": "2026-06-14T21:15:00+00:00",
+      "verified_at_utc": "2026-06-14T21:16:39.259782+00:00",
+      "values": {
+        "adx_14": 23.07216797003132,
+        "atr_14": 4.112857142857154,
+        "bollinger_lower_20": 1655.0268622523076,
+        "bollinger_middle_20": 1665.2585,
+        "bollinger_upper_20": 1675.4901377476922,
+        "bullish_candle_field": 1,
+        "ema_fast_20": 1667.2816326253512,
+        "ema_long_200": 1670.6002477947936,
+        "ema_slow_50": 1667.9723770376324,
+        "macd_12_26": 2.014790194093621,
+        "resistance_20": 1684.99,
+        "rsi_14": 72.72061012362838,
+        "support_20": 1658.08,
+        "volume_average_20": 19802.85165
+      }
+    }
+  }
+}

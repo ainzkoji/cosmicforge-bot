@@ -1,0 +1,1144 @@
+{
+  "candle_timing": {
+    "current_utc_time": "2026-06-15T21:28:36.759463+00:00",
+    "flags": [
+      "CANDLE_TIMING_MISMATCH"
+    ],
+    "impact": "Fresh-cross, breakout, SuperTrend-flip, RSI-turn, and regime values can differ between a forming runtime candle and the replay's completed candle.",
+    "replay_code_evidence": "Replay windows end at a stored historical candle and simulate_candidate enters rows[index + 1].",
+    "replay_enters_next_candle_open": true,
+    "replay_evaluates_only_completed_candles": true,
+    "runtime_code_evidence": "MasterEnsembleStrategy and active components consume client.klines(...)[-1] without removing the current forming Binance kline.",
+    "runtime_latest_candle_close_time": "not persisted",
+    "runtime_latest_candle_in_trace": "not persisted",
+    "runtime_may_evaluate_incomplete_candles": true,
+    "runtime_uses_closed_candles_only": false
+  },
+  "component_failure_comparison": [
+    {
+      "condition": "fresh_fast_slow_sma_cross",
+      "difference": -430,
+      "likely_cause": "Recent runtime repeatedly lacked this fresh setup condition.",
+      "replay_pass_count": 0,
+      "replay_pass_count_source": "all directional component sources from recomputed opportunities",
+      "runtime_fail_count": 430
+    },
+    {
+      "condition": "rsi_reset_and_turn",
+      "difference": -429,
+      "likely_cause": "Condition is active in both paths but rare in the recent runtime market.",
+      "replay_pass_count": 1,
+      "replay_pass_count_source": "all directional component sources from recomputed opportunities",
+      "runtime_fail_count": 430
+    },
+    {
+      "condition": "fresh_donchian_breakout",
+      "difference": -424,
+      "likely_cause": "Condition is active in both paths but rare in the recent runtime market.",
+      "replay_pass_count": 6,
+      "replay_pass_count_source": "all directional component sources from recomputed opportunities",
+      "runtime_fail_count": 430
+    },
+    {
+      "condition": "trend_pullback_conditions",
+      "difference": -429,
+      "likely_cause": "Condition is active in both paths but rare in the recent runtime market.",
+      "replay_pass_count": 1,
+      "replay_pass_count_source": "all directional component sources from recomputed opportunities",
+      "runtime_fail_count": 430
+    },
+    {
+      "condition": "supertrend_flip",
+      "difference": -207,
+      "likely_cause": "Condition is active in both paths but rare in the recent runtime market.",
+      "replay_pass_count": 7,
+      "replay_pass_count_source": "all directional component sources from recomputed opportunities",
+      "runtime_fail_count": 214
+    },
+    {
+      "condition": "vwap_conditions",
+      "difference": 0,
+      "likely_cause": "Condition was neither a recent runtime failure nor a replay opportunity source.",
+      "replay_pass_count": 0,
+      "replay_pass_count_source": "all directional component sources from recomputed opportunities",
+      "runtime_fail_count": 0
+    },
+    {
+      "condition": "squeeze_conditions",
+      "difference": 0,
+      "likely_cause": "Condition was neither a recent runtime failure nor a replay opportunity source.",
+      "replay_pass_count": 0,
+      "replay_pass_count_source": "all directional component sources from recomputed opportunities",
+      "runtime_fail_count": 0
+    }
+  ],
+  "config_comparison": {
+    "flags": [
+      "CONFIG_MISMATCH"
+    ],
+    "items": [
+      {
+        "affects_signal_creation": false,
+        "impact": "No material mismatch.",
+        "name": "TRADE_SYMBOLS",
+        "replay_value": "BTCUSDT,ETHUSDT",
+        "runtime_value": "BTCUSDT,ETHUSDT",
+        "same_as_runtime": true
+      },
+      {
+        "affects_signal_creation": false,
+        "impact": "No material mismatch.",
+        "name": "DEFAULT_INTERVAL",
+        "replay_value": "15m",
+        "runtime_value": "15m",
+        "same_as_runtime": true
+      },
+      {
+        "affects_signal_creation": false,
+        "impact": "No material mismatch.",
+        "name": "ENSEMBLE_BLOCKED_REGIMES",
+        "replay_value": "",
+        "runtime_value": "",
+        "same_as_runtime": true
+      },
+      {
+        "affects_signal_creation": false,
+        "impact": "No material mismatch.",
+        "name": "ENSEMBLE_MIN_THRESHOLD_FLOOR",
+        "replay_value": 0.55,
+        "runtime_value": 0.55,
+        "same_as_runtime": true
+      },
+      {
+        "affects_signal_creation": false,
+        "impact": "No material mismatch.",
+        "name": "ENSEMBLE_SESSION_FILTER_ENABLED",
+        "replay_value": true,
+        "runtime_value": true,
+        "same_as_runtime": true
+      },
+      {
+        "affects_signal_creation": false,
+        "impact": "No material mismatch.",
+        "name": "ENSEMBLE_SESSION_WINDOWS_UTC",
+        "replay_value": "06:00-19:00",
+        "runtime_value": "06:00-19:00",
+        "same_as_runtime": true
+      },
+      {
+        "affects_signal_creation": false,
+        "impact": "Not applied by replay; currently does not explain raw signals because IOFS is shadow and ML is disabled.",
+        "name": "IOFS_GATE_MODE",
+        "replay_value": "not applied by replay",
+        "runtime_value": "shadow",
+        "same_as_runtime": false
+      },
+      {
+        "affects_signal_creation": false,
+        "impact": "Not applied by replay; currently does not explain raw signals because IOFS is shadow and ML is disabled.",
+        "name": "ML_ENABLED",
+        "replay_value": "not applied by replay",
+        "runtime_value": false,
+        "same_as_runtime": false
+      },
+      {
+        "affects_signal_creation": false,
+        "impact": "Not applied by replay; currently does not explain raw signals because IOFS is shadow and ML is disabled.",
+        "name": "MAX_TRADES_DAILY",
+        "replay_value": "not applied by replay",
+        "runtime_value": 3,
+        "same_as_runtime": false
+      },
+      {
+        "affects_signal_creation": false,
+        "impact": "No material mismatch.",
+        "name": "component enabled flags",
+        "replay_value": {
+          "HIGH_VOLATILITY": [
+            "donchian_breakout",
+            "squeeze_breakout",
+            "supertrend"
+          ],
+          "LOW_VOLATILITY_CHOP": [],
+          "RANGE": [
+            "bollinger_reversion",
+            "squeeze_breakout",
+            "vwap_reversion"
+          ],
+          "STRONG_TREND": [
+            "donchian_breakout",
+            "sma_cross",
+            "supertrend",
+            "trend_pullback"
+          ],
+          "WEAK_TREND": [
+            "donchian_breakout",
+            "sma_cross",
+            "supertrend",
+            "trend_pullback"
+          ]
+        },
+        "runtime_value": {
+          "HIGH_VOLATILITY": [
+            "donchian_breakout",
+            "squeeze_breakout",
+            "supertrend"
+          ],
+          "LOW_VOLATILITY_CHOP": [],
+          "RANGE": [
+            "bollinger_reversion",
+            "squeeze_breakout",
+            "vwap_reversion"
+          ],
+          "STRONG_TREND": [
+            "donchian_breakout",
+            "sma_cross",
+            "supertrend",
+            "trend_pullback"
+          ],
+          "WEAK_TREND": [
+            "donchian_breakout",
+            "sma_cross",
+            "supertrend",
+            "trend_pullback"
+          ]
+        },
+        "same_as_runtime": true
+      },
+      {
+        "affects_signal_creation": true,
+        "impact": "Replay omits adaptive performance multipliers used by runtime voting.",
+        "name": "component weights",
+        "replay_value": {
+          "adaptive_performance_multipliers": "omitted by replay",
+          "base": {
+            "bollinger_reversion": 1.0,
+            "donchian_breakout": 1.0,
+            "sma_cross": 0.9,
+            "squeeze_breakout": 1.1,
+            "supertrend": 1.5,
+            "trend_pullback": 1.3,
+            "vwap_reversion": 1.2
+          },
+          "regime_multipliers": {
+            "HIGH_VOLATILITY": {},
+            "LOW_VOLATILITY_CHOP": {},
+            "RANGE": {
+              "bollinger_reversion": 1.3,
+              "squeeze_breakout": 1.3,
+              "vwap_reversion": 1.3
+            },
+            "STRONG_TREND": {
+              "donchian_breakout": 1.3,
+              "sma_cross": 1.3,
+              "supertrend": 1.3,
+              "trend_pullback": 1.3
+            },
+            "WEAK_TREND": {}
+          }
+        },
+        "runtime_value": {
+          "adaptive_performance_multipliers": "applied at runtime",
+          "base": {
+            "bollinger_reversion": 1.0,
+            "donchian_breakout": 1.0,
+            "sma_cross": 0.9,
+            "squeeze_breakout": 1.1,
+            "supertrend": 1.5,
+            "trend_pullback": 1.3,
+            "vwap_reversion": 1.2
+          },
+          "regime_multipliers": {
+            "HIGH_VOLATILITY": {},
+            "LOW_VOLATILITY_CHOP": {},
+            "RANGE": {
+              "bollinger_reversion": 1.3,
+              "squeeze_breakout": 1.3,
+              "vwap_reversion": 1.3
+            },
+            "STRONG_TREND": {
+              "donchian_breakout": 1.3,
+              "sma_cross": 1.3,
+              "supertrend": 1.3,
+              "trend_pullback": 1.3
+            },
+            "WEAK_TREND": {}
+          }
+        },
+        "same_as_runtime": false
+      },
+      {
+        "affects_signal_creation": false,
+        "impact": "No material mismatch.",
+        "name": "component minimum confidence",
+        "replay_value": {
+          "bollinger_reversion": 0.55,
+          "donchian_breakout": 0.75,
+          "sma_cross": 0.55,
+          "squeeze_breakout": 0.6,
+          "supertrend": 0.5,
+          "trend_pullback": 0.75,
+          "vwap_reversion": 0.6
+        },
+        "runtime_value": {
+          "bollinger_reversion": 0.55,
+          "donchian_breakout": 0.75,
+          "sma_cross": 0.55,
+          "squeeze_breakout": 0.6,
+          "supertrend": 0.5,
+          "trend_pullback": 0.75,
+          "vwap_reversion": 0.6
+        },
+        "same_as_runtime": true
+      },
+      {
+        "affects_signal_creation": false,
+        "impact": "No material mismatch.",
+        "name": "regime classifier settings",
+        "replay_value": {
+          "chop_compression": 0.3,
+          "high_vol_atr_pct": 3.0,
+          "low_vol_atr_pct": 0.5,
+          "slope_threshold": 0.15,
+          "stability_candles": 2,
+          "strong_trend_adx": 25.0,
+          "weak_trend_adx_low": 18.0
+        },
+        "runtime_value": {
+          "chop_compression": 0.3,
+          "high_vol_atr_pct": 3.0,
+          "low_vol_atr_pct": 0.5,
+          "slope_threshold": 0.15,
+          "stability_candles": 2,
+          "strong_trend_adx": 25.0,
+          "weak_trend_adx_low": 18.0
+        },
+        "same_as_runtime": true
+      },
+      {
+        "affects_signal_creation": false,
+        "impact": "Equivalent 250-candle top-level warmup.",
+        "name": "indicator warmup settings",
+        "replay_value": {
+          "regime_minimum": 100,
+          "reliable_regime_target": 200,
+          "replay_window": 250
+        },
+        "runtime_value": {
+          "master_ensemble_klines": 250,
+          "regime_minimum": 100,
+          "reliable_regime_target": 200
+        },
+        "same_as_runtime": true
+      }
+    ],
+    "signal_creation_mismatches": [
+      "component weights"
+    ]
+  },
+  "flags": [
+    "CANDLE_TIMING_MISMATCH",
+    "CONFIG_MISMATCH",
+    "REPLAY_NOT_RUNTIME_EQUIVALENT"
+  ],
+  "generated_at_utc": "2026-06-15T21:28:36.759463+00:00",
+  "indicator_warmup": {
+    "ADX_availability": true,
+    "ATR_availability": true,
+    "EMA200_availability": "configured warmup is sufficient; not persisted in runtime trace",
+    "flags": [],
+    "interpretation": "Both paths use a 250-candle top-level window. No evidence shows warmup starvation causing the zero-signal runtime sample.",
+    "latest_indicator_snapshot_completeness": "complete for persisted regime fields; component snapshots exist only after pre-component gates",
+    "observed_component_candle_counts": [
+      120
+    ],
+    "replay_candle_count_used": 250,
+    "replay_indicator_health": {
+      "BTCUSDT": [
+        {
+          "expected_range": "> 0",
+          "health_status": "HEALTHY",
+          "indicator_name": "ema_fast_20",
+          "latest_value": 61233.422105,
+          "nan_count": 19,
+          "valid_count": 981
+        },
+        {
+          "expected_range": "> 0",
+          "health_status": "HEALTHY",
+          "indicator_name": "ema_slow_50",
+          "latest_value": 61412.74657624,
+          "nan_count": 49,
+          "valid_count": 951
+        },
+        {
+          "expected_range": "> 0",
+          "health_status": "HEALTHY",
+          "indicator_name": "ema_long_200",
+          "latest_value": 62036.41590872,
+          "nan_count": 199,
+          "valid_count": 801
+        },
+        {
+          "expected_range": "0..100",
+          "health_status": "HEALTHY",
+          "indicator_name": "rsi_14",
+          "latest_value": 40.08250706,
+          "nan_count": 14,
+          "valid_count": 986
+        },
+        {
+          "expected_range": "finite",
+          "health_status": "HEALTHY",
+          "indicator_name": "macd_12_26",
+          "latest_value": -107.03645609,
+          "nan_count": 25,
+          "valid_count": 975
+        },
+        {
+          "expected_range": "> 0",
+          "health_status": "HEALTHY",
+          "indicator_name": "atr_14",
+          "latest_value": 273.14285714,
+          "nan_count": 14,
+          "valid_count": 986
+        },
+        {
+          "expected_range": "0..100",
+          "health_status": "HEALTHY",
+          "indicator_name": "adx_14",
+          "latest_value": 31.81736324,
+          "nan_count": 27,
+          "valid_count": 973
+        },
+        {
+          "expected_range": ">= 0",
+          "health_status": "HEALTHY",
+          "indicator_name": "volume_average_20",
+          "latest_value": 1955.83865,
+          "nan_count": 19,
+          "valid_count": 981
+        },
+        {
+          "expected_range": "upper > middle",
+          "health_status": "HEALTHY",
+          "indicator_name": "bollinger_upper_20",
+          "latest_value": 61755.7495655,
+          "nan_count": 19,
+          "valid_count": 981
+        },
+        {
+          "expected_range": "> 0",
+          "health_status": "HEALTHY",
+          "indicator_name": "bollinger_middle_20",
+          "latest_value": 61301.78,
+          "nan_count": 19,
+          "valid_count": 981
+        },
+        {
+          "expected_range": "lower < middle",
+          "health_status": "HEALTHY",
+          "indicator_name": "bollinger_lower_20",
+          "latest_value": 60847.8104345,
+          "nan_count": 19,
+          "valid_count": 981
+        },
+        {
+          "expected_range": "> 0",
+          "health_status": "HEALTHY",
+          "indicator_name": "support_20",
+          "latest_value": 60691.9,
+          "nan_count": 19,
+          "valid_count": 981
+        },
+        {
+          "expected_range": "> 0",
+          "health_status": "HEALTHY",
+          "indicator_name": "resistance_20",
+          "latest_value": 61783.4,
+          "nan_count": 19,
+          "valid_count": 981
+        },
+        {
+          "expected_range": "0 or 1",
+          "health_status": "HEALTHY",
+          "indicator_name": "bullish_candle_field",
+          "latest_value": 1.0,
+          "nan_count": 0,
+          "valid_count": 1000
+        }
+      ],
+      "ETHUSDT": [
+        {
+          "expected_range": "> 0",
+          "health_status": "HEALTHY",
+          "indicator_name": "ema_fast_20",
+          "latest_value": 1623.63128094,
+          "nan_count": 19,
+          "valid_count": 981
+        },
+        {
+          "expected_range": "> 0",
+          "health_status": "HEALTHY",
+          "indicator_name": "ema_slow_50",
+          "latest_value": 1629.91313305,
+          "nan_count": 49,
+          "valid_count": 951
+        },
+        {
+          "expected_range": "> 0",
+          "health_status": "HEALTHY",
+          "indicator_name": "ema_long_200",
+          "latest_value": 1647.42013033,
+          "nan_count": 199,
+          "valid_count": 801
+        },
+        {
+          "expected_range": "0..100",
+          "health_status": "HEALTHY",
+          "indicator_name": "rsi_14",
+          "latest_value": 43.76292379,
+          "nan_count": 14,
+          "valid_count": 986
+        },
+        {
+          "expected_range": "finite",
+          "health_status": "HEALTHY",
+          "indicator_name": "macd_12_26",
+          "latest_value": -3.01974308,
+          "nan_count": 25,
+          "valid_count": 975
+        },
+        {
+          "expected_range": "> 0",
+          "health_status": "HEALTHY",
+          "indicator_name": "atr_14",
+          "latest_value": 9.145,
+          "nan_count": 14,
+          "valid_count": 986
+        },
+        {
+          "expected_range": "0..100",
+          "health_status": "HEALTHY",
+          "indicator_name": "adx_14",
+          "latest_value": 30.82771376,
+          "nan_count": 27,
+          "valid_count": 973
+        },
+        {
+          "expected_range": ">= 0",
+          "health_status": "HEALTHY",
+          "indicator_name": "volume_average_20",
+          "latest_value": 55509.16365,
+          "nan_count": 19,
+          "valid_count": 981
+        },
+        {
+          "expected_range": "upper > middle",
+          "health_status": "HEALTHY",
+          "indicator_name": "bollinger_upper_20",
+          "latest_value": 1641.0897901,
+          "nan_count": 19,
+          "valid_count": 981
+        },
+        {
+          "expected_range": "> 0",
+          "health_status": "HEALTHY",
+          "indicator_name": "bollinger_middle_20",
+          "latest_value": 1625.2695,
+          "nan_count": 19,
+          "valid_count": 981
+        },
+        {
+          "expected_range": "lower < middle",
+          "health_status": "HEALTHY",
+          "indicator_name": "bollinger_lower_20",
+          "latest_value": 1609.4492099,
+          "nan_count": 19,
+          "valid_count": 981
+        },
+        {
+          "expected_range": "> 0",
+          "health_status": "HEALTHY",
+          "indicator_name": "support_20",
+          "latest_value": 1605.0,
+          "nan_count": 19,
+          "valid_count": 981
+        },
+        {
+          "expected_range": "> 0",
+          "health_status": "HEALTHY",
+          "indicator_name": "resistance_20",
+          "latest_value": 1642.99,
+          "nan_count": 19,
+          "valid_count": 981
+        },
+        {
+          "expected_range": "0 or 1",
+          "health_status": "HEALTHY",
+          "indicator_name": "bullish_candle_field",
+          "latest_value": 1.0,
+          "nan_count": 0,
+          "valid_count": 1000
+        }
+      ]
+    },
+    "runtime_candle_count_used": 250,
+    "runtime_indicator_nan_counts": {
+      "adx": 0,
+      "atr_pct": 0,
+      "breakout_pressure": 0,
+      "compression_ratio": 0,
+      "ma_slope": 0
+    },
+    "warmup_mismatch": false
+  },
+  "recommendation": "FIX_REPLAY_TO_USE_RUNTIME_ENSEMBLE",
+  "recommendation_reasons": [
+    "The positive replay does not execute the production MasterEnsembleStrategy or full runtime gate sequence.",
+    "Closed-candle replay and forming-candle runtime evaluation can produce different freshness triggers.",
+    "Keep the current paper experiment running while a parity replay is built; no threshold or active-session change is justified."
+  ],
+  "replay": {
+    "performance": {
+      "accepted_trades": 7,
+      "average_r": 0.3,
+      "break_even_buffer_count": 1,
+      "btc_vs_eth": {
+        "BTCUSDT": {
+          "accepted_trades": 2,
+          "average_r": -1.0,
+          "break_even_buffer_count": 0,
+          "expectancy_r": -1.0,
+          "loss_count": 2,
+          "max_drawdown_r": 2.0,
+          "profit_factor_r": 0.0,
+          "sl_count": 2,
+          "time_exit_count": 0,
+          "tp1_count": 0,
+          "tp2_count": 0,
+          "win_count": 0,
+          "win_rate": 0.0
+        },
+        "ETHUSDT": {
+          "accepted_trades": 5,
+          "average_r": 0.82,
+          "break_even_buffer_count": 1,
+          "expectancy_r": 0.82,
+          "loss_count": 1,
+          "max_drawdown_r": 1.0,
+          "profit_factor_r": 5.1,
+          "sl_count": 1,
+          "time_exit_count": 0,
+          "tp1_count": 4,
+          "tp2_count": 3,
+          "win_count": 4,
+          "win_rate": 0.8
+        }
+      },
+      "component_source_performance": {
+        "supertrend": {
+          "accepted_trades": 6,
+          "average_r": 0.1,
+          "break_even_buffer_count": 1,
+          "expectancy_r": 0.1,
+          "loss_count": 3,
+          "max_drawdown_r": 2.4,
+          "profit_factor_r": 1.2,
+          "sl_count": 3,
+          "time_exit_count": 0,
+          "tp1_count": 3,
+          "tp2_count": 2,
+          "win_count": 3,
+          "win_rate": 0.5
+        },
+        "trend_pullback": {
+          "accepted_trades": 1,
+          "average_r": 1.5,
+          "break_even_buffer_count": 0,
+          "expectancy_r": 1.5,
+          "loss_count": 0,
+          "max_drawdown_r": 0.0,
+          "profit_factor_r": null,
+          "sl_count": 0,
+          "time_exit_count": 0,
+          "tp1_count": 1,
+          "tp2_count": 1,
+          "win_count": 1,
+          "win_rate": 1.0
+        }
+      },
+      "expectancy_r": 0.3,
+      "long_vs_short": {
+        "SELL": {
+          "accepted_trades": 7,
+          "average_r": 0.3,
+          "break_even_buffer_count": 1,
+          "expectancy_r": 0.3,
+          "loss_count": 3,
+          "max_drawdown_r": 1.4,
+          "profit_factor_r": 1.7,
+          "sl_count": 3,
+          "time_exit_count": 0,
+          "tp1_count": 4,
+          "tp2_count": 3,
+          "win_count": 4,
+          "win_rate": 0.571429
+        }
+      },
+      "loss_count": 3,
+      "max_drawdown_r": 1.4,
+      "profit_factor_r": 1.7,
+      "score_bucket_performance": {
+        "0.80-1.00": {
+          "accepted_trades": 7,
+          "average_r": 0.3,
+          "break_even_buffer_count": 1,
+          "expectancy_r": 0.3,
+          "loss_count": 3,
+          "max_drawdown_r": 1.4,
+          "profit_factor_r": 1.7,
+          "sl_count": 3,
+          "time_exit_count": 0,
+          "tp1_count": 4,
+          "tp2_count": 3,
+          "win_count": 4,
+          "win_rate": 0.571429
+        }
+      },
+      "session_performance": {
+        "06:00-10:00": {
+          "accepted_trades": 4,
+          "average_r": 0.875,
+          "break_even_buffer_count": 0,
+          "expectancy_r": 0.875,
+          "loss_count": 1,
+          "max_drawdown_r": 1.0,
+          "profit_factor_r": 4.5,
+          "sl_count": 1,
+          "time_exit_count": 0,
+          "tp1_count": 3,
+          "tp2_count": 3,
+          "win_count": 3,
+          "win_rate": 0.75
+        },
+        "13:00-16:00": {
+          "accepted_trades": 2,
+          "average_r": -0.2,
+          "break_even_buffer_count": 1,
+          "expectancy_r": -0.2,
+          "loss_count": 1,
+          "max_drawdown_r": 1.0,
+          "profit_factor_r": 0.6,
+          "sl_count": 1,
+          "time_exit_count": 0,
+          "tp1_count": 1,
+          "tp2_count": 0,
+          "win_count": 1,
+          "win_rate": 0.5
+        },
+        "16:00-19:00": {
+          "accepted_trades": 1,
+          "average_r": -1.0,
+          "break_even_buffer_count": 0,
+          "expectancy_r": -1.0,
+          "loss_count": 1,
+          "max_drawdown_r": 1.0,
+          "profit_factor_r": 0.0,
+          "sl_count": 1,
+          "time_exit_count": 0,
+          "tp1_count": 0,
+          "tp2_count": 0,
+          "win_count": 0,
+          "win_rate": 0.0
+        }
+      },
+      "sl_count": 3,
+      "time_exit_count": 0,
+      "tp1_count": 4,
+      "tp2_count": 3,
+      "win_count": 4,
+      "win_rate": 0.571429
+    },
+    "recomputed_opportunities": [
+      {
+        "ambiguous_candle": false,
+        "candles_held": 1,
+        "component_sources": [
+          "donchian_breakout",
+          "supertrend"
+        ],
+        "confidence": 0.905168,
+        "entry": 60360.1,
+        "entry_time": "2026-06-05T14:30:00+00:00",
+        "exit_time": 1780669800000,
+        "outcome": "SL",
+        "primary_component": "supertrend",
+        "r_multiple": -1.0,
+        "regime": "STRONG_TREND",
+        "risk": 538.09285714,
+        "score_bucket": "0.80-1.00",
+        "session": "13:00-16:00",
+        "side": "SELL",
+        "signal_time": "2026-06-05T14:30:00+00:00",
+        "symbol": "BTCUSDT",
+        "tp1_hit": false
+      },
+      {
+        "ambiguous_candle": false,
+        "candles_held": 3,
+        "component_sources": [
+          "donchian_breakout",
+          "supertrend"
+        ],
+        "confidence": 0.894703,
+        "entry": 60977.3,
+        "entry_time": "2026-06-09T16:15:00+00:00",
+        "exit_time": 1781023500000,
+        "outcome": "SL",
+        "primary_component": "supertrend",
+        "r_multiple": -1.0,
+        "regime": "STRONG_TREND",
+        "risk": 352.87142857,
+        "score_bucket": "0.80-1.00",
+        "session": "16:00-19:00",
+        "side": "SELL",
+        "signal_time": "2026-06-09T16:15:00+00:00",
+        "symbol": "BTCUSDT",
+        "tp1_hit": false
+      },
+      {
+        "ambiguous_candle": true,
+        "candles_held": 2,
+        "component_sources": [
+          "donchian_breakout",
+          "supertrend"
+        ],
+        "confidence": 0.8747,
+        "entry": 1683.36,
+        "entry_time": "2026-06-05T06:00:00+00:00",
+        "exit_time": 1780640100000,
+        "outcome": "TP2",
+        "primary_component": "supertrend",
+        "r_multiple": 1.5,
+        "regime": "STRONG_TREND",
+        "risk": 16.04428571,
+        "score_bucket": "0.80-1.00",
+        "session": "06:00-10:00",
+        "side": "SELL",
+        "signal_time": "2026-06-05T06:00:00+00:00",
+        "symbol": "ETHUSDT",
+        "tp1_hit": true
+      },
+      {
+        "ambiguous_candle": true,
+        "candles_held": 1,
+        "component_sources": [
+          "donchian_breakout",
+          "supertrend"
+        ],
+        "confidence": 0.885466,
+        "entry": 1670.69,
+        "entry_time": "2026-06-05T06:15:00+00:00",
+        "exit_time": 1780640100000,
+        "outcome": "TP2",
+        "primary_component": "supertrend",
+        "r_multiple": 1.5,
+        "regime": "STRONG_TREND",
+        "risk": 16.62071429,
+        "score_bucket": "0.80-1.00",
+        "session": "06:00-10:00",
+        "side": "SELL",
+        "signal_time": "2026-06-05T06:15:00+00:00",
+        "symbol": "ETHUSDT",
+        "tp1_hit": true
+      },
+      {
+        "ambiguous_candle": false,
+        "candles_held": 1,
+        "component_sources": [
+          "donchian_breakout",
+          "supertrend"
+        ],
+        "confidence": 0.862755,
+        "entry": 1644.03,
+        "entry_time": "2026-06-05T06:30:00+00:00",
+        "exit_time": 1780641000000,
+        "outcome": "SL",
+        "primary_component": "supertrend",
+        "r_multiple": -1.0,
+        "regime": "STRONG_TREND",
+        "risk": 19.70142857,
+        "score_bucket": "0.80-1.00",
+        "session": "06:00-10:00",
+        "side": "SELL",
+        "signal_time": "2026-06-05T06:30:00+00:00",
+        "symbol": "ETHUSDT",
+        "tp1_hit": false
+      },
+      {
+        "ambiguous_candle": false,
+        "candles_held": 18,
+        "component_sources": [
+          "supertrend",
+          "trend_pullback"
+        ],
+        "confidence": 0.857131,
+        "entry": 1683.9,
+        "entry_time": "2026-06-05T09:30:00+00:00",
+        "exit_time": 1780667100000,
+        "outcome": "TP2",
+        "primary_component": "trend_pullback",
+        "r_multiple": 1.5,
+        "regime": "STRONG_TREND",
+        "risk": 20.03428571,
+        "score_bucket": "0.80-1.00",
+        "session": "06:00-10:00",
+        "side": "SELL",
+        "signal_time": "2026-06-05T09:30:00+00:00",
+        "symbol": "ETHUSDT",
+        "tp1_hit": true
+      },
+      {
+        "ambiguous_candle": true,
+        "candles_held": 4,
+        "component_sources": [
+          "donchian_breakout",
+          "supertrend"
+        ],
+        "confidence": 0.895215,
+        "entry": 1583.32,
+        "entry_time": "2026-06-05T15:15:00+00:00",
+        "exit_time": 1780675200000,
+        "outcome": "BREAK_EVEN_BUFFER",
+        "primary_component": "supertrend",
+        "r_multiple": 0.6,
+        "regime": "STRONG_TREND",
+        "risk": 21.57071429,
+        "score_bucket": "0.80-1.00",
+        "session": "13:00-16:00",
+        "side": "SELL",
+        "signal_time": "2026-06-05T15:15:00+00:00",
+        "symbol": "ETHUSDT",
+        "tp1_hit": true
+      }
+    ],
+    "strong_trend_cycles": 217,
+    "strong_trend_opportunities": 7
+  },
+  "replay_realism": {
+    "differences": [
+      "Strong Trend block-impact replay calls a copied aggregate_candidate function instead of MasterEnsembleStrategy.get_signal.",
+      "Adaptive performance multipliers, volatility-spike guard, orchestrator, risk, and executor gates are omitted.",
+      "Strong Trend blocking is intentionally bypassed for analysis.",
+      "Overlapping trades are allowed and fees/slippage are excluded.",
+      "Replay uses stored completed candles and next-candle-open entries."
+    ],
+    "flags": [
+      "REPLAY_NOT_RUNTIME_EQUIVALENT"
+    ],
+    "interpretation": "The replay is useful opportunity research, but it is not proof that the live paper runtime should have generated or executed the same trades.",
+    "uses_master_ensemble": false,
+    "uses_same_component_weights": false,
+    "uses_same_gate_sequence": false,
+    "uses_same_indicator_pipeline": true,
+    "uses_same_regime_classifier": true
+  },
+  "root_cause": "The apparent contradiction is primarily a replay-equivalence and observation-window problem, not evidence of a broken runtime signal path. The 7 replay trades were sparse historical candidates produced by a simplified Strong Trend analysis replay. Recent runtime traces repeatedly evaluate a much smaller set of current candles; in-session component diagnostics show missing fresh setup conditions, while many later Strong Trend traces are stopped by the session gate before component evaluation. Runtime also may evaluate the forming candle, whereas replay uses completed candles and next-open entries.",
+  "runtime": {
+    "component_diagnostic_supplement": {
+      "component_failures": {
+        "fresh_donchian_breakout": 430,
+        "fresh_fast_slow_sma_cross": 430,
+        "rsi_reset_and_turn": 430,
+        "squeeze_conditions": 0,
+        "supertrend_flip": 214,
+        "trend_pullback_conditions": 430,
+        "vwap_conditions": 0
+      },
+      "component_records": 3010,
+      "component_signal_counts": {
+        "bollinger_reversion:DISABLED": 430,
+        "donchian_breakout:HOLD": 430,
+        "sma_cross:HOLD": 430,
+        "squeeze_breakout:DISABLED": 430,
+        "supertrend:BUY": 215,
+        "supertrend:HOLD": 215,
+        "trend_pullback:HOLD": 430,
+        "vwap_reversion:DISABLED": 430
+      },
+      "count_unit": "decision traces, not independent closed candles; repeated evaluations of the same forming/current candle are possible",
+      "first_decision_time": "2026-06-15T17:20:43.761239+00:00",
+      "last_decision_time": "2026-06-15T18:57:18.361528+00:00",
+      "sample_size": 430,
+      "strong_trend_cycles_by_symbol": {
+        "BTCUSDT": 215,
+        "ETHUSDT": 215
+      }
+    },
+    "component_failures": {
+      "fresh_donchian_breakout": 0,
+      "fresh_fast_slow_sma_cross": 0,
+      "rsi_reset_and_turn": 0,
+      "squeeze_conditions": 0,
+      "supertrend_flip": 0,
+      "trend_pullback_conditions": 0,
+      "vwap_conditions": 0
+    },
+    "component_records": 0,
+    "component_signal_counts": {},
+    "decision_sample_size": 500,
+    "first_decision_time": "2026-06-15T20:03:51.026388+00:00",
+    "indicator_nan_counts": {
+      "adx": 0,
+      "atr_pct": 0,
+      "breakout_pressure": 0,
+      "compression_ratio": 0,
+      "ma_slope": 0
+    },
+    "last_decision_time": "2026-06-15T21:27:29.983411+00:00",
+    "observed_component_candle_counts": [],
+    "runtime_signals_by_symbol": {
+      "ETHUSDT": {
+        "HOLD": 250
+      }
+    },
+    "strong_trend_cycles": 250,
+    "strong_trend_cycles_by_symbol": {
+      "ETHUSDT": 250
+    },
+    "strong_trend_cycles_with_component_diagnostics": 0,
+    "strong_trend_cycles_without_component_diagnostics": 250
+  },
+  "safety": {
+    "active_env_modified": false,
+    "active_env_sha256_after": "6E3A3B649427C1162D021B6F9F8E992CDA0B21B200261E3D134C0A3AA8FCC4F9",
+    "active_env_sha256_before": "6E3A3B649427C1162D021B6F9F8E992CDA0B21B200261E3D134C0A3AA8FCC4F9",
+    "capital_deployment_recommended": false,
+    "iofs_shadow": true,
+    "live_mode_recommended": false,
+    "ml_disabled": true,
+    "ml_enable_recommended": false,
+    "paper_only": true,
+    "production_changed": false,
+    "production_files": [
+      "README.md"
+    ],
+    "recommendation_is_safe": true,
+    "strong_trend_experiment_left_running": true
+  },
+  "session_comparison": {
+    "interpretation": "The 7-trade positive replay used the broad ensemble session, not the narrower IOFS reference windows. Session configuration does not explain zero runtime signals.",
+    "mismatch": false,
+    "positive_replay_actual_window_evidence": "The positive replay accepted a 16:00-19:00 candidate, proving it was not restricted to the narrower reference windows.",
+    "reference_narrow_replay_windows": "07:00-10:00,13:00-16:00",
+    "replay_opportunities_inside_reference_narrow_windows": 3,
+    "replay_opportunities_inside_runtime_window": 7,
+    "replay_opportunities_outside_reference_narrow_windows": 4,
+    "replay_opportunities_outside_runtime_window": 0,
+    "replay_session_performance": {
+      "06:00-10:00": {
+        "accepted_trades": 4,
+        "average_r": 0.875,
+        "break_even_buffer_count": 0,
+        "expectancy_r": 0.875,
+        "loss_count": 1,
+        "max_drawdown_r": 1.0,
+        "profit_factor_r": 4.5,
+        "sl_count": 1,
+        "time_exit_count": 0,
+        "tp1_count": 3,
+        "tp2_count": 3,
+        "win_count": 3,
+        "win_rate": 0.75
+      },
+      "13:00-16:00": {
+        "accepted_trades": 2,
+        "average_r": -0.2,
+        "break_even_buffer_count": 1,
+        "expectancy_r": -0.2,
+        "loss_count": 1,
+        "max_drawdown_r": 1.0,
+        "profit_factor_r": 0.6,
+        "sl_count": 1,
+        "time_exit_count": 0,
+        "tp1_count": 1,
+        "tp2_count": 0,
+        "win_count": 1,
+        "win_rate": 0.5
+      },
+      "16:00-19:00": {
+        "accepted_trades": 1,
+        "average_r": -1.0,
+        "break_even_buffer_count": 0,
+        "expectancy_r": -1.0,
+        "loss_count": 1,
+        "max_drawdown_r": 1.0,
+        "profit_factor_r": 0.0,
+        "sl_count": 1,
+        "time_exit_count": 0,
+        "tp1_count": 0,
+        "tp2_count": 0,
+        "win_count": 0,
+        "win_rate": 0.0
+      }
+    },
+    "runtime_cycles_inside_replay_windows": 0,
+    "runtime_cycles_outside_replay_windows": 250,
+    "runtime_windows": "06:00-19:00"
+  },
+  "symbol_comparison": {
+    "flags": [],
+    "interpretation": "Replay edge was concentrated in ETH (5 of 7 opportunities, 80% win rate). The comparable in-session runtime component sample is balanced across BTC and ETH; runtime is not mostly BTC, and symbol mix does not explain the missing signals.",
+    "replay_STRONG_TREND_opportunities_by_symbol": {
+      "BTCUSDT": 2,
+      "ETHUSDT": 5
+    },
+    "replay_opportunity_eth_share": 0.7143,
+    "replay_performance_by_symbol": {
+      "BTCUSDT": {
+        "accepted_trades": 2,
+        "average_r": -1.0,
+        "break_even_buffer_count": 0,
+        "expectancy_r": -1.0,
+        "loss_count": 2,
+        "max_drawdown_r": 2.0,
+        "profit_factor_r": 0.0,
+        "sl_count": 2,
+        "time_exit_count": 0,
+        "tp1_count": 0,
+        "tp2_count": 0,
+        "win_count": 0,
+        "win_rate": 0.0
+      },
+      "ETHUSDT": {
+        "accepted_trades": 5,
+        "average_r": 0.82,
+        "break_even_buffer_count": 1,
+        "expectancy_r": 0.82,
+        "loss_count": 1,
+        "max_drawdown_r": 1.0,
+        "profit_factor_r": 5.1,
+        "sl_count": 1,
+        "time_exit_count": 0,
+        "tp1_count": 4,
+        "tp2_count": 3,
+        "win_count": 4,
+        "win_rate": 0.8
+      }
+    },
+    "runtime_STRONG_TREND_cycles_by_symbol": {
+      "ETHUSDT": 250
+    },
+    "runtime_eth_share": 0.5,
+    "runtime_in_session_component_cycles_by_symbol": {
+      "BTCUSDT": 215,
+      "ETHUSDT": 215
+    },
+    "runtime_signals_by_symbol": {
+      "ETHUSDT": {
+        "HOLD": 250
+      }
+    }
+  }
+}

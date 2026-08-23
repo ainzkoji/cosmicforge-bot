@@ -1,0 +1,1 @@
+"""Admin backend persistence adapters."""

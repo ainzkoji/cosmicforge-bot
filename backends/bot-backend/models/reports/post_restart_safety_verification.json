@@ -1,0 +1,53 @@
+{
+  "verified_at_utc": "2026-06-15T04:55:28.0632786Z",
+  "restart": {
+    "method": "Stopped only local bot-backend port 9000 process and started Uvicorn on 127.0.0.1:9000 with UTF-8 process output.",
+    "process_started_at_utc": "2026-06-15T04:46:39.294507+00:00",
+    "config_loaded_at_utc": "2026-06-15T04:46:39.321587+00:00",
+    "worker_pid": 50088,
+    "run_id": "793bebf7-55f0-4c92-b867-1f5d5f3d69b6",
+    "code_version": "db4580b",
+    "initial_localhost_launch_attempt": {
+      "result": "exited_before_cycles",
+      "reason": "Redirected Windows process output used CP1252 and could not encode Unicode status text.",
+      "unsafe_path_reached": false
+    },
+    "user_service_untouched_and_healthy": true,
+    "admin_service_untouched_and_healthy": true
+  },
+  "runtime_loaded_config": {
+    "EXECUTION_MODE": "paper",
+    "BINANCE_ENV": "testnet",
+    "ML_ENABLED": false,
+    "ML_SHADOW_MODE": false,
+    "IOFS_GATE_MODE": "shadow",
+    "TRADE_SYMBOLS": "BTCUSDT,ETHUSDT",
+    "ENSEMBLE_SESSION_FILTER_ENABLED": true,
+    "ENSEMBLE_SESSION_WINDOWS_UTC": "06:00-19:00",
+    "MAX_TRADES_DAILY": 3,
+    "live_symbols_count": 0
+  },
+  "bot_instance": {
+    "id": "bot_e5fe913972a9",
+    "status": "active",
+    "mode": "paper",
+    "symbols": ["BTCUSDT", "ETHUSDT"],
+    "last_error": null
+  },
+  "integrity": {
+    "active_env_sha256_before": "1CF36622DD75B4AB091BB0D35CE9950FC641749A9857BA916B2435617E13D97C",
+    "active_env_sha256_after": "1CF36622DD75B4AB091BB0D35CE9950FC641749A9857BA916B2435617E13D97C",
+    "active_env_unchanged": true,
+    "models_production_files": ["README.md"],
+    "production_pkl_model_count": 0
+  },
+  "notes": [
+    "ML_SHADOW_MODE=False is inert because ML_ENABLED=False.",
+    "The health endpoint reports trade_symbols_count as string length 15; loaded config and bot context both prove exactly two symbols."
+  ],
+  "safety_verification_passed": true,
+  "paper_only": true,
+  "ml_disabled": true,
+  "iofs_shadow": true,
+  "no_live_capital": true
+}

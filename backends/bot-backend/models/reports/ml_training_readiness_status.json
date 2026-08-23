@@ -1,0 +1,44 @@
+{
+  "generated_at": "2026-07-18T02:30:00.149648+00:00",
+  "ready_to_retry_5a": false,
+  "ready_for_5b": false,
+  "organic_rows": 326,
+  "iofs_organic_rows": 0,
+  "closed_iofs_paper_trades": 0,
+  "paper_trade_review_entries": 0,
+  "minimum_organic_rows_met": true,
+  "recommended_organic_rows_met": false,
+  "iofs_data_available": false,
+  "iofs_retry_rows_met": false,
+  "closed_trade_retry_threshold_met": false,
+  "thresholds": {
+    "minimum_organic_rows": 300,
+    "recommended_organic_rows": 500,
+    "minimum_iofs_organic_rows": 300,
+    "minimum_closed_iofs_trades": 20
+  },
+  "accepted_model_artifact": {
+    "accepted_model_artifact_exists": false,
+    "model_path": null,
+    "meta_path": null,
+    "validation_path": null
+  },
+  "promotion_guard_allows_5b": false,
+  "last_candidate_result": "REJECTED: Mean AUC 0.5442 < minimum 0.55 (model is not meaningfully better than random - not useful for gating). | LightGBM AUC 0.5442 < logistic baseline 0.5749 (gradient boosting adds no value over linear model on this dataset).",
+  "section5b_status_report_exists": true,
+  "blocking_reasons": [
+    "Organic rows 326 are below retry threshold 500.",
+    "IOFS organic/paper rows 0 are below retry threshold 300.",
+    "Closed IOFS paper trades 0 are below retry threshold 20.",
+    "No accepted validated runtime-compatible v2 .pkl artifact exists.",
+    "Section 5B promotion guard does not allow deployment."
+  ],
+  "next_action": "continue_paper_validation",
+  "auto_training_enabled": false,
+  "safety": {
+    "execution_mode": "paper",
+    "ml_enabled": "False",
+    "iofs_gate_mode": "shadow",
+    "models_production_unchanged": true
+  }
+}

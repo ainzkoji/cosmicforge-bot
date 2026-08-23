@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FCM Token Generator</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            max-width: 900px;
+            margin: 50px auto;
+            padding: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 15px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+        }
+        h1 {
+            color: #333;
+            margin-bottom: 10px;
+        }
+        .subtitle {
+            color: #666;
+            margin-bottom: 30px;
+        }
+        .step {
+            background: #f8f9fa;
+            padding: 20px;
+            margin: 20px 0;
+            border-radius: 10px;
+            border-left: 4px solid #667eea;
+        }
+        .step h3 {
+            margin-top: 0;
+            color: #667eea;
+        }
+        button {
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 15px 30px;
+            font-size: 16px;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.3s;
+            font-weight: 600;
+        }
+        button:hover {
+            background: #5568d3;
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+        button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+            transform: none;
+        }
+        .token-box {
+            background: #1e1e1e;
+            color: #0f0;
+            padding: 20px;
+            border-radius: 8px;
+            font-family: 'Courier New', monospace;
+            word-break: break-all;
+            margin: 15px 0;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+        .success {
+            color: #28a745;
+            font-weight: bold;
+        }
+        .error {
+            color: #dc3545;
+            font-weight: bold;
+        }
+        .info-box {
+            background: #e7f3ff;
+            border: 1px solid #b3d9ff;
+            padding: 15px;
+            border-radius: 8px;
+            margin: 15px 0;
+        }
+        .copy-btn {
+            background: #28a745;
+            padding: 10px 20px;
+            margin-top: 10px;
+        }
+        .copy-btn:hover {
+            background: #218838;
+        }
+        .status {
+            padding: 10px;
+            border-radius: 5px;
+            margin: 10px 0;
+        }
+        .status.success {
+            background: #d4edda;
+            border: 1px solid #c3e6cb;
+            color: #155724;
+        }
+        .status.error {
+            background: #f8d7da;
+            border: 1px solid #f5c6cb;
+            color: #721c24;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔔 FCM Token Generator</h1>
+        <p class="subtitle">Get your Firebase Cloud Messaging token for push notifications</p>
+
+        <div class="info-box">
+            <strong>📋 Configuration:</strong><br>
+            <strong>Project:</strong> trading-bot-9926d<br>
+            <strong>Backend:</strong> http://localhost:8000
+        </div>
+
+        <div class="step">
+            <h3>Step 1: Request Notification Permission</h3>
+            <p>Click the button below to request permission for push notifications:</p>
+            <button id="requestPermissionBtn" onclick="requestNotificationPermission()">
+                Request Permission
+            </button>
+            <div id="permissionStatus" style="margin-top: 10px;"></div>
+        </div>
+
+        <div class="step">
+            <h3>Step 2: Get FCM Token</h3>
+            <p>After granting permission, click to get your FCM token:</p>
+            <button id="getTokenBtn" onclick="getFCMToken()" disabled>
+                Get FCM Token
+            </button>
+            <div id="tokenStatus" style="margin-top: 10px;"></div>
+            <div id="tokenDisplay" style="display: none;">
+                <p><strong>Your FCM Token:</strong></p>
+                <div class="token-box" id="tokenBox"></div>
+                <button class="copy-btn" onclick="copyToken()">📋 Copy Token</button>
+            </div>
+        </div>
+
+        <div class="step">
+            <h3>Step 3: Register Token with Backend</h3>
+            <p>Enter your user ID and register the token:</p>
+            <input type="text" id="userId" placeholder="Enter User ID" style="padding: 10px; width: 300px; border-radius: 5px; border: 1px solid #ddd;">
+            <button id="registerBtn" onclick="registerToken()" disabled style="margin-left: 10px;">
+                Register Token
+            </button>
+            <div id="registerStatus" style="margin-top: 10px;"></div>
+        </div>
+
+        <div class="step">
+            <h3>Step 4: Send Test Notification</h3>
+            <p>This requires authentication. Use curl command or API client.</p>
+            <div class="info-box">
+                <strong>Curl Command:</strong>
+                <pre style="background: #1e1e1e; color: #0f0; padding: 10px; border-radius: 5px; overflow-x: auto;" id="curlCommand">
+# First, login to get auth token
+# Then run test notification
+                </pre>
+            </div>
+        </div>
+    </div>
+
+    <script type="module">
+        // Firebase Configuration
+        const firebaseConfig = {
+            apiKey: "AIzaSyBXL7xqKH8C9vYG5TYP0Q8_qKLZ9ZqZ9QE",
+            authDomain: "trading-bot-9926d.firebaseapp.com",
+            projectId: "trading-bot-9926d",
+            storageBucket: "trading-bot-9926d.firebasestorage.app",
+            messagingSenderId: "542612853913",
+            appId: "1:542612853913:web:c2d8e6f4a8b2e8ec3a7f8d",
+            measurementId: "G-YOUR_MEASUREMENT_ID"
+        };
+
+        // VAPID key - will get from Firebase console
+        const vapidKey ="BNgD3..."; // Placeholder
+
+        let fcmToken = null;
+
+        window.requestNotificationPermission = async function() {
+            try {
+                const permission = await Notification.requestPermission();
+                const statusDiv = document.getElementById('permissionStatus');
+                
+                if (permission === 'granted') {
+                    statusDiv.innerHTML = '<div class="status success">✅ Permission granted!</div>';
+                    document.getElementById('getTokenBtn').disabled = false;
+                } else {
+                    statusDiv.innerHTML = '<div class="status error">❌ Permission denied</div>';
+                }
+            } catch (error) {
+                document.getElementById('permissionStatus').innerHTML = 
+                    `<div class="status error">Error: ${error.message}</div>`;
+            }
+        };
+
+        window.getFCMToken = async function() {
+            try {
+                // Import Firebase modules
+                const { initializeApp } = await import('https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js');
+                const { getMessaging, getToken } = await import('https://www.gstatic.com/firebasejs/10.7.1/firebase-messaging.js');
+                
+                // Initialize Firebase
+                const app = initializeApp(firebaseConfig);
+                const messaging = getMessaging(app);
+                
+                // Get token
+                fcmToken = await getToken(messaging, { vapidKey: vapidKey });
+                
+                if (fcmToken) {
+                    document.getElementById('tokenBox').textContent = fcmToken;
+                    document.getElementById('tokenDisplay').style.display = 'block';
+                    document.getElementById('tokenStatus').innerHTML = 
+                        '<div class="status success">✅ Token generated successfully!</div>';
+                    document.getElementById('registerBtn').disabled = false;
+                    
+                    // Auto-copy to clipboard
+                    navigator.clipboard.writeText(fcmToken);
+                    
+                } else {
+                    document.getElementById('tokenStatus').innerHTML = 
+                        '<div class="status error">❌ Failed to get token</div>';
+                }
+            } catch (error) {
+                document.getElementById('tokenStatus').innerHTML = 
+                    `<div class="status error">❌ Error: ${error.message}</div>`;
+                console.error('Error getting token:', error);
+            }
+        };
+
+        window.copyToken = function() {
+            if (fcmToken) {
+                navigator.clipboard.writeText(fcmToken);
+                alert('Token copied to clipboard!');
+            }
+        };
+
+        window.registerToken = async function() {
+            const userId = document.getElementById('userId').value;
+            if (!userId) {
+                alert('Please enter a User ID');
+                return;
+            }
+
+            if (!fcmToken) {
+                alert('No FCM token available');
+                return;
+            }
+
+            try {
+                const response = await fetch('http://localhost:8000/api/notifications/token', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        userId: userId,
+                        fcmToken: fcmToken,
+                        deviceName: 'Chrome Desktop - Test Page'
+                    })
+                });
+
+                const result = await response.json();
+                
+                if (response.ok) {
+                    document.getElementById('registerStatus').innerHTML = 
+                        `<div class="status success">✅ Token registered! Status: ${result.status}</div>`;
+                    
+                    // Update curl command
+                    document.getElementById('curlCommand').textContent = `
+curl -X POST http://localhost:8000/api/notifications/test \\
+  -H "Content-Type: application/json" \\
+  -H "Authorization: Bearer YOUR_AUTH_TOKEN" \\
+  -d '{
+    "userId": "${userId}",
+    "title": "Test Notification",
+    "body": "This is a test from the backend!"
+  }'`;
+                } else {
+                    document.getElementById('registerStatus').innerHTML = 
+                        `<div class="status error">❌ Registration failed: ${result.message || 'Unknown error'}</div>`;
+                }
+            } catch (error) {
+                document.getElementById('registerStatus').innerHTML = 
+                    `<div class="status error">❌ Error: ${error.message}</div>`;
+            }
+        };
+
+        // Check if notifications are supported
+        if (!('Notification' in window)) {
+            document.body.innerHTML = '<div class="container"><h1>❌ Notifications Not Supported</h1><p>Your browser doesn\'t support notifications.</p></div>';
+        }
+    </script>
+</body>
+</html>

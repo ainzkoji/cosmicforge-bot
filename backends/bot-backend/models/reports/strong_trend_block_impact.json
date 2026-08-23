@@ -1,0 +1,294 @@
+{
+  "active_env_modified": false,
+  "active_env_sha256_after": "1CF36622DD75B4AB091BB0D35CE9950FC641749A9857BA916B2435617E13D97C",
+  "active_env_sha256_before": "1CF36622DD75B4AB091BB0D35CE9950FC641749A9857BA916B2435617E13D97C",
+  "analysis_mode_only": true,
+  "generated_at_utc": "2026-06-15T16:23:49.974857+00:00",
+  "health_reporting_audit": {
+    "correct_count": 2,
+    "correct_count_source": "len(parse_symbols(settings.TRADE_SYMBOLS, settings.MAX_SYMBOLS))",
+    "display_source": "comma-joined parsed trade-symbol list",
+    "previous_count": 15,
+    "previous_count_source": "len(settings.TRADE_SYMBOLS), which counted characters",
+    "runner_actual_symbols": [
+      "BTCUSDT",
+      "ETHUSDT"
+    ]
+  },
+  "lookback_decisions_per_symbol": {
+    "BTCUSDT": 500,
+    "ETHUSDT": 500
+  },
+  "lookback_decisions_total": 1000,
+  "recent_runtime_strong_trend_blocks": {
+    "blocked_by_symbol": {
+      "BTCUSDT": 65,
+      "ETHUSDT": 476
+    },
+    "blocked_cycles": 480,
+    "blocked_decisions": 541,
+    "first_timestamp": "2026-06-15T03:33:57.303080+00:00",
+    "last_timestamp": "2026-06-15T16:21:02.391599+00:00",
+    "lookback_decisions": 1000
+  },
+  "recommendation": "ALLOW_STRONG_TREND_IN_PAPER_ONLY",
+  "recommendation_reasons": [
+    "Positive expectancy, profit factor above 1.2, and max drawdown at or below 5R.",
+    "The sample has fewer than 20 trades, so any trial must remain paper-only for data collection."
+  ],
+  "replay": {
+    "legacy_pinned_classifier_counterfactual": {
+      "description": "Models the pre-repair bug by pinning each symbol to its first classified regime.",
+      "difference_after_repair": {
+        "expectancy_r_delta": null,
+        "max_drawdown_r_delta": 1.4,
+        "trade_count_delta": 7
+      },
+      "strong_trend_only": {
+        "accepted_trades": 0,
+        "average_r": null,
+        "break_even_buffer_count": 0,
+        "expectancy_r": null,
+        "loss_count": 0,
+        "max_drawdown_r": 0.0,
+        "profit_factor_r": null,
+        "sl_count": 0,
+        "time_exit_count": 0,
+        "tp1_count": 0,
+        "tp2_count": 0,
+        "win_count": 0,
+        "win_rate": null
+      }
+    },
+    "method": {
+      "classifier": "repaired RegimeClassifier.classify_stable()",
+      "entry": "next 15m candle open",
+      "fees_and_slippage_included": false,
+      "max_holding_candles": 48,
+      "overlapping_trades_allowed": true,
+      "risk_model": "1 ATR stop, 1R TP1, 2R TP2, 0.2R break-even buffer"
+    },
+    "strong_trend_cycles": 217,
+    "strong_trend_only": {
+      "accepted_trades": 7,
+      "average_r": 0.3,
+      "break_even_buffer_count": 1,
+      "btc_vs_eth": {
+        "BTCUSDT": {
+          "accepted_trades": 2,
+          "average_r": -1.0,
+          "break_even_buffer_count": 0,
+          "expectancy_r": -1.0,
+          "loss_count": 2,
+          "max_drawdown_r": 2.0,
+          "profit_factor_r": 0.0,
+          "sl_count": 2,
+          "time_exit_count": 0,
+          "tp1_count": 0,
+          "tp2_count": 0,
+          "win_count": 0,
+          "win_rate": 0.0
+        },
+        "ETHUSDT": {
+          "accepted_trades": 5,
+          "average_r": 0.82,
+          "break_even_buffer_count": 1,
+          "expectancy_r": 0.82,
+          "loss_count": 1,
+          "max_drawdown_r": 1.0,
+          "profit_factor_r": 5.1,
+          "sl_count": 1,
+          "time_exit_count": 0,
+          "tp1_count": 4,
+          "tp2_count": 3,
+          "win_count": 4,
+          "win_rate": 0.8
+        }
+      },
+      "component_source_performance": {
+        "supertrend": {
+          "accepted_trades": 6,
+          "average_r": 0.1,
+          "break_even_buffer_count": 1,
+          "expectancy_r": 0.1,
+          "loss_count": 3,
+          "max_drawdown_r": 2.4,
+          "profit_factor_r": 1.2,
+          "sl_count": 3,
+          "time_exit_count": 0,
+          "tp1_count": 3,
+          "tp2_count": 2,
+          "win_count": 3,
+          "win_rate": 0.5
+        },
+        "trend_pullback": {
+          "accepted_trades": 1,
+          "average_r": 1.5,
+          "break_even_buffer_count": 0,
+          "expectancy_r": 1.5,
+          "loss_count": 0,
+          "max_drawdown_r": 0.0,
+          "profit_factor_r": null,
+          "sl_count": 0,
+          "time_exit_count": 0,
+          "tp1_count": 1,
+          "tp2_count": 1,
+          "win_count": 1,
+          "win_rate": 1.0
+        }
+      },
+      "expectancy_r": 0.3,
+      "long_vs_short": {
+        "SELL": {
+          "accepted_trades": 7,
+          "average_r": 0.3,
+          "break_even_buffer_count": 1,
+          "expectancy_r": 0.3,
+          "loss_count": 3,
+          "max_drawdown_r": 1.4,
+          "profit_factor_r": 1.7,
+          "sl_count": 3,
+          "time_exit_count": 0,
+          "tp1_count": 4,
+          "tp2_count": 3,
+          "win_count": 4,
+          "win_rate": 0.571429
+        }
+      },
+      "loss_count": 3,
+      "max_drawdown_r": 1.4,
+      "profit_factor_r": 1.7,
+      "score_bucket_performance": {
+        "0.80-1.00": {
+          "accepted_trades": 7,
+          "average_r": 0.3,
+          "break_even_buffer_count": 1,
+          "expectancy_r": 0.3,
+          "loss_count": 3,
+          "max_drawdown_r": 1.4,
+          "profit_factor_r": 1.7,
+          "sl_count": 3,
+          "time_exit_count": 0,
+          "tp1_count": 4,
+          "tp2_count": 3,
+          "win_count": 4,
+          "win_rate": 0.571429
+        }
+      },
+      "session_performance": {
+        "06:00-10:00": {
+          "accepted_trades": 4,
+          "average_r": 0.875,
+          "break_even_buffer_count": 0,
+          "expectancy_r": 0.875,
+          "loss_count": 1,
+          "max_drawdown_r": 1.0,
+          "profit_factor_r": 4.5,
+          "sl_count": 1,
+          "time_exit_count": 0,
+          "tp1_count": 3,
+          "tp2_count": 3,
+          "win_count": 3,
+          "win_rate": 0.75
+        },
+        "13:00-16:00": {
+          "accepted_trades": 2,
+          "average_r": -0.2,
+          "break_even_buffer_count": 1,
+          "expectancy_r": -0.2,
+          "loss_count": 1,
+          "max_drawdown_r": 1.0,
+          "profit_factor_r": 0.6,
+          "sl_count": 1,
+          "time_exit_count": 0,
+          "tp1_count": 1,
+          "tp2_count": 0,
+          "win_count": 1,
+          "win_rate": 0.5
+        },
+        "16:00-19:00": {
+          "accepted_trades": 1,
+          "average_r": -1.0,
+          "break_even_buffer_count": 0,
+          "expectancy_r": -1.0,
+          "loss_count": 1,
+          "max_drawdown_r": 1.0,
+          "profit_factor_r": 0.0,
+          "sl_count": 1,
+          "time_exit_count": 0,
+          "tp1_count": 0,
+          "tp2_count": 0,
+          "win_count": 0,
+          "win_rate": 0.0
+        }
+      },
+      "sl_count": 3,
+      "time_exit_count": 0,
+      "tp1_count": 4,
+      "tp2_count": 3,
+      "win_count": 4,
+      "win_rate": 0.571429
+    },
+    "strong_trend_trade_candidates_blocked_by_current_config": 7,
+    "with_strong_trend_allowed_analysis_only": {
+      "accepted_trades": 15,
+      "additional_trades_from_strong_trend": 7,
+      "average_r": 0.426667,
+      "break_even_buffer_count": 4,
+      "expectancy_r": 0.426667,
+      "loss_count": 5,
+      "max_drawdown_r": 2.0,
+      "profit_factor_r": 2.28,
+      "sl_count": 5,
+      "time_exit_count": 0,
+      "tp1_count": 10,
+      "tp2_count": 6,
+      "win_count": 10,
+      "win_rate": 0.666667
+    },
+    "with_strong_trend_blocked": {
+      "accepted_trades": 8,
+      "average_r": 0.5375,
+      "break_even_buffer_count": 3,
+      "expectancy_r": 0.5375,
+      "loss_count": 2,
+      "max_drawdown_r": 1.0,
+      "profit_factor_r": 3.15,
+      "sl_count": 2,
+      "time_exit_count": 0,
+      "tp1_count": 6,
+      "tp2_count": 3,
+      "win_count": 6,
+      "win_rate": 0.75
+    }
+  },
+  "runtime_config": {
+    "ENSEMBLE_BLOCKED_REGIMES": "STRONG_TREND",
+    "EXECUTION_MODE": "paper",
+    "IOFS_GATE_MODE": "shadow",
+    "ML_ENABLED": false,
+    "TRADE_SYMBOLS_parsed": [
+      "BTCUSDT",
+      "ETHUSDT"
+    ],
+    "TRADE_SYMBOLS_raw": "BTCUSDT,ETHUSDT"
+  },
+  "safety": {
+    "capital_deployment_allowed": false,
+    "iofs_shadow": true,
+    "live_use_recommended": false,
+    "ml_disabled": true,
+    "ml_enable_recommended": false,
+    "paper_only": true,
+    "recommendation_is_allowed_value": true
+  },
+  "symbols": [
+    "BTCUSDT",
+    "ETHUSDT"
+  ],
+  "warnings": [
+    "This is an offline comparative replay and does not replace Section 4 forward paper validation.",
+    "The ATR-normalized simulator is uniform comparison evidence, not exact production execution parity.",
+    "Overlapping trades are allowed; fees and slippage are excluded."
+  ]
+}

@@ -1,0 +1,158 @@
+{
+  "confirmation_time_utc": "2026-06-15T15:45:30.035848+00:00",
+  "restart_time_utc": "2026-06-15T04:46:39.294507+00:00",
+  "configured_session_utc": "06:00-19:00",
+  "post_restart_in_session_confirmation_completed": true,
+  "observation": {
+    "complete_natural_runtime_cycles": 5,
+    "BTCUSDT_cycles": 5,
+    "ETHUSDT_cycles": 5,
+    "actions": {
+      "BUY": 0,
+      "SELL": 0,
+      "HOLD": 10
+    },
+    "component_diagnostics_active": true,
+    "component_diagnostic_trace_count": 1,
+    "component_records_persisted": 7,
+    "paper_executor_reached": false,
+    "submit_attempts": 0,
+    "paper_orders_created": 0,
+    "positions_opened": 0,
+    "trade_fills": 0
+  },
+  "component_runtime_proof": {
+    "trace_id": "1ad1deda-a6e9-45ec-b013-c5129f15eb05",
+    "cycle_id": "47715c39-5c38-48ea-bdf0-ec0a856df507",
+    "timestamp": "2026-06-15T15:36:12.896477+00:00",
+    "symbol": "BTCUSDT",
+    "timestamp_in_configured_session": true,
+    "persisted_session_allowed": true,
+    "regime": "WEAK_TREND",
+    "raw_action": "HOLD",
+    "confidence": 0.0,
+    "final_action": "HOLD",
+    "hold_reason": "NO_PATTERN",
+    "iofs_shadow_result": "not_reached_final_action_hold",
+    "executor_reached": false,
+    "paper_order_created": false,
+    "indicator_summary": {
+      "adx": 48.3,
+      "atr_pct": 0.376,
+      "ma_slope": 0.213,
+      "compression_ratio": 1.0,
+      "breakout_pressure": 0.1982,
+      "buy_score": 0.0,
+      "sell_score": 0.0,
+      "threshold": 0.55
+    },
+    "components": [
+      {
+        "name": "supertrend",
+        "enabled": true,
+        "output": "HOLD",
+        "confidence": 0.0,
+        "failed_conditions": ["supertrend_flip_or_continuation"],
+        "indicator_snapshot_present": true
+      },
+      {
+        "name": "sma_cross",
+        "enabled": true,
+        "output": "HOLD",
+        "confidence": 0.0,
+        "failed_conditions": ["fresh_fast_slow_sma_cross"],
+        "indicator_snapshot_present": true
+      },
+      {
+        "name": "trend_pullback",
+        "enabled": true,
+        "output": "HOLD",
+        "confidence": 0.0,
+        "failed_conditions": ["rsi_reset_and_turn"],
+        "indicator_snapshot_present": true
+      },
+      {
+        "name": "donchian_breakout",
+        "enabled": true,
+        "output": "HOLD",
+        "confidence": 0.0,
+        "failed_conditions": ["fresh_donchian_breakout"],
+        "indicator_snapshot_present": true
+      },
+      {
+        "name": "bollinger_reversion",
+        "enabled": false,
+        "output": "DISABLED",
+        "confidence": 0.0,
+        "failed_conditions": [],
+        "indicator_snapshot_present": false
+      },
+      {
+        "name": "squeeze_breakout",
+        "enabled": false,
+        "output": "DISABLED",
+        "confidence": 0.0,
+        "failed_conditions": [],
+        "indicator_snapshot_present": false
+      },
+      {
+        "name": "vwap_reversion",
+        "enabled": false,
+        "output": "DISABLED",
+        "confidence": 0.0,
+        "failed_conditions": [],
+        "indicator_snapshot_present": false
+      }
+    ]
+  },
+  "selected_complete_cycles": [
+    {
+      "cycle_id": "47715c39-5c38-48ea-bdf0-ec0a856df507",
+      "traces": [
+        {"timestamp":"2026-06-15T15:36:12.896477+00:00","symbol":"BTCUSDT","timestamp_in_configured_session":true,"persisted_session_allowed":true,"regime":"WEAK_TREND","component_outputs":"7 persisted component records","component_confidence_max":0.0,"raw_action":"HOLD","confidence":0.0,"final_action":"HOLD","hold_reason":"NO_PATTERN","iofs_shadow_result":"not_reached_final_action_hold","executor_reached":false,"paper_order_created":false},
+        {"timestamp":"2026-06-15T15:37:03.232426+00:00","symbol":"ETHUSDT","timestamp_in_configured_session":true,"persisted_session_allowed":false,"regime":"STRONG_TREND","component_outputs":"skipped_regime_blocked","component_confidence_max":0.0,"raw_action":"HOLD","confidence":0.0,"final_action":"HOLD","hold_reason":"REGIME_BLOCKED","iofs_shadow_result":"not_reached_final_action_hold","executor_reached":false,"paper_order_created":false}
+      ]
+    },
+    {
+      "cycle_id": "33bb39d9-750d-4120-b2f9-e0968c1e0c33",
+      "traces": [
+        {"timestamp":"2026-06-15T15:37:57.919312+00:00","symbol":"BTCUSDT","timestamp_in_configured_session":true,"persisted_session_allowed":false,"regime":"STRONG_TREND","component_outputs":"skipped_regime_blocked","component_confidence_max":0.0,"raw_action":"HOLD","confidence":0.0,"final_action":"HOLD","hold_reason":"REGIME_BLOCKED","iofs_shadow_result":"not_reached_final_action_hold","executor_reached":false,"paper_order_created":false},
+        {"timestamp":"2026-06-15T15:39:07.216994+00:00","symbol":"ETHUSDT","timestamp_in_configured_session":true,"persisted_session_allowed":false,"regime":"STRONG_TREND","component_outputs":"skipped_regime_blocked","component_confidence_max":0.0,"raw_action":"HOLD","confidence":0.0,"final_action":"HOLD","hold_reason":"REGIME_BLOCKED","iofs_shadow_result":"not_reached_final_action_hold","executor_reached":false,"paper_order_created":false}
+      ]
+    },
+    {
+      "cycle_id": "6f38601f-a0ca-4168-96a4-cc3debf61810",
+      "traces": [
+        {"timestamp":"2026-06-15T15:40:42.834656+00:00","symbol":"BTCUSDT","timestamp_in_configured_session":true,"persisted_session_allowed":false,"regime":"STRONG_TREND","component_outputs":"skipped_regime_blocked","component_confidence_max":0.0,"raw_action":"HOLD","confidence":0.0,"final_action":"HOLD","hold_reason":"REGIME_BLOCKED","iofs_shadow_result":"not_reached_final_action_hold","executor_reached":false,"paper_order_created":false},
+        {"timestamp":"2026-06-15T15:42:46.265567+00:00","symbol":"ETHUSDT","timestamp_in_configured_session":true,"persisted_session_allowed":false,"regime":"STRONG_TREND","component_outputs":"skipped_regime_blocked","component_confidence_max":0.0,"raw_action":"HOLD","confidence":0.0,"final_action":"HOLD","hold_reason":"REGIME_BLOCKED","iofs_shadow_result":"not_reached_final_action_hold","executor_reached":false,"paper_order_created":false}
+      ]
+    },
+    {
+      "cycle_id": "9fb3ba0b-4c41-417d-8747-7dee4d462061",
+      "traces": [
+        {"timestamp":"2026-06-15T15:44:43.855815+00:00","symbol":"BTCUSDT","timestamp_in_configured_session":true,"persisted_session_allowed":false,"regime":"STRONG_TREND","component_outputs":"skipped_regime_blocked","component_confidence_max":0.0,"raw_action":"HOLD","confidence":0.0,"final_action":"HOLD","hold_reason":"REGIME_BLOCKED","iofs_shadow_result":"not_reached_final_action_hold","executor_reached":false,"paper_order_created":false},
+        {"timestamp":"2026-06-15T15:45:03.267907+00:00","symbol":"ETHUSDT","timestamp_in_configured_session":true,"persisted_session_allowed":false,"regime":"STRONG_TREND","component_outputs":"skipped_regime_blocked","component_confidence_max":0.0,"raw_action":"HOLD","confidence":0.0,"final_action":"HOLD","hold_reason":"REGIME_BLOCKED","iofs_shadow_result":"not_reached_final_action_hold","executor_reached":false,"paper_order_created":false}
+      ]
+    },
+    {
+      "cycle_id": "8cfad0c5-33e9-4565-8dac-4052c63903f1",
+      "traces": [
+        {"timestamp":"2026-06-15T15:45:13.750011+00:00","symbol":"BTCUSDT","timestamp_in_configured_session":true,"persisted_session_allowed":false,"regime":"STRONG_TREND","component_outputs":"skipped_regime_blocked","component_confidence_max":0.0,"raw_action":"HOLD","confidence":0.0,"final_action":"HOLD","hold_reason":"REGIME_BLOCKED","iofs_shadow_result":"not_reached_final_action_hold","executor_reached":false,"paper_order_created":false},
+        {"timestamp":"2026-06-15T15:45:30.035848+00:00","symbol":"ETHUSDT","timestamp_in_configured_session":true,"persisted_session_allowed":false,"regime":"STRONG_TREND","component_outputs":"skipped_regime_blocked","component_confidence_max":0.0,"raw_action":"HOLD","confidence":0.0,"final_action":"HOLD","hold_reason":"REGIME_BLOCKED","iofs_shadow_result":"not_reached_final_action_hold","executor_reached":false,"paper_order_created":false}
+      ]
+    }
+  ],
+  "runtime_safety": {
+    "EXECUTION_MODE": "paper",
+    "exchange_environment": "testnet",
+    "ML_ENABLED": false,
+    "IOFS_GATE_MODE": "shadow",
+    "TRADE_SYMBOLS": "BTCUSDT,ETHUSDT",
+    "live_symbols_count": 0,
+    "active_env_sha256": "1CF36622DD75B4AB091BB0D35CE9950FC641749A9857BA916B2435617E13D97C",
+    "models_production_files": ["README.md"],
+    "no_live_capital": true
+  },
+  "strict_restart_acceptance_closed": true,
+  "section_4_status": "In Progress"
+}

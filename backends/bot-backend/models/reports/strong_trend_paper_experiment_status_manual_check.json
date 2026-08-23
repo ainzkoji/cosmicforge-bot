@@ -1,0 +1,71 @@
+{
+  "BTC_strong_trend_trades": 0,
+  "BUY_count": 0,
+  "ETH_strong_trend_trades": 0,
+  "SELL_count": 0,
+  "STRONG_TREND_ALLOWED_ONLY_IN_PAPER": true,
+  "auto_restore_performed": false,
+  "auto_restore_reason": null,
+  "auto_stop_rules_configured": true,
+  "experiment_start_time": "2026-06-15T17:21:40.112591Z",
+  "generated_at_utc": "2026-07-15T17:10:50.476359+00:00",
+  "non_strong_trend_metrics": {
+    "SL_count": 0,
+    "TP1_count": 0,
+    "TP2_count": 0,
+    "break_even_buffer_count": 0,
+    "closed_trades": 0,
+    "expectancy_R": null,
+    "max_consecutive_losses": 0,
+    "max_drawdown_R": 0.0,
+    "profit_factor": null,
+    "time_exit_count": 0,
+    "win_rate": null
+  },
+  "paper_order_errors": 68,
+  "runtime_safety": {
+    "execution_mode": "paper",
+    "iofs_gate_mode": "shadow",
+    "live_symbols_count": 0,
+    "ml_enabled": false,
+    "strong_trend_guard": {
+      "allowed_only_in_paper": true,
+      "configured_unblocked": true,
+      "effective_blocked_regimes": [],
+      "effective_unblocked": true,
+      "execution_mode_paper": true,
+      "forced_blocked": false,
+      "live_symbols_count": 0,
+      "ml_disabled": true,
+      "reason": "paper_only_requirements_met"
+    },
+    "trade_symbols": "BTCUSDT,ETHUSDT"
+  },
+  "scope": "paper_only",
+  "stop_reason": "paper order errors >= 2",
+  "stop_recommended": true,
+  "stop_rules": [
+    "closed STRONG_TREND trades >= 5 and expectancy_R <= 0",
+    "closed STRONG_TREND trades >= 5 and profit_factor < 1.0",
+    "max_drawdown_R >= 3.0",
+    "three consecutive STRONG_TREND losses",
+    "paper order errors >= 2"
+  ],
+  "strong_trend_closed_trades": 0,
+  "strong_trend_cycles": 2646,
+  "strong_trend_metrics": {
+    "SL_count": 0,
+    "TP1_count": 0,
+    "TP2_count": 0,
+    "break_even_buffer_count": 0,
+    "closed_trades": 0,
+    "expectancy_R": null,
+    "max_consecutive_losses": 0,
+    "max_drawdown_R": 0.0,
+    "profit_factor": null,
+    "time_exit_count": 0,
+    "win_rate": null
+  },
+  "strong_trend_paper_orders": 68,
+  "strong_trend_signals": 0
+}

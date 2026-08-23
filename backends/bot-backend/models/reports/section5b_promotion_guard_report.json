@@ -1,0 +1,54 @@
+{
+  "active_env_changed": false,
+  "active_env_sha256_after": "6E3A3B649427C1162D021B6F9F8E992CDA0B21B200261E3D134C0A3AA8FCC4F9",
+  "active_env_sha256_before": "6E3A3B649427C1162D021B6F9F8E992CDA0B21B200261E3D134C0A3AA8FCC4F9",
+  "blocking_reasons": [
+    "NO_ACCEPTED_MODEL_ARTIFACT",
+    "MODEL_PKL_MISSING",
+    "META_JSON_MISSING",
+    "VALIDATION_NOT_ACCEPTED",
+    "AUC_BELOW_0_55",
+    "LIGHTGBM_BASELINE_IMPROVEMENT_INSUFFICIENT",
+    "RUNTIME_SCORER_LOAD_CHECK_FAILED"
+  ],
+  "candidate_meta_path": "models\\artifacts\\entry_quality_v2.0_20260613_meta.json",
+  "candidate_model_path": "models\\artifacts\\entry_quality_v2.0_20260613.pkl",
+  "candidate_validation_path": "models\\artifacts\\entry_quality_v2.0_20260613_validation.json",
+  "candidate_validation_status": "rejected_or_missing",
+  "dry_run": true,
+  "generated_at_utc": "2026-06-15T17:47:24.147441+00:00",
+  "metrics": {
+    "auc": 0.544226,
+    "auc_std": 0.0,
+    "logistic_baseline_auc": 0.574939,
+    "minimum_baseline_improvement": 0.01,
+    "quartile_win_rate_gap": 0.083333,
+    "training_row_count": 326
+  },
+  "ml_env_update_allowed": false,
+  "model_version": "v2.0",
+  "production_archived_files": [],
+  "production_files_after": [
+    "README.md"
+  ],
+  "production_files_before": [
+    "README.md"
+  ],
+  "promoted": false,
+  "promotion_allowed": false,
+  "runtime_load_check": {
+    "attempted": false,
+    "contract_loaded": false,
+    "dummy_score": null,
+    "error": "MODEL_OR_METADATA_MISSING",
+    "feature_order_matches": false,
+    "missing_features_encoded_as_nan": false,
+    "model_loaded": false,
+    "passed": false,
+    "schema_hash_matches": false
+  },
+  "section5b_status": "BLOCKED",
+  "shadow_env_suggestion_written": false,
+  "t25_status": "NOT_STARTED",
+  "warnings": []
+}
