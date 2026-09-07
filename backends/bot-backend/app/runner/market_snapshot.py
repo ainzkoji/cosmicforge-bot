@@ -1,6 +1,8 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+import hashlib
+import uuid
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Sequence
 
@@ -27,6 +29,14 @@ def closed_candles(rows: Sequence[Any], now_ms: int | None = None) -> tuple[Any,
 
 @dataclass(frozen=True)
 class MarketSnapshot:
+    """One immutable market view, shared by every component of one decision.
+
+    Every strategy component in a single decision must see the same latest
+    candle. ``market_snapshot_id`` is the correlation key that ties the
+    resulting TradingOpportunity, entry-quality decision and fills back to the
+    exact market view that produced them.
+    """
+
     symbol: str
     timeframe: str
     candles: tuple[Any, ...]
@@ -36,6 +46,33 @@ class MarketSnapshot:
     source: str
     higher_timeframe: str | None = None
     higher_timeframe_candles: tuple[Any, ...] = ()
+    market_snapshot_id: str = field(default_factory=lambda: f"ms_{uuid.uuid4().hex[:16]}")
+    source_environment: str | None = None
+    latest_closed_candle_open_time: int | None = None
+    higher_timeframe_closed_candle_time: int | None = None
+
+    @property
+    def data_hash(self) -> str:
+        """Deterministic fingerprint of the candle data this snapshot pins."""
+        payload = repr((self.symbol, self.timeframe, self.candles, self.higher_timeframe_candles))
+        return hashlib.sha256(payload.encode()).hexdigest()[:32]
+
+    def htf_is_timestamp_aligned(self) -> bool:
+        """True when the HTF candle closed at or before the strategy candle.
+
+        A 15m decision at 14:45 may not consult a 1h candle that closes at
+        15:00 -- that candle does not exist yet at decision time. Returning
+        False here means the snapshot carries look-ahead data and must not be
+        used for an entry decision.
+        """
+        if not self.higher_timeframe_candles:
+            return True
+        htf_close = self.higher_timeframe_closed_candle_time
+        if htf_close is None:
+            htf_close = _value(self.higher_timeframe_candles[-1], 6, "closeTime", "close_time")
+        if htf_close is None:
+            return False
+        return int(htf_close) <= int(self.latest_closed_candle_time)
 
     @classmethod
     def build(
@@ -47,6 +84,7 @@ class MarketSnapshot:
         source: str,
         higher_timeframe: str | None = None,
         higher_timeframe_candles: Sequence[Any] | None = None,
+        source_environment: str | None = None,
     ) -> "MarketSnapshot":
         primary = closed_candles(candles)
         if not primary:
@@ -55,16 +93,25 @@ class MarketSnapshot:
         close_time = _value(last, 6, "closeTime", "close_time", "close_timestamp")
         if close_time is None:
             close_time = _value(last, 0, "openTime", "open_time", "timestamp")
+        htf = closed_candles(higher_timeframe_candles or ())
+        htf_close_time = None
+        if htf:
+            htf_close_time = _value(htf[-1], 6, "closeTime", "close_time", "close_timestamp")
+            htf_close_time = int(htf_close_time) if htf_close_time is not None else None
+        open_time = _value(last, 0, "openTime", "open_time", "timestamp")
         return cls(
             symbol=symbol.upper(),
             timeframe=timeframe,
             candles=primary,
             latest_closed_candle_time=int(close_time),
+            latest_closed_candle_open_time=int(open_time) if open_time is not None else None,
+            higher_timeframe_closed_candle_time=htf_close_time,
+            source_environment=source_environment,
             reference_price=float(_value(last, 4, "close") or 0.0),
             fetched_at=datetime.now(timezone.utc).isoformat(),
             source=source,
             higher_timeframe=higher_timeframe,
-            higher_timeframe_candles=closed_candles(higher_timeframe_candles or ()),
+            higher_timeframe_candles=htf,
         )
 
 

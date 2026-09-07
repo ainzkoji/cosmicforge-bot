@@ -31,6 +31,9 @@ from typing import Dict, List, Optional, Set, Tuple
 from app.strategy.base import Strategy, Signal, SignalResult
 from app.strategy.hold_breakdown import classify_hold_reason, component_breakdown
 from app.strategy.registry import register_strategy
+from app.decision.decision_engine import TradingDecisionEngine
+from app.decision.opportunity import NoOpportunity, build_opportunity
+from app.decision.reasons import QualityReason
 from app.core.strong_trend_guard import evaluate_strong_trend_guard
 from shared_lib.persistence.db import DB
 from shared_lib.persistence.trade_fills import get_recent_regime_outcomes
@@ -191,6 +194,15 @@ class MasterEnsembleStrategy(Strategy):
         self.consensus_threshold = float(consensus_threshold)
         self.klines_limit = int(klines_limit)
         self.htf_bias_enabled = bool(htf_bias_enabled)
+
+        # The single entry-quality authority. The ensemble aggregates market
+        # evidence; this decides whether that evidence clears the bar.
+        self._decision_engine = TradingDecisionEngine(
+            consensus_threshold=float(consensus_threshold),
+        )
+        #: Evidence from the most recent evaluation, for diagnostics.
+        self.last_opportunity = None
+        self.last_entry_quality = None
 
         # Regime authority — one instance per ensemble, per-symbol hysteresis
         # via classify_stable()'s internal _last_regime dict (one per symbol call)
@@ -677,32 +689,92 @@ class MasterEnsembleStrategy(Strategy):
         sell_pct = min(1.0, sell_score / NOMINAL_CONSENSUS_WEIGHT)
 
         # ------------------------------------------------------------------
-        # Step 6 — Regime-aware dynamic threshold (sole threshold authority)
+        # Step 6 — Produce a TradingOpportunity (market interpretation only)
         # ------------------------------------------------------------------
+        # Phase 7: the ensemble stops being one of several execution
+        # authorities.  It decides WHAT the market is doing and hands the
+        # evidence to TradingDecisionEngine, which decides whether that clears
+        # the bar.  The threshold comparison below is the only one in the
+        # active path.
         raw_conf = max(buy_pct, sell_pct)
         self._threshold_calc.record(symbol, raw_conf)
 
         # Threshold already resolved in _threshold_val / _threshold_type above.
         effective_threshold = _threshold_val
 
-        # ------------------------------------------------------------------
-        # Step 7 — Determine final signal
-        # ------------------------------------------------------------------
-        final_signal = Signal.HOLD
-        final_confidence = 0.0
+        _direction = None
+        if buy_pct > sell_pct:
+            _direction = "BUY"
+        elif sell_pct > buy_pct:
+            _direction = "SELL"
 
-        if buy_pct > sell_pct and buy_pct >= effective_threshold:
-            final_signal = Signal.BUY
-            final_confidence = buy_pct
-        elif sell_pct > buy_pct and sell_pct >= effective_threshold:
-            final_signal = Signal.SELL
-            final_confidence = sell_pct
+        _snapshot_id = getattr(market_snapshot, "market_snapshot_id", None) or f"inline_{symbol}"
+        _closed_candle_time = getattr(market_snapshot, "latest_closed_candle_time", None)
+
+        if _direction is None:
+            # No directional candidate. "Nothing pointed anywhere" and "the
+            # strategies cancelled each other out" are different facts, and
+            # neither is a confidence failure.
+            opportunity = NoOpportunity(
+                symbol=symbol,
+                timeframe=str(kwargs.get("timeframe") or self.interval),
+                market_snapshot_id=_snapshot_id,
+                reason_code=(
+                    QualityReason.NO_OPPORTUNITY if raw_conf <= 0
+                    else QualityReason.CONSENSUS_INSUFFICIENT
+                ),
+                buy_score=round(buy_pct, 4),
+                sell_score=round(sell_pct, 4),
+                consensus=round(raw_conf, 4),
+                regime=regime.value,
+                active_strategies=tuple(sorted(available_active)),
+                closed_candle_time=_closed_candle_time,
+            )
+        else:
+            opportunity = build_opportunity(
+                symbol=symbol,
+                timeframe=str(kwargs.get("timeframe") or self.interval),
+                market_snapshot_id=_snapshot_id,
+                side=_direction,
+                raw_confidence=raw_conf,
+                consensus=raw_conf,
+                buy_score=round(buy_pct, 4),
+                sell_score=round(sell_pct, 4),
+                votes=[(n, s.value if hasattr(s, "value") else str(s), c) for n, s, c in votes],
+                regime=regime.value,
+                regime_confidence=float(regime_result.regime_confidence),
+                active_strategies=tuple(sorted(available_active)),
+                component_breakdown=components,
+                strategy_reasons=tuple(vote_details),
+                atr_pct=float(regime_result.atr_percent or 0.0),
+                closed_candle_time=_closed_candle_time,
+                htf_timeframe=getattr(market_snapshot, "higher_timeframe", None),
+                bot_instance_id=kwargs.get("bot_instance_id"),
+            )
+
+        # ------------------------------------------------------------------
+        # Step 7 — THE single entry-quality comparison
+        # ------------------------------------------------------------------
+        # consensus_required is 0.0 on purpose: the ensemble has never applied a
+        # separate consensus gate here, and starting to would silently change
+        # strategy behaviour. The engine supports one for callers that opt in.
+        entry_quality = self._decision_engine.evaluate(
+            opportunity,
+            base_threshold=effective_threshold,
+            consensus_required=0.0,
+        )
+        self.last_opportunity = opportunity
+        self.last_entry_quality = entry_quality
+
+        if entry_quality.approved:
+            final_signal = Signal.BUY if opportunity.side == "BUY" else Signal.SELL
+            final_confidence = raw_conf
         else:
             final_signal = Signal.HOLD
-            final_confidence = float(max(buy_pct, sell_pct))
+            final_confidence = float(raw_conf)
             if final_confidence > 0:
                 logger.debug(
-                    f"[ENSEMBLE] {symbol}: BLOCKED by threshold "
+                    f"[ENSEMBLE] {symbol}: {entry_quality.primary_reason} "
                     f"({final_confidence:.3f} < {effective_threshold:.3f})"
                 )
 
@@ -772,14 +844,14 @@ class MasterEnsembleStrategy(Strategy):
             except Exception as e:
                 logger.warning(f"[HTF BIAS] Error computing 4h trend for {symbol}: {e}")
 
-        if final_signal != Signal.HOLD:
-            primary_reason = "APPROVED_FOR_EXECUTION"
-        elif htf_opposed:
+        # The reason is whatever the single entry-quality authority decided,
+        # except where a hard veto (HTF) overrode an approved candidate.
+        if htf_opposed:
+            entry_quality = self._decision_engine.veto(entry_quality, QualityReason.HTF_NOT_ALIGNED)
+            self.last_entry_quality = entry_quality
             primary_reason = "HTF_OPPOSED"
-        elif max(buy_pct, sell_pct) <= 0:
-            primary_reason = "NO_OPPORTUNITY"
         else:
-            primary_reason = "ENTRY_CONFIDENCE_BELOW_THRESHOLD"
+            primary_reason = entry_quality.primary_reason
 
         return SignalResult(
             signal=final_signal,
@@ -798,6 +870,18 @@ class MasterEnsembleStrategy(Strategy):
                 "strategies_used":   len(votes),
                 "errors":            errors,
                 "component_breakdown": components,
+                # Phase 7 observability: the opportunity and the single quality
+                # verdict travel with the result, so no operator has to read
+                # component logs to reconstruct why a candle did or did not trade.
+                "entry_quality":      entry_quality.observability(),
+                "opportunity":        (
+                    opportunity.evidence_summary() if opportunity.is_opportunity
+                    else opportunity.to_dict()
+                ),
+                "opportunity_id":     (
+                    opportunity.opportunity_id if opportunity.is_opportunity else None
+                ),
+                "market_snapshot_id": _snapshot_id,
                 "hold_reason": (
                     classify_hold_reason(
                         primary_reason,

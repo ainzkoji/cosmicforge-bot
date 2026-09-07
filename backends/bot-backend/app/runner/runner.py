@@ -89,6 +89,7 @@ from app.risk.event_reaction_risk_gate import build_event_reaction_risk_gate
 # âœ… ADD: Trading Orchestrator & Governance
 # âœ… ADD: Trading Orchestrator & Governance
 from app.core.trading_orchestrator import TradingOrchestrator
+from app.decision.reasons import CycleReason, QualityReason
 from app.runner.errors import RunnerInitializationError
 from app.core.bot_health import resolve_last_error
 from app.risk.system_limits import UserConfigurableLimits, RiskLevel
@@ -1501,11 +1502,54 @@ class PaperRunner:
         )
         return {"success": True, "qty": qty, "price": close_price, "pnl": pnl, "order_id": result.order_id}
 
+    def _daily_close_already_marked(self, symbol: str, close_window: str) -> bool:
+        """True when this symbol was already daily-closed in this window.
+
+        Fails CLOSED on a storage error: if we cannot prove the position has not
+        already been closed, we do not close it again.
+        """
+        bot_id = self.context.bot_instance_id if self.context else None
+        if not bot_id:
+            return False
+        try:
+            with self.db.connect() as conn:
+                row = conn.execute(
+                    """SELECT 1 FROM bot_daily_close_marks
+                       WHERE bot_instance_id=? AND symbol=? AND close_window=?""",
+                    (bot_id, symbol.upper(), close_window),
+                ).fetchone()
+            return row is not None
+        except Exception as exc:
+            logger.error(
+                "[DAILY_CLOSE] %s: idempotency lookup failed (%s); skipping to avoid a repeat close",
+                symbol, exc,
+            )
+            return True
+
+    def _mark_daily_close(self, symbol: str, close_window: str, *, position_id: str | None) -> None:
+        """Record that this symbol has been daily-closed for this window."""
+        bot_id = self.context.bot_instance_id if self.context else None
+        if not bot_id:
+            return
+        try:
+            with self.db.connect() as conn:
+                conn.execute(
+                    """INSERT OR REPLACE INTO bot_daily_close_marks
+                       (bot_instance_id,symbol,close_window,position_id,closed_at,reason)
+                       VALUES (?,?,?,?,?,?)""",
+                    (
+                        bot_id, symbol.upper(), close_window, position_id,
+                        datetime.now(timezone.utc).isoformat(), "DAILY_CLOSE",
+                    ),
+                )
+        except Exception as exc:
+            logger.error("[DAILY_CLOSE] %s: failed to persist close marker: %s", symbol, exc)
+
     def _run_daily_close_from_cycle(self) -> int:
         """Evaluate and execute daily close from the active management heartbeat."""
         if not settings.DAILY_CLOSE_ENABLED:
             return 0
-        from datetime import datetime, timezone
+        from datetime import datetime, timedelta, timezone
         from zoneinfo import ZoneInfo
         try:
             local = datetime.now(timezone.utc).astimezone(ZoneInfo(settings.DAILY_CLOSE_TIMEZONE))
@@ -1519,10 +1563,24 @@ class PaperRunner:
         in_window = start <= minute < end if start <= end else minute >= start or minute < end
         if not in_window:
             return 0
+
+        # One deterministic identity per close window. A window that wraps past
+        # midnight keeps the date it STARTED on, so a single overnight window is
+        # one window and not two.
+        window_date = local.date() if minute >= start or start <= end else (
+            local.date() - timedelta(days=1)
+        )
+        close_window = f"{window_date.isoformat()}:{settings.DAILY_CLOSE_WINDOW_START}"
+
         closed = 0
         for symbol, st in list(self.state.items()):
             pos = self.position_manager.get_position(symbol)
             if st.position not in ("LONG", "SHORT") or pos is None:
+                continue
+            # Restart-safe idempotency. The in-memory position going flat is not
+            # enough: a restart inside the window, or a re-entry on the same
+            # symbol, would otherwise re-issue a close on every 10-second tick.
+            if self._daily_close_already_marked(symbol, close_window):
                 continue
             try:
                 price = float(self.client.last_price(symbol))
@@ -1539,6 +1597,7 @@ class PaperRunner:
             outcome = self._close_managed_position(symbol, "DAILY_CLOSE")
             if outcome.get("success"):
                 closed += 1
+                self._mark_daily_close(symbol, close_window, position_id=st.position_id)
                 self.audit.event(
                     event_type="DAILY_CLOSE_POSITION_CLOSE_SUCCESS", run_id=self.run_id,
                     cycle_id=self.cycle_id, symbol=symbol,
@@ -3568,8 +3627,19 @@ class PaperRunner:
                     pass
                 _cs = getattr(self, "_cycle_stats", None)
                 if _cs:
-                    _cs.record_hold(symbol, 0.0, "NO_NEW_CANDLE")
-                return {"symbol": symbol, "decision": "HOLD", "reason": "NO_NEW_CANDLE"}
+                    _cs.record_hold(symbol, 0.0, CycleReason.NO_NEW_CANDLE)
+                # Phase 6 §6.9: this is NOT a strategy HOLD. The strategy did not
+                # run at all -- there was no new closed candle to evaluate. A
+                # HOLD would claim the strategy looked and found nothing, which
+                # is a different (and later, downstream) fact: NO_OPPORTUNITY.
+                return {
+                    "symbol": symbol,
+                    "decision": CycleReason.NO_NEW_CANDLE,
+                    "evaluated": False,
+                    "reason": CycleReason.NO_NEW_CANDLE,
+                    "reason_code": CycleReason.NO_NEW_CANDLE,
+                    "timeframe": self.interval,
+                }
 
             # 3. Process Entry via Orchestrator
             try:
@@ -3990,8 +4060,14 @@ class PaperRunner:
 
             if trace_id and getattr(self, "ml_scorer", None) and self.ml_scorer.enabled:
                 from app.ml.scorer import ACTION_SKIP
-                from shared_lib.persistence.trace_recorder import get_trace_recorder
-                get_trace_recorder().record_ml_score(
+                # ALIASED DELIBERATELY.  An unaliased function-local
+                # `from ... import get_trace_recorder` binds that name as a local
+                # for the WHOLE function, so the earlier module-level use at the
+                # NO_NEW_CANDLE branch raised UnboundLocalError -- swallowed by its
+                # `except Exception: pass`, which silently dropped the gate reason
+                # and wrote a bare "SKIP" decision every heartbeat.
+                from shared_lib.persistence.trace_recorder import get_trace_recorder as _gtr_ml
+                _gtr_ml().record_ml_score(
                     trace_id,
                     score=_ml_score,
                     action=_ml_action if _ml_action else ACTION_SKIP,

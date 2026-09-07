@@ -18,6 +18,11 @@ import threading
 # Thread-local storage for current trace context
 _trace_local = threading.local()
 
+#: Reasons that mark a heartbeat pass rather than a strategy decision.  These are
+#: persisted to decision_traces (full detail) but never to
+#: canonical_trade_decisions, which is the per-new-candle decision ledger.
+_HEARTBEAT_ONLY_REASONS = frozenset({"NO_NEW_CANDLE"})
+
 
 @dataclass
 class StrategySignal:
@@ -634,6 +639,16 @@ class TraceRecorder:
                     "executor_status": trace.execution_status,
                     "executor_error": trace.execution_error,
                 }
+                # canonical_trade_decisions holds ONE authoritative record per
+                # evaluated symbol per newly closed candle.  Same-candle heartbeat
+                # ticks are position-management passes, not decisions: the runner
+                # fires every ~10s while the strategy timeframe is 15m, so writing
+                # them here produced ~17k rows/day for two symbols and pushed every
+                # real evaluation out of the 5,000-row diagnostic window.
+                # They remain fully recorded in decision_traces above.
+                if str(primary_reason) in _HEARTBEAT_ONLY_REASONS:
+                    conn.commit()
+                    return
                 conn.execute(
                     """INSERT OR REPLACE INTO canonical_trade_decisions
                        (decision_id,cycle_id,run_id,bot_instance_id,user_id,symbol,timeframe,

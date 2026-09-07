@@ -977,6 +977,24 @@ class DB:
                 """
             )
 
+            # Durable daily-close idempotency marker.
+            # Without this, a restart inside the daily-close window (or a
+            # re-entry on the same symbol) could re-issue a close every
+            # 10-second heartbeat. An in-memory flag would not survive either.
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS bot_daily_close_marks (
+                    bot_instance_id TEXT NOT NULL,
+                    symbol TEXT NOT NULL,
+                    close_window TEXT NOT NULL,
+                    position_id TEXT,
+                    closed_at TEXT NOT NULL,
+                    reason TEXT NOT NULL DEFAULT 'DAILY_CLOSE',
+                    PRIMARY KEY (bot_instance_id, symbol, close_window)
+                )
+                """
+            )
+
             # Append-only operator/runtime event log.
             # Health columns on bot_instances are DERIVED CURRENT STATE; this table
             # is the durable history.  Structured runtime failures (runner
