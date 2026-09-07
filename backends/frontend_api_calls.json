@@ -1,0 +1,256 @@
+{
+  "user-frontend": [
+    {
+      "method": "GET",
+      "path": "/api/admin/dashboard/stats",
+      "file": "admin.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/dashboard/revenue-overview",
+      "file": "admin.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/users",
+      "file": "admin.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/revenue/overview",
+      "file": "admin.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/commissions/tiers",
+      "file": "admin.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/audit-logs",
+      "file": "admin.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/compliance/kyc-pending",
+      "file": "admin.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/compliance/aml-flags",
+      "file": "admin.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/dashboard/stats",
+      "file": "admin.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/dashboard/revenue-overview",
+      "file": "admin.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/users",
+      "file": "admin.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/revenue/overview",
+      "file": "admin.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/commissions/tiers",
+      "file": "admin.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/audit-logs",
+      "file": "admin.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/compliance/kyc-pending",
+      "file": "admin.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/compliance/aml-flags",
+      "file": "admin.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/plans",
+      "file": "client.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/api/onboarding/state",
+      "file": "onboarding.ts"
+    },
+    {
+      "method": "POST",
+      "path": "/api/onboarding/step",
+      "file": "onboarding.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/api/onboarding/strategies",
+      "file": "onboarding.ts"
+    },
+    {
+      "method": "POST",
+      "path": "/api/onboarding/complete",
+      "file": "onboarding.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/api/onboarding/next-steps",
+      "file": "onboarding.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/api/onboarding/state",
+      "file": "onboarding.ts"
+    },
+    {
+      "method": "POST",
+      "path": "/api/onboarding/step",
+      "file": "onboarding.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/api/onboarding/strategies",
+      "file": "onboarding.ts"
+    },
+    {
+      "method": "POST",
+      "path": "/api/onboarding/complete",
+      "file": "onboarding.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/api/onboarding/next-steps",
+      "file": "onboarding.ts"
+    }
+  ],
+  "admin-frontend": [
+    {
+      "method": "GET",
+      "path": "/api/admin/dashboard/stats",
+      "file": "admin.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/dashboard/revenue-overview",
+      "file": "admin.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/users",
+      "file": "admin.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/revenue/overview",
+      "file": "admin.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/commissions/tiers",
+      "file": "admin.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/audit-logs",
+      "file": "admin.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/bot/overview",
+      "file": "admin.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/bot/runs",
+      "file": "admin.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/bot/live",
+      "file": "admin.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/compliance/kyc-pending",
+      "file": "admin.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/compliance/aml-flags",
+      "file": "admin.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/dashboard/stats",
+      "file": "admin.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/dashboard/revenue-overview",
+      "file": "admin.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/users",
+      "file": "admin.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/revenue/overview",
+      "file": "admin.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/commissions/tiers",
+      "file": "admin.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/audit-logs",
+      "file": "admin.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/bot/overview",
+      "file": "admin.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/bot/runs",
+      "file": "admin.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/bot/live",
+      "file": "admin.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/compliance/kyc-pending",
+      "file": "admin.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/compliance/aml-flags",
+      "file": "admin.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/plans",
+      "file": "client.ts"
+    }
+  ]
+}

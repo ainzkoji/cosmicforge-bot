@@ -1,0 +1,8 @@
+{
+  "zmq_host": "localhost",
+  "zmq_port": "5555",
+  "api_tokens": [
+    "CHANGE_ME_GENERATE_SECURE_TOKEN"
+  ],
+  "request_timeout": 5000
+}

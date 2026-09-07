@@ -1,0 +1,2114 @@
+[
+  {
+    "methods": [
+      "GET"
+    ],
+    "path": "/",
+    "name": "root",
+    "tags": [],
+    "endpoint": "<function root at 0x00000204180C65C0>",
+    "module": "app.main"
+  },
+  {
+    "methods": [
+      "GET"
+    ],
+    "path": "/admin/monitoring/activity/events",
+    "name": "get_activity_events",
+    "tags": [
+      "admin-monitoring"
+    ],
+    "endpoint": "<function get_activity_events at 0x0000020417CA4540>",
+    "module": "app.api.monitoring"
+  },
+  {
+    "methods": [
+      "POST"
+    ],
+    "path": "/admin/monitoring/activity/log-event",
+    "name": "log_activity_event",
+    "tags": [
+      "admin-monitoring"
+    ],
+    "endpoint": "<function log_activity_event at 0x0000020417CA47C0>",
+    "module": "app.api.monitoring"
+  },
+  {
+    "methods": [
+      "POST"
+    ],
+    "path": "/admin/monitoring/bots/emergency-stop",
+    "name": "emergency_stop_all_bots",
+    "tags": [
+      "admin-monitoring"
+    ],
+    "endpoint": "<function emergency_stop_all_bots at 0x0000020417CA42C0>",
+    "module": "app.api.monitoring"
+  },
+  {
+    "methods": [
+      "GET"
+    ],
+    "path": "/admin/monitoring/bots/executions",
+    "name": "get_bot_executions",
+    "tags": [
+      "admin-monitoring"
+    ],
+    "endpoint": "<function get_bot_executions at 0x0000020417CA4040>",
+    "module": "app.api.monitoring"
+  },
+  {
+    "methods": [
+      "GET"
+    ],
+    "path": "/admin/monitoring/bots/overview",
+    "name": "get_bots_overview",
+    "tags": [
+      "admin-monitoring"
+    ],
+    "endpoint": "<function get_bots_overview at 0x0000020417C97D80>",
+    "module": "app.api.monitoring"
+  },
+  {
+    "methods": [
+      "GET"
+    ],
+    "path": "/admin/monitoring/feature-flags",
+    "name": "get_feature_flags",
+    "tags": [
+      "admin-monitoring"
+    ],
+    "endpoint": "<function get_feature_flags at 0x0000020417CA4F40>",
+    "module": "app.api.monitoring"
+  },
+  {
+    "methods": [
+      "PUT"
+    ],
+    "path": "/admin/monitoring/feature-flags/{flag_id}/toggle",
+    "name": "toggle_feature_flag",
+    "tags": [
+      "admin-monitoring"
+    ],
+    "endpoint": "<function toggle_feature_flag at 0x0000020417CA51C0>",
+    "module": "app.api.monitoring"
+  },
+  {
+    "methods": [
+      "GET"
+    ],
+    "path": "/admin/monitoring/system/health",
+    "name": "get_system_health",
+    "tags": [
+      "admin-monitoring"
+    ],
+    "endpoint": "<function get_system_health at 0x0000020417BE1440>",
+    "module": "app.api.monitoring"
+  },
+  {
+    "methods": [
+      "GET"
+    ],
+    "path": "/admin/monitoring/system/metrics",
+    "name": "get_system_metrics",
+    "tags": [
+      "admin-monitoring"
+    ],
+    "endpoint": "<function get_system_metrics at 0x0000020417C97600>",
+    "module": "app.api.monitoring"
+  },
+  {
+    "methods": [
+      "POST"
+    ],
+    "path": "/admin/monitoring/system/record-metric",
+    "name": "record_metric",
+    "tags": [
+      "admin-monitoring"
+    ],
+    "endpoint": "<function record_metric at 0x0000020417C979C0>",
+    "module": "app.api.monitoring"
+  },
+  {
+    "methods": [
+      "GET"
+    ],
+    "path": "/admin/monitoring/transactions",
+    "name": "get_transactions",
+    "tags": [
+      "admin-monitoring"
+    ],
+    "endpoint": "<function get_transactions at 0x0000020417CA4A40>",
+    "module": "app.api.monitoring"
+  },
+  {
+    "methods": [
+      "POST"
+    ],
+    "path": "/admin/monitoring/transactions/{transaction_id}/approve",
+    "name": "approve_transaction",
+    "tags": [
+      "admin-monitoring"
+    ],
+    "endpoint": "<function approve_transaction at 0x0000020417CA4CC0>",
+    "module": "app.api.monitoring"
+  },
+  {
+    "methods": [
+      "GET"
+    ],
+    "path": "/api/admin/audit/logs",
+    "name": "get_audit_logs",
+    "tags": [
+      "Admin",
+      "admin"
+    ],
+    "endpoint": "<function get_audit_logs at 0x0000020417BE2B60>",
+    "module": "app.api.admin"
+  },
+  {
+    "methods": [
+      "GET"
+    ],
+    "path": "/api/admin/commissions/tiers",
+    "name": "get_commission_tiers",
+    "tags": [
+      "Admin",
+      "admin"
+    ],
+    "endpoint": "<function get_commission_tiers at 0x0000020417BE2660>",
+    "module": "app.api.admin"
+  },
+  {
+    "methods": [
+      "PUT"
+    ],
+    "path": "/api/admin/commissions/tiers/{tier_id}",
+    "name": "update_commission_tier",
+    "tags": [
+      "Admin",
+      "admin"
+    ],
+    "endpoint": "<function update_commission_tier at 0x0000020417BE28E0>",
+    "module": "app.api.admin"
+  },
+  {
+    "methods": [
+      "GET"
+    ],
+    "path": "/api/admin/compliance/aml-flags",
+    "name": "get_aml_flags",
+    "tags": [
+      "Admin",
+      "admin"
+    ],
+    "endpoint": "<function get_aml_flags at 0x0000020417BE3060>",
+    "module": "app.api.admin"
+  },
+  {
+    "methods": [
+      "GET"
+    ],
+    "path": "/api/admin/compliance/kyc-pending",
+    "name": "get_pending_kyc",
+    "tags": [
+      "Admin",
+      "admin"
+    ],
+    "endpoint": "<function get_pending_kyc at 0x0000020417BE2DE0>",
+    "module": "app.api.admin"
+  },
+  {
+    "methods": [
+      "POST"
+    ],
+    "path": "/api/admin/compliance/kyc/{submission_id}/approve",
+    "name": "approve_kyc_submission",
+    "tags": [
+      "Admin",
+      "admin"
+    ],
+    "endpoint": "<function approve_kyc_submission at 0x0000020417BE37E0>",
+    "module": "app.api.admin"
+  },
+  {
+    "methods": [
+      "POST"
+    ],
+    "path": "/api/admin/compliance/kyc/{submission_id}/reject",
+    "name": "reject_kyc_submission",
+    "tags": [
+      "Admin",
+      "admin"
+    ],
+    "endpoint": "<function reject_kyc_submission at 0x0000020417BE3A60>",
+    "module": "app.api.admin"
+  },
+  {
+    "methods": [
+      "GET"
+    ],
+    "path": "/api/admin/dashboard/revenue-overview",
+    "name": "get_revenue_overview",
+    "tags": [
+      "Admin",
+      "admin"
+    ],
+    "endpoint": "<function get_revenue_overview at 0x0000020417BE1760>",
+    "module": "app.api.admin"
+  },
+  {
+    "methods": [
+      "GET"
+    ],
+    "path": "/api/admin/dashboard/stats",
+    "name": "get_dashboard_stats",
+    "tags": [
+      "Admin",
+      "admin"
+    ],
+    "endpoint": "<function get_dashboard_stats at 0x0000020417BE14E0>",
+    "module": "app.api.admin"
+  },
+  {
+    "methods": [
+      "GET"
+    ],
+    "path": "/api/admin/revenue/overview",
+    "name": "get_revenue_overview",
+    "tags": [
+      "Admin",
+      "admin"
+    ],
+    "endpoint": "<function get_revenue_overview at 0x0000020417BE23E0>",
+    "module": "app.api.admin"
+  },
+  {
+    "methods": [
+      "POST"
+    ],
+    "path": "/api/admin/roles/grant",
+    "name": "grant_admin_role",
+    "tags": [
+      "Admin",
+      "admin"
+    ],
+    "endpoint": "<function grant_admin_role at 0x0000020417BE32E0>",
+    "module": "app.api.admin"
+  },
+  {
+    "methods": [
+      "POST"
+    ],
+    "path": "/api/admin/roles/revoke",
+    "name": "revoke_admin_role",
+    "tags": [
+      "Admin",
+      "admin"
+    ],
+    "endpoint": "<function revoke_admin_role at 0x0000020417BE3560>",
+    "module": "app.api.admin"
+  },
+  {
+    "methods": [
+      "GET"
+    ],
+    "path": "/api/admin/users",
+    "name": "list_users",
+    "tags": [
+      "Admin",
+      "admin"
+    ],
+    "endpoint": "<function list_users at 0x0000020417BE19E0>",
+    "module": "app.api.admin"
+  },
+  {
+    "methods": [
+      "GET"
+    ],
+    "path": "/api/admin/users/{user_id}",
+    "name": "get_user_details",
+    "tags": [
+      "Admin",
+      "admin"
+    ],
+    "endpoint": "<function get_user_details at 0x0000020417BE1C60>",
+    "module": "app.api.admin"
+  },
+  {
+    "methods": [
+      "POST"
+    ],
+    "path": "/api/admin/users/{user_id}/activate",
+    "name": "activate_user",
+    "tags": [
+      "Admin",
+      "admin"
+    ],
+    "endpoint": "<function activate_user at 0x0000020417BE2160>",
+    "module": "app.api.admin"
+  },
+  {
+    "methods": [
+      "POST"
+    ],
+    "path": "/api/admin/users/{user_id}/suspend",
+    "name": "suspend_user",
+    "tags": [
+      "Admin",
+      "admin"
+    ],
+    "endpoint": "<function suspend_user at 0x0000020417BE1EE0>",
+    "module": "app.api.admin"
+  },
+  {
+    "methods": [
+      "GET"
+    ],
+    "path": "/api/analytics/calibration",
+    "name": "get_calibration",
+    "tags": [
+      "Analytics"
+    ],
+    "endpoint": "<function get_calibration at 0x0000020417FF6D40>",
+    "module": "app.api.analytics"
+  },
+  {
+    "methods": [
+      "GET"
+    ],
+    "path": "/api/analytics/leaderboard",
+    "name": "get_max_leaderboard",
+    "tags": [
+      "Analytics"
+    ],
+    "endpoint": "<function get_max_leaderboard at 0x0000020417FF6980>",
+    "module": "app.api.analytics"
+  },
+  {
+    "methods": [
+      "GET"
+    ],
+    "path": "/api/analytics/overview",
+    "name": "get_overview",
+    "tags": [
+      "Analytics"
+    ],
+    "endpoint": "<function get_overview at 0x0000020417FF58A0>",
+    "module": "app.api.analytics"
+  },
+  {
+    "methods": [
+      "POST"
+    ],
+    "path": "/api/billing/checkout",
+    "name": "create_checkout",
+    "tags": [
+      "Billing"
+    ],
+    "endpoint": "<function create_checkout at 0x0000020417ED4E00>",
+    "module": "app.api.billing"
+  },
+  {
+    "methods": [
+      "GET"
+    ],
+    "path": "/api/billing/history",
+    "name": "get_billing_history",
+    "tags": [
+      "Billing"
+    ],
+    "endpoint": "<function get_billing_history at 0x0000020417ED5800>",
+    "module": "app.api.billing"
+  },
+  {
+    "methods": [
+      "GET"
+    ],
+    "path": "/api/billing/plans",
+    "name": "get_plans",
+    "tags": [
+      "Billing"
+    ],
+    "endpoint": "<function get_plans at 0x0000020417ED4B80>",
+    "module": "app.api.billing"
+  },
+  {
+    "methods": [
+      "GET"
+    ],
+    "path": "/api/billing/subscription",
+    "name": "get_subscription",
+    "tags": [
+      "Billing"
+    ],
+    "endpoint": "<function get_subscription at 0x0000020417ED5580>",
+    "module": "app.api.billing"
+  },
+  {
+    "methods": [
+      "POST"
+    ],
+    "path": "/api/billing/subscription/manage",
+    "name": "manage_subscription",
+    "tags": [
+      "Billing"
+    ],
+    "endpoint": "<function manage_subscription at 0x0000020417ED5A80>",
+    "module": "app.api.billing"
+  },
+  {
+    "methods": [
+      "POST"
+    ],
+    "path": "/api/billing/test-simulate-success",
+    "name": "simulate_success",
+    "tags": [
+      "Billing"
+    ],
+    "endpoint": "<function simulate_success at 0x0000020417ED5300>",
+    "module": "app.api.billing"
+  },
+  {
+    "methods": [
+      "POST"
+    ],
+    "path": "/api/billing/webhook",
+    "name": "billing_webhook",
+    "tags": [
+      "Billing"
+    ],
+    "endpoint": "<function billing_webhook at 0x0000020417ED5080>",
+    "module": "app.api.billing"
+  },
+  {
+    "methods": [
+      "GET"
+    ],
+    "path": "/api/brokers/accounts",
+    "name": "get_accounts",
+    "tags": [
+      "Brokers",
+      "Brokers"
+    ],
+    "endpoint": "<function get_accounts at 0x0000020417E76CA0>",
+    "module": "app.api.brokers"
+  },
+  {
+    "methods": [
+      "GET"
+    ],
+    "path": "/api/brokers/catalog",
+    "name": "get_catalog",
+    "tags": [
+      "Brokers",
+      "Brokers"
+    ],
+    "endpoint": "<function get_catalog at 0x0000020417E76020>",
+    "module": "app.api.brokers"
+  },
+  {
+    "methods": [
+      "POST"
+    ],
+    "path": "/api/brokers/connect",
+    "name": "start_connection",
+    "tags": [
+      "Brokers",
+      "Brokers"
+    ],
+    "endpoint": "<function start_connection at 0x0000020417E76F20>",
+    "module": "app.api.brokers"
+  },
+  {
+    "methods": [
+      "GET"
+    ],
+    "path": "/api/brokers/{account_id}",
+    "name": "get_account_detail",
+    "tags": [
+      "Brokers",
+      "Brokers"
+    ],
+    "endpoint": "<function get_account_detail at 0x0000020417E77920>",
+    "module": "app.api.brokers"
+  },
+  {
+    "methods": [
+      "POST"
+    ],
+    "path": "/api/brokers/{account_id}/credentials",
+    "name": "submit_credentials",
+    "tags": [
+      "Brokers",
+      "Brokers"
+    ],
+    "endpoint": "<function submit_credentials at 0x0000020417E771A0>",
+    "module": "app.api.brokers"
+  },
+  {
+    "methods": [
+      "POST"
+    ],
+    "path": "/api/brokers/{account_id}/disconnect",
+    "name": "disconnect_broker",
+    "tags": [
+      "Brokers",
+      "Brokers"
+    ],
+    "endpoint": "<function disconnect_broker at 0x0000020417E776A0>",
+    "module": "app.api.brokers"
+  },
+  {
+    "methods": [
+      "POST"
+    ],
+    "path": "/api/brokers/{account_id}/validate",
+    "name": "validate_connection",
+    "tags": [
+      "Brokers",
+      "Brokers"
+    ],
+    "endpoint": "<function validate_connection at 0x0000020417E77420>",
+    "module": "app.api.brokers"
+  },
+  {
+    "methods": [
+      "POST"
+    ],
+    "path": "/api/onboarding/complete",
+    "name": "complete_onboarding",
+    "tags": [
+      "Onboarding"
+    ],
+    "endpoint": "<function complete_onboarding at 0x0000020417ED77E0>",
+    "module": "app.api.onboarding"
+  },
+  {
+    "methods": [
+      "GET"
+    ],
+    "path": "/api/onboarding/next-steps",
+    "name": "get_next_steps",
+    "tags": [
+      "Onboarding"
+    ],
+    "endpoint": "<function get_next_steps at 0x0000020417ED7CE0>",
+    "module": "app.api.onboarding"
+  },
+  {
+    "methods": [
+      "GET"
+    ],
+    "path": "/api/onboarding/state",
+    "name": "get_state",
+    "tags": [
+      "Onboarding"
+    ],
+    "endpoint": "<function get_state at 0x0000020417ED6D40>",
+    "module": "app.api.onboarding"
+  },
+  {
+    "methods": [
+      "POST"
+    ],
+    "path": "/api/onboarding/step",
+    "name": "save_step",
+    "tags": [
+      "Onboarding"
+    ],
+    "endpoint": "<function save_step at 0x0000020417ED7560>",
+    "module": "app.api.onboarding"
+  },
+  {
+    "methods": [
+      "GET"
+    ],
+    "path": "/api/onboarding/strategies",
+    "name": "get_strategies",
+    "tags": [
+      "Onboarding"
+    ],
+    "endpoint": "<function get_strategies at 0x0000020417ED7A60>",
+    "module": "app.api.onboarding"
+  },
+  {
+    "methods": [
+      "POST"
+    ],
+    "path": "/api/risk-profiles/calculate",
+    "name": "calculate_position_size",
+    "tags": [
+      "Risk Profiles"
+    ],
+    "endpoint": "<function calculate_position_size at 0x00000204180C5260>",
+    "module": "app.api.risk_profiles"
+  },
+  {
+    "methods": [
+      "GET"
+    ],
+    "path": "/api/risk-profiles/templates",
+    "name": "get_risk_profile_templates",
+    "tags": [
+      "Risk Profiles"
+    ],
+    "endpoint": "<function get_risk_profile_templates at 0x00000204180C4900>",
+    "module": "app.api.risk_profiles"
+  },
+  {
+    "methods": [
+      "POST"
+    ],
+    "path": "/api/risk-profiles/validate",
+    "name": "validate_risk_parameters",
+    "tags": [
+      "Risk Profiles"
+    ],
+    "endpoint": "<function validate_risk_parameters at 0x00000204180C5580>",
+    "module": "app.api.risk_profiles"
+  },
+  {
+    "methods": [
+      "GET"
+    ],
+    "path": "/api/strategies/",
+    "name": "list_user_strategies",
+    "tags": [
+      "User Strategies",
+      "User Strategies"
+    ],
+    "endpoint": "<function list_user_strategies at 0x0000020417F2DB20>",
+    "module": "app.api.strategies"
+  },
+  {
+    "methods": [
+      "POST"
+    ],
+    "path": "/api/strategies/",
+    "name": "create_strategy",
+    "tags": [
+      "User Strategies",
+      "User Strategies"
+    ],
+    "endpoint": "<function create_strategy at 0x0000020417F2E2A0>",
+    "module": "app.api.strategies"
+  },
+  {
+    "methods": [
+      "POST"
+    ],
+    "path": "/api/strategies/validate",
+    "name": "validate_strategy",
+    "tags": [
+      "User Strategies",
+      "User Strategies"
+    ],
+    "endpoint": "<function validate_strategy at 0x0000020417F2E020>",
+    "module": "app.api.strategies"
+  },
+  {
+    "methods": [
+      "GET"
+    ],
+    "path": "/api/strategies/{strategy_id}",
+    "name": "get_strategy_details",
+    "tags": [
+      "User Strategies",
+      "User Strategies"
+    ],
+    "endpoint": "<function get_strategy_details at 0x0000020417F2DC60>",
+    "module": "app.api.strategies"
+  },
+  {
+    "methods": [
+      "DELETE"
+    ],
+    "path": "/api/strategies/{strategy_id}",
+    "name": "delete_strategy",
+    "tags": [
+      "User Strategies",
+      "User Strategies"
+    ],
+    "endpoint": "<function delete_strategy at 0x0000020417F2E520>",
+    "module": "app.api.strategies"
+  },
+  {
+    "methods": [
+      "POST"
+    ],
+    "path": "/api/strategy-configs",
+    "name": "create_configuration",
+    "tags": [
+      "Strategy Configs"
+    ],
+    "endpoint": "<function create_configuration at 0x0000020418052160>",
+    "module": "app.api.strategy_configs"
+  },
+  {
+    "methods": [
+      "GET"
+    ],
+    "path": "/api/strategy-configs",
+    "name": "list_configurations",
+    "tags": [
+      "Strategy Configs"
+    ],
+    "endpoint": "<function list_configurations at 0x0000020418052340>",
+    "module": "app.api.strategy_configs"
+  },
+  {
+    "methods": [
+      "GET"
+    ],
+    "path": "/api/strategy-configs/{config_id}",
+    "name": "get_configuration",
+    "tags": [
+      "Strategy Configs"
+    ],
+    "endpoint": "<function get_configuration at 0x0000020418052660>",
+    "module": "app.api.strategy_configs"
+  },
+  {
+    "methods": [
+      "PUT"
+    ],
+    "path": "/api/strategy-configs/{config_id}",
+    "name": "update_configuration",
+    "tags": [
+      "Strategy Configs"
+    ],
+    "endpoint": "<function update_configuration at 0x00000204180528E0>",
+    "module": "app.api.strategy_configs"
+  },
+  {
+    "methods": [
+      "DELETE"
+    ],
+    "path": "/api/strategy-configs/{config_id}",
+    "name": "delete_configuration",
+    "tags": [
+      "Strategy Configs"
+    ],
+    "endpoint": "<function delete_configuration at 0x0000020418052B60>",
+    "module": "app.api.strategy_configs"
+  },
+  {
+    "methods": [
+      "POST"
+    ],
+    "path": "/api/strategy-configs/{config_id}/activate",
+    "name": "activate_configuration",
+    "tags": [
+      "Strategy Configs"
+    ],
+    "endpoint": "<function activate_configuration at 0x0000020418052DE0>",
+    "module": "app.api.strategy_configs"
+  },
+  {
+    "methods": [
+      "POST"
+    ],
+    "path": "/api/strategy-configs/{config_id}/deactivate",
+    "name": "deactivate_configuration",
+    "tags": [
+      "Strategy Configs"
+    ],
+    "endpoint": "<function deactivate_configuration at 0x0000020418053060>",
+    "module": "app.api.strategy_configs"
+  },
+  {
+    "methods": [
+      "GET"
+    ],
+    "path": "/api/strategy-configs/{config_id}/protection-status",
+    "name": "get_protection_status",
+    "tags": [
+      "Strategy Configs"
+    ],
+    "endpoint": "<function get_protection_status at 0x00000204180532E0>",
+    "module": "app.api.strategy_configs"
+  },
+  {
+    "methods": [
+      "POST"
+    ],
+    "path": "/api/strategy-configs/{config_id}/reset-protection",
+    "name": "reset_protection",
+    "tags": [
+      "Strategy Configs"
+    ],
+    "endpoint": "<function reset_protection at 0x0000020418053560>",
+    "module": "app.api.strategy_configs"
+  },
+  {
+    "methods": [
+      "GET"
+    ],
+    "path": "/api/v1/bot-instances",
+    "name": "get_user_bot_instances",
+    "tags": [
+      "Strategy Marketplace"
+    ],
+    "endpoint": "<function get_user_bot_instances at 0x0000020417F7F380>",
+    "module": "app.api.strategy_marketplace"
+  },
+  {
+    "methods": [
+      "POST"
+    ],
+    "path": "/api/v1/bot-instances/apply-official-strategy",
+    "name": "apply_official_strategy",
+    "tags": [
+      "Strategy Marketplace"
+    ],
+    "endpoint": "<function apply_official_strategy at 0x0000020417F7E5C0>",
+    "module": "app.api.strategy_marketplace"
+  },
+  {
+    "methods": [
+      "DELETE"
+    ],
+    "path": "/api/v1/bot-instances/{instance_id}",
+    "name": "delete_bot_instance",
+    "tags": [
+      "Strategy Marketplace"
+    ],
+    "endpoint": "<function delete_bot_instance at 0x0000020417F7F100>",
+    "module": "app.api.strategy_marketplace"
+  },
+  {
+    "methods": [
+      "GET"
+    ],
+    "path": "/api/v1/bot-instances/{instance_id}",
+    "name": "get_bot_instance",
+    "tags": [
+      "Strategy Marketplace"
+    ],
+    "endpoint": "<function get_bot_instance at 0x0000020417F7EFC0>",
+    "module": "app.api.strategy_marketplace"
+  },
+  {
+    "methods": [
+      "PUT"
+    ],
+    "path": "/api/v1/bot-instances/{instance_id}",
+    "name": "update_bot_instance",
+    "tags": [
+      "Strategy Marketplace"
+    ],
+    "endpoint": "<function update_bot_instance at 0x0000020417F7ED40>",
+    "module": "app.api.strategy_marketplace"
+  },
+  {
+    "methods": [
+      "POST"
+    ],
+    "path": "/api/v1/bot-instances/{instance_id}/pause",
+    "name": "pause_bot_instance",
+    "tags": [
+      "Strategy Marketplace"
+    ],
+    "endpoint": "<function pause_bot_instance at 0x0000020417F7F920>",
+    "module": "app.api.strategy_marketplace"
+  },
+  {
+    "methods": [
+      "POST"
+    ],
+    "path": "/api/v1/bot-instances/{instance_id}/start",
+    "name": "start_bot_instance",
+    "tags": [
+      "Strategy Marketplace"
+    ],
+    "endpoint": "<function start_bot_instance at 0x0000020417F7F600>",
+    "module": "app.api.strategy_marketplace"
+  },
+  {
+    "methods": [
+      "POST"
+    ],
+    "path": "/api/v1/bot-instances/{instance_id}/stop",
+    "name": "stop_bot_instance",
+    "tags": [
+      "Strategy Marketplace"
+    ],
+    "endpoint": "<function stop_bot_instance at 0x0000020417F7FBA0>",
+    "module": "app.api.strategy_marketplace"
+  },
+  {
+    "methods": [
+      "GET"
+    ],
+    "path": "/api/v1/strategies/marketplace",
+    "name": "list_marketplace_strategies",
+    "tags": [
+      "Strategy Marketplace"
+    ],
+    "endpoint": "<function list_marketplace_strategies at 0x0000020417F7CD60>",
+    "module": "app.api.strategy_marketplace"
+  },
+  {
+    "methods": [
+      "GET"
+    ],
+    "path": "/api/v1/strategies/marketplace/{strategy_id}",
+    "name": "get_strategy_details",
+    "tags": [
+      "Strategy Marketplace"
+    ],
+    "endpoint": "<function get_strategy_details at 0x0000020417F7E160>",
+    "module": "app.api.strategy_marketplace"
+  },
+  {
+    "methods": [
+      "POST"
+    ],
+    "path": "/api/v1/strategies/marketplace/{strategy_id}/validate-params",
+    "name": "validate_strategy_params",
+    "tags": [
+      "Strategy Marketplace"
+    ],
+    "endpoint": "<function validate_strategy_params at 0x0000020417F7E340>",
+    "module": "app.api.strategy_marketplace"
+  },
+  {
+    "methods": [
+      "POST"
+    ],
+    "path": "/auth/2fa/disable",
+    "name": "disable_2fa",
+    "tags": [
+      "Authentication"
+    ],
+    "endpoint": "<function disable_2fa at 0x0000020416BBB7E0>",
+    "module": "app.api.auth"
+  },
+  {
+    "methods": [
+      "POST"
+    ],
+    "path": "/auth/2fa/setup",
+    "name": "setup_2fa",
+    "tags": [
+      "Authentication"
+    ],
+    "endpoint": "<function setup_2fa at 0x0000020416BBB2E0>",
+    "module": "app.api.auth"
+  },
+  {
+    "methods": [
+      "POST"
+    ],
+    "path": "/auth/2fa/verify",
+    "name": "verify_2fa_setup",
+    "tags": [
+      "Authentication"
+    ],
+    "endpoint": "<function verify_2fa_setup at 0x0000020416BBB560>",
+    "module": "app.api.auth"
+  },
+  {
+    "methods": [
+      "GET"
+    ],
+    "path": "/auth/admin/users",
+    "name": "admin_list_users",
+    "tags": [
+      "Authentication"
+    ],
+    "endpoint": "<function admin_list_users at 0x0000020416BBB060>",
+    "module": "app.api.auth"
+  },
+  {
+    "methods": [
+      "POST"
+    ],
+    "path": "/auth/admin/users/{user_id}/suspend",
+    "name": "admin_suspend_user",
+    "tags": [
+      "Authentication"
+    ],
+    "endpoint": "<function admin_suspend_user at 0x0000020416BBAB60>",
+    "module": "app.api.auth"
+  },
+  {
+    "methods": [
+      "POST"
+    ],
+    "path": "/auth/admin/users/{user_id}/unsuspend",
+    "name": "admin_unsuspend_user",
+    "tags": [
+      "Authentication"
+    ],
+    "endpoint": "<function admin_unsuspend_user at 0x0000020416BBADE0>",
+    "module": "app.api.auth"
+  },
+  {
+    "methods": [
+      "POST"
+    ],
+    "path": "/auth/forgot-password",
+    "name": "forgot_password",
+    "tags": [
+      "Authentication"
+    ],
+    "endpoint": "<function forgot_password at 0x0000020416BB9800>",
+    "module": "app.api.auth"
+  },
+  {
+    "methods": [
+      "POST"
+    ],
+    "path": "/auth/login",
+    "name": "login",
+    "tags": [
+      "Authentication"
+    ],
+    "endpoint": "<function login at 0x0000020416BB8720>",
+    "module": "app.api.auth"
+  },
+  {
+    "methods": [
+      "POST"
+    ],
+    "path": "/auth/logout",
+    "name": "logout",
+    "tags": [
+      "Authentication"
+    ],
+    "endpoint": "<function logout at 0x0000020416BB9080>",
+    "module": "app.api.auth"
+  },
+  {
+    "methods": [
+      "POST"
+    ],
+    "path": "/auth/logout-all",
+    "name": "logout_all",
+    "tags": [
+      "Authentication"
+    ],
+    "endpoint": "<function logout_all at 0x0000020416BBA7A0>",
+    "module": "app.api.auth"
+  },
+  {
+    "methods": [
+      "GET"
+    ],
+    "path": "/auth/me",
+    "name": "get_me",
+    "tags": [
+      "Authentication"
+    ],
+    "endpoint": "<function get_me at 0x0000020416BBA200>",
+    "module": "app.api.auth"
+  },
+  {
+    "methods": [
+      "PATCH"
+    ],
+    "path": "/auth/me",
+    "name": "update_me",
+    "tags": [
+      "Authentication"
+    ],
+    "endpoint": "<function update_me at 0x0000020416BBA480>",
+    "module": "app.api.auth"
+  },
+  {
+    "methods": [
+      "POST"
+    ],
+    "path": "/auth/refresh",
+    "name": "refresh",
+    "tags": [
+      "Authentication"
+    ],
+    "endpoint": "<function refresh at 0x0000020416BB8B80>",
+    "module": "app.api.auth"
+  },
+  {
+    "methods": [
+      "POST"
+    ],
+    "path": "/auth/register",
+    "name": "register",
+    "tags": [
+      "Authentication"
+    ],
+    "endpoint": "<function register at 0x0000020416A79260>",
+    "module": "app.api.auth"
+  },
+  {
+    "methods": [
+      "POST"
+    ],
+    "path": "/auth/resend-verification",
+    "name": "resend_verification",
+    "tags": [
+      "Authentication"
+    ],
+    "endpoint": "<function resend_verification at 0x0000020416BB84A0>",
+    "module": "app.api.auth"
+  },
+  {
+    "methods": [
+      "POST"
+    ],
+    "path": "/auth/reset-password",
+    "name": "reset_password",
+    "tags": [
+      "Authentication"
+    ],
+    "endpoint": "<function reset_password at 0x0000020416BB9A80>",
+    "module": "app.api.auth"
+  },
+  {
+    "methods": [
+      "GET"
+    ],
+    "path": "/auth/sessions",
+    "name": "list_sessions",
+    "tags": [
+      "Authentication"
+    ],
+    "endpoint": "<function list_sessions at 0x0000020416BB9300>",
+    "module": "app.api.auth"
+  },
+  {
+    "methods": [
+      "GET"
+    ],
+    "path": "/auth/sessions",
+    "name": "get_sessions",
+    "tags": [
+      "Authentication"
+    ],
+    "endpoint": "<function get_sessions at 0x0000020416BBBA60>",
+    "module": "app.api.auth"
+  },
+  {
+    "methods": [
+      "POST"
+    ],
+    "path": "/auth/sessions/revoke",
+    "name": "revoke_session",
+    "tags": [
+      "Authentication"
+    ],
+    "endpoint": "<function revoke_session at 0x0000020416BBBCE0>",
+    "module": "app.api.auth"
+  },
+  {
+    "methods": [
+      "DELETE"
+    ],
+    "path": "/auth/sessions/{session_id}",
+    "name": "revoke_session",
+    "tags": [
+      "Authentication"
+    ],
+    "endpoint": "<function revoke_session at 0x0000020416BB9580>",
+    "module": "app.api.auth"
+  },
+  {
+    "methods": [
+      "GET"
+    ],
+    "path": "/auth/user/brokers",
+    "name": "list_brokers",
+    "tags": [
+      "Authentication"
+    ],
+    "endpoint": "<function list_brokers at 0x0000020416BB9D00>",
+    "module": "app.api.auth"
+  },
+  {
+    "methods": [
+      "POST"
+    ],
+    "path": "/auth/user/brokers",
+    "name": "link_broker",
+    "tags": [
+      "Authentication"
+    ],
+    "endpoint": "<function link_broker at 0x0000020416BB9F80>",
+    "module": "app.api.auth"
+  },
+  {
+    "methods": [
+      "POST"
+    ],
+    "path": "/auth/verify-email",
+    "name": "verify_email",
+    "tags": [
+      "Authentication"
+    ],
+    "endpoint": "<function verify_email at 0x0000020416A793A0>",
+    "module": "app.api.auth"
+  },
+  {
+    "methods": [
+      "GET"
+    ],
+    "path": "/binance/balance",
+    "name": "binance_balance",
+    "tags": [],
+    "endpoint": "<function binance_balance at 0x00000204180C6D40>",
+    "module": "app.main"
+  },
+  {
+    "methods": [
+      "POST"
+    ],
+    "path": "/binance/cancel-all",
+    "name": "binance_cancel_all",
+    "tags": [],
+    "endpoint": "<function binance_cancel_all at 0x00000204180F58A0>",
+    "module": "app.main"
+  },
+  {
+    "methods": [
+      "GET"
+    ],
+    "path": "/binance/klines",
+    "name": "binance_klines",
+    "tags": [],
+    "endpoint": "<function binance_klines at 0x00000204180C7240>",
+    "module": "app.main"
+  },
+  {
+    "methods": [
+      "POST"
+    ],
+    "path": "/binance/leverage",
+    "name": "binance_set_leverage",
+    "tags": [],
+    "endpoint": "<function binance_set_leverage at 0x00000204180F4180>",
+    "module": "app.main"
+  },
+  {
+    "methods": [
+      "GET"
+    ],
+    "path": "/binance/open-orders",
+    "name": "binance_open_orders",
+    "tags": [],
+    "endpoint": "<function binance_open_orders at 0x00000204180F4EA0>",
+    "module": "app.main"
+  },
+  {
+    "methods": [
+      "GET"
+    ],
+    "path": "/binance/order",
+    "name": "binance_order",
+    "tags": [],
+    "endpoint": "<function binance_order at 0x00000204180F4C20>",
+    "module": "app.main"
+  },
+  {
+    "methods": [
+      "GET"
+    ],
+    "path": "/binance/ping",
+    "name": "binance_ping",
+    "tags": [],
+    "endpoint": "<function binance_ping at 0x00000204180C6A20>",
+    "module": "app.main"
+  },
+  {
+    "methods": [
+      "GET"
+    ],
+    "path": "/binance/position",
+    "name": "binance_position",
+    "tags": [],
+    "endpoint": "<function binance_position at 0x00000204180F5120>",
+    "module": "app.main"
+  },
+  {
+    "methods": [
+      "GET"
+    ],
+    "path": "/binance/price",
+    "name": "binance_price",
+    "tags": [],
+    "endpoint": "<function binance_price at 0x00000204180C6FC0>",
+    "module": "app.main"
+  },
+  {
+    "methods": [
+      "GET"
+    ],
+    "path": "/binance/prices",
+    "name": "binance_prices",
+    "tags": [],
+    "endpoint": "<function binance_prices at 0x00000204180C79C0>",
+    "module": "app.main"
+  },
+  {
+    "methods": [
+      "GET"
+    ],
+    "path": "/binance/qty",
+    "name": "binance_qty",
+    "tags": [],
+    "endpoint": "<function binance_qty at 0x00000204180F4400>",
+    "module": "app.main"
+  },
+  {
+    "methods": [
+      "GET"
+    ],
+    "path": "/config/symbols",
+    "name": "config_symbols",
+    "tags": [],
+    "endpoint": "<function config_symbols at 0x00000204180C74C0>",
+    "module": "app.main"
+  },
+  {
+    "methods": [
+      "GET"
+    ],
+    "path": "/debug/check-symbol",
+    "name": "debug_check_symbol",
+    "tags": [],
+    "endpoint": "<function debug_check_symbol at 0x000002041812A700>",
+    "module": "app.main"
+  },
+  {
+    "methods": [
+      "GET"
+    ],
+    "path": "/debug/config",
+    "name": "debug_config",
+    "tags": [],
+    "endpoint": "<function debug_config at 0x0000020418129940>",
+    "module": "app.main"
+  },
+  {
+    "methods": [
+      "POST"
+    ],
+    "path": "/debug/crash-next-cycle",
+    "name": "debug_crash_next_cycle",
+    "tags": [],
+    "endpoint": "<function debug_crash_next_cycle at 0x0000020418128720>",
+    "module": "app.main"
+  },
+  {
+    "methods": [
+      "GET"
+    ],
+    "path": "/debug/db/daily",
+    "name": "debug_db_daily",
+    "tags": [],
+    "endpoint": "<function debug_db_daily at 0x00000204180F77E0>",
+    "module": "app.main"
+  },
+  {
+    "methods": [
+      "GET"
+    ],
+    "path": "/debug/db/symbols",
+    "name": "debug_db_symbols",
+    "tags": [],
+    "endpoint": "<function debug_db_symbols at 0x00000204180F7A60>",
+    "module": "app.main"
+  },
+  {
+    "methods": [
+      "GET"
+    ],
+    "path": "/debug/position_amt/{symbol}",
+    "name": "debug_position_amt",
+    "tags": [],
+    "endpoint": "<function debug_position_amt at 0x0000020418128EA0>",
+    "module": "app.main"
+  },
+  {
+    "methods": [
+      "GET"
+    ],
+    "path": "/debug/run/current",
+    "name": "debug_run_current",
+    "tags": [],
+    "endpoint": "<function debug_run_current at 0x0000020418129EE0>",
+    "module": "app.main"
+  },
+  {
+    "methods": [
+      "POST"
+    ],
+    "path": "/debug/run/cycle",
+    "name": "debug_run_cycle",
+    "tags": [],
+    "endpoint": "<function debug_run_cycle at 0x000002041812A160>",
+    "module": "app.main"
+  },
+  {
+    "methods": [
+      "POST"
+    ],
+    "path": "/debug/run/force",
+    "name": "debug_run_force",
+    "tags": [],
+    "endpoint": "<function debug_run_force at 0x000002041812A480>",
+    "module": "app.main"
+  },
+  {
+    "methods": [
+      "GET"
+    ],
+    "path": "/debug/sanity",
+    "name": "debug_sanity",
+    "tags": [],
+    "endpoint": "<function debug_sanity at 0x0000020418129C60>",
+    "module": "app.main"
+  },
+  {
+    "methods": [
+      "POST"
+    ],
+    "path": "/debug/set_last_stop",
+    "name": "debug_set_last_stop",
+    "tags": [],
+    "endpoint": "<function debug_set_last_stop at 0x00000204181293A0>",
+    "module": "app.main"
+  },
+  {
+    "methods": [
+      "GET"
+    ],
+    "path": "/debug/settings",
+    "name": "debug_settings",
+    "tags": [],
+    "endpoint": "<function debug_settings at 0x00000204180F5620>",
+    "module": "app.main"
+  },
+  {
+    "methods": [
+      "GET"
+    ],
+    "path": "/debug/strategy/check",
+    "name": "debug_strategy_check",
+    "tags": [],
+    "endpoint": "<function debug_strategy_check at 0x000002041812A980>",
+    "module": "app.main"
+  },
+  {
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "path": "/docs",
+    "name": "swagger_ui_html",
+    "tags": [],
+    "endpoint": "<function FastAPI.setup.<locals>.swagger_ui_html at 0x0000020416BBBF60>",
+    "module": "fastapi.applications"
+  },
+  {
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "path": "/docs/oauth2-redirect",
+    "name": "swagger_ui_redirect",
+    "tags": [],
+    "endpoint": "<function FastAPI.setup.<locals>.swagger_ui_redirect at 0x0000020417BE00E0>",
+    "module": "fastapi.applications"
+  },
+  {
+    "methods": [
+      "POST"
+    ],
+    "path": "/emergency/flatten",
+    "name": "emergency_flatten",
+    "tags": [],
+    "endpoint": "<function emergency_flatten at 0x0000020418128B80>",
+    "module": "app.main"
+  },
+  {
+    "methods": [
+      "GET"
+    ],
+    "path": "/health",
+    "name": "health",
+    "tags": [],
+    "endpoint": "<function health at 0x0000020418129620>",
+    "module": "app.main"
+  },
+  {
+    "methods": [
+      "GET"
+    ],
+    "path": "/kyc/checklist",
+    "name": "get_kyc_checklist",
+    "tags": [
+      "KYC",
+      "KYC"
+    ],
+    "endpoint": "<function get_kyc_checklist at 0x0000020417E193A0>",
+    "module": "app.api.kyc"
+  },
+  {
+    "methods": [
+      "GET"
+    ],
+    "path": "/kyc/documents",
+    "name": "list_documents",
+    "tags": [
+      "KYC",
+      "KYC"
+    ],
+    "endpoint": "<function list_documents at 0x0000020417E1A020>",
+    "module": "app.api.kyc"
+  },
+  {
+    "methods": [
+      "POST"
+    ],
+    "path": "/kyc/documents/confirm",
+    "name": "confirm_document_upload",
+    "tags": [
+      "KYC",
+      "KYC"
+    ],
+    "endpoint": "<function confirm_document_upload at 0x0000020417E19DA0>",
+    "module": "app.api.kyc"
+  },
+  {
+    "methods": [
+      "GET"
+    ],
+    "path": "/kyc/documents/download/{file_path:path}",
+    "name": "download_document_file",
+    "tags": [
+      "KYC",
+      "KYC"
+    ],
+    "endpoint": "<function download_document_file at 0x0000020417E1A7A0>",
+    "module": "app.api.kyc"
+  },
+  {
+    "methods": [
+      "GET"
+    ],
+    "path": "/kyc/documents/download/{file_ref:path}",
+    "name": "download_document_file",
+    "tags": [
+      "KYC",
+      "KYC"
+    ],
+    "endpoint": "<function download_document_file at 0x0000020417E1B600>",
+    "module": "app.api.kyc"
+  },
+  {
+    "methods": [
+      "POST"
+    ],
+    "path": "/kyc/documents/upload-url",
+    "name": "request_upload_url",
+    "tags": [
+      "KYC",
+      "KYC"
+    ],
+    "endpoint": "<function request_upload_url at 0x0000020417E19B20>",
+    "module": "app.api.kyc"
+  },
+  {
+    "methods": [
+      "PUT"
+    ],
+    "path": "/kyc/documents/upload/{file_path:path}",
+    "name": "upload_document_file",
+    "tags": [
+      "KYC",
+      "KYC"
+    ],
+    "endpoint": "<function upload_document_file at 0x0000020417E1A520>",
+    "module": "app.api.kyc"
+  },
+  {
+    "methods": [
+      "PUT"
+    ],
+    "path": "/kyc/documents/upload/{file_ref:path}",
+    "name": "upload_document_file",
+    "tags": [
+      "KYC",
+      "KYC"
+    ],
+    "endpoint": "<function upload_document_file at 0x0000020417E1B420>",
+    "module": "app.api.kyc"
+  },
+  {
+    "methods": [
+      "DELETE"
+    ],
+    "path": "/kyc/documents/{doc_id}",
+    "name": "delete_document",
+    "tags": [
+      "KYC",
+      "KYC"
+    ],
+    "endpoint": "<function delete_document at 0x0000020417E1A2A0>",
+    "module": "app.api.kyc"
+  },
+  {
+    "methods": [
+      "POST"
+    ],
+    "path": "/kyc/face/complete",
+    "name": "complete_face_verification",
+    "tags": [
+      "KYC",
+      "KYC"
+    ],
+    "endpoint": "<function complete_face_verification at 0x0000020417E1ACA0>",
+    "module": "app.api.kyc"
+  },
+  {
+    "methods": [
+      "POST"
+    ],
+    "path": "/kyc/face/start",
+    "name": "start_face_verification",
+    "tags": [
+      "KYC",
+      "KYC"
+    ],
+    "endpoint": "<function start_face_verification at 0x0000020417E1AA20>",
+    "module": "app.api.kyc"
+  },
+  {
+    "methods": [
+      "POST"
+    ],
+    "path": "/kyc/personal-info",
+    "name": "submit_personal_info",
+    "tags": [
+      "KYC",
+      "KYC"
+    ],
+    "endpoint": "<function submit_personal_info at 0x0000020417E19620>",
+    "module": "app.api.kyc"
+  },
+  {
+    "methods": [
+      "GET"
+    ],
+    "path": "/kyc/personal-info",
+    "name": "get_personal_info",
+    "tags": [
+      "KYC",
+      "KYC"
+    ],
+    "endpoint": "<function get_personal_info at 0x0000020417E198A0>",
+    "module": "app.api.kyc"
+  },
+  {
+    "methods": [
+      "GET"
+    ],
+    "path": "/kyc/requirements",
+    "name": "get_kyc_requirements",
+    "tags": [
+      "KYC",
+      "KYC"
+    ],
+    "endpoint": "<function get_kyc_requirements at 0x0000020417E18C20>",
+    "module": "app.api.kyc"
+  },
+  {
+    "methods": [
+      "POST"
+    ],
+    "path": "/kyc/review",
+    "name": "submit_review_decision",
+    "tags": [
+      "KYC",
+      "KYC"
+    ],
+    "endpoint": "<function submit_review_decision at 0x0000020417E1B1A0>",
+    "module": "app.api.kyc"
+  },
+  {
+    "methods": [
+      "POST"
+    ],
+    "path": "/kyc/start",
+    "name": "start_kyc_case",
+    "tags": [
+      "KYC",
+      "KYC"
+    ],
+    "endpoint": "<function start_kyc_case at 0x0000020417E18EA0>",
+    "module": "app.api.kyc"
+  },
+  {
+    "methods": [
+      "GET"
+    ],
+    "path": "/kyc/status",
+    "name": "get_kyc_status",
+    "tags": [
+      "KYC",
+      "KYC"
+    ],
+    "endpoint": "<function get_kyc_status at 0x0000020417E19120>",
+    "module": "app.api.kyc"
+  },
+  {
+    "methods": [
+      "POST"
+    ],
+    "path": "/kyc/submit",
+    "name": "submit_kyc_for_review",
+    "tags": [
+      "KYC",
+      "KYC"
+    ],
+    "endpoint": "<function submit_kyc_for_review at 0x0000020417E1AF20>",
+    "module": "app.api.kyc"
+  },
+  {
+    "methods": [
+      "GET"
+    ],
+    "path": "/logs/events/tail",
+    "name": "logs_events_tail",
+    "tags": [],
+    "endpoint": "<function logs_events_tail at 0x00000204180F7560>",
+    "module": "app.main"
+  },
+  {
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "path": "/openapi.json",
+    "name": "openapi",
+    "tags": [],
+    "endpoint": "<function FastAPI.setup.<locals>.openapi at 0x000002041308FA60>",
+    "module": "fastapi.applications"
+  },
+  {
+    "methods": [
+      "GET"
+    ],
+    "path": "/public/features",
+    "name": "get_features_content",
+    "tags": [
+      "Public"
+    ],
+    "endpoint": "<function get_features_content at 0x0000020417D1A340>",
+    "module": "app.api.public"
+  },
+  {
+    "methods": [
+      "GET"
+    ],
+    "path": "/public/home",
+    "name": "get_home_content",
+    "tags": [
+      "Public"
+    ],
+    "endpoint": "<function get_home_content at 0x0000020417D1A160>",
+    "module": "app.api.public"
+  },
+  {
+    "methods": [
+      "GET"
+    ],
+    "path": "/public/how-it-works",
+    "name": "get_how_it_works_content",
+    "tags": [
+      "Public"
+    ],
+    "endpoint": "<function get_how_it_works_content at 0x0000020417D1A5C0>",
+    "module": "app.api.public"
+  },
+  {
+    "methods": [
+      "GET"
+    ],
+    "path": "/public/pricing",
+    "name": "get_pricing_data",
+    "tags": [
+      "Public"
+    ],
+    "endpoint": "<function get_pricing_data at 0x0000020417D1A8E0>",
+    "module": "app.api.public"
+  },
+  {
+    "methods": [
+      "POST"
+    ],
+    "path": "/public/pricing/intent",
+    "name": "create_pricing_intent",
+    "tags": [
+      "Public"
+    ],
+    "endpoint": "<function create_pricing_intent at 0x0000020417DE9D00>",
+    "module": "app.api.public"
+  },
+  {
+    "methods": [
+      "POST"
+    ],
+    "path": "/public/session",
+    "name": "create_marketing_session",
+    "tags": [
+      "Public"
+    ],
+    "endpoint": "<function create_marketing_session at 0x0000020417DE9800>",
+    "module": "app.api.public"
+  },
+  {
+    "methods": [
+      "POST"
+    ],
+    "path": "/public/track",
+    "name": "track_event",
+    "tags": [
+      "Public"
+    ],
+    "endpoint": "<function track_event at 0x0000020417DE99E0>",
+    "module": "app.api.public"
+  },
+  {
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "path": "/redoc",
+    "name": "redoc_html",
+    "tags": [],
+    "endpoint": "<function FastAPI.setup.<locals>.redoc_html at 0x0000020417BE0220>",
+    "module": "fastapi.applications"
+  },
+  {
+    "methods": [
+      "POST"
+    ],
+    "path": "/risk/circuit/reset",
+    "name": "risk_circuit_reset",
+    "tags": [],
+    "endpoint": "<function risk_circuit_reset at 0x00000204180F62A0>",
+    "module": "app.main"
+  },
+  {
+    "methods": [
+      "GET"
+    ],
+    "path": "/risk/circuit/status",
+    "name": "risk_circuit_status",
+    "tags": [],
+    "endpoint": "<function risk_circuit_status at 0x00000204180F6520>",
+    "module": "app.main"
+  },
+  {
+    "methods": [
+      "GET"
+    ],
+    "path": "/risk/daily",
+    "name": "risk_daily",
+    "tags": [],
+    "endpoint": "<function risk_daily at 0x00000204180F5DA0>",
+    "module": "app.main"
+  },
+  {
+    "methods": [
+      "POST"
+    ],
+    "path": "/risk/kill",
+    "name": "risk_kill",
+    "tags": [],
+    "endpoint": "<function risk_kill at 0x00000204180F7F60>",
+    "module": "app.main"
+  },
+  {
+    "methods": [
+      "POST"
+    ],
+    "path": "/risk/reset",
+    "name": "risk_reset",
+    "tags": [],
+    "endpoint": "<function risk_reset at 0x00000204180F6020>",
+    "module": "app.main"
+  },
+  {
+    "methods": [
+      "POST"
+    ],
+    "path": "/risk/reset_kill",
+    "name": "reset_kill",
+    "tags": [],
+    "endpoint": "<function reset_kill at 0x0000020418129120>",
+    "module": "app.main"
+  },
+  {
+    "methods": [
+      "GET"
+    ],
+    "path": "/risk/status",
+    "name": "risk_status",
+    "tags": [],
+    "endpoint": "<function risk_status at 0x00000204180F67A0>",
+    "module": "app.main"
+  },
+  {
+    "methods": [
+      "POST"
+    ],
+    "path": "/risk/unkill",
+    "name": "risk_unkill",
+    "tags": [],
+    "endpoint": "<function risk_unkill at 0x0000020418128220>",
+    "module": "app.main"
+  },
+  {
+    "methods": [
+      "GET"
+    ],
+    "path": "/runner/audit/tail",
+    "name": "audit_tail",
+    "tags": [],
+    "endpoint": "<function audit_tail at 0x00000204181289A0>",
+    "module": "app.main"
+  },
+  {
+    "methods": [
+      "POST"
+    ],
+    "path": "/runner/live/once",
+    "name": "runner_live_once",
+    "tags": [],
+    "endpoint": "<function runner_live_once at 0x00000204180F49A0>",
+    "module": "app.main"
+  },
+  {
+    "methods": [
+      "POST"
+    ],
+    "path": "/runner/live/start",
+    "name": "runner_live_start",
+    "tags": [],
+    "endpoint": "<function runner_live_start at 0x00000204180F6CA0>",
+    "module": "app.main"
+  },
+  {
+    "methods": [
+      "POST"
+    ],
+    "path": "/runner/live/stop",
+    "name": "runner_live_stop",
+    "tags": [],
+    "endpoint": "<function runner_live_stop at 0x00000204180F6F20>",
+    "module": "app.main"
+  },
+  {
+    "methods": [
+      "GET"
+    ],
+    "path": "/runner/paper/once",
+    "name": "paper_run_once",
+    "tags": [],
+    "endpoint": "<function paper_run_once at 0x00000204180C7C40>",
+    "module": "app.main"
+  },
+  {
+    "methods": [
+      "GET"
+    ],
+    "path": "/runner/paper/state",
+    "name": "paper_state",
+    "tags": [],
+    "endpoint": "<function paper_state at 0x00000204180C7EC0>",
+    "module": "app.main"
+  },
+  {
+    "methods": [
+      "GET"
+    ],
+    "path": "/runner/status",
+    "name": "runner_status_endpoint",
+    "tags": [],
+    "endpoint": "<function runner_status_endpoint at 0x00000204180F7240>",
+    "module": "app.main"
+  },
+  {
+    "methods": [
+      "GET"
+    ],
+    "path": "/strategy/signal",
+    "name": "strategy_signal",
+    "tags": [],
+    "endpoint": "<function strategy_signal at 0x00000204181284A0>",
+    "module": "app.main"
+  },
+  {
+    "methods": [
+      "GET"
+    ],
+    "path": "/symbols/universe",
+    "name": "symbols_universe",
+    "tags": [],
+    "endpoint": "<function symbols_universe at 0x00000204180C7740>",
+    "module": "app.main"
+  },
+  {
+    "methods": [
+      "POST"
+    ],
+    "path": "/trade/close",
+    "name": "trade_close",
+    "tags": [],
+    "endpoint": "<function trade_close at 0x00000204180F53A0>",
+    "module": "app.main"
+  },
+  {
+    "methods": [
+      "POST"
+    ],
+    "path": "/trade/close-record",
+    "name": "trade_close_record",
+    "tags": [],
+    "endpoint": "<function trade_close_record at 0x00000204180F6A20>",
+    "module": "app.main"
+  },
+  {
+    "methods": [
+      "POST"
+    ],
+    "path": "/trade/close-record-usertrades",
+    "name": "trade_close_record_usertrades",
+    "tags": [],
+    "endpoint": "<function trade_close_record_usertrades at 0x00000204180F7CE0>",
+    "module": "app.main"
+  },
+  {
+    "methods": [
+      "POST"
+    ],
+    "path": "/trade/market",
+    "name": "trade_market",
+    "tags": [],
+    "endpoint": "<function trade_market at 0x00000204180F4720>",
+    "module": "app.main"
+  },
+  {
+    "methods": [
+      "GET"
+    ],
+    "path": "/trade/protection",
+    "name": "trade_protection",
+    "tags": [],
+    "endpoint": "<function trade_protection at 0x00000204180F5B20>",
+    "module": "app.main"
+  }
+]

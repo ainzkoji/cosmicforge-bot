@@ -1,0 +1,188 @@
+﻿# ============================================================================
+# ENGINE ENDPOINTS - CONFIGURATION & SYMBOLS
+# ============================================================================
+
+@app.get("/config/symbols", dependencies=[Depends(verify_engine_key)])
+def config_symbols():
+    symbols = [
+        s.strip().upper() for s in settings.TRADE_SYMBOLS.split(",") if s.strip()
+    ]
+    return {"symbols": symbols, "interval": settings.DEFAULT_INTERVAL}
+
+
+@app.get("/symbols/universe", dependencies=[Depends(verify_engine_key)])
+def symbols_universe():
+    client = BinanceFuturesClient(
+        api_key=settings.BINANCE_API_KEY,
+        api_secret=settings.BINANCE_API_SECRET,
+        base_url=settings.BINANCE_FAPI_BASE_URL,
+        recv_window=settings.BINANCE_RECV_WINDOW,
+    )
+
+    requested = parse_symbols(settings.TRADE_SYMBOLS, settings.MAX_SYMBOLS)
+    exch = client.exchange_info_cached()
+    uni = build_universe(requested, exch)
+
+    return {
+        "requested_count": len(uni.requested),
+        "valid_count": len(uni.valid),
+        "invalid_count": len(uni.invalid),
+        "invalid": uni.invalid[:20],
+        "valid_sample": uni.valid[:20],
+    }
+
+
+# ============================================================================
+# ENGINE ENDPOINTS - RUNNER
+# ============================================================================
+
+@app.get("/runner/paper/once", dependencies=[Depends(verify_engine_key)])
+def paper_run_once(max_symbols: int = 10):
+    runner = get_runner()
+    return runner.run_once(max_symbols=max_symbols)
+
+
+@app.get("/runner/paper/state", dependencies=[Depends(verify_engine_key)])
+def paper_state():
+    runner = get_runner()
+    items = list(runner.state.items())[:50]
+    return {
+        "status": "started",
+        "symbols_loaded": len(runner.symbols),
+        "state_sample": {k: v.__dict__ for k, v in items},
+        "daily": {
+            "day": str(runner.daily.day),
+            "realized_pnl": runner.daily.realized_pnl,
+            "kill": runner.daily.kill,
+        },
+    }
+
+
+@app.post("/runner/live/once", dependencies=[Depends(verify_engine_key)])
+def runner_live_once(max_symbols: int = 10):
+    runner = get_runner()
+    return runner.run_once(max_symbols=max_symbols)
+
+
+@app.post("/runner/live/start", dependencies=[Depends(verify_engine_key)])
+async def runner_live_start(
+    interval_seconds: int | None = None,
+    max_symbols: int | None = None,
+):
+    # already running?
+    if (
+        runner_service.running
+        and runner_service.task
+        and not runner_service.task.done()
+    ):
+        return {
+            "status": "already_running",
+            **runner_status(),
+        }
+
+    runner = get_runner()
+
+    global CURRENT_RUN_ID
+
+    if not CURRENT_RUN_ID:
+        CURRENT_RUN_ID = str(uuid.uuid4())
+
+    runner.run_id = CURRENT_RUN_ID
+    set_run_id(CURRENT_RUN_ID)
+
+    runner.audit.start_run(
+        run_id=runner.run_id,
+        mode=settings.EXECUTION_MODE.lower(),
+        interval_seconds=runner_service.interval_seconds,
+        max_symbols=runner_service.max_symbols,
+    )
+
+    runner_service.running = True
+    runner_service.mode = settings.EXECUTION_MODE.lower()
+    runner_service.interval_seconds = interval_seconds or getattr(settings, 'RUN_INTERVAL_SECONDS', 10)
+    runner_service.max_symbols = max_symbols or getattr(settings, 'RUN_MAX_SYMBOLS', 10)
+    runner_service.started_at = _utc_now_iso()
+    runner_service.last_cycle_at = None
+    runner_service.cycle_count = 0
+    runner_service.last_error = None
+
+    runner_service.task = asyncio.create_task(runner_loop())
+
+    return {
+        "status": "started",
+        **runner_status(),
+    }
+
+
+@app.post("/runner/live/stop", dependencies=[Depends(verify_engine_key)])
+async def runner_live_stop():
+    if not runner_service.running:
+        return {
+            "status": "not_running",
+            **runner_status(),
+        }
+
+    runner_service.running = False
+
+    if runner_service.task and not runner_service.task.done():
+        runner_service.task.cancel()
+        try:
+            await runner_service.task
+        except asyncio.CancelledError:
+            pass
+        except Exception:
+            pass
+
+    runner_service.task = None
+
+    runner = get_runner()
+    if runner.run_id:
+        runner.audit.stop_run(runner.run_id)
+
+    return {
+        "status": "stopped",
+        **runner_status(),
+    }
+
+
+def runner_status() -> dict:
+    runner = get_runner()
+
+    return {
+        "running": runner_service.running,
+        "mode": runner_service.mode,
+        "interval_seconds": runner_service.interval_seconds,
+        "max_symbols": runner_service.max_symbols,
+        "started_at": runner_service.started_at,
+        "last_cycle_at": runner_service.last_cycle_at,
+        "cycle_count": runner_service.cycle_count,
+        "last_error": runner_service.last_error,
+        "daily": {
+            "day": str(runner.daily.day),
+            "realized_pnl": runner.daily.realized_pnl,
+            "kill": runner.daily.kill,
+            "max_loss": settings.DAILY_MAX_LOSS_USDT,
+        },
+    }
+
+
+@app.get("/runner/status", dependencies=[Depends(verify_engine_key)])
+def runner_status_endpoint():
+    return runner_status()
+
+
+@app.get("/runner/audit/tail", dependencies=[Depends(verify_engine_key)])
+def audit_tail(limit: int = Query(50, ge=1, le=500)):
+    """Tail the live audit log"""
+    path = Path("logs/live_audit.jsonl")
+    if not path.exists():
+        return {"ok": False, "error": "logs/live_audit.jsonl not found"}
+
+    lines = path.read_text(encoding="utf-8", errors="ignore").splitlines()
+    tail = lines[-limit:]
+    return {"ok": True, "limit": limit, "lines": tail}
+
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=9000)

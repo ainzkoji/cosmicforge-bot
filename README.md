@@ -1,7 +1,23 @@
-# CosmicForge Trading Bot - Backend
+# CosmicForge Trading Bot
+
+Current monorepo layout uses plural roots:
+
+```text
+backends/
+├── bot-backend/
+├── user-backend/
+└── shared/
+frontends/
+├── user-frontend/
+└── admin-frontend/
+```
+
+Legacy note: the old tracked `backend/` and `frontend/` roots were split into `backends/` and `frontends/`. Use the plural paths for all development commands.
+
+# Backend Reference
 ## Folder Structure
 ```text
-backend/
+backends/user-backend/
 ├── .env                        # Environment Variables (Secrets)
 ├── requirements.txt            # Python Dependencies
 ├── pytest.ini                  # Test Configuration
@@ -151,16 +167,20 @@ backend/
 *   **Persistence:** `persistence/global_analytics.py` (Leaderboards, Stats).
 ## Running the Backend
 ```bash
-cd backend
+cd backends/user-backend
 pip install -r requirements.txt
-uvicorn app.main:app --reload --port 8000
+uvicorn app.main:app --reload --reload-dir app --port 8000
+
+cd ../bot-backend
+pip install -r requirements.txt
+uvicorn app.main:app --reload --reload-dir app --port 9000
 ```
 
 
 # CosmicForge Trading Bot - Frontend
 ## Folder Structure
 ```text
-frontend/src/
+frontends/user-frontend/src/
 ├── main.tsx                    # Entry Point
 ├── App.tsx                     # Main Router & Layout Definition
 ├── index.css                   # Global Styles (Tailwind)
@@ -241,7 +261,11 @@ frontend/src/
 *   **API Integration:** `client.ts` -> `startBrokerConnection`, `validateBrokerConnection`.
 ## Running the Frontend
 ```bash
-cd frontend
+cd frontends/user-frontend
+npm install
+npm run dev
+
+cd ../admin-frontend
 npm install
 npm run dev
 ```
