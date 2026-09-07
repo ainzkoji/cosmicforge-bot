@@ -89,6 +89,8 @@ from app.risk.event_reaction_risk_gate import build_event_reaction_risk_gate
 # âœ… ADD: Trading Orchestrator & Governance
 # âœ… ADD: Trading Orchestrator & Governance
 from app.core.trading_orchestrator import TradingOrchestrator
+from app.runner.errors import RunnerInitializationError
+from app.core.bot_health import resolve_last_error
 from app.risk.system_limits import UserConfigurableLimits, RiskLevel
 
 # Logger instance
@@ -271,7 +273,29 @@ from app.runner.bot_context import BotRunContext
 
 class PaperRunner:
 
-    def __init__(self, client: BinanceFuturesClient, context: BotRunContext | None = None):
+    def __init__(
+        self,
+        client: BinanceFuturesClient,
+        context: BotRunContext | None = None,
+        effective_policy: object | None = None,
+    ):
+        # The resolved policy must be available BEFORE any collaborator is built
+        # (the orchestrator reads it during construction), so accept it here and
+        # attach it to the context rather than patching the runner afterwards.
+        if effective_policy is not None:
+            if context is None:
+                raise RunnerInitializationError(
+                    RunnerInitializationError.RUNTIME_CONTEXT_INVALID,
+                    "effective_policy supplied without a BotRunContext",
+                )
+            context.effective_policy = effective_policy
+            context.effective_policy_hash = getattr(effective_policy, "policy_hash", "") or ""
+        if context is not None and getattr(context, "effective_policy", None) is None:
+            raise RunnerInitializationError(
+                RunnerInitializationError.EFFECTIVE_POLICY_INVALID,
+                "Auto Pilot runner requires a resolved EffectiveBotPolicy",
+                bot_instance_id=getattr(context, "bot_instance_id", None),
+            )
         self.client = client
         self.settings = settings
         self.context: BotRunContext | None = context  # âœ… Store context
@@ -734,7 +758,53 @@ class PaperRunner:
         
         # âœ… LOAD ORCHESTRATOR
         self.orchestrator: TradingOrchestrator | None = None
+        self.initialization_status = "INITIALIZING"
+        self.initialization_error: RunnerInitializationError | None = None
         self._load_orchestrator()
+        self._assert_initialized()
+
+    # â”€â”€ Atomic initialization contract â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    #: Collaborators that must exist on a context-bound (Auto Pilot) runner.
+    REQUIRED_COLLABORATORS = (
+        ("effective_policy", RunnerInitializationError.EFFECTIVE_POLICY_INVALID),
+        ("strategy", RunnerInitializationError.STRATEGY_INITIALIZATION_FAILED),
+        ("orchestrator", RunnerInitializationError.ORCHESTRATOR_INITIALIZATION_FAILED),
+        ("executor", RunnerInitializationError.BROKER_INITIALIZATION_FAILED),
+        ("position_manager", RunnerInitializationError.POSITION_REHYDRATION_FAILED),
+    )
+
+    def initialization_report(self) -> dict:
+        """Machine-readable snapshot of which collaborators exist."""
+        return {
+            "context": self.context is not None,
+            "status": getattr(self, "initialization_status", "UNKNOWN"),
+            "effective_policy_hash": getattr(self, "effective_policy_hash", "") or None,
+            "components": {
+                name: getattr(self, name, None) is not None
+                for name, _ in self.REQUIRED_COLLABORATORS
+            },
+        }
+
+    def _assert_initialized(self) -> None:
+        """Reject a half-built Auto Pilot runner.
+
+        A contextless (legacy/global) runner is exempt: it never trades and only
+        serves diagnostic endpoints.
+        """
+        if self.context is None:
+            self.initialization_status = "LEGACY_NO_CONTEXT"
+            return
+        for attr, reason_code in self.REQUIRED_COLLABORATORS:
+            if getattr(self, attr, None) is None:
+                err = RunnerInitializationError(
+                    reason_code,
+                    f"Auto Pilot runner is missing required component '{attr}'",
+                    bot_instance_id=getattr(self.context, "bot_instance_id", None),
+                )
+                self.initialization_status = "FAILED_INITIALIZATION"
+                self.initialization_error = err
+                raise err
+        self.initialization_status = "READY"
 
     def _set_bot_health(
         self,
@@ -751,10 +821,21 @@ class PaperRunner:
         bot_id = self.context.bot_instance_id
         if not bot_id:
             return
-        # Reduce DB churn: only write if status changed.
-        if self._last_bot_health_status == status:
+        # Reduce DB churn: only write when the OBSERVABLE state changes.
+        # Keying on status alone let the reason_code drift out of sync
+        # (same status, different cause -> no write, stale evidence).
+        _health_key = (status, reason_code)
+        if self._last_bot_health_status == _health_key:
             return
-        self._last_bot_health_status = status
+        self._last_bot_health_status = _health_key
+        # last_error is current-state, not history: clear it when the bot is no
+        # longer in error.  The append-only history lives in bot_system_events.
+        _resolved_last_error = resolve_last_error(
+            status=status,
+            message=message,
+            reason_code=reason_code,
+            explicit_last_error=last_error,
+        )
         try:
             from shared_lib.persistence.db import utc_now_iso
             now = utc_now_iso()
@@ -767,7 +848,7 @@ class PaperRunner:
                         bot_health_reason_code=?,
                         bot_health_recommended_action=?,
                         bot_health_updated_at=?,
-                        last_error=COALESCE(?, last_error),
+                        last_error=?,
                         last_warning=COALESCE(?, last_warning),
                         updated_at=?
                     WHERE id=?
@@ -778,7 +859,7 @@ class PaperRunner:
                         reason_code,
                         recommended_action,
                         now,
-                        last_error,
+                        _resolved_last_error,
                         last_warning,
                         now,
                         bot_id,
@@ -868,7 +949,17 @@ class PaperRunner:
             return
 
     def _load_orchestrator(self):
-        """Attempts to load active user configuration and initialize orchestrator."""
+        """Build the TradingOrchestrator for this bot.
+
+        Contract (Auto Pilot):
+          * ``self.context is None``  -> legacy/global runner, orchestrator stays
+            inactive.  This runner is diagnostic-only and never trades.
+          * ``self.context is not None`` -> the orchestrator is MANDATORY.  Any
+            failure raises ``RunnerInitializationError`` so the runner is never
+            registered in a half-initialised state.  Previously the exception was
+            printed and swallowed, leaving ``self.orchestrator = None`` and
+            emitting ERROR_STRATEGY_UNAVAILABLE on every tick indefinitely.
+        """
         try:
             if not self.context:
                 # No context means we are in legacy mode with no bot instance
@@ -901,11 +992,21 @@ class PaperRunner:
             print(f"[RUNNER CONFIG] Allocation settings from context: type='{getattr(self.context, 'allocation_type', 'MISSING')}', value='{getattr(self.context, 'allocation_value', 'MISSING')}'")
             print(f"[RUNNER CONFIG] Mapped to: use_fixed={use_fixed}, fixed_val={fixed_val}, cap_alloc={cap_alloc}")
 
+            # Daily loss ceiling comes from the resolved policy when available and
+            # otherwise from the context field that actually exists
+            # (BotRunContext.daily_max_loss_usdt).  The previous code read a
+            # non-existent ``context.max_daily_loss``; the resulting AttributeError
+            # was swallowed and left the orchestrator permanently None.
+            _daily_loss_usdt = getattr(self.effective_policy, "max_daily_loss", None)
+            if _daily_loss_usdt is None:
+                _daily_loss_usdt = getattr(self.context, "daily_max_loss_usdt", 0.0)
+            _daily_loss_usdt = float(_daily_loss_usdt or 0.0)
+
             # Map context params (which came from preset) to Orchestrator config
             user_config = UserConfigurableLimits(
                 risk_level=risk_level,
                 max_daily_loss_pct=(
-                    float(self.context.max_daily_loss) / float(self.context.capital_budget)
+                    float(_daily_loss_usdt) / float(self.context.capital_budget)
                     if float(getattr(self.context, "capital_budget", 0.0) or 0.0) > 0
                     else 0.0
                 ),
@@ -944,12 +1045,29 @@ class PaperRunner:
                 strategy_instance=self.strategy,
                 effective_policy=self.effective_policy,
             )
+            if self.orchestrator is None:
+                raise RunnerInitializationError(
+                    RunnerInitializationError.ORCHESTRATOR_INITIALIZATION_FAILED,
+                    "TradingOrchestrator construction returned no instance",
+                    bot_instance_id=self.context.bot_instance_id,
+                )
             print(f"Loaded TradingOrchestrator for Bot {self.context.bot_instance_id}")
-                
+
+        except RunnerInitializationError:
+            self.orchestrator = None
+            raise
         except Exception as e:
-            print(f"Failed to load orchestrator: {e}")
+            # FAIL CLOSED.  An Auto Pilot runner with a context but no orchestrator
+            # has no strategy path and must not be scheduled for trading cycles.
+            self.orchestrator = None
             import traceback
             traceback.print_exc()
+            raise RunnerInitializationError(
+                RunnerInitializationError.ORCHESTRATOR_INITIALIZATION_FAILED,
+                "Failed to initialise TradingOrchestrator for Auto Pilot bot",
+                cause=e,
+                bot_instance_id=getattr(self.context, "bot_instance_id", None),
+            ) from e
 
     @contextmanager
     def cycle_guard(self, timeout_s: float = 0.0):

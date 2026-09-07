@@ -975,9 +975,20 @@ class BotInstanceService:
             now,
             now,
         ]
-        if last_error is not None:
-            updates.append("last_error = ?")
-            values.append(last_error)
+        # last_error mirrors CURRENT health, it is not a historical archive.
+        # Clearing it when the bot leaves an error state prevents the observed
+        # contradiction (health=ERROR_STRATEGY_UNAVAILABLE while last_error still
+        # reported the previously-repaired capital problem).  History is retained
+        # append-only in bot_system_events.
+        updates.append("last_error = ?")
+        values.append(
+            resolve_last_error(
+                status=bot_health_status,
+                message=bot_health_message,
+                reason_code=bot_health_reason_code,
+                explicit_last_error=last_error,
+            )
+        )
         if last_warning is not None:
             updates.append("last_warning = ?")
             values.append(last_warning)
@@ -988,6 +999,7 @@ class BotInstanceService:
 
 
 # Global singleton instance
+from app.core.bot_health import resolve_last_error
 from app.core.config import settings
 
 def _get_db_path() -> Optional[str]:

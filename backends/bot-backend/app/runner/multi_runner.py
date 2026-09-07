@@ -13,6 +13,8 @@ from app.exchange.binance.client import BinanceFuturesClient
 from app.runner.runner import PaperRunner
 from app.runner.bot_context import BotRunContext
 from app.runner.effective_policy import EffectivePolicyError, resolve_effective_bot_policy
+from app.runner.errors import RunnerInitializationError
+from app.runner.system_events import record_bot_system_event
 from app.exchange.factory import build_exchange_client, build_exchange_client_from_auth
 
 from shared_lib.broker import BrokerResolverError
@@ -372,6 +374,16 @@ class MultiBotRunner:
                         bot_health_recommended_action="Correct the bot capital/runtime configuration.",
                         last_error=str(exc),
                     )
+                    record_bot_system_event(
+                        self.db,
+                        bot_instance_id=instance.id,
+                        user_id=instance.user_id,
+                        event_type="EFFECTIVE_POLICY_REJECTED",
+                        severity="ERROR",
+                        reason_code=exc.reason_code,
+                        message=str(exc),
+                        details={"broker_environment": auth.environment.value},
+                    )
                     self._runners.pop(instance.id, None)
                     continue
 
@@ -404,6 +416,20 @@ class MultiBotRunner:
                             "[RUNNER_POLICY_CHANGE] bot=%s old_hash=%s new_hash=%s fields_changed=%s runner_rebuilt=true",
                             instance.id, cached_hash, effective_policy.policy_hash, changed_fields,
                         )
+                        record_bot_system_event(
+                            self.db,
+                            bot_instance_id=instance.id,
+                            user_id=instance.user_id,
+                            event_type="RUNNER_POLICY_CHANGE",
+                            severity="WARNING",
+                            reason_code="MATERIAL_POLICY_CHANGE",
+                            message="Effective policy changed; runner rebuilt",
+                            details={
+                                "old_policy_hash": cached_hash,
+                                "new_policy_hash": effective_policy.policy_hash,
+                                "changed_fields": changed_fields,
+                            },
+                        )
                         try:
                             from app.product_safety.approvals import invalidate_readiness_approval
                             invalidate_readiness_approval(
@@ -427,9 +453,45 @@ class MultiBotRunner:
                     logger.info(f"[REGISTRY] Loaded instrument specs for bot {instance.id} (first init)")
                     # ========== END REGISTRY INIT ==========
 
-                    runner = PaperRunner(client, context=context)
-                    runner.effective_policy = effective_policy
-                    runner.effective_policy_hash = effective_policy.policy_hash
+                    # Policy is supplied atomically: the orchestrator is built
+                    # inside the constructor and reads it there.  Assigning it
+                    # afterwards would leave the runner briefly half-configured.
+                    try:
+                        runner = PaperRunner(
+                            client,
+                            context=context,
+                            effective_policy=effective_policy,
+                        )
+                    except RunnerInitializationError as init_exc:
+                        # Quarantine: never keep a partially initialised runner.
+                        logger.error(
+                            "[RUNNER_INIT_FAILED] bot=%s reason=%s cause=%s: %s",
+                            instance.id, init_exc.reason_code,
+                            init_exc.cause_type, init_exc.cause_message,
+                        )
+                        self._runners.pop(instance.id, None)
+                        self.service.update_bot_health(
+                            instance.id,
+                            bot_health_status="ERROR_INITIALIZATION",
+                            bot_health_message=init_exc.message,
+                            bot_health_reason_code=init_exc.reason_code,
+                            bot_health_recommended_action=(
+                                "Runner could not be constructed. Inspect the persisted "
+                                "initialization error and correct the bot configuration or code path."
+                            ),
+                            last_error=str(init_exc),
+                        )
+                        record_bot_system_event(
+                            self.db,
+                            bot_instance_id=instance.id,
+                            user_id=instance.user_id,
+                            event_type="RUNNER_INITIALIZATION_FAILED",
+                            severity="ERROR",
+                            reason_code=init_exc.reason_code,
+                            message=init_exc.message,
+                            details=init_exc.structured_detail(),
+                        )
+                        continue
                     self._runners[instance.id] = runner
                     if policy_changed:
                         self._log_restored_lifecycle(instance.id, runner)

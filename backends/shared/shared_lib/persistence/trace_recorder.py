@@ -386,6 +386,12 @@ class TraceRecorder:
                 trace.gate_allowed = allowed
                 trace.gate_reason = reason_code
                 trace.gate_details = details or {}
+                # Every finalized decision must carry a canonical reason.  A gate
+                # that produced a reason_code while trace.reason_codes stayed
+                # "NONE" made decision_traces self-contradictory (observed:
+                # gate_reason=ERROR_STRATEGY_UNAVAILABLE, reason_codes=NONE).
+                if reason_code and str(trace.reason_codes or "NONE").upper() in ("", "NONE"):
+                    trace.reason_codes = reason_code
     
     def record_intent(
         self,
@@ -602,7 +608,13 @@ class TraceRecorder:
                 if not primary_reason and trace.reason_codes not in (None, "", "NONE"):
                     primary_reason = trace.reason_codes
                 primary_reason = primary_reason or trace.final_state_change or "NO_OPPORTUNITY"
-                secondary = [x for x in str(trace.reason_codes or "").split(",") if x and x != primary_reason]
+                secondary = [
+                    x for x in (
+                        part.strip() for part in str(trace.reason_codes or "").split(",")
+                    )
+                    # "NONE" is the column default sentinel, never a real reason.
+                    if x and x.upper() != "NONE" and x != primary_reason
+                ]
                 canonical = {
                     "regime": trace.regime_state,
                     "regime_confidence": trace.regime_confidence,

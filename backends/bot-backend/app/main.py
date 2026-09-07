@@ -702,6 +702,7 @@ def _utc_now_iso():
 
 
 from app.runner.multi_runner import MultiBotRunner
+from app.runner.effective_policy import normalize_execution_mode
 
 # ✅ Initialize logger for debugging
 logger = logging.getLogger(__name__)
@@ -1414,6 +1415,39 @@ def runner_status() -> dict:
                 "SELECT COUNT(*) FROM external_signal_queue WHERE bot_id=? AND status='PENDING'",
                 (item["id"],),
             ).fetchone()[0]
+
+            # ── Explicit mode / environment separation ────────────────────────
+            # ``mode`` is the RAW stored value and is ambiguous by itself: the
+            # legacy value "live" means "route through a broker", NOT "real
+            # money".  Real-money permission is decided solely by
+            # broker_accounts.environment.  Report both dimensions so no reader
+            # ever has to infer one from the other.
+            try:
+                item["execution_mode"] = normalize_execution_mode(item.get("mode"))
+            except Exception:
+                # Never let a malformed legacy row take down the status endpoint;
+                # report the ambiguity instead of guessing.
+                item["execution_mode"] = "UNKNOWN"
+            env_row = conn.execute(
+                "SELECT environment FROM broker_accounts WHERE id=?",
+                (item["broker_account_id"],),
+            ).fetchone()
+            broker_env = str((env_row["environment"] if env_row else "") or "unknown").lower()
+            item["broker_environment"] = broker_env
+            item["is_mainnet"] = broker_env in ("live", "mainnet", "production")
+
+            # ── Runner initialization / policy state ──────────────────────────
+            cached = (getattr(multi, "_runners", {}) or {}).get(item["id"]) if multi else None
+            item["runner_present"] = cached is not None
+            item["runner_initialization_status"] = (
+                getattr(cached, "initialization_status", None) if cached else "NOT_SCHEDULED"
+            )
+            item["runner_policy_hash"] = getattr(cached, "effective_policy_hash", None) if cached else None
+            item["runner_components"] = (
+                cached.initialization_report()["components"]
+                if cached is not None and hasattr(cached, "initialization_report")
+                else None
+            )
             bots.append(item)
     return {
         "running": runner_service.running,
@@ -1424,6 +1458,10 @@ def runner_status() -> dict:
         "last_cycle_at": runner_service.last_cycle_at,
         "cycle_count": runner_service.cycle_count,
         "last_error": runner_service.last_error,
+        # Process-level default execution mode (settings.EXECUTION_MODE).
+        # Per-bot execution_mode / broker_environment are reported inside bots[]
+        # and are the authoritative values for what each bot actually does.
+        "process_execution_mode": runner_service.mode,
         "multi_bot_runner_initialized": multi is not None,
         "iteration": getattr(multi, "iteration", 0) if multi else 0,
         "bots": bots,

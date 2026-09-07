@@ -977,6 +977,37 @@ class DB:
                 """
             )
 
+            # Append-only operator/runtime event log.
+            # Health columns on bot_instances are DERIVED CURRENT STATE; this table
+            # is the durable history.  Structured runtime failures (runner
+            # initialization, policy rejection, quarantine) are persisted here so
+            # "why did this bot stop trading at 20:39" never requires log archaeology.
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS bot_system_events (
+                    event_id TEXT PRIMARY KEY,
+                    bot_instance_id TEXT,
+                    user_id TEXT,
+                    run_id TEXT,
+                    event_type TEXT NOT NULL,
+                    severity TEXT NOT NULL DEFAULT 'INFO',
+                    reason_code TEXT,
+                    message TEXT,
+                    details_json TEXT NOT NULL DEFAULT '{}',
+                    provenance TEXT NOT NULL DEFAULT 'RUNTIME',
+                    created_at TEXT NOT NULL
+                )
+                """
+            )
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_bot_system_events_bot_time "
+                "ON bot_system_events(bot_instance_id, created_at DESC)"
+            )
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_bot_system_events_reason "
+                "ON bot_system_events(reason_code, created_at DESC)"
+            )
+
             conn.execute(
                 """
                 CREATE TABLE IF NOT EXISTS readiness_approvals (
