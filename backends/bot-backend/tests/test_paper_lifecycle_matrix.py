@@ -472,3 +472,55 @@ def test_paper_state_is_authoritative_and_not_reconciled_from_the_exchange(clien
     # The client would raise if the runner tried to read exchange positions here.
     assert paper.remaining_quantity("BTCUSDT") == pytest.approx(QTY)
     assert client.live_order_calls == []
+
+
+def test_j_no_fill_call_site_substitutes_run_id_for_bot_instance_id():
+    """The audited defect: close attribution passed run_id as bot_instance_id.
+
+    bot_instance_id, run_id, cycle_id, position_id and user_id are five distinct
+    identifiers. Nothing in the runner may conflate them.
+    """
+    import inspect
+    import re
+
+    from app.runner import runner as runner_module
+
+    source = inspect.getsource(runner_module)
+
+    assert "bot_instance_id=self.run_id" not in source
+    assert "bot_instance_id=run_id" not in source
+    assert re.search(r"bot_instance_id\s*=\s*_\w*run_id", source) is None
+
+    # Every record_fill call must attribute the bot from the context, not a run.
+    for match in re.finditer(r"bot_instance_id=([^,\n)]+)", source):
+        value = match.group(1).strip()
+        assert "run_id" not in value, f"run_id leaked into bot_instance_id: {value}"
+
+
+def test_j_orchestrated_full_close_persists_complete_attribution():
+    """FLAT requires close evidence: fill + position_id + run/cycle linkage."""
+    import inspect
+
+    from app.runner.runner import PaperRunner
+
+    source = inspect.getsource(PaperRunner._step_symbol_orchestrated)
+
+    assert "position_id=_pm_close_pos_id" in source
+    assert "bot_instance_id=self.context.bot_instance_id" in source
+    assert "run_id=_pm_run_id" in source
+    assert "cycle_id=_pm_cycle_id" in source
+    # Missing linkage is reported, never silently accepted.
+    assert "FILL LINKAGE ERROR" in source
+
+
+def test_final_close_uses_the_managed_remainder_not_the_original_quantity():
+    """`pos.current_qty` is the post-TP1 remainder; entry_qty is its fallback."""
+    import inspect
+
+    from app.runner.runner import PaperRunner
+
+    source = inspect.getsource(PaperRunner._step_symbol_orchestrated)
+
+    assert "_pm_close_qty     = float(pos.current_qty)" in source
+    assert "remaining_quantity=_pm_close_qty" in source
+    assert "position_side=_pm_close_side" in source
