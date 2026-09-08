@@ -332,3 +332,84 @@ def test_a_multi_symbol_cycle_leaves_one_decision_per_symbol_and_clean_integrity
     assert {r["symbol"] for r in rows} == set(outcomes)
     assert all(r["cycle_id"] == "cyc-1" for r in rows)
     assert run_integrity_checks(db) == {}
+
+
+# ── Regression: the heartbeat must not overwrite a real evaluation ──────────
+
+
+def test_a_no_new_candle_heartbeat_never_replaces_the_candles_real_evaluation(db):
+    """Observed in live runtime, not caught by any earlier test.
+
+    NO_NEW_CANDLE rows carry the current candle's timestamp for diagnostics.
+    While the uniqueness index covered them, the 10-second heartbeat's
+    INSERT OR REPLACE silently overwrote the genuine evaluation for that
+    candle: a real ENTRY_CONFIDENCE_BELOW_THRESHOLD row was replaced by the
+    heartbeat that followed it, and the evidence was lost.
+    """
+    from app.evidence.decision_recorder import record_decision, record_no_new_candle
+
+    close_time = 1788841799999
+
+    # The real evaluation for this candle.
+    with record_decision(
+        db, bot_instance_id=BOT, symbol="BTCUSDT", timeframe="15m",
+        closed_candle_close_time=close_time,
+    ) as decision:
+        decision.raw_confidence = 0.42
+        decision.regime = "LOW_VOL_CHOP"
+        decision.hold(QualityReason.ENTRY_CONFIDENCE_BELOW_THRESHOLD)
+
+    # Five heartbeats on the same candle.
+    for _ in range(5):
+        record_no_new_candle(
+            db, bot_instance_id=BOT, symbol="BTCUSDT", timeframe="15m",
+            closed_candle_close_time=close_time,
+        )
+
+    with db.connect() as conn:
+        rows = [dict(r) for r in conn.execute(
+            "SELECT primary_reason, raw_confidence, regime FROM trading_decisions "
+            "WHERE symbol='BTCUSDT' AND closed_candle_close_time=?", (close_time,)
+        )]
+
+    reasons = [r["primary_reason"] for r in rows]
+    assert QualityReason.ENTRY_CONFIDENCE_BELOW_THRESHOLD in reasons, (
+        "the heartbeat destroyed the real evaluation for this candle"
+    )
+    real = next(r for r in rows if r["primary_reason"] != CycleReason.NO_NEW_CANDLE)
+    assert real["raw_confidence"] == pytest.approx(0.42)
+    assert real["regime"] == "LOW_VOL_CHOP"
+
+
+def test_duplicate_detection_ignores_heartbeats_but_still_catches_real_duplicates(db):
+    from app.evidence.decision_recorder import record_no_new_candle
+    from app.evidence.integrity import find_duplicate_candle_decisions
+
+    close_time = 1788841799999
+    for _ in range(4):
+        record_no_new_candle(
+            db, bot_instance_id=BOT, symbol="BTCUSDT", timeframe="15m",
+            closed_candle_close_time=close_time,
+        )
+
+    # Many heartbeats on one candle are expected, not a duplicate entry decision.
+    assert find_duplicate_candle_decisions(db) == []
+
+
+def test_the_entry_decision_uniqueness_index_still_collapses_a_retry(db):
+    from app.evidence.decision_recorder import record_decision
+
+    close_time = 1788841799999
+    for _ in range(3):
+        with record_decision(
+            db, bot_instance_id=BOT, symbol="BTCUSDT", timeframe="15m",
+            closed_candle_close_time=close_time,
+        ) as decision:
+            decision.hold(QualityReason.NO_OPPORTUNITY)
+
+    with db.connect() as conn:
+        n = conn.execute(
+            "SELECT COUNT(*) FROM trading_decisions WHERE primary_reason=?",
+            (QualityReason.NO_OPPORTUNITY,),
+        ).fetchone()[0]
+    assert n == 1, "one entry decision per candle still holds"

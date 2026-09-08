@@ -70,6 +70,7 @@ def find_duplicate_candle_decisions(db: Any) -> list[dict]:
                       COUNT(*) AS n
                FROM trading_decisions
                WHERE complete = 1 AND closed_candle_close_time IS NOT NULL
+                 AND primary_reason <> 'NO_NEW_CANDLE'
                GROUP BY bot_instance_id, symbol, timeframe, closed_candle_close_time
                HAVING COUNT(*) > 1""",
         )

@@ -287,16 +287,27 @@ def _market_and_decisions(conn: Any) -> None:
         """
     )
 
-    # One canonical entry decision per (bot, symbol, timeframe, candle).
-    # Partial (unfinalized) rows are excluded so a crashed evaluation followed
-    # by a retry is not blocked by its own abandoned attempt.
+    # One canonical ENTRY decision per (bot, symbol, timeframe, candle).
+    #
+    # Two exclusions matter:
+    #   * partial (unfinalized) rows, so a crashed evaluation followed by a
+    #     retry is not blocked by its own abandoned attempt;
+    #   * NO_NEW_CANDLE heartbeats. Those carry the current candle's timestamp
+    #     for diagnostics but are management ticks, not entry decisions. Without
+    #     this exclusion the 10-second heartbeat's INSERT OR REPLACE silently
+    #     overwrote the real evaluation for that candle -- observed in live
+    #     runtime, where a genuine ENTRY_CONFIDENCE_BELOW_THRESHOLD row was
+    #     replaced by the heartbeat that followed it.
+    conn.execute("DROP INDEX IF EXISTS uq_trading_decisions_candle")
     conn.execute(
         """
         CREATE UNIQUE INDEX IF NOT EXISTS uq_trading_decisions_candle
         ON trading_decisions (
             bot_instance_id, symbol, timeframe, closed_candle_close_time
         )
-        WHERE closed_candle_close_time IS NOT NULL AND complete = 1
+        WHERE closed_candle_close_time IS NOT NULL
+          AND complete = 1
+          AND primary_reason <> 'NO_NEW_CANDLE'
         """
     )
 
