@@ -127,8 +127,6 @@ def test_runner_eviction_is_recorded_as_an_attributable_event():
     [
         ({"symbol": "BTCUSDT", "decision": "HOLD", "reason": "NO_OPPORTUNITY"},
          QualityReason.NO_OPPORTUNITY, "HOLD"),
-        ({"symbol": "BTCUSDT", "decision": "NO_NEW_CANDLE", "reason_code": "NO_NEW_CANDLE"},
-         CycleReason.NO_NEW_CANDLE, "HOLD"),
         ({"symbol": "BTCUSDT", "skipped": True, "reason": "SYMBOL_LOCK_BUSY"},
          CycleReason.SYMBOL_LOCK_BUSY, "SKIPPED"),
         ({"symbol": "BTCUSDT", "skipped": True, "reason": "CONSECUTIVE_LOSS_COOLDOWN"},
@@ -141,6 +139,13 @@ def test_runner_eviction_is_recorded_as_an_attributable_event():
     ],
 )
 def test_each_runner_result_shape_finalizes_one_decision(db, result, expected_reason, expected_action):
+    """Every real evaluation shape becomes exactly one decision.
+
+    NO_NEW_CANDLE is deliberately absent from this table: since the §11
+    heartbeat-storage change it is counted in the cycle summary rather than
+    persisted as a decision. Its contract is covered by
+    test_a_heartbeat_is_counted_not_persisted below.
+    """
     runner = FakeRunner(db)
     returned = record_symbol_evaluation(runner, "BTCUSDT", evaluate=lambda s: result)
 
@@ -328,10 +333,26 @@ def test_a_multi_symbol_cycle_leaves_one_decision_per_symbol_and_clean_integrity
         record_symbol_evaluation(runner, symbol, evaluate=lambda s, o=outcome: o)
 
     rows = decisions(db)
-    assert len(rows) == 3
-    assert {r["symbol"] for r in rows} == set(outcomes)
+    # ETHUSDT was a heartbeat: counted in the cycle summary, not persisted as a
+    # decision (§11). The two real evaluations still each get exactly one row.
+    assert len(rows) == 2
+    assert {r["symbol"] for r in rows} == {"BTCUSDT", "SOLUSDT"}
+    assert runner._heartbeat_counts == {"ETHUSDT": 1}
     assert all(r["cycle_id"] == "cyc-1" for r in rows)
     assert run_integrity_checks(db) == {}
+
+
+def test_a_heartbeat_is_counted_not_persisted(db):
+    """§11: ~17k decision rows/day was unacceptable; the tally replaces them."""
+    runner = FakeRunner(db)
+    for _ in range(25):
+        record_symbol_evaluation(
+            runner, "BTCUSDT",
+            evaluate=lambda s: {"decision": "NO_NEW_CANDLE", "reason_code": "NO_NEW_CANDLE"},
+        )
+
+    assert decisions(db) == []
+    assert runner._heartbeat_counts["BTCUSDT"] == 25
 
 
 # ── Regression: the heartbeat must not overwrite a real evaluation ──────────

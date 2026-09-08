@@ -1956,7 +1956,14 @@ class PaperRunner:
             reason = row["primary_reason"] or "UNKNOWN"
             reason_counts[reason] = reason_counts.get(reason, 0) + 1
 
-        no_new_candle = reason_counts.get("NO_NEW_CANDLE", 0)
+        # Heartbeats are no longer persisted as decisions (§11); they are
+        # tallied per cycle so the summary still proves the loop ran without
+        # writing ~17k rows a day.
+        heartbeats = getattr(self, "_heartbeat_counts", {}) or {}
+        no_new_candle = sum(heartbeats.values()) or reason_counts.get("NO_NEW_CANDLE", 0)
+        if heartbeats:
+            reason_counts.setdefault("NO_NEW_CANDLE", no_new_candle)
+        self._heartbeat_counts = {}
         record_trading_cycle(self.db, {
             "cycle_id": self.cycle_id,
             "run_id": self.run_id,
@@ -1969,11 +1976,11 @@ class PaperRunner:
             ),
             "started_at": started_at,
             "completed_at": datetime.now(timezone.utc).isoformat(),
-            "symbols_seen": len(rows),
+            "symbols_seen": len(rows) + no_new_candle,
             "symbols_managed": len(
                 [s for s in self.state.values() if s.position in ("LONG", "SHORT")]
             ),
-            "new_candle_evaluations": len(rows) - no_new_candle,
+            "new_candle_evaluations": len(rows),
             "no_new_candle_count": no_new_candle,
             "no_opportunity_count": reason_counts.get("NO_OPPORTUNITY", 0),
             "quality_rejection_count": sum(1 for r in rows if r["quality_result"] == "FAIL"),
@@ -5084,8 +5091,32 @@ class PaperRunner:
                 except Exception as _guard_err:
                     logger.warning("[GUARD] should_pause check failed: %s", _guard_err)
 
-            # 1) Market data
-            kl = self.client.klines(symbol=symbol, interval=self.interval, limit=250)
+            # 1) Market data.
+            # A fetch failure is NOT "no new candle" (§9). DNS/network errors
+            # against the broker previously degraded into NO_NEW_CANDLE, which
+            # made a broken data feed look like a quiet market.
+            try:
+                kl = self.client.klines(symbol=symbol, interval=self.interval, limit=250)
+            except Exception as _md_exc:
+                from app.ops.runtime_watchdog import MARKET_DATA_UNAVAILABLE, get_watchdog
+
+                _md_bot = self.context.bot_instance_id if self.context else str(self.run_id or "legacy")
+                try:
+                    get_watchdog().market_data(
+                        _md_bot, symbol, self.interval,
+                        error=f"{type(_md_exc).__name__}: {_md_exc}",
+                    )
+                except Exception:
+                    pass
+                logger.error("[MARKET_DATA] %s: fetch failed: %s", symbol, _md_exc)
+                return {
+                    "symbol": symbol,
+                    "decision": "ERROR",
+                    "evaluated": False,
+                    "reason": MARKET_DATA_UNAVAILABLE,
+                    "reason_code": MARKET_DATA_UNAVAILABLE,
+                    "error": f"{type(_md_exc).__name__}: {_md_exc}",
+                }
 
             from app.runner.market_snapshot import MarketSnapshot, claim_candle
             _primary_snapshot = MarketSnapshot.build(
@@ -5095,6 +5126,19 @@ class PaperRunner:
                 source=type(self.client).__name__,
             )
             _bot_candle_id = self.context.bot_instance_id if self.context else str(self.run_id or "legacy")
+            # Watchdog: record that market data was fetched and what the latest
+            # closed candle is. A fetch failure is handled below and must never
+            # be reported as NO_NEW_CANDLE.
+            try:
+                from app.ops.runtime_watchdog import get_watchdog
+
+                get_watchdog().market_data(
+                    _bot_candle_id, symbol, self.interval,
+                    latest_closed_candle=_primary_snapshot.latest_closed_candle_time,
+                )
+            except Exception:
+                pass
+
             _evaluate_entry = claim_candle(
                 self.db,
                 bot_instance_id=_bot_candle_id,
@@ -5115,6 +5159,21 @@ class PaperRunner:
                     higher_timeframe_candles=_htf_rows,
                 )
             kl = list(_snapshot.candles)
+
+            # Watchdog: a claimed candle means the strategy clock advanced.
+            try:
+                from app.ops.runtime_watchdog import get_watchdog
+
+                _wd = get_watchdog()
+                if _evaluate_entry:
+                    _wd.candle_evaluated(
+                        _bot_candle_id, symbol, self.interval,
+                        closed_candle=_snapshot.latest_closed_candle_time,
+                    )
+                else:
+                    _wd.observe_clock(_bot_candle_id, symbol, self.interval)
+            except Exception:
+                pass
 
             # Persist snapshot lineage only for a claimed candle. Building the
             # snapshot happens every heartbeat (that is how the candle gate

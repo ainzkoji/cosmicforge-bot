@@ -254,6 +254,11 @@ app.include_router(readiness_admin_router)
 from app.api.trading_evidence import router as trading_evidence_router
 app.include_router(trading_evidence_router)
 
+# Operational health + candle coverage: answers "is the bot actually working?"
+# in seconds, separately from whether it is merely configured as active.
+from app.api.trading_operations import router as trading_operations_router
+app.include_router(trading_operations_router)
+
 # Register Shadow Trading API router
 from app.api.shadow_routes import router as shadow_router
 
@@ -1475,6 +1480,27 @@ def runner_status() -> dict:
             # ── Runner initialization / policy state ──────────────────────────
             cached = (getattr(multi, "_runners", {}) or {}).get(item["id"]) if multi else None
             item["runner_present"] = cached is not None
+
+            # §13: freshness fields so an operator can tell in seconds whether
+            # the strategy clock is advancing, not just whether status=active.
+            try:
+                from app.ops.runtime_watchdog import get_watchdog
+
+                _wd_snap = get_watchdog().snapshot()
+                _wd_bot = _wd_snap["bots"].get(item["id"], {})
+                item["runtime_health"] = _wd_bot.get("health")
+                item["runtime_health_reason"] = _wd_bot.get("health_reason")
+                item["runner_initialization_status"] = _wd_bot.get("runner_initialization_status")
+                item["scheduler_heartbeat_at"] = _wd_snap["scheduler_heartbeat_at"]
+                item["scheduler_heartbeat_age_seconds"] = _wd_snap["scheduler_heartbeat_age_seconds"]
+                item["last_cycle_at"] = _wd_bot.get("last_cycle_at")
+                item["last_execution_attempt_at"] = _wd_bot.get("last_execution_attempt_at")
+                item["runtime_session_id"] = _wd_bot.get("runtime_session_id")
+                item["run_id"] = _wd_bot.get("run_id")
+                item["policy_hash"] = _wd_bot.get("policy_hash")
+                item["symbol_clocks"] = _wd_bot.get("symbols", {})
+            except Exception:
+                item["runtime_health"] = "UNKNOWN"
             item["runner_initialization_status"] = (
                 getattr(cached, "initialization_status", None) if cached else "NOT_SCHEDULED"
             )

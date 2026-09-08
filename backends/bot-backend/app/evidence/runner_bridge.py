@@ -16,6 +16,7 @@ Two responsibilities:
 from __future__ import annotations
 
 import logging
+from dataclasses import dataclass
 from typing import Any, Mapping
 
 from app.decision.reason_mapping import to_canonical
@@ -164,6 +165,48 @@ def apply_evidence(decision: Any, result: Mapping[str, Any], evidence: Mapping[s
             setattr(decision, field, value)
 
 
+
+@dataclass
+class _Probe:
+    """Outcome of running the evaluation before deciding how to record it."""
+
+    result: Mapping[str, Any]
+    is_heartbeat: bool
+    error: BaseException | None = None
+
+
+def _probe_evaluation(runner: Any, symbol: str, evaluate) -> _Probe:
+    """Run the evaluation and classify it as a heartbeat or a real decision.
+
+    A heartbeat is a tick where no new closed candle existed, so the strategy
+    never ran. It is counted in the cycle summary rather than persisted as a
+    TradingDecision. Anything else -- including an error -- earns a full row.
+    """
+    try:
+        result = evaluate(symbol) or {}
+    except BaseException as exc:  # recorded as EXECUTION_ERROR by the caller
+        return _Probe(result={}, is_heartbeat=False, error=exc)
+
+    reason = str(result.get("reason_code") or result.get("reason") or "")
+    decision = str(result.get("decision") or "")
+    is_heartbeat = CycleReason.NO_NEW_CANDLE in (reason, decision)
+    if is_heartbeat:
+        _count_heartbeat(runner, symbol)
+    return _Probe(result=result, is_heartbeat=is_heartbeat)
+
+
+def _count_heartbeat(runner: Any, symbol: str) -> None:
+    """Tally a NO_NEW_CANDLE tick for this cycle's summary."""
+    try:
+        counts = getattr(runner, "_heartbeat_counts", None)
+        if counts is None:
+            counts = {}
+            runner._heartbeat_counts = counts
+        counts[symbol] = counts.get(symbol, 0) + 1
+    except Exception:
+        pass
+
+
 def record_symbol_evaluation(
     runner: Any,
     symbol: str,
@@ -192,6 +235,16 @@ def record_symbol_evaluation(
     runner._symbol_evidence[symbol] = {}
 
     result: Mapping[str, Any] = {}
+
+    # §11: a management heartbeat is cycle evidence, not a decision.
+    # Writing a full TradingDecision row for every NO_NEW_CANDLE tick produced
+    # ~17,000 rows/day for two symbols. The heartbeat is now counted in
+    # trading_cycles instead; only real candle evaluations become decisions.
+    # This runs the evaluation first, then decides whether it earned a row.
+    probe = _probe_evaluation(runner, symbol, evaluate)
+    if probe.is_heartbeat:
+        return probe.result
+
     try:
         with record_decision(
             db,
@@ -209,7 +262,9 @@ def record_symbol_evaluation(
             execution_mode=execution_mode,
             broker_environment=getattr(context, "broker_environment", None),
         ) as decision:
-            result = evaluate(symbol) or {}
+            result = probe.result
+            if probe.error is not None:
+                raise probe.error
             apply_evidence(decision, result, runner._symbol_evidence.get(symbol, {}))
 
             reason = canonical_reason(result)
