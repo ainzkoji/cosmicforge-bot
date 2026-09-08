@@ -7,8 +7,9 @@ Batch 3 of the Pre-AI Master Blueprint. Phase 13+ and all AI/ML work not started
 | Branch | `phase-0-4-runtime-baseline` |
 | Starting commit | `3338904e` (end of Batch 2) |
 | Batch 3 commit | `54537a2d` |
+| Runtime migration | `c20c170a` |
 | Interpreter | `backends/venv/Scripts/python.exe` (Python 3.12.2) |
-| Suite | **2,021 passed, 0 failed, 0 skipped**, 27 warnings |
+| Suite | **2,051 passed, 0 failed, 0 skipped**, 27 warnings |
 
 ---
 
