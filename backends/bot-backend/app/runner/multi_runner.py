@@ -66,7 +66,6 @@ class MultiBotRunner:
         self._ownership = None
         self.ownership_reason: str = "NOT_ACQUIRED"
         self.runtime_owner_id: str | None = None
-        self._stall_recoveries: Dict[str, int] = {}
         
         # Instrument metadata is loaded only after a bot's DB-backed broker
         # account has been resolved.  Startup never constructs an env-backed
@@ -120,46 +119,153 @@ class MultiBotRunner:
         except Exception as exc:
             logger.error("[RUNTIME_ALERT] %s: %s (audit failed: %s)", event_type, message, exc)
 
-    def _check_strategy_clocks(self) -> None:
-        """Detect a stalled strategy clock and attempt safe recovery (§5/§7).
+    def _soft_refresh_bot(self, bot_id: str) -> bool:
+        """Tier 1 recovery -- refresh runtime state without rebuilding (7).
 
-        Recovery rebuilds the bot's runner. Positions, TP1 state, remaining
-        quantity, BE/trailing and the last evaluated candle all live in
-        persisted state, so the replacement rehydrates them -- a rebuild is
-        never a reason to flatten anything.
+        A stalled clock is usually cheaper to fix than a rebuild: the
+        in-memory candle marker has drifted from the persisted one, or a
+        market-data error is latched on a client that would work on a fresh
+        call. This re-seeds both from persisted truth and re-applies the
+        effective policy. Nothing here touches positions.
         """
-        from app.ops.runtime_watchdog import STRATEGY_CLOCK_STALLED, get_watchdog
+        from app.ops.runtime_watchdog import get_watchdog
 
-        for bot_id, reason in get_watchdog().stalled_bots():
+        watchdog = get_watchdog()
+        runner = self._runners.get(bot_id)
+        refreshed = False
+
+        # 1. Reload the candle marker from the table that actually gates
+        #    evaluation, so the watchdog stops comparing against a stale view.
+        try:
+            with self.db.connect() as conn:
+                rows = conn.execute(
+                    """SELECT symbol, timeframe, last_closed_candle_time
+                       FROM bot_candle_evaluations WHERE bot_instance_id=?""",
+                    (bot_id,),
+                ).fetchall()
+            for row in rows:
+                watchdog.sync_evaluated_marker(bot_id, row[0], row[1], row[2])
+            refreshed = True
+        except Exception as exc:
+            logger.error("[WATCHDOG] bot=%s candle marker reload failed: %s", bot_id, exc)
+
+        # 2. Drop a latched market-data error so the next fetch is judged on
+        #    its own merits. The fetch *timestamp* is deliberately left alone:
+        #    MARKET_DATA_STALE is measured from it, and moving it here would
+        #    let recovery hide a feed that has stopped producing.
+        try:
+            interval = getattr(runner, "interval", "15m")
+            for symbol in list(getattr(runner, "trade_symbols", None) or []):
+                watchdog.clear_market_data_error(bot_id, symbol, interval)
+        except Exception as exc:
+            logger.error("[WATCHDOG] bot=%s market-data refresh failed: %s", bot_id, exc)
+
+        # 3. Force the instrument registry to re-read specs for this client.
+        try:
+            client = getattr(runner, "client", None)
+            if client is not None:
+                from app.exchange.registry import get_instrument_registry
+
+                get_instrument_registry().refresh(broker_id="binance", client=client, force=True)
+        except Exception as exc:
+            logger.error("[WATCHDOG] bot=%s registry refresh failed: %s", bot_id, exc)
+
+        # 4. The EffectiveBotPolicy is re-resolved from the bot row on every
+        #    loop pass and reassigned to the cached runner, so a soft refresh
+        #    has nothing to do here: the next iteration already revalidates it,
+        #    and a material change rebuilds the runner through the policy-hash
+        #    path rather than through recovery.
+
+        return refreshed
+
+    def _set_runtime_fault_health(
+        self, bot_id: str, reason_code: str, message: str, action: str,
+    ) -> None:
+        try:
+            self.service.update_bot_health(
+                bot_id,
+                bot_health_status="ERROR",
+                bot_health_message=message,
+                bot_health_reason_code=reason_code,
+                bot_health_recommended_action=action,
+            )
+        except Exception as exc:
+            logger.error("[WATCHDOG] health update failed for %s: %s", bot_id, exc)
+
+    def _check_strategy_clocks(self) -> None:
+        """Detect a stalled strategy clock and attempt safe recovery (5/7).
+
+        Recovery is tiered. Tier 1 refreshes the bot's market/candle/policy
+        state in place. Tier 2 rebuilds the runner: positions, TP1 state,
+        remaining quantity, BE/trailing and the last evaluated candle all live
+        in persisted state, so the replacement rehydrates them -- a rebuild is
+        never a reason to flatten anything. When both tiers are spent the
+        fault escalates to RUNNER_RECOVERY_FAILED instead of being retried
+        forever, because a thrashing rebuild loop is itself an outage.
+        """
+        from app.ops.runtime_watchdog import (
+            RECOVERY_TIER_RUNNER_REBUILD,
+            RECOVERY_TIER_SOFT_REFRESH,
+            RUNNER_RECOVERY_FAILED,
+            STRATEGY_CLOCK_STALLED,
+            get_watchdog,
+        )
+
+        watchdog = get_watchdog()
+        for bot_id, reason in watchdog.stalled_bots():
             if reason != STRATEGY_CLOCK_STALLED:
+                # RUNNER_RECOVERY_FAILED is already latched and already
+                # alerted; re-entering here would only repeat the alert.
                 continue
-            attempts = self._stall_recoveries.get(bot_id, 0)
-            self._stall_recoveries[bot_id] = attempts + 1
+
+            tier = watchdog.next_recovery_tier(bot_id)
+            if tier is None:
+                watchdog.recovery_failed(
+                    bot_id,
+                    "strategy clock still stalled after soft refresh and runner rebuild",
+                )
+                self._record_runtime_alert(
+                    RUNNER_RECOVERY_FAILED,
+                    f"bot={bot_id} automatic recovery exhausted; operator action required",
+                )
+                logger.critical(
+                    "[WATCHDOG] bot=%s RUNNER_RECOVERY_FAILED - recovery exhausted", bot_id,
+                )
+                self._set_runtime_fault_health(
+                    bot_id,
+                    RUNNER_RECOVERY_FAILED,
+                    "Strategy clock did not recover after automatic remediation",
+                    "Automatic recovery is exhausted. Inspect market-data "
+                    "connectivity, the candle marker and the runner logs, then "
+                    "restart the runtime.",
+                )
+                continue
+
+            watchdog.recovery_attempted(bot_id, tier)
             self._record_runtime_alert(
-                "STRATEGY_CLOCK_STALLED",
-                f"bot={bot_id} clock not advancing; rebuilding runner (attempt {attempts + 1})",
+                STRATEGY_CLOCK_STALLED,
+                f"bot={bot_id} clock not advancing; recovery tier={tier}",
             )
             logger.error(
-                "[WATCHDOG] bot=%s STRATEGY_CLOCK_STALLED - evicting runner for rebuild", bot_id,
+                "[WATCHDOG] bot=%s STRATEGY_CLOCK_STALLED - recovery tier=%s", bot_id, tier,
             )
-            try:
-                self.service.update_bot_health(
-                    bot_id,
-                    bot_health_status="ERROR",
-                    bot_health_message="Strategy clock stopped advancing",
-                    bot_health_reason_code=STRATEGY_CLOCK_STALLED,
-                    bot_health_recommended_action=(
-                        "Runner is being rebuilt automatically. If this repeats, "
-                        "check market-data connectivity and the candle marker."
-                    ),
-                )
-            except Exception as exc:
-                logger.error("[WATCHDOG] health update failed for %s: %s", bot_id, exc)
+            self._set_runtime_fault_health(
+                bot_id,
+                STRATEGY_CLOCK_STALLED,
+                "Strategy clock stopped advancing",
+                f"Automatic recovery in progress (tier={tier}). If this repeats, "
+                "check market-data connectivity and the candle marker.",
+            )
 
-            cached = self._runners.get(bot_id)
-            if cached is not None:
-                # Positions survive: the replacement rehydrates from the store.
-                self._evict_runner(bot_id, cached)
+            if tier == RECOVERY_TIER_SOFT_REFRESH:
+                self._soft_refresh_bot(bot_id)
+                continue
+
+            if tier == RECOVERY_TIER_RUNNER_REBUILD:
+                cached = self._runners.get(bot_id)
+                if cached is not None:
+                    # Positions survive: the replacement rehydrates from store.
+                    self._evict_runner(bot_id, cached)
 
     @staticmethod
     def _runtime_session_id() -> str | None:

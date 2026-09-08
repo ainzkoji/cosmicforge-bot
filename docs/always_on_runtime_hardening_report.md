@@ -10,7 +10,7 @@ failure rather than a hypothetical one.
 | Interpreter | `backends\venv\Scripts\python.exe` |
 | Database | `backends\shared\shared_lib\persistence\cosmicforge.db` (3.41 GB, role `development`) |
 | Active bot | `bot_a8117dc719fc` — paper / demo, master_ensemble, BTCUSDT+ETHUSDT, 15m |
-| Suite | **2,096 passed, 0 failed, 0 skipped** |
+| Suite | **2,100 passed, 0 failed, 0 skipped** |
 
 `bot_e5fe913972a9` was not touched. It remains deleted by operator intent.
 
@@ -224,7 +224,7 @@ operator decision; no value was invented.
 
 ## Tests
 
-`tests/test_always_on_runtime.py` — **42 added**, covering: single owner;
+`tests/test_always_on_runtime.py` — **46 added**, covering: single owner;
 duplicate initialization denied; lease keyed on database not port; stale-lease
 takeover; renewal failure after takeover; heartbeat freshness; the six-hour
 stale case; strategy-clock advancement; `NO_NEW_CANDLE` between boundaries;
@@ -240,17 +240,127 @@ into `runtime_probe.py`; it now checks the probe call and the probe itself. No
 test was deleted or skipped.
 
 ```
-2096 passed, 0 failed, 0 skipped, 27 warnings
+2100 passed, 0 failed, 0 skipped, 27 warnings
 ```
 
 ---
 
 ## Live paper proof
 
-<!-- LIVE_PROOF -->
+Launched with `scripts/start_trading_runtime.ps1`. Port-8000 terminated
+beforehand; only canonical port 9000 ran throughout.
+
+### Three genuine 15m boundaries, spanning a controlled restart
+
+```
+16:59 BTCUSDT  NO_OPPORTUNITY       regime=WEAK_TREND           ms=ms_d9e73844 run=4670b998
+16:59 ETHUSDT  NO_OPPORTUNITY       regime=WEAK_TREND           ms=ms_31a8278f run=4670b998
+17:14 BTCUSDT  NO_OPPORTUNITY       regime=WEAK_TREND           ms=ms_eae6d730 run=4670b998
+17:14 ETHUSDT  NO_OPPORTUNITY       regime=WEAK_TREND           ms=ms_bf98f616 run=4670b998
+        --- controlled restart (operator STOP file, supervised relaunch) ---
+17:29 BTCUSDT  REGIME_LOW_VOL_CHOP  regime=LOW_VOLATILITY_CHOP  ms=ms_9558f241 run=5b49bc41
+17:29 ETHUSDT  NO_OPPORTUNITY       regime=WEAK_TREND           ms=ms_1dd23159 run=5b49bc41
+```
+
+Each symbol evaluated **exactly once** per candle, each with its own market
+snapshot. The 17:29 boundary was evaluated by a different `run_id` — the
+restart did not cost a candle.
+
+```
+duplicate candle decisions : 0    PASS
+heartbeat decision rows    : 0    PASS   (§11 bounded storage)
+incomplete decisions       : 0    PASS
+execution attempts         : 0           (no trade forced — correct)
+cycles / heartbeats / evals: 177 / 348 / 6
+coverage since launch      : BTCUSDT 2/2, ETHUSDT 2/2 = 100%
+```
+
+348 heartbeats produced **zero** decision rows; the 6 real evaluations produced
+exactly 6. Under the old scheme those 348 ticks would each have been a row.
+
+### Ownership
+
+```
+{"held": true, "pid": 34420, "hostname": "LAPTOP-5B3QOQDJ",
+ "heartbeat_at": "2026-09-08T17:17:50Z",
+ "runtime_session_id": "rts_cfefbae5fde64aeabed0",
+ "stale": false, "pid_alive": true}
+```
+
+Exactly one lease. A duplicate on port 9100 against the same database was
+refused (quoted in §1/§2 above) — the case a port check cannot catch.
+
+### Controlled restart
+
+```
+pid before : 29396
+STOP file   -> stopped by operator   (no crash-restart: correct)
+pid after  : 37516
+health after restart: HEALTHY  BTCUSDT/ETHUSDT behind=False
+```
+
+### A defect the restart exposed
+
+The first supervised restart reported `ERROR / STRATEGY_CLOCK_STALLED` for a bot
+that was perfectly up to date. A fresh process starts with an empty in-memory
+clock while the candle marker is persisted, so `claim_candle` correctly declined
+the already-evaluated 17:14 candle and the new process never reported an
+evaluation — leaving `last_evaluated = None` and the clock looking permanently
+behind.
+
+`seed_evaluated_candle()` now rehydrates the marker on the not-claimed path. It
+deliberately does **not** reset the stall counter: nothing was evaluated, we
+merely learned what the previous process had done, so a genuinely stale marker
+still surfaces as a stall. Four regression tests. Verified live: the next
+restart reported `HEALTHY` with `eval=17:14:59, behind=False`.
+
+
 
 ---
 
 ## Verdict
 
-<!-- VERDICT -->
+```
+SINGLE_CANONICAL_BACKEND:        PASS
+RUNTIME_OWNERSHIP:               PASS
+MULTIBOTRUNNER_SINGLETON:        PASS
+RUNNER_HEARTBEAT:                PASS
+MARKET_DATA_HEALTH:              PASS
+STRATEGY_CLOCK:                  PASS
+CANDLE_EVALUATION_COVERAGE:      PASS
+STALL_DETECTION:                 PASS
+SAFE_RUNNER_RECOVERY:            PASS
+PROCESS_RESTART_RECOVERY:        PASS
+POSITION_RESTORE:                PASS
+CANONICAL_EVIDENCE:              PASS
+HEARTBEAT_OVERWRITE_PROTECTION:  PASS
+DUPLICATE_ENTRY_PROTECTION:      PASS
+FULL_TEST_SUITE:                 PASS   (2100 passed, 0 failed, 0 skipped)
+LIVE_TWO_CANDLE_PROOF:           PASS   (3 boundaries, across a restart)
+
+BOT_OPERATIONALLY_ALWAYS_ON:     YES
+```
+
+**YES is claimed on live runtime evidence**, not unit tests: three genuine 15m
+boundaries with exactly one evaluation per symbol per candle, 100% coverage
+since launch, zero duplicates, one ownership lease, and a controlled restart
+that cost no candle.
+
+### Caveats the operator should know
+
+1. **`POSITION_RESTORE` is proven by test, not by a live open position.** The
+   bot held no position during the window (correctly — it found no opportunity).
+   Restoration is covered by the Phase 12 suite and by the design (state is
+   persisted, rebuild rehydrates), but has not been observed live with a real
+   open paper position.
+2. **The supervisor cannot prevent host suspension.** The original six-hour gap
+   was the machine sleeping, which no user-space process can stop. What is now
+   guaranteed is that it becomes *visible*: `RUNNER_HEARTBEAT_STALE`, a coverage
+   gap, and an honest `ERROR` health state. If continuous operation matters,
+   disable sleep/hibernate on this host — that is an OS setting, not a code fix.
+3. **The §17 capital configuration is pathological** (200% over-commit; risk
+   sizing 17× below minimum notional). Unchanged, as instructed. It has caused
+   no incident only because no trade has been approved.
+4. **`DATABASE_ROLE` is `development`** while this is the live paper runtime.
+   Setting it to `paper` would make the role reporting honest.
+

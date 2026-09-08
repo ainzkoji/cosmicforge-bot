@@ -212,6 +212,16 @@ class RuntimeWatchdog:
             bot["runtime_session_id"] = runtime_session_id or bot["runtime_session_id"]
             bot["runner_initialization_status"] = initialization_status or bot["runner_initialization_status"]
 
+    def clear_market_data_error(self, bot_id: str, symbol: str, timeframe: str) -> None:
+        """Drop a latched fetch error without claiming a fetch succeeded.
+
+        Recovery must not refresh ``last_market_data_at``: that timestamp is
+        what MARKET_DATA_STALE is measured from, and moving it would hide a
+        feed that has stopped producing.
+        """
+        with self._lock:
+            self._clock(bot_id, symbol, timeframe).last_market_data_error = None
+
     def market_data(
         self, bot_id: str, symbol: str, timeframe: str,
         *, latest_closed_candle: int | None = None, error: str | None = None,
@@ -264,6 +274,21 @@ class RuntimeWatchdog:
             clock = self._clock(bot_id, symbol, timeframe)
             if clock.last_evaluated_closed_candle is None:
                 clock.last_evaluated_closed_candle = int(closed_candle)
+
+    def sync_evaluated_marker(
+        self, bot_id: str, symbol: str, timeframe: str, closed_candle: int | None,
+    ) -> None:
+        """Re-seed the evaluated marker from persisted truth (7 soft refresh).
+
+        Unlike :meth:`candle_evaluated` this does not claim a decision
+        happened -- it only corrects an in-memory view that has drifted behind
+        the ``bot_candle_evaluations`` row that actually gates evaluation.
+        """
+        with self._lock:
+            clock = self._clock(bot_id, symbol, timeframe)
+            if closed_candle is not None:
+                clock.last_evaluated_closed_candle = int(closed_candle)
+            clock.behind_iterations = 0
 
     def observe_clock(self, bot_id: str, symbol: str, timeframe: str) -> None:
         """Called once per iteration to age the stall counter."""

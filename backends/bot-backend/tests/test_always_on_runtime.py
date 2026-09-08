@@ -33,7 +33,11 @@ from app.ops.runtime_watchdog import (
     HEALTHY,
     MARKET_DATA_STALE,
     MARKET_DATA_UNAVAILABLE,
+    RECOVERY_TIER_RUNNER_REBUILD,
+    RECOVERY_TIER_SOFT_REFRESH,
     RUNNER_HEARTBEAT_STALE,
+    RUNNER_RECOVERY_FAILED,
+    RUNTIME_FAULT_REASONS,
     RUNTIME_OWNERSHIP_LOST,
     STALL_ITERATION_THRESHOLD,
     STRATEGY_CLOCK_STALLED,
@@ -687,3 +691,116 @@ def test_the_runner_seeds_the_marker_when_a_candle_was_already_claimed():
     source = inspect.getsource(PaperRunner._step_symbol_evaluate)
     assert "seed_evaluated_candle" in source
     assert "last_evaluated_candle" in source
+
+
+# ── Tiered safe recovery (A7) ───────────────────────────────────────────────
+
+
+def _stall(watchdog, bot_id="bot1", symbol="BTCUSDT"):
+    """Drive one bot into STRATEGY_CLOCK_STALLED."""
+    watchdog.bot_cycle(bot_id)
+    watchdog.candle_evaluated(bot_id, symbol, "15m", closed_candle=1000)
+    watchdog.market_data(bot_id, symbol, "15m", latest_closed_candle=1000 + TF_MS)
+    for _ in range(STALL_ITERATION_THRESHOLD):
+        watchdog.observe_clock(bot_id, symbol, "15m")
+
+
+def test_recovery_tries_the_cheap_remedy_before_rebuilding(watchdog):
+    """A7 -- a rebuild is the second resort, not the first."""
+    _stall(watchdog)
+    assert watchdog.next_recovery_tier("bot1") == RECOVERY_TIER_SOFT_REFRESH
+
+    watchdog.recovery_attempted("bot1", RECOVERY_TIER_SOFT_REFRESH)
+    assert watchdog.next_recovery_tier("bot1") == RECOVERY_TIER_RUNNER_REBUILD
+
+    watchdog.recovery_attempted("bot1", RECOVERY_TIER_RUNNER_REBUILD)
+    assert watchdog.next_recovery_tier("bot1") is None
+
+
+def test_exhausted_recovery_escalates_instead_of_thrashing(watchdog):
+    """A6 -- RUNNER_RECOVERY_FAILED replaces an endless rebuild loop."""
+    _stall(watchdog)
+    watchdog.recovery_attempted("bot1", RECOVERY_TIER_SOFT_REFRESH)
+    watchdog.recovery_attempted("bot1", RECOVERY_TIER_RUNNER_REBUILD)
+    watchdog.recovery_failed("bot1", "clock still stalled")
+
+    state, reason = watchdog.bot_health("bot1")
+    assert (state, reason) == (ERROR, RUNNER_RECOVERY_FAILED)
+    assert RUNNER_RECOVERY_FAILED in RUNTIME_FAULT_REASONS
+    # The escalated fault is what recovery reads, so the loop stops retrying.
+    assert ("bot1", RUNNER_RECOVERY_FAILED) in watchdog.stalled_bots()
+
+
+def test_an_advancing_clock_clears_the_escalation(watchdog):
+    """Recovery that works must not leave the bot latched in ERROR."""
+    _stall(watchdog)
+    watchdog.recovery_attempted("bot1", RECOVERY_TIER_SOFT_REFRESH)
+    watchdog.recovery_attempted("bot1", RECOVERY_TIER_RUNNER_REBUILD)
+    watchdog.recovery_failed("bot1", "clock still stalled")
+    assert watchdog.bot_health("bot1")[1] == RUNNER_RECOVERY_FAILED
+
+    watchdog.candle_evaluated("bot1", "BTCUSDT", "15m", closed_candle=1000 + TF_MS)
+
+    assert watchdog.bot_health("bot1") == (HEALTHY, None)
+    assert watchdog.next_recovery_tier("bot1") == RECOVERY_TIER_SOFT_REFRESH
+
+
+def test_soft_refresh_reseeds_the_marker_without_faking_a_decision(watchdog):
+    """The marker resync corrects a drifted view; it is not an evaluation."""
+    _stall(watchdog)
+    before = watchdog.snapshot()["bots"]["bot1"]["symbols"]["BTCUSDT:15m"]
+
+    watchdog.sync_evaluated_marker("bot1", "BTCUSDT", "15m", 1000 + TF_MS)
+    after = watchdog.snapshot()["bots"]["bot1"]["symbols"]["BTCUSDT:15m"]
+
+    assert after["is_behind"] is False
+    assert after["behind_iterations"] == 0
+    # No decision was claimed, so the last-decision timestamp is untouched.
+    assert after["last_strategy_decision_at"] == before["last_strategy_decision_at"]
+
+
+def test_soft_refresh_reads_the_persisted_candle_marker(db, monkeypatch):
+    """Tier 1 reloads bot_candle_evaluations -- the table that gates entry."""
+    from app.ops import runtime_watchdog as wd_mod
+    from app.runner.multi_runner import MultiBotRunner
+
+    watchdog = wd_mod.RuntimeWatchdog()
+    monkeypatch.setattr(wd_mod, "_WATCHDOG", watchdog)
+
+    with db.connect() as conn:
+        conn.execute(
+            """INSERT INTO bot_candle_evaluations
+               (bot_instance_id,symbol,timeframe,last_closed_candle_time,updated_at)
+               VALUES (?,?,?,?,?)""",
+            ("botX", "BTCUSDT", "15m", 5000, datetime.now(timezone.utc).isoformat()),
+        )
+
+    _stall(watchdog, bot_id="botX")
+    assert watchdog.bot_health("botX")[1] == STRATEGY_CLOCK_STALLED
+
+    runner = MultiBotRunner.__new__(MultiBotRunner)
+    runner.db = db
+    runner._runners = {}
+    assert runner._soft_refresh_bot("botX") is True
+
+    clock = watchdog.snapshot()["bots"]["botX"]["symbols"]["BTCUSDT:15m"]
+    assert clock["last_evaluated_closed_candle_at"] is not None
+    assert clock["behind_iterations"] == 0
+
+
+def test_tiered_recovery_never_flattens_at_any_tier():
+    """A7 -- no tier of automatic recovery may become an exit signal."""
+    from app.runner.multi_runner import MultiBotRunner
+
+    for func in (MultiBotRunner._check_strategy_clocks, MultiBotRunner._soft_refresh_bot):
+        source = inspect.getsource(func)
+        docstring_end = source.index('"""', source.index('"""') + 3) + 3
+        body = "\n".join(
+            line for line in source[docstring_end:].splitlines()
+            if line.strip() and not line.strip().startswith("#")
+        )
+        for forbidden in ("close_position", "flatten", "activate_kill_switch"):
+            assert forbidden not in body, f"{func.__name__} must not {forbidden}"
+
+    # The rebuild tier is still reached -- recovery is tiered, not weakened.
+    assert "_evict_runner" in inspect.getsource(MultiBotRunner._check_strategy_clocks)
