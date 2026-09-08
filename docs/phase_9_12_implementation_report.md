@@ -296,8 +296,11 @@ threshold.
 | `test_canonical_trading_evidence.py` | **New** — 51 |
 | `test_controlled_beta_readiness.py` | **New** — 26 |
 | `test_phase12_paper_smoke.py` | **New** — 28 |
+| `test_runtime_canonical_evidence.py` | **New** — 30 (runtime migration) |
 
-**105 added, 0 deleted, 0 skipped, 0 weakened.**
+**135 added, 0 deleted, 0 skipped, 0 weakened.** One test updated:
+`test_iofs_gate_evaluator` now inspects `_step_symbol_evaluate` rather than
+`step_symbol`, since the evaluation body moved there. Its intent is unchanged.
 
 ```
 cd backends/bot-backend && ..\venv\Scripts\python.exe -m pytest tests -q
@@ -306,9 +309,10 @@ cd backends/bot-backend && ..\venv\Scripts\python.exe -m pytest tests -q
 | | Passed | Failed | Skipped | Errors | Warnings |
 | --- | --- | --- | --- | --- | --- |
 | Start of batch | 1,916 | 0 | 0 | 0 | 27 |
-| **Final** | **2,021** | **0** | **0** | **0** | **27** |
+| Phases 9–12 | 2,021 | 0 | 0 | 0 | 27 |
+| **Final (with runtime migration)** | **2,051** | **0** | **0** | **0** | **27** |
 
-Plus 4 subtests. Reconciliation: 1,916 + 105 = 2,021. No test submitted a real
+Plus 4 subtests. Reconciliation: 1,916 + 105 + 30 = 2,051. No test submitted a real
 order — the Batch 1 transport guard remains active suite-wide.
 
 ---
@@ -317,23 +321,24 @@ order — the Batch 1 transport guard remains active suite-wide.
 
 ### Blocking
 
-1. **The runtime writes legacy evidence, not canonical.** The new tables,
-   recorder and writers are complete and tested, but `PaperRunner` still writes
-   to `canonical_trade_decisions` / `decision_traces`. Until the runner is
-   migrated to `record_decision()`, the canonical tables stay empty in
-   production and the diagnostics API has nothing organic to serve. **This is
-   the single largest gap in the batch** and must be closed before the long
-   paper readiness period begins.
-2. **`bot_e5fe913972a9` is still configuration-blocked** (`CAPITAL_BUDGET_REQUIRED`,
-   carried from Batch 1). No live runtime evidence can accumulate until an
-   operator sets a budget or retires it.
+1. ~~**The runtime writes legacy evidence, not canonical.**~~ **CLOSED** in
+   `c20c170a`. `step_symbol` is now a thin recorder around
+   `_step_symbol_evaluate`, so all ~30 early-return branches and every
+   exception finalize exactly one canonical decision. `MultiBotRunner` opens a
+   canonical `bot_run` linked to the runtime session, and each cycle writes a
+   `trading_cycles` row counted from the decisions that cycle persisted.
+2. **`bot_e5fe913972a9` is still configuration-blocked**
+   (`CAPITAL_BUDGET_REQUIRED`, carried from Batch 1). No live runtime evidence
+   can accumulate until an operator sets a budget or retires it. **This is now
+   the only blocking item.**
 
 ### Non-blocking
 
 3. **OLD-R5/R8/R9 mapping unverified** — identifiers not defined anywhere
    available to me. Reported `OPEN`; needs the source audit document.
-4. **`bot_runs` / `trading_cycles` counters are not yet incremented** by the
-   runner; the columns exist and are correct, but nothing updates them live.
+4. **`bot_runs` aggregate counters** (`cycles`, `decisions`, `attempts`,
+   `fills`) are still not incremented; `trading_cycles` now carries the
+   per-cycle counts, so the run-level rollup is derivable but not materialised.
 5. **Legacy `runs` and `canonical_trade_decisions` tables remain.** Intended as
    compatibility/derived evidence, but the migration path is not yet written.
 6. **No legacy backfill performed.** Historical rows carry no
@@ -383,22 +388,25 @@ DUPLICATE_ENTRY_PROTECTION:        PASS
 
 FULL_TEST_SUITE:                   PASS   (2021 passed, 0 failed, 0 skipped)
 
+RUNTIME_WRITES_CANONICAL_EVIDENCE:  PASS   (closed in c20c170a)
+
 SAFE_TO_BEGIN_LONG_PAPER_READINESS: NO
 SAFE_TO_BEGIN_AI_DATASET_WORK:      NO
 ```
 
-Both gates are **NO** for the same reason: the canonical evidence layer is built
-and proven, but **the runtime does not write to it yet**. Readiness accumulated
-now would land in the legacy tables, and an AI dataset built from them would
-carry exactly the provenance and completeness problems this batch exists to
-remove.
+The runtime migration is done: the canonical layer is now written by the live
+path, not just tested in isolation.
 
-Two things unblock both, in order:
+Both gates nonetheless remain **NO**, for one reason each:
 
-1. Migrate `PaperRunner._step_symbol_orchestrated` and `step_symbol` to
-   `record_decision()`, and have `MultiBotRunner` open a `bot_run` and write
-   `trading_cycles` per cycle.
-2. Set an explicit capital budget for `bot_e5fe913972a9` (or retire it) so
-   organic evidence can accumulate.
+* **Long paper readiness** — `bot_e5fe913972a9` is still configuration-blocked,
+  so no organic evidence can accumulate. An operator must set an explicit
+  capital budget or retire the row. The value is a business decision and was
+  deliberately not inferred.
+* **AI dataset work** — the wiring is proven by tests, but **no organic
+  evidence has yet been produced by a real running bot**. The gate should stay
+  NO until a live paper bot has run long enough for the diagnostics API and the
+  integrity checks to be exercised against real accumulated rows rather than
+  fixtures.
 
 Nothing in this batch authorises mainnet.
