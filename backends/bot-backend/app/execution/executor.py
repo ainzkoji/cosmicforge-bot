@@ -294,6 +294,37 @@ class BinanceExecutor:
             fee_bps=float(getattr(settings, "PAPER_FEE_BPS", 4.0) or 4.0),
         )
 
+    # ── Paper-mode position truth ───────────────────────────────────────────
+    #
+    # In paper mode the fill lives in PaperExecutor, never at the broker, so
+    # every broker position read returns zero and every reconciliation path
+    # concludes the position is flat. Wrapping the client here fixes all of
+    # them at once -- including the ones nobody has found yet -- and survives
+    # MultiBotRunner reassigning .client on each cycle, which a one-shot wrap
+    # in __init__ would not.
+
+    @property
+    def client(self):
+        raw = self.__dict__.get("_client_raw")
+        paper = self.__dict__.get("paper_executor")
+        if raw is None or paper is None:
+            return raw
+        mode = str(self.__dict__.get("execution_mode") or settings.EXECUTION_MODE or "").lower()
+        if mode != "paper":
+            return raw
+        cached = self.__dict__.get("_client_paper_view")
+        if cached is None or getattr(cached, "inner", None) is not raw:
+            from app.execution.paper_book_client import wrap_for_paper
+
+            cached = wrap_for_paper(raw, paper, "paper")
+            self.__dict__["_client_paper_view"] = cached
+        return cached
+
+    @client.setter
+    def client(self, value):
+        self.__dict__["_client_raw"] = value
+        self.__dict__.pop("_client_paper_view", None)
+
     def _configured_max_exposure(self, current_equity: float) -> float:
         """
         Return the maximum NOTIONAL exposure allowed for a single symbol.
@@ -1598,10 +1629,21 @@ class BinanceExecutor:
             pos = position_manager.get_position(symbol)
             if pos:
                 result_base["lifecycle_state_before"] = pos.phase.value
+                # TP1_TAKEN is deliberately NOT here. PositionManager.update_price
+                # sets that phase at the instant it detects TP1 and *then*
+                # returns "HIT_TP1", so the runner always arrives here already
+                # in TP1_TAKEN. Treating it as "already done" meant every TP1
+                # was swallowed as a duplicate with requested_tp1_qty=0.0 and
+                # the partial close could never fire -- which is why the real
+                # runner's history (strategy='orchestrated') holds 26 closes
+                # with exit_reason=TP1 and not one PARTIAL_CLOSE row.
+                #
+                # The phases that genuinely mean "in flight or finished" are set
+                # by this method (TP1_EXECUTING, then TP1_FILLED) and by the
+                # trailing/exit transitions after it.
                 safe_phases = {
                     PositionPhase.TP1_EXECUTING,
                     PositionPhase.TP1_FILLED,
-                    PositionPhase.TP1_TAKEN,
                     PositionPhase.RUNNER_TRAILING,
                     PositionPhase.EXITING,
                 }
@@ -2215,6 +2257,16 @@ class BinanceExecutor:
         except Exception as e:
             _log.warning(f"[PROTECTION CHECK] {symbol}: Failed to fetch position_amt: {e}")
             return {"status": "error", "reason": str(e)}
+
+        # Paper mode: protection is bookkeeping, not orders. The simulated
+        # stop and target were recorded when the position opened; sending
+        # place_protection here would put real orders on a broker for a
+        # position that only exists in the paper book.
+        effective_mode = (getattr(self, "execution_mode", None) or settings.EXECUTION_MODE).lower()
+        if effective_mode == "paper":
+            if abs(float(pos_amt)) < 1e-12:
+                return {"status": "flat", "source": "paper_book"}
+            return {"status": "ok", "source": "paper_book", "paper": True}
 
         # If flat → cancel leftovers
         if abs(float(pos_amt)) < 1e-12:

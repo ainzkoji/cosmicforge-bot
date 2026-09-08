@@ -223,6 +223,12 @@ def test_heartbeat_detects_missing_protection():
     from app.execution.executor import BinanceExecutor
     executor = BinanceExecutor.__new__(BinanceExecutor)
     executor.client = client
+    # This exercises the BROKER protection path. It has to say so: in paper
+    # mode ensure_protection deliberately places no orders, because a paper
+    # position exists only in PaperExecutor and broker-side protection for it
+    # would be orphaned. Without this the test inherited EXECUTION_MODE=paper
+    # from conftest and only passed while paper mode wrongly reached the broker.
+    executor.execution_mode = "live"
 
     result = executor.ensure_protection(
         symbol="BTCUSDT",
@@ -255,6 +261,12 @@ def test_heartbeat_uses_persisted_sl_not_live_price():
     from app.execution.executor import BinanceExecutor
     executor = BinanceExecutor.__new__(BinanceExecutor)
     executor.client = client
+    # This exercises the BROKER protection path. It has to say so: in paper
+    # mode ensure_protection deliberately places no orders, because a paper
+    # position exists only in PaperExecutor and broker-side protection for it
+    # would be orphaned. Without this the test inherited EXECUTION_MODE=paper
+    # from conftest and only passed while paper mode wrongly reached the broker.
+    executor.execution_mode = "live"
 
     executor.ensure_protection(
         symbol="ETHUSDT",
@@ -289,6 +301,12 @@ def test_reduce_only_on_sl_tp_orders():
     from app.execution.executor import BinanceExecutor
     executor = BinanceExecutor.__new__(BinanceExecutor)
     executor.client = client
+    # This exercises the BROKER protection path. It has to say so: in paper
+    # mode ensure_protection deliberately places no orders, because a paper
+    # position exists only in PaperExecutor and broker-side protection for it
+    # would be orphaned. Without this the test inherited EXECUTION_MODE=paper
+    # from conftest and only passed while paper mode wrongly reached the broker.
+    executor.execution_mode = "live"
 
     executor.ensure_protection("BTCUSDT", sl_price=48_000.0, tp_price=55_000.0)
 

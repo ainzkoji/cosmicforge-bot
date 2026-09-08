@@ -1464,7 +1464,7 @@ class PaperRunner:
             self.executor.cancel_open_orders(symbol)
         except Exception:
             pass
-        result = self.executor.execute_signal(
+        result = self._execute_signal_with_evidence(
             symbol, "CLOSE", 0.0,
             position_side=side,
             remaining_quantity=qty,
@@ -1477,7 +1477,7 @@ class PaperRunner:
         entry_price = float(pos.entry_price or st.entry_price or 0.0)
         pnl = (close_price - entry_price) * qty if side == "LONG" else (entry_price - close_price) * qty
         from shared_lib.persistence.trade_fills import record_fill
-        record_fill(
+        self._record_fill(
             self.db,
             symbol=symbol, side=side, action="CLOSE", qty=qty, price=close_price,
             fee=float((result.details or {}).get("fee") or 0.0), realized_pnl=pnl,
@@ -2188,6 +2188,74 @@ class PaperRunner:
             }
 
 
+    @property
+    def client(self):
+        """The exchange client, paper-book-backed when running in paper mode.
+
+        The runner reconciles positions directly against this client in several
+        places. In paper mode those reads must come from the paper book, not
+        the broker, or an open paper position looks flat on the next cycle.
+        """
+        raw = self.__dict__.get("_client_raw")
+        executor = self.__dict__.get("executor")
+        paper = getattr(executor, "paper_executor", None)
+        if raw is None or paper is None:
+            return raw
+        try:
+            mode = str(self._effective_execution_mode() or "").lower()
+        except Exception:
+            return raw
+        if mode != "paper":
+            return raw
+        cached = self.__dict__.get("_client_paper_view")
+        if cached is None or getattr(cached, "inner", None) is not raw:
+            from app.execution.paper_book_client import wrap_for_paper
+
+            cached = wrap_for_paper(raw, paper, "paper")
+            self.__dict__["_client_paper_view"] = cached
+        return cached
+
+    @client.setter
+    def client(self, value):
+        self.__dict__["_client_raw"] = value
+        self.__dict__.pop("_client_paper_view", None)
+
+    class _PositionAlreadyArmedError(Exception):
+        """Not an error: the PositionManager already manages this position."""
+
+    def _execute_signal_with_evidence(self, symbol, action, *args, **kwargs):
+        """Execute a signal inside a canonical execution-attempt row.
+
+        The attempt is opened BEFORE the executor is called and completed with
+        whatever came back -- including nothing. That is the point: an executor
+        that returns no order id, or raises, still leaves evidence that an
+        order was attempted and why it did not become a fill. Without it the
+        only trace of a failed execution is a log line.
+        """
+        from app.evidence.fill_bridge import execution_attempt
+
+        with execution_attempt(self, symbol, action) as attempt:
+            result = self.executor.execute_signal(symbol, action, *args, **kwargs)
+            attempt.completed(
+                str(getattr(result, "status", "") or "UNKNOWN"),
+                broker_order_id=getattr(result, "order_id", None),
+                primary_reason=getattr(result, "error", None),
+            )
+            return result
+
+    def _record_fill(self, db, *args, **kwargs):
+        """Record a fill AND its canonical position evidence.
+
+        Every fill in this runner goes through here. Before this existed the
+        runtime wrote trade_fills and trading_decisions but never
+        execution_attempts, positions or position_events -- the canonical
+        lineage stopped at the decision, so no trade could be reconstructed
+        from decision to realized result.
+        """
+        from app.evidence.fill_bridge import record_fill_with_evidence
+
+        return record_fill_with_evidence(self, db, *args, **kwargs)
+
     def get_account_balance(self) -> float:
         now = time.time()
         if now - self.last_balance_time < 60:
@@ -2686,7 +2754,7 @@ class PaperRunner:
         try:
             st.last_action = f"EXTERNAL_{source}_{action}"
             st.last_trade_ms = int(time.time() * 1000)
-            exec_result = self.executor.execute_signal(symbol, action, trade_usdt, leverage_mult=1.0)
+            exec_result = self._execute_signal_with_evidence(symbol, action, trade_usdt, leverage_mult=1.0)
         except Exception as exc:
             logger.exception("[ExtSigRunner] executor raised for %s queue=%s", symbol, queue_id)
             return _result(
@@ -2786,7 +2854,7 @@ class PaperRunner:
                         tp_order_id=str(tp_order_id) if tp_order_id else None,
                     )
                     try:
-                        record_fill(
+                        self._record_fill(
                             self.db,
                             symbol=symbol,
                             side=side,
@@ -3137,7 +3205,7 @@ class PaperRunner:
                                 "[FILL LINKAGE ERROR] Missing run_id/cycle_id for symbol=%s path=exchange_close",
                                 symbol,
                             )
-                        _rf_ec(
+                        self._record_fill(
                             self.db,
                             symbol=symbol,
                             side=_pre_sync_position,
@@ -3282,7 +3350,7 @@ class PaperRunner:
                          _pm_close_ep      = float(pos.entry_price) if pos and pos.entry_price else float(st.entry_price or 0.0)
                          _pm_close_qty     = float(pos.current_qty)  if pos and pos.current_qty  else float(st.entry_qty or 0.0)
                          _pm_close_pos_id  = st.position_id
-                         res = self.executor.execute_signal(
+                         res = self._execute_signal_with_evidence(
                              symbol, "CLOSE", 0.0,
                              position_side=_pm_close_side,
                              remaining_quantity=_pm_close_qty,
@@ -3336,7 +3404,7 @@ class PaperRunner:
                                      "[FILL LINKAGE ERROR] Missing run_id/cycle_id for symbol=%s path=pm_close",
                                      symbol,
                                  )
-                             _rf_pm(
+                             self._record_fill(
                                  self.db,
                                  symbol=symbol,
                                  side=_pm_close_side,
@@ -3607,9 +3675,23 @@ class PaperRunner:
                              '[TRAIL_TRIGGER] %s: ATR unavailable this cycle â€” skip', symbol
                          )
 
-                 else:
-                      # âœ… FIX: PositionManager is out of sync with exchange (e.g., after restart).
-                      # Restore the position into active management.
+                 elif (
+                     self.position_manager.get_position(symbol) is None
+                     or getattr(
+                         self.position_manager.get_position(symbol), "phase", None
+                     ) == PositionPhase.FLAT
+                 ):
+                      # The PositionManager has no live position for a symbol the
+                      # runner believes is open -- a genuine desync, normally
+                      # after a restart. Restore it into active management.
+                      #
+                      # This used to be the `else` of the trailing-stop-update
+                      # condition above, which meant it fired whenever a trailing
+                      # update simply was not due: on almost every cycle. Re-arming
+                      # a live position resets its phase to SEEKING_TP1, clears
+                      # tp1_hit and restores the original stop, so TP1, break-even
+                      # and trailing state were destroyed as fast as they were
+                      # created, and TP1 could fire again on the next tick.
                       # F-12: prefer persisted original SL/TP prices over ATR approximation.
                       try:
                           _entry = st.entry_price or price
@@ -4271,7 +4353,7 @@ class PaperRunner:
                     _cs_exec.execute_attempts += 1
                 # â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-                res = self.executor.execute_signal(
+                res = self._execute_signal_with_evidence(
                     symbol,
                     p["side"],
                     trade_usdt,
@@ -4396,7 +4478,7 @@ class PaperRunner:
                                 "[FILL LINKAGE ERROR] Missing run_id/cycle_id for symbol=%s path=orchestrated_open",
                                 symbol,
                             )
-                        _rf(
+                        self._record_fill(
                             self.db,
                             symbol=symbol,
                             side=_fill_side,
@@ -4642,7 +4724,7 @@ class PaperRunner:
         try:
             from shared_lib.persistence.trade_fills import record_fill
 
-            record_fill(
+            self._record_fill(
                 self.db,
                 symbol=symbol,
                 side=st.position,
@@ -6386,7 +6468,7 @@ class PaperRunner:
                     # caused the ETCUSDT double-open (two fills 2 seconds apart, +40% oversize).
                     mark_trade(decision)
 
-                    exec_result = self.executor.execute_signal(
+                    exec_result = self._execute_signal_with_evidence(
                         symbol, exec_signal, trade_usdt, leverage_mult=_lev_mult
                     )
 
@@ -6512,7 +6594,7 @@ class PaperRunner:
                     # B-3 Fix: wrap record_fill in explicit error handling â€” never swallow silently.
                     logger.debug("TRADE_FILL_PERSISTENCE_ATTEMPTED action=OPEN symbol=%s", symbol)
                     try:
-                        record_fill(
+                        self._record_fill(
                             self.db,
                             symbol=symbol,
                             side=side,
@@ -6636,6 +6718,28 @@ class PaperRunner:
                         pm_stop = float(policy.stop_loss_price or (entry_px * (1 - ctx.stop_loss_pct) if pm_side == PositionSide.LONG else entry_px * (1 + ctx.stop_loss_pct)))
                         pm_tp1  = float(policy.take_profit_price or (entry_px * (1 + ctx.take_profit_pct) if pm_side == PositionSide.LONG else entry_px * (1 - ctx.take_profit_pct)))
                         pm_tp2  = pm_tp1  # simplified; PositionManager will trail from here
+                        # Re-arming a position the PositionManager is already
+                        # managing resets its phase to SEEKING_TP1, clears
+                        # tp1_hit and restores the original stop. A strategy
+                        # that keeps signalling BUY on an open position would
+                        # therefore erase TP1, break-even and trailing state on
+                        # every candle -- and re-arm TP1 to fire a second time.
+                        # Only arm a position the manager does not already hold.
+                        _pm_live = self.position_manager.get_position(symbol)
+                        _pm_already_managed = (
+                            _pm_live is not None
+                            and getattr(_pm_live, "phase", None) != PositionPhase.FLAT
+                            and str(getattr(_pm_live, "position_id", "") or "")
+                            == str(st.position_id or "")
+                        )
+                        if _pm_already_managed:
+                            logger.info(
+                                "[PM_ARM] %s: already managed (phase=%s remaining=%s) "
+                                "- not re-arming",
+                                symbol, getattr(_pm_live, "phase", None),
+                                getattr(_pm_live, "current_qty", None),
+                            )
+                            raise self._PositionAlreadyArmedError
                         self.position_manager.open_position(
                             symbol=symbol,
                             side=pm_side,
@@ -6650,6 +6754,8 @@ class PaperRunner:
                             sl_order_id=((exec_result.details or {}).get("protection") or {}).get("sl_order_id") if isinstance(exec_result.details, dict) else None,
                             tp_order_id=((exec_result.details or {}).get("protection") or {}).get("tp_order_id") if isinstance(exec_result.details, dict) else None,
                         )
+                    except self._PositionAlreadyArmedError:
+                        pass  # deliberate skip, not a failure
                     except Exception as pm_err:
                         logger.warning(f"[PM] {symbol}: open_position hook failed: {pm_err}")
 
@@ -6841,7 +6947,7 @@ class PaperRunner:
                     # B-3 Fix: wrap record_fill in explicit error handling â€” never swallow silently.
                     logger.debug("TRADE_FILL_PERSISTENCE_ATTEMPTED action=CLOSE symbol=%s", symbol)
                     try:
-                        record_fill(
+                        self._record_fill(
                             self.db,
                             symbol=symbol,
                             side=side,

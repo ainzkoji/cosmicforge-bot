@@ -21,7 +21,11 @@ from typing import Any, Mapping
 
 from app.decision.reason_mapping import to_canonical
 from app.decision.reasons import CycleReason, QualityReason
-from app.evidence.decision_recorder import record_decision, record_no_new_candle
+from app.evidence.decision_recorder import (
+    new_decision_id,
+    record_decision,
+    record_no_new_candle,
+)
 from shared_lib.persistence.evidence_schema import (
     LIVE_MAINNET,
     PAPER_FORWARD,
@@ -61,6 +65,35 @@ def resolve_provenance(execution_mode: str | None, broker_environment: str | Non
     if env in {"live", "mainnet", "production"}:
         return LIVE_MAINNET
     return TESTNET
+
+
+def run_provenance(db: Any, run_id: str | None, fallback: str) -> str:
+    """The provenance of the run this evidence belongs to.
+
+    Evidence inherits the classification of its ``bot_run`` rather than
+    re-deriving it from execution mode. In production the two agree, because
+    the run is opened with exactly this derivation. They diverge where it
+    matters: a controlled validation run is opened as
+    PAPER_FORWARD_VALIDATION, and every decision, position and lifecycle event
+    it produces must carry that label rather than looking like organic
+    paper-forward evidence that could count toward readiness.
+
+    An unreadable or missing run falls back to the derived value: unlabelled
+    evidence would be worse than conservatively-labelled evidence.
+    """
+    if not run_id or db is None:
+        return fallback
+    try:
+        with db.connect() as conn:
+            row = conn.execute(
+                "SELECT provenance FROM bot_runs WHERE run_id=?", (run_id,),
+            ).fetchone()
+    except Exception:
+        return fallback
+    if row is None:
+        return fallback
+    value = row["provenance"] if hasattr(row, "keys") else row[0]
+    return str(value) if value else fallback
 
 
 def canonical_reason(result: Mapping[str, Any]) -> str:
@@ -229,10 +262,22 @@ def record_symbol_evaluation(
         return evaluate(symbol)
 
     execution_mode = runner._effective_execution_mode()
-    provenance = resolve_provenance(execution_mode, getattr(context, "broker_environment", None))
+    provenance = run_provenance(
+        db,
+        getattr(runner, "run_id", None),
+        resolve_provenance(execution_mode, getattr(context, "broker_environment", None)),
+    )
 
     runner._symbol_evidence = getattr(runner, "_symbol_evidence", {})
     runner._symbol_evidence[symbol] = {}
+
+    # The decision id is allocated BEFORE the evaluation runs. Execution
+    # happens inside the evaluation, so the execution attempt, the fill and the
+    # position all need to name their decision before record_decision() gets
+    # the chance to finalize the row.
+    decision_id = new_decision_id()
+    runner._active_decision_ids = getattr(runner, "_active_decision_ids", {})
+    runner._active_decision_ids[str(symbol).upper()] = decision_id
 
     result: Mapping[str, Any] = {}
 
@@ -248,6 +293,7 @@ def record_symbol_evaluation(
     try:
         with record_decision(
             db,
+            decision_id=decision_id,
             bot_instance_id=context.bot_instance_id,
             symbol=symbol,
             user_id=getattr(context, "user_id", None),
@@ -282,6 +328,13 @@ def record_symbol_evaluation(
         # record_decision already finalized an EXECUTION_ERROR row; let the
         # runner's own handling in run_cycle take it from here.
         raise
+    finally:
+        # Break-even, trailing and stop moves change a position without
+        # producing a fill, so nothing in the fill path can observe them. One
+        # call here covers every code path that could have caused one.
+        from app.evidence.fill_bridge import sync_lifecycle_events
+
+        sync_lifecycle_events(runner, symbol)
 
     return result
 
