@@ -5115,6 +5115,27 @@ class PaperRunner:
                     higher_timeframe_candles=_htf_rows,
                 )
             kl = list(_snapshot.candles)
+
+            # Persist snapshot lineage only for a claimed candle. Building the
+            # snapshot happens every heartbeat (that is how the candle gate
+            # works), but writing a row every 10 seconds would be a write storm
+            # for data that is identical between evaluations.
+            if _evaluate_entry and self.context is not None:
+                try:
+                    from app.evidence.runner_bridge import resolve_provenance
+                    from app.evidence.writers import record_market_snapshot
+
+                    record_market_snapshot(
+                        self.db, _snapshot,
+                        bot_instance_id=self.context.bot_instance_id,
+                        provenance=resolve_provenance(
+                            self._effective_execution_mode(),
+                            getattr(self.context, "broker_environment", None),
+                        ),
+                    )
+                except Exception as _ms_exc:
+                    logger.error("[EVIDENCE] %s: snapshot persist failed: %s", symbol, _ms_exc)
+
             try:
                 _last_row = _snapshot.candles[-1]
                 _open_ms = int(_last_row.get("openTime") or _last_row.get("open_time")) if isinstance(_last_row, dict) else int(_last_row[0])
