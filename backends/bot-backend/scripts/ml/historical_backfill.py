@@ -15,6 +15,12 @@ DESIGN:
   - Writes decision_traces via TraceRecorder (same path as live runner)
   - Writes trade_fills via record_fill() (same path as live runner)
 
+PROVENANCE (13.11):
+  This is NOT the production trading brain. It uses a standalone indicator
+  engine, so its output must never be mistaken for evidence the live bot
+  produced. Every fill it writes is stamped LEGACY_BACKFILL and is therefore
+  excluded from organic datasets and readiness metrics by default.
+
 USAGE:
   python scripts/ml/historical_backfill.py [--days 90] [--db auto] [--dry-run]
 """

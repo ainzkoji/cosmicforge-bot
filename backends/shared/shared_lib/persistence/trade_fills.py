@@ -207,6 +207,7 @@ def record_fill(
     slippage_estimated: Optional[bool] = None,
     fill_type: Optional[str] = None,
     remaining_qty: Optional[float] = None,
+    provenance: Optional[str] = None,
 ) -> None:
     if realized_pnl is None and pnl is not None:
         realized_pnl = pnl
@@ -387,6 +388,20 @@ def record_fill(
                 float(remaining_qty) if remaining_qty is not None else None,
             ),
         )
+
+        # Provenance is stamped as a follow-up UPDATE rather than being threaded
+        # through the positional INSERT above: that statement carries 63
+        # placeholders in a hand-maintained order, and adding a 64th is a
+        # needless chance to misalign a column. Same connection, same
+        # transaction.
+        if provenance:
+            try:
+                conn.execute(
+                    "UPDATE trade_fills SET provenance=? WHERE id=last_insert_rowid()",
+                    (str(provenance),),
+                )
+            except Exception as exc:  # column missing on a very old database
+                logger.debug("provenance not stamped on fill: %s", exc)
 
     
     

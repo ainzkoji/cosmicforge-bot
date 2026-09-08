@@ -96,10 +96,16 @@ def _rebuild_news_narratives_table(conn) -> None:
     conn.execute("ALTER TABLE news_narratives_new RENAME TO news_narratives")
 
 
+from shared_lib.persistence.fill_provenance import (  # noqa: E402
+    ensure_fill_provenance_column,
+)
+
+
 def migrate(db_path: str | DB = None):
     db = db_path if isinstance(db_path, DB) else DB(path=db_path)
     ensure_tradingview_schema(db)
     ensure_signals_schema(db)
+    ensure_fill_provenance_column(db)
     with db.connect() as conn:
         # 1) Ensure table exists (pure SQL only)
         conn.execute(
