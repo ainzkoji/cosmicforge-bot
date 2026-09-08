@@ -35,12 +35,19 @@ RUNNER_HEARTBEAT_STALE = "RUNNER_HEARTBEAT_STALE"
 RUNNER_INITIALIZATION_FAILED = "RUNNER_INITIALIZATION_FAILED"
 CANONICAL_EVIDENCE_WRITE_FAILED = "CANONICAL_EVIDENCE_WRITE_FAILED"
 RUNTIME_OWNERSHIP_LOST = "RUNTIME_OWNERSHIP_LOST"
+RUNNER_RECOVERY_FAILED = "RUNNER_RECOVERY_FAILED"
 
 RUNTIME_FAULT_REASONS = frozenset({
     STRATEGY_CLOCK_STALLED, MARKET_DATA_STALE, MARKET_DATA_UNAVAILABLE,
     RUNNER_HEARTBEAT_STALE, RUNNER_INITIALIZATION_FAILED,
     CANONICAL_EVIDENCE_WRITE_FAILED, RUNTIME_OWNERSHIP_LOST,
+    RUNNER_RECOVERY_FAILED,
 })
+
+#: Recovery tiers, in the order §7 requires them to be attempted.
+RECOVERY_TIER_SOFT_REFRESH = "SOFT_REFRESH"
+RECOVERY_TIER_RUNNER_REBUILD = "RUNNER_REBUILD"
+RECOVERY_TIERS = (RECOVERY_TIER_SOFT_REFRESH, RECOVERY_TIER_RUNNER_REBUILD)
 
 HEALTHY = "HEALTHY"
 DEGRADED = "DEGRADED"
@@ -183,6 +190,11 @@ class RuntimeWatchdog:
             "policy_hash": None,
             "last_execution_attempt_at": None,
             "last_error": None,
+            "recovery_attempts": 0,
+            "last_recovery_tier": None,
+            "last_recovery_at": None,
+            "recovery_failed_at": None,
+            "recovery_failure_message": None,
             "clocks": {},
         })
 
@@ -226,12 +238,76 @@ class RuntimeWatchdog:
             clock.last_decision_at = _now().isoformat()
             clock.last_decision_reason = reason
             clock.behind_iterations = 0
+            bot = self._bot(bot_id)
+            bot["recovery_attempts"] = 0
+            bot["recovery_failed_at"] = None
+            bot["recovery_failure_message"] = None
+
+    def seed_evaluated_candle(
+        self, bot_id: str, symbol: str, timeframe: str, *, closed_candle: int | None,
+    ) -> None:
+        """Restore the last-evaluated marker after a process restart.
+
+        A fresh process has an empty in-memory clock, but the candle marker is
+        persisted. Without seeding it, the watchdog sees
+        ``latest_available > last_evaluated (None)`` and reports
+        STRATEGY_CLOCK_STALLED for a bot that is in fact perfectly up to date --
+        a false positive observed on the first supervised restart.
+
+        Unlike :meth:`candle_evaluated` this does NOT reset the stall counter or
+        clear recovery state: nothing was evaluated, we merely learned what the
+        previous process had already done.
+        """
+        if closed_candle is None:
+            return
+        with self._lock:
+            clock = self._clock(bot_id, symbol, timeframe)
+            if clock.last_evaluated_closed_candle is None:
+                clock.last_evaluated_closed_candle = int(closed_candle)
 
     def observe_clock(self, bot_id: str, symbol: str, timeframe: str) -> None:
         """Called once per iteration to age the stall counter."""
         with self._lock:
             clock = self._clock(bot_id, symbol, timeframe)
             clock.behind_iterations = clock.behind_iterations + 1 if clock.is_behind else 0
+
+    # ── Recovery bookkeeping (§7) ───────────────────────────────────────────
+
+    def next_recovery_tier(self, bot_id: str) -> str | None:
+        """Which recovery tier to attempt next, or None once both are spent.
+
+        §7 requires the cheap remedy first: refresh the bot's market/policy
+        state. Only if that does not restore the clock is the runner rebuilt.
+        Once both tiers are exhausted the fault is escalated rather than
+        retried forever -- a thrashing rebuild loop is itself an outage.
+        """
+        with self._lock:
+            attempts = self._bot(bot_id)["recovery_attempts"]
+        if attempts >= len(RECOVERY_TIERS):
+            return None
+        return RECOVERY_TIERS[attempts]
+
+    def recovery_attempted(self, bot_id: str, tier: str) -> None:
+        with self._lock:
+            bot = self._bot(bot_id)
+            bot["recovery_attempts"] += 1
+            bot["last_recovery_tier"] = tier
+            bot["last_recovery_at"] = _now().isoformat()
+
+    def recovery_failed(self, bot_id: str, message: str) -> None:
+        """Both tiers exhausted and the clock is still not advancing."""
+        with self._lock:
+            bot = self._bot(bot_id)
+            bot["recovery_failed_at"] = _now().isoformat()
+            bot["recovery_failure_message"] = str(message)[:300]
+
+    def recovery_succeeded(self, bot_id: str) -> None:
+        """The clock advanced again: clear the escalation, keep the history."""
+        with self._lock:
+            bot = self._bot(bot_id)
+            bot["recovery_attempts"] = 0
+            bot["recovery_failed_at"] = None
+            bot["recovery_failure_message"] = None
 
     def execution_attempted(self, bot_id: str) -> None:
         with self._lock:
@@ -263,9 +339,14 @@ class RuntimeWatchdog:
             clocks = list(bot["clocks"].values()) if bot else []
             init_status = bot.get("runner_initialization_status") if bot else None
             runner_present = bot.get("runner_present") if bot else False
+            recovery_failed_at = bot.get("recovery_failed_at") if bot else None
 
         if bot is None:
             return DEGRADED, RUNNER_HEARTBEAT_STALE
+        if recovery_failed_at:
+            # Automatic recovery is spent. Reporting the original stall here
+            # would suggest the runtime is still trying to fix itself.
+            return ERROR, RUNNER_RECOVERY_FAILED
         if init_status == "FAILED_INITIALIZATION" or not runner_present:
             return ERROR, RUNNER_INITIALIZATION_FAILED
 

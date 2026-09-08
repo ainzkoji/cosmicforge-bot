@@ -634,3 +634,56 @@ def test_the_start_script_forces_utf8_and_records_the_pid():
     source = _script()
     assert "PYTHONUTF8" in source
     assert "runtime.pid" in source
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# Restart must not look like a stall
+# ══════════════════════════════════════════════════════════════════════════
+
+
+def test_a_restarted_process_is_not_mistaken_for_a_stalled_one(watchdog):
+    """Observed on the first supervised restart.
+
+    A fresh process has an empty in-memory clock while the candle marker is
+    persisted. Without seeding, latest_available > last_evaluated (None) made a
+    perfectly up-to-date bot report STRATEGY_CLOCK_STALLED.
+    """
+    watchdog.bot_cycle("bot1")
+    watchdog.market_data("bot1", "BTCUSDT", "15m", latest_closed_candle=5000)
+
+    # Previous process already evaluated 5000; this one learns that from the DB.
+    watchdog.seed_evaluated_candle("bot1", "BTCUSDT", "15m", closed_candle=5000)
+    for _ in range(STALL_ITERATION_THRESHOLD + 2):
+        watchdog.observe_clock("bot1", "BTCUSDT", "15m")
+
+    assert watchdog.bot_health("bot1") == (HEALTHY, None)
+
+
+def test_seeding_does_not_mask_a_genuine_stall(watchdog):
+    """Seeding an OLD marker must still leave a newer candle looking behind."""
+    watchdog.bot_cycle("bot1")
+    watchdog.seed_evaluated_candle("bot1", "BTCUSDT", "15m", closed_candle=5000)
+    watchdog.market_data("bot1", "BTCUSDT", "15m", latest_closed_candle=5000 + TF_MS)
+
+    for _ in range(STALL_ITERATION_THRESHOLD):
+        watchdog.observe_clock("bot1", "BTCUSDT", "15m")
+
+    assert watchdog.bot_health("bot1")[1] == STRATEGY_CLOCK_STALLED
+
+
+def test_seeding_never_overwrites_a_real_evaluation(watchdog):
+    watchdog.bot_cycle("bot1")
+    watchdog.candle_evaluated("bot1", "BTCUSDT", "15m", closed_candle=9000)
+    watchdog.seed_evaluated_candle("bot1", "BTCUSDT", "15m", closed_candle=1000)
+
+    clock = watchdog.snapshot()["bots"]["bot1"]["symbols"]["BTCUSDT:15m"]
+    assert clock["last_evaluated_closed_candle_at"] is not None
+    assert watchdog._clock("bot1", "BTCUSDT", "15m").last_evaluated_closed_candle == 9000
+
+
+def test_the_runner_seeds_the_marker_when_a_candle_was_already_claimed():
+    from app.runner.runner import PaperRunner
+
+    source = inspect.getsource(PaperRunner._step_symbol_evaluate)
+    assert "seed_evaluated_candle" in source
+    assert "last_evaluated_candle" in source

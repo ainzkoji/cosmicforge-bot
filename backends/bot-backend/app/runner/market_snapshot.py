@@ -135,6 +135,24 @@ class SnapshotMarketClient:
         return getattr(self._delegate, name)
 
 
+def last_evaluated_candle(db: Any, *, bot_instance_id: str, symbol: str, timeframe: str) -> int | None:
+    """The persisted last-evaluated candle, or None if this pair is new.
+
+    Used to rehydrate the runtime watchdog after a restart so an up-to-date bot
+    is not mistaken for a stalled one.
+    """
+    try:
+        with db.connect() as conn:
+            row = conn.execute(
+                """SELECT last_closed_candle_time FROM bot_candle_evaluations
+                   WHERE bot_instance_id=? AND symbol=? AND timeframe=?""",
+                (bot_instance_id, symbol.upper(), timeframe),
+            ).fetchone()
+        return int(row[0]) if row else None
+    except Exception:
+        return None
+
+
 def claim_candle(db: Any, *, bot_instance_id: str, symbol: str, timeframe: str, close_time: int) -> bool:
     """Atomically claim a closed candle. False means it was already evaluated."""
     with db.connect() as conn:

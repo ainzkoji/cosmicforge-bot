@@ -5171,6 +5171,18 @@ class PaperRunner:
                         closed_candle=_snapshot.latest_closed_candle_time,
                     )
                 else:
+                    # The candle was already claimed -- possibly by a previous
+                    # process. Seed the marker so a restarted runtime is not
+                    # mistaken for a stalled one, then age the stall counter.
+                    from app.runner.market_snapshot import last_evaluated_candle
+
+                    _wd.seed_evaluated_candle(
+                        _bot_candle_id, symbol, self.interval,
+                        closed_candle=last_evaluated_candle(
+                            self.db, bot_instance_id=_bot_candle_id,
+                            symbol=symbol, timeframe=self.interval,
+                        ),
+                    )
                     _wd.observe_clock(_bot_candle_id, symbol, self.interval)
             except Exception:
                 pass
