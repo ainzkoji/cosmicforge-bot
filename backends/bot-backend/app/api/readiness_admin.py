@@ -81,3 +81,113 @@ def confirm_sections(body: SectionsConfirmationRequest, admin_id: str = Depends(
         db=DB(), confirmed_by=admin_id, source_commit_sha=body.source_commit_sha,
         release_ref=body.release_ref, evidence_reference=body.evidence_reference,
     )
+
+
+# ── Phase 10: controlled-beta state machine (admin only) ─────────────────────
+
+
+class SectionConfirmationRequest(BaseModel):
+    section: str = Field(pattern="^[A-E]$")
+    policy_hash: str = Field(min_length=8)
+    evidence_reference: str = Field(min_length=3)
+    code_revision: str | None = None
+    notes: str | None = None
+
+
+class ControlledBetaApprovalRequest(BaseModel):
+    policy_hash: str = Field(min_length=8)
+    reviewer_role: str = Field(min_length=3)
+    evidence_snapshot: dict = Field(default_factory=dict)
+    code_revision: str | None = None
+    notes: str | None = None
+
+
+@router.get("/trading/readiness/{bot_id}/state")
+def get_controlled_beta_state(bot_id: str, admin: dict = Depends(require_admin)):
+    """Current review state plus which Section A-E confirmations are outstanding."""
+    from app.product_safety.controlled_beta import get_state, missing_sections
+
+    db = DB()
+    policy_hash = _current_policy_hash(db, bot_id)
+    state = get_state(db, bot_id)
+    return {
+        "bot_instance_id": bot_id,
+        "state": state.state,
+        "policy_hash": policy_hash,
+        "approval_policy_hash": state.policy_hash,
+        "policy_stale": bool(state.policy_hash and state.policy_hash != policy_hash),
+        "missing_sections": missing_sections(db, bot_id, policy_hash),
+        "updated_at": state.updated_at,
+        "updated_by": state.updated_by,
+        "reason": state.reason,
+    }
+
+
+@router.post("/trading/readiness/{bot_id}/sections")
+def confirm_readiness_section(
+    bot_id: str, body: SectionConfirmationRequest, admin: dict = Depends(require_admin),
+):
+    """Confirm one deployment section. There is no blanket A-E flag."""
+    from app.product_safety.controlled_beta import ReadinessTransitionError, confirm_section
+
+    db = DB()
+    current = _current_policy_hash(db, bot_id)
+    if body.policy_hash != current:
+        raise HTTPException(
+            status_code=409,
+            detail={"reason": "POLICY_HASH_MISMATCH", "current_policy_hash": current},
+        )
+    try:
+        confirmation_id = confirm_section(
+            db, bot_instance_id=bot_id, section=body.section,
+            confirmed_by=str(admin.get("id") or admin.get("sub") or "admin"),
+            evidence_reference=body.evidence_reference, policy_hash=body.policy_hash,
+            code_revision=body.code_revision, notes=body.notes,
+        )
+    except ReadinessTransitionError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+    return {"confirmation_id": confirmation_id, "section": body.section}
+
+
+@router.post("/trading/readiness/{bot_id}/approve")
+def approve_controlled_beta_endpoint(
+    bot_id: str, body: ControlledBetaApprovalRequest, admin: dict = Depends(require_admin),
+):
+    """Explicit admin approval for controlled beta. Never automatic."""
+    from app.product_safety.controlled_beta import (
+        ReadinessTransitionError, approve_controlled_beta,
+    )
+
+    db = DB()
+    current = _current_policy_hash(db, bot_id)
+    if body.policy_hash != current:
+        raise HTTPException(
+            status_code=409,
+            detail={"reason": "POLICY_HASH_MISMATCH", "current_policy_hash": current},
+        )
+    try:
+        return approve_controlled_beta(
+            db, bot_instance_id=bot_id,
+            reviewer_user_id=str(admin.get("id") or admin.get("sub") or "admin"),
+            reviewer_role=body.reviewer_role, policy_hash=body.policy_hash,
+            evidence_snapshot=body.evidence_snapshot,
+            code_revision=body.code_revision, notes=body.notes,
+        )
+    except ReadinessTransitionError as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
+
+
+@router.post("/trading/readiness/{bot_id}/revoke")
+def revoke_controlled_beta_endpoint(
+    bot_id: str, body: RevocationRequest, admin: dict = Depends(require_admin),
+):
+    """Explicit admin revocation. Takes effect immediately."""
+    from app.product_safety.controlled_beta import revoke_controlled_beta
+
+    db = DB()
+    revoked = revoke_controlled_beta(
+        db, bot_instance_id=bot_id,
+        revoked_by=str(admin.get("id") or admin.get("sub") or "admin"),
+        reason=body.reason,
+    )
+    return {"bot_instance_id": bot_id, "revoked": revoked, "state": "NOT_READY"}

@@ -15,7 +15,30 @@ class Audit:
     Additionally mirrors events to logs/live_audit.jsonl so /runner/audit/tail works.
     """
 
-    def __init__(self, db: DB, jsonl_path: str = "logs/live_audit.jsonl"):
+    #: Overridable so tests never append to the organic runtime audit log.
+    #: Phase 11 §37: test fixtures polluted logs/live_audit.jsonl with
+    #: AUTOPILOT_DEPLOYED events for fixture users, which is evidence
+    #: contamination even though it never reached the database.
+    DEFAULT_JSONL_PATH = "logs/live_audit.jsonl"
+
+    @staticmethod
+    def _resolve_jsonl_path(explicit: str | None = None) -> str:
+        import os
+
+        if explicit is not None:
+            return explicit
+        override = os.environ.get("COSMICFORGE_AUDIT_JSONL")
+        if override:
+            return override
+        if os.environ.get("COSMICFORGE_TEST_MODE") == "1":
+            # Isolated, and cleaned up with the rest of the test scratch space.
+            import tempfile
+
+            return str(Path(tempfile.gettempdir()) / "cosmicforge_test_audit.jsonl")
+        return Audit.DEFAULT_JSONL_PATH
+
+    def __init__(self, db: DB, jsonl_path: str | None = None):
+        jsonl_path = self._resolve_jsonl_path(jsonl_path)
         self.db = db
         self.jsonl_path = Path(jsonl_path)
 

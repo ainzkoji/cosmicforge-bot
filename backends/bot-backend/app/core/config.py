@@ -504,6 +504,11 @@ class Settings(BaseSettings):
 
     # Database
     DATABASE_URL: str = "sqlite:///../bot.db"
+    # Phase 11 §21: the database's ROLE is configured, never guessed from its
+    # filename. A stale OneDrive copy sitting next to the active file must
+    # never be promoted just because it is newer or larger.
+    DATABASE_ROLE: str = "development"  # development | paper | research | live
+
     
     class Config:
         env_file = ".env"

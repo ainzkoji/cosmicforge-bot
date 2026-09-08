@@ -2684,6 +2684,13 @@ def migrate(db_path: str | DB = None):
             "ON decision_logs(config_id, symbol)"
         )
 
+    # 48) Canonical trading-evidence schema (Phases 9 & 11).
+    # Additive only: creates the runtime_session -> bot_run -> trading_cycle ->
+    # trading_decision -> execution_attempt -> position lineage plus the
+    # append-only event streams. Never drops or rewrites legacy evidence.
+    from shared_lib.persistence.evidence_schema import ensure_evidence_schema
+    ensure_evidence_schema(db)
+
     # 47) Event/News automatic runtime mode controller.
     # Keep this after the main migration connection closes so the helper can
     # self-heal temporary test databases through the normal DB context manager.

@@ -168,6 +168,36 @@ except Exception as _baseline_exc:  # never block startup on diagnostics
     RUNTIME_BASELINE = {"error": str(_baseline_exc)}
     print(f"[RUNTIME_BASELINE_WARNING] baseline_failed={_baseline_exc}")
 
+# Phase 11 §22/§25: open a canonical runtime session so every decision, run and
+# fill this process produces can be traced back to a specific interpreter,
+# revision and database file. Also register the database's configured ROLE --
+# the role is never inferred from a filename, and a stale copy sitting beside
+# the active file is labelled rather than silently promoted.
+RUNTIME_SESSION_ID = None
+try:
+    from app.evidence.writers import open_runtime_session
+    from app.ops.database_registry import register_database_candidates
+
+    _db_role = str(getattr(settings, "DATABASE_ROLE", "development"))
+    RUNTIME_SESSION_ID = open_runtime_session(
+        DB(),
+        database_role=_db_role,
+        database_path=DB().path,
+        schema_version=RUNTIME_BASELINE.get("db_schema_version"),
+        process_execution_mode=RUNTIME_BASELINE.get("execution_mode"),
+        environment_name=str(getattr(settings, "ENVIRONMENT", "unknown")),
+        code_revision=RUNTIME_BASELINE.get("code_revision"),
+        branch=RUNTIME_BASELINE.get("branch"),
+        working_tree_dirty=RUNTIME_BASELINE.get("working_tree_dirty"),
+    )
+    print(
+        f"[RUNTIME_SESSION] id={RUNTIME_SESSION_ID} database_role={_db_role} "
+        f"path={DB().path} execution_mode={RUNTIME_BASELINE.get('execution_mode')}"
+    )
+    register_database_candidates(DB(), active_path=DB().path, database_role=_db_role)
+except Exception as _session_exc:
+    print(f"[RUNTIME_SESSION_WARNING] session_open_failed={_session_exc}")
+
 # Configure logging to suppress noisy shutdown errors
 from app.core.logging_config import configure_shutdown_logging
 
@@ -217,6 +247,12 @@ app.include_router(auto_pilot_router, prefix="/api/v1/auto-pilot")
 
 from app.api.readiness_admin import router as readiness_admin_router
 app.include_router(readiness_admin_router)
+
+# Phase 9 §10: operator diagnostics over canonical trading evidence.
+# Answers "why did this bot not trade in this window?" from the canonical
+# tables rather than by correlating log files. Admin-only; exposes no secrets.
+from app.api.trading_evidence import router as trading_evidence_router
+app.include_router(trading_evidence_router)
 
 # Register Shadow Trading API router
 from app.api.shadow_routes import router as shadow_router
