@@ -131,6 +131,45 @@ rehydrates them. A test asserts the recovery path contains no
 `close_position`, `flatten` or `activate_kill_switch` — **a rebuild is never an
 exit signal.** Only policy-defined kill-switch behaviour may flatten.
 
+### Recovery is tiered, and it stops
+
+The first implementation rebuilt on every detected stall, with no ceiling. That
+is visible in the logs of the 19:17 process:
+
+```
+$ grep -c "STRATEGY_CLOCK_STALLED - evicting runner for rebuild" \
+        logs/runtime/runtime-20260908-191701.log.err
+11
+```
+
+Eleven rebuilds inside one short-lived process, each reloading 735 instrument
+specs. `seed_evaluated_candle()` removed *that* trigger; tiering removes the
+loop itself, so a stall arriving from any other cause cannot become a rebuild
+storm.
+
+| Tier | Action | Cost |
+| --- | --- | --- |
+| 1 `SOFT_REFRESH` | reload the candle marker from `bot_candle_evaluations`, clear a latched market-data error, re-read instrument specs | in place, no rebuild |
+| 2 `RUNNER_REBUILD` | evict; the replacement rehydrates from persisted state | one runner construction |
+| 3 `RUNNER_RECOVERY_FAILED` | escalate once, with an audit event and an operator action | stops retrying |
+
+An advancing clock clears the escalation — `candle_evaluated()` resets the tier
+counter — so a bot that recovers does not stay latched in `ERROR`.
+
+Two deliberate details:
+
+* `clear_market_data_error()` does **not** touch `last_market_data_at`.
+  `MARKET_DATA_STALE` is measured from that timestamp; refreshing it during
+  recovery would let the runtime hide a feed that has stopped producing.
+* `sync_evaluated_marker()` is not `seed_evaluated_candle()`. Seeding fills an
+  *unknown* marker without claiming an evaluation. The resync is a deliberate
+  tier-1 correction of a marker that has *drifted*, and does reset the stall
+  counter so the refresh can be judged on its own.
+
+`RUNNER_RECOVERY_FAILED` joins the §6 taxonomy and outranks the stall that
+caused it: reporting `STRATEGY_CLOCK_STALLED` after recovery is spent would
+suggest the runtime is still trying to fix itself.
+
 ---
 
 ## §9 — Market data vs. no new candle
