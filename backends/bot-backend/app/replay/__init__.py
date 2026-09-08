@@ -14,14 +14,40 @@ convention, because look-ahead is the one bug that makes a backtest confidently
 wrong instead of merely inaccurate.
 """
 
+from app.replay.cost_model import BINANCE_FUTURES_STANDARD, CostModel
+from app.replay.fill_models import (
+    Fill,
+    FillModel,
+    IntrabarPolicy,
+    IntrabarUnresolved,
+    fill_entry,
+    fill_limit,
+    fill_stop,
+    resolve_exit,
+)
 from app.replay.historical_provider import (
     HistoricalClock,
     HistoricalMarketDataProvider,
     ReplayDataError,
+    ReplayMarketClient,
 )
+from app.replay.identity import ReplayIdentity, dataset_hash
 
 __all__ = [
+    "BINANCE_FUTURES_STANDARD",
+    "CostModel",
+    "Fill",
+    "FillModel",
     "HistoricalClock",
     "HistoricalMarketDataProvider",
+    "IntrabarPolicy",
+    "IntrabarUnresolved",
     "ReplayDataError",
+    "ReplayIdentity",
+    "ReplayMarketClient",
+    "dataset_hash",
+    "fill_entry",
+    "fill_limit",
+    "fill_stop",
+    "resolve_exit",
 ]
