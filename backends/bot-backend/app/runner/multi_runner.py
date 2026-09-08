@@ -731,6 +731,23 @@ class MultiBotRunner:
                 
                 # F. Execute Cycle (PaperRunner logic)
                 # ✅ OFF-LOAD TO THREAD TO PREVENT EVENT LOOP BLOCKING
+                # Watchdog: this bot has a live, initialised runner and is
+                # about to cycle. Without this the health verdict would default
+                # to RUNNER_INITIALIZATION_FAILED even for a healthy bot.
+                try:
+                    from app.ops.runtime_watchdog import get_watchdog
+
+                    get_watchdog().bot_cycle(
+                        instance.id,
+                        run_id=getattr(runner, "run_id", None),
+                        policy_hash=effective_policy.policy_hash,
+                        runtime_session_id=getattr(runner, "runtime_session_id", None),
+                        runner_present=True,
+                        initialization_status=getattr(runner, "initialization_status", None),
+                    )
+                except Exception:
+                    pass
+
                 cycle_result = await asyncio.to_thread(runner.run_cycle)
                 
                 # ✅ Log cycle completion

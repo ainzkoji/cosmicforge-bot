@@ -52,22 +52,8 @@ New-Item -ItemType Directory -Force -Path $LogDir | Out-Null
 # ── 4. Verify the database path resolves ────────────────────────────────────
 Push-Location $BackendDir
 try {
-    $dbInfo = & $Python -c @'
-import json, os, sys
-sys.path.insert(0, os.getcwd())
-try:
-    from shared_lib.persistence.db import DB
-    from app.core.config import settings
-    p = DB().path
-    print(json.dumps({
-        "path": p,
-        "exists": os.path.exists(p),
-        "size": os.path.getsize(p) if os.path.exists(p) else 0,
-        "role": getattr(settings, "DATABASE_ROLE", "development"),
-    }))
-except Exception as exc:
-    print(json.dumps({"error": f"{type(exc).__name__}: {exc}"}))
-'@ 2>$null | Select-Object -Last 1
+    $Probe  = Join-Path $PSScriptRoot 'runtime_probe.py'
+    $dbInfo = & $Python $Probe database 2>$null | Select-Object -Last 1
 
     $db = $dbInfo | ConvertFrom-Json
     if ($db.error) { Fail "could not resolve database: $($db.error)" }
@@ -86,27 +72,7 @@ except Exception as exc:
     }
 
     # ── 6-7. Runtime ownership lease ────────────────────────────────────────
-    $leaseInfo = & $Python -c @'
-import json, os, sys
-sys.path.insert(0, os.getcwd())
-try:
-    from shared_lib.persistence.db import DB
-    from app.ops.runtime_ownership import RuntimeOwnership, current_owner
-    db = DB()
-    owner = current_owner(db, db.path)
-    if not owner:
-        print(json.dumps({"held": False}))
-    else:
-        probe = RuntimeOwnership(db, database_path=db.path)
-        stale = probe._is_stale(owner.get("heartbeat_at"), __import__("datetime").datetime.now(__import__("datetime").timezone.utc))
-        alive = RuntimeOwnership._pid_alive(int(owner.get("pid", -1)))
-        print(json.dumps({
-            "held": True, "pid": owner.get("pid"), "hostname": owner.get("hostname"),
-            "heartbeat_at": owner.get("heartbeat_at"), "stale": bool(stale), "pid_alive": bool(alive),
-        }))
-except Exception as exc:
-    print(json.dumps({"error": f"{type(exc).__name__}: {exc}"}))
-'@ 2>$null | Select-Object -Last 1
+    $leaseInfo = & $Python $Probe lease 2>$null | Select-Object -Last 1
 
     $lease = $leaseInfo | ConvertFrom-Json
     if ($lease.error) {
