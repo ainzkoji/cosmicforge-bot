@@ -1927,6 +1927,66 @@ class PaperRunner:
         }
 
     # âœ… ADD: Encapsulated cycle execution (for MultiBotRunner)
+    def _record_canonical_cycle(self, started_at: str) -> None:
+        """Persist one canonical trading_cycles row for this cycle.
+
+        Counts come from the canonical decisions written during the cycle, not
+        from in-memory tallies, so the summary and the detail can never
+        disagree.
+        """
+        if self.context is None:
+            return
+
+        from app.evidence.runner_bridge import resolve_provenance
+        from app.evidence.writers import record_trading_cycle
+
+        with self.db.connect() as conn:
+            rows = conn.execute(
+                """SELECT primary_reason, final_action, quality_result, risk_result,
+                          execution_feasibility_result
+                   FROM trading_decisions WHERE cycle_id=? AND bot_instance_id=?""",
+                (self.cycle_id, self.context.bot_instance_id),
+            ).fetchall()
+            attempts = conn.execute(
+                "SELECT COUNT(*) FROM execution_attempts WHERE cycle_id=?", (self.cycle_id,)
+            ).fetchone()[0]
+
+        reason_counts: dict[str, int] = {}
+        for row in rows:
+            reason = row["primary_reason"] or "UNKNOWN"
+            reason_counts[reason] = reason_counts.get(reason, 0) + 1
+
+        no_new_candle = reason_counts.get("NO_NEW_CANDLE", 0)
+        record_trading_cycle(self.db, {
+            "cycle_id": self.cycle_id,
+            "run_id": self.run_id,
+            "runtime_session_id": getattr(self, "runtime_session_id", None),
+            "bot_instance_id": self.context.bot_instance_id,
+            "policy_hash": getattr(self.context, "effective_policy_hash", None) or None,
+            "provenance": resolve_provenance(
+                self._effective_execution_mode(),
+                getattr(self.context, "broker_environment", None),
+            ),
+            "started_at": started_at,
+            "completed_at": datetime.now(timezone.utc).isoformat(),
+            "symbols_seen": len(rows),
+            "symbols_managed": len(
+                [s for s in self.state.values() if s.position in ("LONG", "SHORT")]
+            ),
+            "new_candle_evaluations": len(rows) - no_new_candle,
+            "no_new_candle_count": no_new_candle,
+            "no_opportunity_count": reason_counts.get("NO_OPPORTUNITY", 0),
+            "quality_rejection_count": sum(1 for r in rows if r["quality_result"] == "FAIL"),
+            "risk_rejection_count": sum(1 for r in rows if r["risk_result"] == "FAIL"),
+            "execution_rejection_count": sum(
+                1 for r in rows if r["execution_feasibility_result"] == "FAIL"
+            ),
+            "approved_count": sum(1 for r in rows if r["final_action"] == "APPROVED"),
+            "execution_attempt_count": int(attempts or 0),
+            "error_count": sum(1 for r in rows if r["final_action"] == "ERROR"),
+            "reason_counts": reason_counts,
+        })
+
     def run_cycle(self) -> Dict[str, Any]:
         """
         Execute one full cycle of trading for all symbols.
@@ -1943,6 +2003,7 @@ class PaperRunner:
             self.live_trades_this_cycle = 0
             self._closed_symbols_this_cycle.clear()
             self.cycle_id = str(uuid.uuid4())
+            _cycle_started_at = datetime.now(timezone.utc).isoformat()
             self._cycle_stats = _CycleStats()  # â”€â”€ Visibility: per-cycle aggregator
             
             # âœ… RECONCILE ON FIRST RUN (Exchange truth wins over DB)
@@ -2090,6 +2151,14 @@ class PaperRunner:
                 logger.info("[CYCLE_DECISION_SUMMARY] %s", json.dumps(_summary, sort_keys=True))
             except Exception as _summary_exc:
                 logger.error("[CYCLE_DECISION_SUMMARY] persistence failed: %s", _summary_exc)
+
+            # Canonical cycle summary (Phase 9 §9). Derived from the decisions
+            # this cycle actually wrote, so cycle health is queryable instead of
+            # reconstructed by parsing console output.
+            try:
+                self._record_canonical_cycle(_cycle_started_at)
+            except Exception as _canon_exc:
+                logger.error("[TRADING_CYCLE] canonical summary failed: %s", _canon_exc)
 
             return {
                 "status": "completed", 
@@ -3625,6 +3694,12 @@ class PaperRunner:
                     )
                 except Exception:
                     pass
+                try:
+                    _bucket = getattr(self, "_symbol_evidence", None)
+                    if _bucket is not None:
+                        _bucket.setdefault(symbol, {})["snapshot"] = market_snapshot
+                except Exception:
+                    pass
                 _cs = getattr(self, "_cycle_stats", None)
                 if _cs:
                     _cs.record_hold(symbol, 0.0, CycleReason.NO_NEW_CANDLE)
@@ -3718,6 +3793,23 @@ class PaperRunner:
                 adaptive_leverage_multiplier=a_state.leverage_multiplier,
             )
             
+            # Publish the decision evidence for the canonical recorder. The
+            # ensemble already built a TradingOpportunity and an
+            # EntryQualityDecision; keep the objects rather than re-deriving
+            # them from the flattened meta dict.
+            try:
+                _ens = getattr(self.strategy, "last_opportunity", None)
+                _eq = getattr(self.strategy, "last_entry_quality", None)
+                _bucket = getattr(self, "_symbol_evidence", None)
+                if _bucket is not None:
+                    _bucket.setdefault(symbol, {}).update({
+                        "snapshot": market_snapshot,
+                        "opportunity": _ens,
+                        "entry_quality": _eq,
+                    })
+            except Exception:
+                pass
+
             # Update logging variables from orchestrator result
             eval_decision = orch_res["decision"].upper()
             eval_reason = orch_res.get("reason", "unknown")
@@ -4872,6 +4964,20 @@ class PaperRunner:
         }
 
     def step_symbol(self, symbol: str) -> Dict[str, Any]:
+        """Evaluate one symbol and finalize exactly one canonical decision.
+
+        Every early return inside ``_step_symbol_evaluate`` — and every
+        exception it raises — passes through here, so the Phase 9 invariant
+        (one bot + one symbol + one evaluation = one finalized decision) holds
+        without each of the ~30 branches having to remember to record itself.
+        """
+        from app.evidence.runner_bridge import record_symbol_evaluation
+
+        return record_symbol_evaluation(
+            self, symbol, evaluate=self._step_symbol_evaluate,
+        )
+
+    def _step_symbol_evaluate(self, symbol: str) -> Dict[str, Any]:
         # âœ… START TRACE
         recorder = get_trace_recorder()
         trace_id = recorder.start_trace(

@@ -67,6 +67,55 @@ class MultiBotRunner:
         # Binance client or substitutes dummy credentials.
         logger.info("Instrument registry initialization deferred to resolved per-bot clients")
 
+    @staticmethod
+    def _runtime_session_id() -> str | None:
+        """The canonical runtime session this process opened at startup."""
+        try:
+            from app import main as _main
+
+            return getattr(_main, "RUNTIME_SESSION_ID", None)
+        except Exception:
+            return None
+
+    def _open_canonical_run(self, runner, instance, effective_policy) -> None:
+        """Register this runner's run in the canonical lineage.
+
+        Links runtime_session -> bot_run so every decision the runner writes can
+        be traced back to a specific process, revision and database file.
+        """
+        try:
+            from app.evidence.runner_bridge import resolve_provenance
+            from app.evidence.writers import open_bot_run, record_bot_lifecycle_event
+
+            run_id = getattr(runner, "run_id", None)
+            if not run_id:
+                return
+            open_bot_run(
+                self.db,
+                run_id=run_id,
+                bot_instance_id=instance.id,
+                runtime_session_id=self._runtime_session_id(),
+                user_id=instance.user_id,
+                policy_hash=effective_policy.policy_hash,
+                provenance=resolve_provenance(
+                    effective_policy.execution_mode, effective_policy.broker_environment
+                ),
+                execution_mode=effective_policy.execution_mode,
+                broker_environment=effective_policy.broker_environment,
+            )
+            record_bot_lifecycle_event(
+                self.db,
+                bot_instance_id=instance.id,
+                event_type="RUNNER_CREATED",
+                actor="MultiBotRunner",
+                reason="runner constructed for active bot",
+                previous_state=None,
+                new_state="RUNNING",
+                correlation_id=run_id,
+            )
+        except Exception as exc:
+            logger.error("[EVIDENCE] bot=%s canonical run registration failed: %s", instance.id, exc)
+
     def _evict_runner(self, bot_id: str, runner) -> None:
         """Stop and discard a cached runner whose policy no longer applies.
 
@@ -93,6 +142,17 @@ class MultiBotRunner:
             logger.error(
                 "[RUNNER_POLICY_CHANGE] bot=%s flush_before_evict_failed=%s", bot_id, exc
             )
+        try:
+            from app.evidence.writers import record_bot_lifecycle_event
+
+            record_bot_lifecycle_event(
+                self.db, bot_instance_id=bot_id, event_type="RUNNER_EVICTED",
+                actor="MultiBotRunner", reason="effective policy changed",
+                previous_state="RUNNING", new_state="EVICTED",
+                correlation_id=getattr(runner, "run_id", None),
+            )
+        except Exception as exc:
+            logger.error("[EVIDENCE] bot=%s eviction event failed: %s", bot_id, exc)
         self._runners.pop(bot_id, None)
 
     def _log_restored_lifecycle(self, bot_id: str, runner) -> None:
@@ -492,6 +552,8 @@ class MultiBotRunner:
                             details=init_exc.structured_detail(),
                         )
                         continue
+                    runner.runtime_session_id = self._runtime_session_id()
+                    self._open_canonical_run(runner, instance, effective_policy)
                     self._runners[instance.id] = runner
                     if policy_changed:
                         self._log_restored_lifecycle(instance.id, runner)
@@ -508,6 +570,7 @@ class MultiBotRunner:
                     runner.context = context
                     runner.effective_policy = effective_policy
                     runner.effective_policy_hash = effective_policy.policy_hash
+                    runner.runtime_session_id = self._runtime_session_id()
                     runner.client = client              # Runner-level client
                     runner.executor.client = client    # Executor-level client (was missing!)
                     runner.executor.paper_executor.client = client

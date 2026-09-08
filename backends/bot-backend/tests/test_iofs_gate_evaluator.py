@@ -246,7 +246,9 @@ class TestRunnerModes:
         assert result["mode"] == "enforce"
         assert result["blocked"] is True
 
-        source = inspect.getsource(PaperRunner.step_symbol)
+        # step_symbol is now a thin canonical-evidence wrapper; the
+        # evaluation body it delegates to is _step_symbol_evaluate.
+        source = inspect.getsource(PaperRunner._step_symbol_evaluate)
         assert source.index("_run_iofs_pre_ensemble") < source.index("if self.orchestrator")
 
     def test_enforce_is_downgraded_to_shadow_in_live_mode(self, monkeypatch):
