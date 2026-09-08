@@ -598,9 +598,23 @@ def test_the_start_script_never_uses_reload():
 
 
 def test_the_start_script_checks_the_lease_before_starting():
+    """The lease probe moved into runtime_probe.py (PowerShell 5.1 mangles
+    multi-line here-strings passed to `python -c`), so assert on the call."""
     source = _script()
-    assert "runtime_ownership" in source or "current_owner" in source
+    assert "runtime_probe.py" in source
+    assert "$Probe lease" in source
     assert "Refusing to start a duplicate canonical runner" in source
+
+    # And the probe itself must actually consult the ownership lease.
+    from pathlib import Path
+
+    probe = (Path(__file__).resolve().parents[3] / "scripts" / "runtime_probe.py").read_text(
+        encoding="utf-8"
+    )
+    assert "current_owner" in probe
+    assert "RuntimeOwnership" in probe
+    # It must load the backend .env explicitly, or it resolves the wrong DB.
+    assert "load_dotenv" in probe
 
 
 def test_the_start_script_uses_bounded_backoff():
