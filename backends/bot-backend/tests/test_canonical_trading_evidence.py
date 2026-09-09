@@ -208,6 +208,34 @@ def test_full_strategy_evidence_survives_into_the_decision(db):
     assert row["opportunity_id"] == opportunity.opportunity_id
 
 
+def _threshold_at(value: float):
+    """An EVALUATED threshold decision fixed at ``value``.
+
+    The quality engine no longer resolves a threshold, so evidence tests supply
+    the one the threshold engine would have produced.
+    """
+    from app.threshold.contracts import (
+        AdaptiveThresholdDecision,
+        ThresholdMode,
+        ThresholdStatus,
+    )
+
+    return AdaptiveThresholdDecision(
+        threshold_decision_id="thr_fixture",
+        bot_instance_id=BOT,
+        symbol="BTCUSDT",
+        timeframe="15m",
+        status=ThresholdStatus.EVALUATED,
+        threshold_engine_version="1.0.0",
+        threshold_mode=ThresholdMode.ADAPTIVE,
+        base_threshold=value,
+        raw_unclamped_threshold=value,
+        final_threshold=value,
+        min_threshold=0.0,
+        max_threshold=1.0,
+    )
+
+
 def test_entry_quality_evidence_survives_into_the_decision(db):
     from app.decision import TradingDecisionEngine
     from app.decision.opportunity import build_opportunity
@@ -217,7 +245,7 @@ def test_entry_quality_evidence_survives_into_the_decision(db):
         symbol="BTCUSDT", timeframe="15m", market_snapshot_id="ms1", side="BUY",
         raw_confidence=0.40, consensus=0.40, buy_score=0.40, sell_score=0.0,
     )
-    quality = engine.evaluate(opportunity, base_threshold=0.55)
+    quality = engine.evaluate(opportunity, threshold_decision=_threshold_at(0.55))
 
     with record_decision(db, bot_instance_id=BOT, symbol="BTCUSDT") as decision:
         decision.set_opportunity(opportunity).set_entry_quality(quality)

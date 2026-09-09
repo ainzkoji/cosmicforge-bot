@@ -7,12 +7,14 @@ Architecture:
   2. Activation matrix  → filter strategies per regime
   3. Parallel execution → run only activated strategies
   4. Regime multipliers → adjust effective weights before aggregation
-  5. Dynamic threshold  → regime-aware confidence gate via DynamicThresholdCalculator
+  5. Threshold engine   → AdaptiveEntryThresholdEngine resolves the entry bar
   6. Return signal      → with full observability meta
 
 Single source of truth:
   - RegimeClassifier.classify_stable() is the ONLY regime authority.
-  - DynamicThresholdCalculator.get_threshold_for_regime() is the ONLY threshold authority.
+  - AdaptiveEntryThresholdEngine is the ONLY entry-threshold authority.
+  - DynamicThresholdCalculator is RESEARCH_ONLY: its rolling window is still
+    fed, but it no longer resolves the threshold.
   - All 7 sub-strategies are untouched; activation is external filtering.
 
 Failure policy:
@@ -50,10 +52,29 @@ from app.strategy.bollinger_reversion import BollingerReversionStrategy
 # Regime authority
 from app.strategy.regime import RegimeClassifier, MarketRegime
 
-# Dynamic threshold authority
+# Dynamic percentile calculator -- RESEARCH_ONLY, no longer a threshold authority
 from app.risk.dynamic_threshold import get_dynamic_threshold_calculator
+from app.threshold.contracts import (
+    AdaptiveThresholdInput,
+    HTFContext,
+    MarketQualityContext,
+    RegimeContext,
+    VolatilityContext,
+    experts_from_votes,
+)
+from app.threshold.engine import AdaptiveEntryThresholdEngine
+from app.threshold.runtime import (
+    get_performance_calibrator,
+    get_threshold_policy,
+    get_threshold_state_store,
+)
 
 logger = logging.getLogger(__name__)
+
+
+def _fmt_threshold(value: Optional[float]) -> str:
+    """Format a threshold for logs. ``None`` is printed as such, never as 0.000."""
+    return "not-evaluated" if value is None else f"{float(value):.3f}"
 
 
 # =============================================================================
@@ -145,16 +166,17 @@ _REGIME_SPIKE_MULTIPLIERS: Dict[str, float] = {
     description=(
         "Regime-gated ensemble combining up to 7 strategies with weighted voting. "
         "RegimeClassifier is the sole regime authority. "
-        "DynamicThresholdCalculator is the sole confidence threshold authority."
+        "AdaptiveEntryThresholdEngine is the sole entry-threshold authority."
     ),
     params_schema={
         "type": "object",
         "properties": {
+            # NOTE: consensus_threshold is deliberately absent. It was advertised
+            # here as a tunable and was never compared against anything. A
+            # setting an operator can see and set, which cannot affect
+            # behaviour, is the defect this rebuild removes.
             "min_confidence": {
                 "type": "number", "minimum": 0.0, "maximum": 1.0, "default": 0.20,
-            },
-            "consensus_threshold": {
-                "type": "number", "minimum": 0.0, "maximum": 1.0, "default": 0.35,
             },
             "interval": {"type": "string", "default": "15m"},
             "klines_limit": {"type": "integer", "default": 250},
@@ -172,7 +194,7 @@ class MasterEnsembleStrategy(Strategy):
     3. Activation matrix → frozenset of active strategy names.
     4. Parallel execution of active strategies only.
     5. Aggregate votes with regime+performance weight multipliers.
-    6. DynamicThresholdCalculator.get_threshold_for_regime() → confidence gate.
+    6. AdaptiveEntryThresholdEngine.evaluate() → the one entry threshold.
     7. Return SignalResult with full observability meta.
     """
 
@@ -191,18 +213,31 @@ class MasterEnsembleStrategy(Strategy):
         self.client = client
         self.interval = interval
         self.min_confidence = float(min_confidence)
+        # Kept for signature compatibility with stored strategy params. It is
+        # NOT an authority: expert agreement is one bounded input to
+        # AdaptiveEntryThresholdEngine, not a separate gate. The old default of
+        # 0.40 was stored here and never compared against anything.
         self.consensus_threshold = float(consensus_threshold)
         self.klines_limit = int(klines_limit)
         self.htf_bias_enabled = bool(htf_bias_enabled)
 
-        # The single entry-quality authority. The ensemble aggregates market
-        # evidence; this decides whether that evidence clears the bar.
-        self._decision_engine = TradingDecisionEngine(
-            consensus_threshold=float(consensus_threshold),
+        # The single entry-quality authority: it performs the one comparison.
+        # It does not resolve a threshold -- that belongs to the threshold
+        # engine below, and to nothing else.
+        self._decision_engine = TradingDecisionEngine()
+
+        # The single entry-threshold authority.
+        self._threshold_engine = AdaptiveEntryThresholdEngine(
+            state_store=get_threshold_state_store(),
+            performance_calibrator=get_performance_calibrator(),
         )
+
         #: Evidence from the most recent evaluation, for diagnostics.
+        #: Reset at the top of every get_signal() call -- see _reset_evaluation_state.
         self.last_opportunity = None
         self.last_entry_quality = None
+        self.last_threshold_decision = None
+        self.last_expert_evidence: tuple = ()
 
         # Regime authority — one instance per ensemble, per-symbol hysteresis
         # via classify_stable()'s internal _last_regime dict (one per symbol call)
@@ -210,7 +245,9 @@ class MasterEnsembleStrategy(Strategy):
         # classifier per symbol lazily so hysteresis is correctly separated.
         self._regime_classifiers: Dict[str, RegimeClassifier] = {}
 
-        # Dynamic threshold authority — module-level singleton
+        # Dynamic percentile calculator — RESEARCH_ONLY. Its rolling window is
+        # still recorded so research keeps a continuous series; it does not
+        # resolve the entry threshold.
         self._threshold_calc = get_dynamic_threshold_calculator()
 
         # Sub-strategies — all 7, always instantiated
@@ -243,6 +280,101 @@ class MasterEnsembleStrategy(Strategy):
                     f"[ENSEMBLE] Failed to initialise {strat_name}: {exc}. "
                     "Strategy excluded permanently."
                 )
+
+    # -------------------------------------------------------------------------
+    # Threshold-engine inputs
+    # -------------------------------------------------------------------------
+
+    def _reset_evaluation_state(self) -> None:
+        """Drop every piece of per-evaluation evidence.
+
+        Called first thing in ``get_signal``. Previously these attributes were
+        only ever assigned -- set once in ``__init__`` and then written at
+        Step 7 -- so any evaluation that returned earlier (no new candle, a
+        blocked regime, no votes, an error) left the *previous* symbol's
+        opportunity in place for the evidence layer to read and record against
+        this candle.
+        """
+        self.last_opportunity = None
+        self.last_entry_quality = None
+        self.last_threshold_decision = None
+        self.last_expert_evidence = ()
+
+    @staticmethod
+    def _volatility_context(regime_result, klines) -> VolatilityContext:
+        """Normalised volatility for the threshold engine.
+
+        ATR is converted to a percentile against the recent distribution of the
+        same measure, so the value means the same thing on BTC as it would on
+        any other instrument. A raw ATR would not.
+        """
+        atr_pct = float(getattr(regime_result, "atr_percent", 0.0) or 0.0)
+        percentile_value: float | None = None
+        try:
+            ranges = []
+            for k in klines[-120:]:
+                high, low, close = float(k[2]), float(k[3]), float(k[4])
+                if close > 0:
+                    ranges.append((high - low) / close * 100.0)
+            if len(ranges) >= 20:
+                below = sum(1 for r in ranges if r <= atr_pct)
+                percentile_value = below / len(ranges)
+        except (IndexError, TypeError, ValueError, ZeroDivisionError):
+            percentile_value = None
+
+        compression = float(getattr(regime_result, "compression_ratio", 0.0) or 0.0)
+        return VolatilityContext(
+            atr_percentile=percentile_value,
+            compression=max(0.0, min(1.0, compression)),
+        )
+
+    @staticmethod
+    def _htf_context(market_snapshot, kwargs: dict) -> HTFContext:
+        """Higher-timeframe context, from closed candles only.
+
+        When the snapshot cannot confirm the HTF candle is closed and aligned,
+        the context is returned as unavailable. Reporting it as neutral would
+        assert something we did not verify.
+        """
+        if market_snapshot is None:
+            return HTFContext()
+        timeframe = getattr(market_snapshot, "higher_timeframe", None)
+        if not timeframe:
+            return HTFContext()
+        aligned = getattr(market_snapshot, "htf_is_timestamp_aligned", None)
+        try:
+            fresh = bool(aligned()) if callable(aligned) else True
+        except Exception:
+            fresh = False
+        return HTFContext(
+            timeframe=str(timeframe),
+            direction=kwargs.get("htf_direction"),
+            strength=float(kwargs.get("htf_strength", 0.0) or 0.0),
+            candle_close_time=getattr(market_snapshot, "htf_closed_candle_time", None),
+            is_fresh=fresh,
+        )
+
+    @staticmethod
+    def _market_quality_context(market_snapshot, klines) -> MarketQualityContext:
+        """Market quality from what the snapshot actually knows.
+
+        Only genuinely observed fields are populated. An absent field is left
+        as ``None`` so the engine skips it, rather than being filled with a
+        neutral-looking default that would dilute the real inputs.
+        """
+        volume_percentile: float | None = None
+        try:
+            volumes = [float(k[5]) for k in klines[-120:]]
+            if len(volumes) >= 20 and volumes[-1] >= 0:
+                below = sum(1 for v in volumes if v <= volumes[-1])
+                volume_percentile = below / len(volumes)
+        except (IndexError, TypeError, ValueError):
+            volume_percentile = None
+
+        return MarketQualityContext(
+            volume_percentile=volume_percentile,
+            data_stale=bool(getattr(market_snapshot, "is_stale", False)),
+        )
 
     # -------------------------------------------------------------------------
     # FIX-E: Execution gate helpers
@@ -313,6 +445,11 @@ class MasterEnsembleStrategy(Strategy):
         - activation list is empty (LOW_VOL_CHOP)
         - no valid votes collected
         """
+        # Every evaluation starts from a clean evidence slate. Without this the
+        # previous symbol's opportunity survived on the instance and was
+        # published as this symbol's evidence on any path that returns before
+        # Step 6 -- which is most of them.
+        self._reset_evaluation_state()
 
         # ------------------------------------------------------------------
         # Step 1 — Fetch klines (single fetch for regime computation)
@@ -362,9 +499,12 @@ class MasterEnsembleStrategy(Strategy):
         )
 
         # ── FIX-E: Load execution-gate config once per call ───────────────────
+        # NOTE: no threshold floor is read here any more. ENSEMBLE_MIN_THRESHOLD_FLOOR
+        # was applied at this point and could never bind, because a higher floor
+        # was applied downstream. The threshold now comes from
+        # AdaptiveEntryThresholdEngine, after the opportunity exists.
         try:
             from app.core.config import settings as _settings
-            _threshold_floor = float(_settings.ENSEMBLE_MIN_THRESHOLD_FLOOR)
             _strong_trend_guard = evaluate_strong_trend_guard(
                 _settings,
                 execution_mode=kwargs.get("execution_mode"),
@@ -379,27 +519,19 @@ class MasterEnsembleStrategy(Strategy):
                 )
         except Exception:
             # Fail safe for STRONG_TREND if runtime safety config is unavailable.
-            _threshold_floor = 0.0
             _blocked_regimes = {"STRONG_TREND"}
             _strong_trend_guard = None
             _session_filter_enabled = False
             _session_windows = []
 
-        # ── Pre-compute threshold and base indicator snapshot ──────────────────
-        # Done here so ALL return paths (including CHOP) emit a complete meta dict.
-        _min_gate = kwargs.get("min_confidence_gate")
+        # NOTE: the threshold policy is NOT resolved here. Hard gates -- blocked
+        # regimes, sessions, volatility spikes -- must not depend on threshold
+        # configuration being resolvable, and a candle that never reaches the
+        # quality stage never needs a threshold. Resolution happens at Step 4,
+        # after every hard gate has had its say.
         _strat_adjustments = kwargs.get("strategy_weight_adjustments", {})
-        if _min_gate is not None:
-            _threshold_val = float(_min_gate)
-            _threshold_type = "adaptive_engine"
-        else:
-            _thr = self._threshold_calc.get_threshold(symbol)
-            _threshold_val = _thr.threshold
-            _threshold_type = _thr.bound_label
-
-        # FIX-E: apply threshold floor — dynamic threshold can never go below it
-        _raw_dynamic_threshold = _threshold_val
-        _threshold_val = max(_threshold_val, _threshold_floor)
+        _threshold_policy = None
+        _reference_threshold = 0.0
 
         # All regime-level indicator fields + FIX-E observability fields.
         _imeta: dict = {
@@ -411,13 +543,14 @@ class MasterEnsembleStrategy(Strategy):
             "ma_slope":                    round(regime_result.ma_slope, 4),
             "compression_ratio":           round(regime_result.compression_ratio, 4),
             "breakout_pressure":           round(regime_result.breakout_pressure, 4),
-            "threshold":                   round(_threshold_val, 4),
-            "threshold_type":              _threshold_type,
+            # No threshold has been resolved yet on this path.
+            "threshold":                   None,
+            "threshold_type":              "not_evaluated",
+            "threshold_status":            "NOT_EVALUATED",
+            "threshold_policy_hash":       None,
+            "threshold_mode":              None,
+            "threshold_band":              None,
             "perf_multipliers":            _strat_adjustments,
-            # FIX-E observability
-            "ensemble_threshold_floor":    round(_threshold_floor, 4),
-            "ensemble_threshold_raw":      round(_raw_dynamic_threshold, 4),
-            "ensemble_threshold_used":     round(_threshold_val, 4),
             "regime_gate_blocked_regimes": sorted(_blocked_regimes),
             "strong_trend_allowed_only_in_paper": True,
             "strong_trend_guard_result": (
@@ -556,6 +689,24 @@ class MasterEnsembleStrategy(Strategy):
         # ------------------------------------------------------------------
         # Step 4 — Parallel execution (active strategies only)
         # ------------------------------------------------------------------
+        # Every hard gate has now passed, so this candle will reach the quality
+        # stage and does need a threshold policy. Resolution is deliberately
+        # allowed to raise: contradictory threshold configuration must stop the
+        # process rather than degrade to a default, because a default is what
+        # hid the previous stack's saturation for months.
+        _threshold_policy = get_threshold_policy(
+            symbol=symbol,
+            venue=kwargs.get("venue"),
+            market_type=kwargs.get("market_type"),
+        )
+        _reference_threshold = float(_threshold_policy.base_threshold)
+        _imeta["threshold_policy_hash"] = _threshold_policy.policy_hash
+        _imeta["threshold_mode"] = _threshold_policy.mode
+        _imeta["threshold_band"] = [
+            _threshold_policy.min_threshold,
+            _threshold_policy.max_threshold,
+        ]
+
         active_strategies = {
             n: s for n, s in self._strategies.items() if n in available_active
         }
@@ -605,7 +756,7 @@ class MasterEnsembleStrategy(Strategy):
                             confidence=conf,
                             reason=reason,
                             meta=component_meta,
-                            threshold_floor=_threshold_val,
+                            threshold_floor=_reference_threshold,
                             symbol=symbol,
                             timeframe=self.interval,
                             market_regime=regime.value,
@@ -627,7 +778,7 @@ class MasterEnsembleStrategy(Strategy):
                     confidence=0.0,
                     reason=f"disabled_for_regime:{regime.value}",
                     meta={},
-                    threshold_floor=_threshold_val,
+                    threshold_floor=_reference_threshold,
                     symbol=symbol,
                     timeframe=getattr(self._strategies.get(name), "interval", self.interval),
                     market_regime=regime.value,
@@ -653,7 +804,6 @@ class MasterEnsembleStrategy(Strategy):
         # Step 5 — Additive vote aggregation with regime + perf multipliers
         # ------------------------------------------------------------------
         # Use pre-computed values from the indicator snapshot block above.
-        min_confidence_gate = _min_gate
         strategy_weight_adjustments = _strat_adjustments
         regime_mults = _REGIME_WEIGHT_MULTIPLIERS.get(regime.value, {})
 
@@ -697,10 +847,10 @@ class MasterEnsembleStrategy(Strategy):
         # the bar.  The threshold comparison below is the only one in the
         # active path.
         raw_conf = max(buy_pct, sell_pct)
+        # The dynamic percentile calculator is RESEARCH_ONLY now. Its rolling
+        # window is still fed so the research path keeps a continuous series,
+        # but it no longer resolves the entry threshold.
         self._threshold_calc.record(symbol, raw_conf)
-
-        # Threshold already resolved in _threshold_val / _threshold_type above.
-        effective_threshold = _threshold_val
 
         _direction = None
         if buy_pct > sell_pct:
@@ -753,18 +903,75 @@ class MasterEnsembleStrategy(Strategy):
             )
 
         # ------------------------------------------------------------------
+        # Step 6.5 — Resolve the threshold (the ONE threshold authority)
+        # ------------------------------------------------------------------
+        # Expert evidence is built from the votes that were already cast. No
+        # strategy is executed a second time to produce it.
+        expert_evidence = experts_from_votes(
+            votes,
+            eligible=sorted(available_active),
+            all_strategies=sorted(self._strategies.keys()),
+            weights={
+                n: _BASE_WEIGHTS.get(n, 1.0)
+                * regime_mults.get(n, 1.0)
+                * strategy_weight_adjustments.get(n, 1.0)
+                for n in self._strategies
+            },
+            reasons={c.get("strategy"): c.get("reason", "") for c in components if isinstance(c, dict)},
+        )
+        self.last_expert_evidence = expert_evidence
+
+        threshold_request = AdaptiveThresholdInput(
+            bot_instance_id=str(kwargs.get("bot_instance_id") or "unknown"),
+            symbol=symbol,
+            timeframe=str(kwargs.get("timeframe") or self.interval),
+            strategy_version=self.version,
+            venue=str(kwargs.get("venue") or "unknown"),
+            market_type=str(kwargs.get("market_type") or "UNKNOWN"),
+            run_id=kwargs.get("run_id"),
+            cycle_id=kwargs.get("cycle_id"),
+            market_snapshot_id=_snapshot_id,
+            opportunity_id=getattr(opportunity, "opportunity_id", None),
+            closed_candle_time=_closed_candle_time,
+            side=_direction,
+            opportunity_confidence=(raw_conf if _direction is not None else None),
+            buy_score=round(buy_pct, 6),
+            sell_score=round(sell_pct, 6),
+            consensus=round(raw_conf, 6),
+            experts=expert_evidence,
+            regime=RegimeContext(
+                regime=regime.value,
+                regime_confidence=float(regime_result.regime_confidence),
+            ),
+            volatility=self._volatility_context(regime_result, klines),
+            htf=self._htf_context(market_snapshot, kwargs),
+            market_quality=self._market_quality_context(market_snapshot, klines),
+        )
+        threshold_decision = self._threshold_engine.evaluate(
+            threshold_request, _threshold_policy
+        )
+        self.last_threshold_decision = threshold_decision
+
+        _imeta["threshold"] = threshold_decision.final_threshold
+        _imeta["threshold_status"] = threshold_decision.status
+        _imeta["threshold_type"] = f"adaptive_engine/{threshold_decision.threshold_mode}"
+        _imeta["threshold_decision_id"] = threshold_decision.threshold_decision_id
+        _imeta["threshold_components"] = threshold_decision.observability()
+
+        # ------------------------------------------------------------------
         # Step 7 — THE single entry-quality comparison
         # ------------------------------------------------------------------
-        # consensus_required is 0.0 on purpose: the ensemble has never applied a
-        # separate consensus gate here, and starting to would silently change
-        # strategy behaviour. The engine supports one for callers that opt in.
+        # The decision engine compares. It does not resolve a threshold, and it
+        # applies no consensus gate: expert agreement is already one bounded
+        # input to the threshold above, and gating on it twice would be two
+        # authorities for one question.
         entry_quality = self._decision_engine.evaluate(
             opportunity,
-            base_threshold=effective_threshold,
-            consensus_required=0.0,
+            threshold_decision=threshold_decision,
         )
         self.last_opportunity = opportunity
         self.last_entry_quality = entry_quality
+        effective_threshold = entry_quality.effective_entry_threshold
 
         if entry_quality.approved:
             final_signal = Signal.BUY if opportunity.side == "BUY" else Signal.SELL
@@ -775,15 +982,15 @@ class MasterEnsembleStrategy(Strategy):
             if final_confidence > 0:
                 logger.debug(
                     f"[ENSEMBLE] {symbol}: {entry_quality.primary_reason} "
-                    f"({final_confidence:.3f} < {effective_threshold:.3f})"
+                    f"({final_confidence:.3f} vs {_fmt_threshold(effective_threshold)})"
                 )
 
         if final_signal != Signal.HOLD:
             logger.info(
                 f"[ENSEMBLE] {symbol}: "
                 f"buy={buy_pct:.3f} sell={sell_pct:.3f} "
-                f"thr={effective_threshold:.3f} "
-                f"(type={_threshold_type}) "
+                f"thr={_fmt_threshold(effective_threshold)} "
+                f"(mode={threshold_decision.threshold_mode}) "
                 f"→ {final_signal.value} ({final_confidence:.3f})"
             )
 

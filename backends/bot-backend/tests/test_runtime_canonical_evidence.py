@@ -36,6 +36,34 @@ from shared_lib.persistence.migrations import migrate
 BOT = "bot-runtime-evidence"
 
 
+def _threshold_at(value: float):
+    """An EVALUATED threshold decision fixed at ``value``.
+
+    The quality engine no longer resolves a threshold, so evidence tests supply
+    the one the threshold engine would have produced.
+    """
+    from app.threshold.contracts import (
+        AdaptiveThresholdDecision,
+        ThresholdMode,
+        ThresholdStatus,
+    )
+
+    return AdaptiveThresholdDecision(
+        threshold_decision_id="thr_fixture",
+        bot_instance_id=BOT,
+        symbol="BTCUSDT",
+        timeframe="15m",
+        status=ThresholdStatus.EVALUATED,
+        threshold_engine_version="1.0.0",
+        threshold_mode=ThresholdMode.ADAPTIVE,
+        base_threshold=value,
+        raw_unclamped_threshold=value,
+        final_threshold=value,
+        min_threshold=0.0,
+        max_threshold=1.0,
+    )
+
+
 @pytest.fixture
 def db():
     database = DB(":memory:")
@@ -229,7 +257,10 @@ def test_opportunity_and_quality_evidence_reach_the_canonical_row(db):
         votes=[("supertrend", "BUY", 0.6), ("vwap", "SELL", 0.2)],
         regime="WEAK_TREND", regime_confidence=0.55,
     )
-    quality = TradingDecisionEngine().evaluate(opportunity, base_threshold=0.55)
+    threshold_decision = _threshold_at(0.55)
+    quality = TradingDecisionEngine().evaluate(
+        opportunity, threshold_decision=threshold_decision
+    )
 
     runner = FakeRunner(db)
 
@@ -238,6 +269,7 @@ def test_opportunity_and_quality_evidence_reach_the_canonical_row(db):
         # recorder clears the bucket first so each evaluation starts clean.
         runner._symbol_evidence[symbol] = {
             "snapshot": snapshot, "opportunity": opportunity, "entry_quality": quality,
+            "threshold_decision": threshold_decision,
         }
         return {"decision": "HOLD", "reason": "ENTRY_CONFIDENCE_BELOW_THRESHOLD"}
 

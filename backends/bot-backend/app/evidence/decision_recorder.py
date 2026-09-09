@@ -107,6 +107,11 @@ class TradingDecision:
     threshold_regime_modifier: float | None = None
     effective_entry_threshold: float | None = None
 
+    threshold_decision_id: str | None = None
+    threshold_status: str | None = None
+    threshold_engine_version: str | None = None
+    threshold_mode: str | None = None
+
     quality_result: str | None = None
     quality_reason: str | None = None
     hard_veto_result: str | None = None
@@ -186,13 +191,40 @@ class TradingDecision:
             return self
         self.quality_result = "PASS" if decision.approved else "FAIL"
         self.quality_reason = decision.primary_reason
+        # NULL when no threshold was evaluated. The old recorder wrote whatever
+        # the decision carried, and the decision defaulted to 0.0 -- which is
+        # how 51 rows came to claim an entry threshold of zero.
         self.effective_entry_threshold = decision.effective_entry_threshold
-        self.threshold_base = (decision.threshold_inputs or {}).get("base_threshold")
-        self.threshold_dynamic = (decision.threshold_inputs or {}).get("base_threshold")
-        self.threshold_adaptive_modifier = (decision.threshold_inputs or {}).get("adaptive_gate")
-        self.consensus_required = decision.consensus_required
+        self.threshold_decision_id = getattr(decision, "threshold_decision_id", None)
+        self.threshold_status = getattr(decision, "threshold_status", None)
+        inputs = decision.threshold_inputs or {}
+        self.threshold_base = inputs.get("base_threshold")
+        adjustments = inputs.get("adjustments") or {}
+        self.threshold_regime_modifier = adjustments.get("regime")
+        # There is no separate dynamic threshold or adaptive modifier any more.
+        # Writing the base into both columns, as the previous recorder did,
+        # made two independent-looking values that were always identical.
+        self.threshold_dynamic = None
+        self.threshold_adaptive_modifier = None
+        # No consensus requirement is applied by any component.
+        self.consensus_required = None
         if self.raw_confidence is None:
             self.raw_confidence = decision.raw_confidence
+        return self
+
+    def set_threshold_decision(self, decision: Any) -> "TradingDecision":
+        """Bind the threshold decision that governed this trading decision."""
+        if decision is None:
+            return self
+        # Held for the recorder to persist into threshold_decisions on finalize.
+        object.__setattr__(self, "_threshold_decision", decision)
+        self.threshold_decision_id = decision.threshold_decision_id
+        self.threshold_status = decision.status
+        self.threshold_engine_version = decision.threshold_engine_version
+        self.threshold_mode = decision.threshold_mode
+        self.threshold_base = decision.base_threshold
+        self.threshold_regime_modifier = decision.regime_adjustment
+        self.effective_entry_threshold = decision.final_threshold
         return self
 
     def set_risk(self, *, approved: bool, reason: str, **sizing: Any) -> "TradingDecision":
@@ -274,6 +306,10 @@ class TradingDecision:
             "threshold_adaptive_modifier": self.threshold_adaptive_modifier,
             "threshold_regime_modifier": self.threshold_regime_modifier,
             "effective_entry_threshold": self.effective_entry_threshold,
+            "threshold_decision_id": self.threshold_decision_id,
+            "threshold_status": self.threshold_status,
+            "threshold_engine_version": self.threshold_engine_version,
+            "threshold_mode": self.threshold_mode,
             "quality_result": self.quality_result,
             "quality_reason": self.quality_reason,
             "hard_veto_result": self.hard_veto_result,
@@ -363,6 +399,28 @@ def record_decision(
             persist_decision(db, decision)
         except Exception as persist_exc:
             logger.error("[DECISION] failed to persist %s: %s", decision.decision_id, persist_exc)
+        _persist_threshold_decision(db, decision)
+
+
+def _persist_threshold_decision(db: Any, decision: "TradingDecision") -> None:
+    """Write the threshold calculation alongside the decision it governed.
+
+    Every component is stored, not just the resulting number. With only the
+    final value on record, a threshold pinned by a configuration artifact is
+    indistinguishable from one a healthy engine chose -- which is exactly why
+    the previous stack's failure went unnoticed.
+    """
+    threshold_decision = getattr(decision, "_threshold_decision", None)
+    if threshold_decision is None:
+        return
+    from app.threshold.persistence import safe_record
+
+    safe_record(
+        db,
+        threshold_decision,
+        decision_id=decision.decision_id,
+        provenance=decision.provenance,
+    )
 
 
 # ── Lightweight heartbeat evidence (§59) ────────────────────────────────────

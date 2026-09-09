@@ -286,6 +286,34 @@ def approved_opportunity(snapshot):
     )
 
 
+def _threshold_at(value: float, bot: str = "bot-phase12"):
+    """An EVALUATED threshold decision fixed at ``value``.
+
+    The quality engine no longer resolves a threshold; the threshold engine
+    does. Smoke fixtures supply the decision it would have produced.
+    """
+    from app.threshold.contracts import (
+        AdaptiveThresholdDecision,
+        ThresholdMode,
+        ThresholdStatus,
+    )
+
+    return AdaptiveThresholdDecision(
+        threshold_decision_id="thr_fixture",
+        bot_instance_id=bot,
+        symbol="BTCUSDT",
+        timeframe="15m",
+        status=ThresholdStatus.EVALUATED,
+        threshold_engine_version="1.0.0",
+        threshold_mode=ThresholdMode.ADAPTIVE,
+        base_threshold=value,
+        raw_unclamped_threshold=value,
+        final_threshold=value,
+        min_threshold=0.0,
+        max_threshold=1.0,
+    )
+
+
 def test_the_full_open_path_produces_correlated_evidence(db, runtime, paper, client):
     snapshot = MarketSnapshot.build(symbol=SYMBOL, timeframe=TIMEFRAME,
                                     candles=candles(), source="phase12")
@@ -294,7 +322,7 @@ def test_the_full_open_path_produces_correlated_evidence(db, runtime, paper, cli
 
     # The real engine, against a real (unlowered) threshold.
     engine = TradingDecisionEngine()
-    quality = engine.evaluate(opportunity, base_threshold=0.55)
+    quality = engine.evaluate(opportunity, threshold_decision=_threshold_at(0.55))
     assert quality.approved is True
 
     with record_decision(db, symbol=SYMBOL, **evidence_kwargs()) as decision:
@@ -762,7 +790,9 @@ def test_diagnostics_can_explain_why_the_bot_did_trade(db, runtime, paper):
                                     candles=candles(), source="phase12")
     record_market_snapshot(db, snapshot, bot_instance_id=VALIDATION_BOT, provenance=PROVENANCE)
     opportunity = approved_opportunity(snapshot)
-    quality = TradingDecisionEngine().evaluate(opportunity, base_threshold=0.55)
+    quality = TradingDecisionEngine().evaluate(
+        opportunity, threshold_decision=_threshold_at(0.55)
+    )
 
     with record_decision(db, symbol=SYMBOL, **evidence_kwargs()) as decision:
         decision.set_snapshot(snapshot).set_opportunity(opportunity).set_entry_quality(quality)

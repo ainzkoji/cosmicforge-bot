@@ -9,7 +9,19 @@ underlying reason, with different numbers and different messages.
 Now there is exactly one comparison, and it lives in
 :meth:`TradingDecisionEngine.evaluate`:
 
-    opportunity.raw_confidence  >=  effective_entry_threshold
+    opportunity.raw_confidence  >=  threshold_decision.final_threshold
+
+**This engine no longer resolves a threshold.** It used to, via a
+``resolve_threshold`` that took a base, a policy floor and an adaptive gate and
+applied ``max()`` to them — which made it one of the several authorities the
+0.70 saturation was built from. Threshold computation now belongs entirely to
+:class:`~app.threshold.engine.AdaptiveEntryThresholdEngine`, and this engine
+consumes its :class:`~app.threshold.contracts.AdaptiveThresholdDecision`.
+
+The consensus gate is gone with it. Expert agreement is one bounded input to the
+threshold; gating on it separately would be two authorities answering one
+question. ``consensus_observed`` survives as evidence, ``consensus_required``
+does not.
 
 Everything downstream — SafetyEngine, PolicyEngine, risk, execution — keeps its
 *hard vetoes* but must not re-litigate entry quality. They are told the quality
@@ -26,11 +38,12 @@ from typing import Any, Mapping
 
 from app.decision.opportunity import NoOpportunity, TradingOpportunity
 from app.decision.reasons import QualityReason
+from app.threshold.contracts import AdaptiveThresholdDecision, ThresholdStatus
 
-#: The engine never resolves a threshold outside this band, whatever the
-#: adaptive/dynamic inputs suggest. A threshold of 0 would approve everything.
-ABSOLUTE_THRESHOLD_FLOOR = 0.0
-ABSOLUTE_THRESHOLD_CEILING = 1.0
+
+def _round(value: float | None) -> float | None:
+    """Round for display, preserving ``None`` rather than coercing it to 0.0."""
+    return None if value is None else round(float(value), 4)
 
 
 @dataclass(frozen=True)
@@ -45,12 +58,16 @@ class EntryQualityDecision:
     timeframe: str | None = None
     side: str | None = None
 
-    effective_entry_threshold: float = 0.0
+    #: ``None`` when no threshold was evaluated. Never 0.0 — a stored zero
+    #: turns "we never asked" into "everything passes".
+    effective_entry_threshold: float | None = None
     threshold_source: str = "unresolved"
-    raw_confidence: float = 0.0
-    effective_confidence: float = 0.0
+    threshold_decision_id: str | None = None
+    threshold_status: str = ThresholdStatus.NOT_EVALUATED
+    raw_confidence: float | None = None
+    effective_confidence: float | None = None
 
-    consensus_required: float = 0.0
+    #: Evidence only. No consensus requirement is applied anywhere.
     consensus_observed: float = 0.0
     regime: str = "UNKNOWN"
 
@@ -73,11 +90,12 @@ class EntryQualityDecision:
             "symbol": self.symbol,
             "timeframe": self.timeframe,
             "side": self.side,
-            "raw_confidence": round(float(self.raw_confidence), 4),
-            "effective_confidence": round(float(self.effective_confidence), 4),
-            "effective_entry_threshold": round(float(self.effective_entry_threshold), 4),
+            "raw_confidence": _round(self.raw_confidence),
+            "effective_confidence": _round(self.effective_confidence),
+            "effective_entry_threshold": _round(self.effective_entry_threshold),
             "threshold_source": self.threshold_source,
-            "consensus_required": round(float(self.consensus_required), 4),
+            "threshold_status": self.threshold_status,
+            "threshold_decision_id": self.threshold_decision_id,
             "consensus_observed": round(float(self.consensus_observed), 4),
             "regime": self.regime,
             "modifiers": dict(self.modifiers),
@@ -85,65 +103,14 @@ class EntryQualityDecision:
 
 
 class TradingDecisionEngine:
-    """Resolves the entry threshold and performs the one quality comparison."""
+    """Performs the one quality comparison. It does not compute a threshold."""
 
-    def __init__(
-        self,
-        *,
-        threshold_floor: float = 0.0,
-        threshold_ceiling: float = 1.0,
-        consensus_threshold: float = 0.0,
-    ) -> None:
-        self.threshold_floor = float(threshold_floor)
-        self.threshold_ceiling = float(threshold_ceiling)
-        self.consensus_threshold = float(consensus_threshold)
-
-    # ── Threshold resolution ────────────────────────────────────────────────
-
-    def resolve_threshold(
-        self,
-        *,
-        base_threshold: float,
-        policy_floor: float | None = None,
-        adaptive_gate: float | None = None,
-        regime: str = "UNKNOWN",
-    ) -> tuple[float, str, dict[str, Any]]:
-        """Resolve the effective entry threshold from all contributing inputs.
-
-        Precedence mirrors the behaviour that was previously spread across
-        Master Ensemble and the runner's adaptive gate: the adaptive gate, when
-        supplied, replaces the base dynamic threshold; the configured floor then
-        raises it; nothing may leave the absolute band.
-
-        Returns ``(threshold, source_label, inputs)``.
-        """
-        inputs: dict[str, Any] = {
-            "base_threshold": float(base_threshold),
-            "policy_floor": None if policy_floor is None else float(policy_floor),
-            "adaptive_gate": None if adaptive_gate is None else float(adaptive_gate),
-            "regime": regime,
-        }
-
-        if adaptive_gate is not None:
-            threshold = float(adaptive_gate)
-            source = "adaptive_engine"
-        else:
-            threshold = float(base_threshold)
-            source = "dynamic_threshold"
-
-        floor = max(self.threshold_floor, float(policy_floor or 0.0))
-        if threshold < floor:
-            threshold = floor
-            source = f"{source}+floor"
-
-        ceiling = min(self.threshold_ceiling, ABSOLUTE_THRESHOLD_CEILING)
-        if threshold > ceiling:
-            threshold = ceiling
-            source = f"{source}+ceiling"
-
-        threshold = max(ABSOLUTE_THRESHOLD_FLOOR, threshold)
-        inputs["resolved"] = threshold
-        return threshold, source, inputs
+    def __init__(self) -> None:
+        # Deliberately stateless and parameterless. Every constructor argument
+        # this class used to take (threshold_floor, threshold_ceiling,
+        # consensus_threshold) was a threshold authority, and there is now
+        # exactly one of those: AdaptiveEntryThresholdEngine.
+        pass
 
     # ── The single entry-quality comparison ─────────────────────────────────
 
@@ -151,10 +118,7 @@ class TradingDecisionEngine:
         self,
         opportunity: TradingOpportunity | NoOpportunity,
         *,
-        base_threshold: float = 0.0,
-        policy_floor: float | None = None,
-        adaptive_gate: float | None = None,
-        consensus_required: float | None = None,
+        threshold_decision: AdaptiveThresholdDecision | None = None,
         modifiers: Mapping[str, Any] | None = None,
         secondary_reasons: tuple[str, ...] = (),
     ) -> EntryQualityDecision:
@@ -162,7 +126,9 @@ class TradingDecisionEngine:
 
         A ``NoOpportunity`` is passed straight through with its own reason code:
         there is nothing to compare, and calling it a confidence failure would
-        be a lie.
+        be a lie. So is an opportunity whose threshold was never evaluated —
+        comparing against a substituted zero is how ``0.0 >= 0.0`` came to
+        approve everything.
         """
         # No candidate: report why, and never invent a confidence verdict.
         if not opportunity.is_opportunity:
@@ -172,56 +138,68 @@ class TradingDecisionEngine:
                 market_snapshot_id=opportunity.market_snapshot_id,
                 symbol=opportunity.symbol,
                 timeframe=opportunity.timeframe,
-                raw_confidence=0.0,
-                effective_confidence=0.0,
-                consensus_observed=float(getattr(opportunity, "consensus", 0.0) or 0.0),
-                consensus_required=float(
-                    consensus_required if consensus_required is not None else self.consensus_threshold
+                raw_confidence=None,
+                effective_confidence=None,
+                effective_entry_threshold=None,
+                threshold_status=(
+                    threshold_decision.status
+                    if threshold_decision is not None
+                    else ThresholdStatus.NOT_EVALUATED
                 ),
+                threshold_decision_id=(
+                    threshold_decision.threshold_decision_id
+                    if threshold_decision is not None
+                    else None
+                ),
+                consensus_observed=float(getattr(opportunity, "consensus", 0.0) or 0.0),
                 regime=getattr(opportunity, "regime", "UNKNOWN"),
                 secondary_reasons=secondary_reasons,
             )
 
-        threshold, source, inputs = self.resolve_threshold(
-            base_threshold=base_threshold,
-            policy_floor=policy_floor,
-            adaptive_gate=adaptive_gate,
-            regime=opportunity.regime,
-        )
-
-        required_consensus = float(
-            consensus_required if consensus_required is not None else self.consensus_threshold
-        )
-        observed_consensus = float(opportunity.consensus)
         raw_confidence = float(opportunity.raw_confidence)
-
         base = dict(
             opportunity_id=opportunity.opportunity_id,
             market_snapshot_id=opportunity.market_snapshot_id,
             symbol=opportunity.symbol,
             timeframe=opportunity.timeframe,
             side=opportunity.side,
-            effective_entry_threshold=threshold,
-            threshold_source=source,
             raw_confidence=raw_confidence,
             effective_confidence=raw_confidence,
-            consensus_required=required_consensus,
-            consensus_observed=observed_consensus,
+            consensus_observed=float(opportunity.consensus),
             regime=opportunity.regime,
             modifiers=dict(modifiers or {}),
-            threshold_inputs=inputs,
             secondary_reasons=secondary_reasons,
         )
 
-        # Consensus is a separate question from confidence. Strategies failing to
-        # agree is not the same as agreeing on a weak setup, so it gets its own
-        # reason code and is checked first.
-        if required_consensus > 0 and observed_consensus < required_consensus:
+        # No threshold was resolved. That is a real outcome — a hard-blocked
+        # regime, stale data, or a threshold engine that could not run — and it
+        # is reported as itself rather than as a confidence failure.
+        if threshold_decision is None or not threshold_decision.evaluated:
+            status = (
+                threshold_decision.status
+                if threshold_decision is not None
+                else ThresholdStatus.NOT_EVALUATED
+            )
             return EntryQualityDecision(
                 approved=False,
-                primary_reason=QualityReason.CONSENSUS_INSUFFICIENT,
+                primary_reason=(
+                    threshold_decision.reason
+                    if threshold_decision is not None and threshold_decision.reason
+                    else QualityReason.NO_OPPORTUNITY
+                ),
+                effective_entry_threshold=None,
+                threshold_source="not_evaluated",
+                threshold_status=status,
+                threshold_decision_id=(
+                    threshold_decision.threshold_decision_id
+                    if threshold_decision is not None
+                    else None
+                ),
+                threshold_inputs={},
                 **base,
             )
+
+        threshold = float(threshold_decision.final_threshold)
 
         # ── THE single top-level entry-quality comparison ────────────────────
         approved = raw_confidence >= threshold
@@ -233,6 +211,13 @@ class TradingDecisionEngine:
                 if approved
                 else QualityReason.ENTRY_CONFIDENCE_BELOW_THRESHOLD
             ),
+            effective_entry_threshold=threshold,
+            threshold_source=(
+                f"adaptive_entry_threshold_engine/{threshold_decision.threshold_engine_version}"
+            ),
+            threshold_status=threshold_decision.status,
+            threshold_decision_id=threshold_decision.threshold_decision_id,
+            threshold_inputs=threshold_decision.observability(),
             **base,
         )
 

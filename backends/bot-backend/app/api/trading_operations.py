@@ -178,6 +178,13 @@ def operations_health(db: DB = Depends(get_db), admin: dict = Depends(require_ad
             "SELECT COUNT(*) FROM execution_attempts WHERE started_at > ?", (since,)
         ).fetchone()[0]
 
+    # ── Entry threshold engine ──────────────────────────────────────────────
+    # Includes the inert-engine check: a threshold pinned by a configuration
+    # artifact while its components vary. That is the failure that ran
+    # undetected for months, and health is where it should have surfaced.
+    threshold = _threshold_health(db, bots)
+    states.append(threshold["overall"])
+
     return {
         "overall": _worst(states),
         "checked_at": datetime.now(timezone.utc).isoformat(),
@@ -191,6 +198,67 @@ def operations_health(db: DB = Depends(get_db), admin: dict = Depends(require_ad
         "canonical_evidence": evidence,
         "positions": {"open": open_positions},
         "execution": {"attempts_last_hour": attempts},
+        "entry_threshold": threshold,
+    }
+
+
+def _threshold_health(db: DB, bots: list[dict[str, Any]]) -> dict[str, Any]:
+    """Threshold-engine health across the active bots.
+
+    A policy that will not resolve is an ERROR: it means the process is running
+    with configuration that cannot decide an entry bar. An inert engine is a
+    DEGRADED -- the bot still trades, but its adaptation is being eaten by
+    something, and an operator needs to know which bound.
+    """
+    from app.threshold.diagnostics import detect_inert_engine, health_check
+    from app.threshold.persistence import decisions_from_rows, load_threshold_decisions
+    from app.threshold.policy import ThresholdPolicyError
+    from app.threshold.runtime import get_threshold_policy
+
+    try:
+        policy = get_threshold_policy()
+    except ThresholdPolicyError as exc:
+        return {
+            "overall": ERROR,
+            "reason": exc.code,
+            "detail": str(exc),
+            "active_threshold_authorities": 1,
+        }
+
+    findings: list[dict[str, Any]] = []
+    per_bot: dict[str, Any] = {}
+    states = [HEALTHY]
+    for bot in bots:
+        bot_id = bot["bot_instance_id"]
+        try:
+            rows = load_threshold_decisions(db, bot_instance_id=bot_id, limit=500)
+        except Exception:
+            continue
+        decisions = decisions_from_rows(rows)
+        inert = detect_inert_engine(decisions)
+        bot_findings = health_check(decisions, policy=policy)
+        findings.extend(bot_findings)
+        per_bot[bot_id] = {
+            "sample": inert.sample,
+            "distinct_thresholds": inert.distinct_thresholds,
+            "inert": inert.inert,
+            "saturated_at": inert.saturated_at,
+            "detail": inert.detail,
+        }
+        if bot_findings:
+            states.append(DEGRADED)
+        if inert.inert:
+            states.append(DEGRADED)
+
+    return {
+        "overall": _worst(states),
+        "engine": "AdaptiveEntryThresholdEngine",
+        "mode": policy.mode,
+        "policy_hash": policy.policy_hash,
+        "band": [policy.min_threshold, policy.max_threshold],
+        "active_threshold_authorities": 1,
+        "by_bot": per_bot,
+        "findings": findings[:20],
     }
 
 

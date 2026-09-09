@@ -168,19 +168,38 @@ def apply_evidence(decision: Any, result: Mapping[str, Any], evidence: Mapping[s
     if quality is not None:
         decision.set_entry_quality(quality)
 
+    threshold_decision = evidence.get("threshold_decision")
+    if threshold_decision is not None:
+        decision.set_threshold_decision(threshold_decision)
+
     # The ensemble also publishes a flattened meta dict; use it to fill in
     # anything the objects above did not supply (legacy/compat callers).
     meta = _strategy_meta(result)
     if meta:
-        decision.regime = decision.regime or meta.get("regime")
-        if decision.regime_confidence is None:
-            decision.regime_confidence = meta.get("regime_confidence")
+        # The meta dict is built fresh on every evaluation, so it is the
+        # authoritative regime for THIS candle. The opportunity object may be
+        # absent on paths that return before Step 6, and previously a stale one
+        # from an earlier symbol could win here because `decision.regime or ...`
+        # preferred whatever was already set.
+        fresh_regime = meta.get("regime")
+        if fresh_regime:
+            decision.regime = fresh_regime
+        fresh_regime_confidence = meta.get("regime_confidence")
+        if fresh_regime_confidence is not None:
+            decision.regime_confidence = fresh_regime_confidence
         if decision.buy_score is None:
             decision.buy_score = meta.get("buy_score")
         if decision.sell_score is None:
             decision.sell_score = meta.get("sell_score")
+        # meta["threshold"] is None on every path that did not reach the
+        # threshold engine, and copying it is what keeps a NOT_EVALUATED row
+        # honest rather than backfilling it with a number from elsewhere.
         if decision.effective_entry_threshold is None:
             decision.effective_entry_threshold = meta.get("threshold")
+        if decision.threshold_status is None:
+            decision.threshold_status = meta.get("threshold_status")
+        if decision.threshold_decision_id is None:
+            decision.threshold_decision_id = meta.get("threshold_decision_id")
         if decision.opportunity_id is None:
             decision.opportunity_id = meta.get("opportunity_id")
         if decision.market_snapshot_id is None:

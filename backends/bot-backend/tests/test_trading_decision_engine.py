@@ -1,8 +1,13 @@
 """Phase 7 — TradingOpportunity and the single entry-quality authority.
 
-The architectural claim under test: after this batch there is exactly ONE
-top-level comparison of confidence against a threshold in the active path, it
-lives in TradingDecisionEngine, and nothing downstream re-litigates it.
+The architectural claim under test: there is exactly ONE top-level comparison of
+confidence against a threshold in the active path, it lives in
+TradingDecisionEngine, and nothing downstream re-litigates it.
+
+Updated for the threshold rebuild. This engine no longer *resolves* a threshold
+— :class:`~app.threshold.engine.AdaptiveEntryThresholdEngine` does, and is the
+only component allowed to. What is tested here is the comparison and the reason
+codes, not where the number came from.
 """
 from __future__ import annotations
 
@@ -26,6 +31,11 @@ from app.decision.reason_mapping import (
     to_canonical,
 )
 from app.decision.reasons import DISTINCT_QUALITY_FAILURES, CycleReason, ExecutionReason, RiskReason
+from app.threshold.contracts import (
+    AdaptiveThresholdDecision,
+    ThresholdMode,
+    ThresholdStatus,
+)
 
 VOTES = [("sma", "BUY", 0.8), ("donchian", "BUY", 0.6), ("vwap", "SELL", 0.3)]
 
@@ -33,6 +43,29 @@ VOTES = [("sma", "BUY", 0.8), ("donchian", "BUY", 0.6), ("vwap", "SELL", 0.3)]
 @pytest.fixture
 def engine():
     return TradingDecisionEngine()
+
+
+def threshold_at(value: float) -> AdaptiveThresholdDecision:
+    """An EVALUATED threshold decision fixed at ``value``.
+
+    Built through the real contract rather than a stub, so a test cannot
+    accidentally hand the comparison a threshold shape the engine could never
+    produce.
+    """
+    return AdaptiveThresholdDecision(
+        threshold_decision_id="thr_fixture",
+        bot_instance_id="bot_test",
+        symbol="BTCUSDT",
+        timeframe="15m",
+        status=ThresholdStatus.EVALUATED,
+        threshold_engine_version="1.0.0",
+        threshold_mode=ThresholdMode.ADAPTIVE,
+        base_threshold=value,
+        raw_unclamped_threshold=value,
+        final_threshold=value,
+        min_threshold=0.0,
+        max_threshold=1.0,
+    )
 
 
 def make_opportunity(**overrides) -> TradingOpportunity:
@@ -124,22 +157,27 @@ def test_no_opportunity_rejects_an_unrelated_reason_code():
         )
 
 
-# ── 4. Consensus failure vs confidence failure ──────────────────────────────
+# ── 4. Consensus is evidence, not a second gate ─────────────────────────────
 
 
-def test_consensus_failure_is_distinct_from_confidence_failure(engine):
+def test_consensus_is_recorded_but_never_gates(engine):
+    """The consensus gate was removed with the rest of the multi-authority stack.
+
+    Expert agreement is now one bounded input to the threshold. Gating on it
+    separately as well would be two authorities answering one question -- and
+    the old gate never fired anyway, because consensus_required was always 0.0.
+    """
     opp = make_opportunity(raw_confidence=0.95, consensus=0.10)
-    decision = engine.evaluate(opp, base_threshold=0.50, consensus_required=0.40)
+    decision = engine.evaluate(opp, threshold_decision=threshold_at(0.50))
 
-    assert decision.approved is False
-    assert decision.primary_reason == QualityReason.CONSENSUS_INSUFFICIENT
+    assert decision.approved is True
     assert decision.consensus_observed == pytest.approx(0.10)
-    assert decision.consensus_required == pytest.approx(0.40)
+    assert not hasattr(decision, "consensus_required")
 
 
 def test_confidence_failure_when_direction_agrees_but_quality_is_low(engine):
     opp = make_opportunity(raw_confidence=0.30, consensus=0.90)
-    decision = engine.evaluate(opp, base_threshold=0.65, consensus_required=0.40)
+    decision = engine.evaluate(opp, threshold_decision=threshold_at(0.65))
 
     assert decision.approved is False
     assert decision.primary_reason == QualityReason.ENTRY_CONFIDENCE_BELOW_THRESHOLD
@@ -162,13 +200,13 @@ def test_no_new_candle_is_not_a_quality_verdict():
 
 def test_engine_approves_at_or_above_threshold(engine):
     opp = make_opportunity(raw_confidence=0.65)
-    assert engine.evaluate(opp, base_threshold=0.65).approved is True
-    assert engine.evaluate(opp, base_threshold=0.6499).approved is True
+    assert engine.evaluate(opp, threshold_decision=threshold_at(0.65)).approved is True
+    assert engine.evaluate(opp, threshold_decision=threshold_at(0.6499)).approved is True
 
 
 def test_engine_rejects_below_threshold(engine):
     opp = make_opportunity(raw_confidence=0.6499)
-    decision = engine.evaluate(opp, base_threshold=0.65)
+    decision = engine.evaluate(opp, threshold_decision=threshold_at(0.65))
     assert decision.approved is False
     assert decision.primary_reason == QualityReason.ENTRY_CONFIDENCE_BELOW_THRESHOLD
 
@@ -268,7 +306,9 @@ def test_min_notional_is_execution_owned_not_risk_owned():
 
 
 def test_a_hard_veto_overrides_an_approved_decision_and_keeps_the_evidence(engine):
-    approved = engine.evaluate(make_opportunity(raw_confidence=0.9), base_threshold=0.5)
+    approved = engine.evaluate(
+        make_opportunity(raw_confidence=0.9), threshold_decision=threshold_at(0.5)
+    )
     assert approved.approved is True
 
     vetoed = engine.veto(approved, QualityReason.HTF_NOT_ALIGNED)
@@ -280,35 +320,42 @@ def test_a_hard_veto_overrides_an_approved_decision_and_keeps_the_evidence(engin
 
 
 def test_a_veto_on_an_already_rejected_decision_changes_nothing(engine):
-    rejected = engine.evaluate(make_opportunity(raw_confidence=0.1), base_threshold=0.9)
+    rejected = engine.evaluate(
+        make_opportunity(raw_confidence=0.1), threshold_decision=threshold_at(0.9)
+    )
     assert engine.veto(rejected, QualityReason.HTF_NOT_ALIGNED) is rejected
 
 
-# ── Threshold resolution ────────────────────────────────────────────────────
+# ── Threshold resolution belongs elsewhere entirely ─────────────────────────
 
 
-def test_adaptive_gate_replaces_the_base_dynamic_threshold(engine):
-    threshold, source, inputs = engine.resolve_threshold(base_threshold=0.5, adaptive_gate=0.7)
-    assert threshold == pytest.approx(0.7)
-    assert source == "adaptive_engine"
-    assert inputs["base_threshold"] == 0.5
+def test_this_engine_cannot_resolve_a_threshold():
+    """resolve_threshold() was one of the four competing authorities.
+
+    It took a base, an adaptive gate and a policy floor and applied max() to
+    them, which is the operation that let MIN_CONFIDENCE_THRESHOLD=0.70
+    dominate a dynamic value capped at 0.65. There is now exactly one component
+    allowed to produce a threshold, and this is not it.
+    """
+    assert not hasattr(TradingDecisionEngine, "resolve_threshold")
+    params = set(inspect.signature(TradingDecisionEngine.evaluate).parameters)
+    for removed in ("base_threshold", "policy_floor", "adaptive_gate", "consensus_required"):
+        assert removed not in params
 
 
-def test_policy_floor_raises_but_never_lowers_the_threshold(engine):
-    raised, source, _ = engine.resolve_threshold(base_threshold=0.4, policy_floor=0.6)
-    assert raised == pytest.approx(0.6)
-    assert "floor" in source
+def test_it_uses_the_engine_threshold_verbatim_without_raising_it():
+    """No floor, no ceiling, no max(). The number arrives already decided."""
+    decision = TradingDecisionEngine().evaluate(
+        make_opportunity(raw_confidence=0.55), threshold_decision=threshold_at(0.5123)
+    )
+    assert decision.effective_entry_threshold == pytest.approx(0.5123)
 
-    unchanged, _, _ = engine.resolve_threshold(base_threshold=0.8, policy_floor=0.6)
-    assert unchanged == pytest.approx(0.8)
 
-
-def test_threshold_never_leaves_the_absolute_band(engine):
-    high, _, _ = engine.resolve_threshold(base_threshold=5.0)
-    assert 0.0 <= high <= 1.0
-
-    low, _, _ = engine.resolve_threshold(base_threshold=-3.0)
-    assert low >= 0.0
+def test_an_unevaluated_threshold_is_never_substituted_with_zero(engine):
+    """0.0 >= 0.0 approving everything is the failure this replaces."""
+    decision = engine.evaluate(make_opportunity(raw_confidence=0.0), threshold_decision=None)
+    assert decision.approved is False
+    assert decision.effective_entry_threshold is None
 
 
 # ── 10/11. Determinism and no silent threshold change ───────────────────────
@@ -318,17 +365,22 @@ def test_the_same_inputs_always_produce_the_same_verdict(engine):
     opp = make_opportunity(raw_confidence=0.7)
     verdicts = {
         (d.approved, d.primary_reason, d.effective_entry_threshold)
-        for d in (engine.evaluate(opp, base_threshold=0.65) for _ in range(10))
+        for d in (engine.evaluate(opp, threshold_decision=threshold_at(0.65)) for _ in range(10))
     }
     assert len(verdicts) == 1
 
 
 def test_master_ensemble_does_not_introduce_a_new_consensus_gate():
-    """Enforcing consensus here would silently change strategy behaviour."""
+    """No component applies a consensus requirement any more.
+
+    The old assertion checked that the ensemble passed consensus_required=0.0.
+    A parameter whose only correct value is "off" is a gate waiting to be turned
+    on by accident, so it was removed rather than pinned.
+    """
     from app.strategy import master_ensemble
 
     source = inspect.getsource(master_ensemble.MasterEnsembleStrategy.get_signal)
-    assert "consensus_required=0.0" in source
+    assert "consensus_required" not in source
 
 
 def test_decision_result_carries_no_position_sizing():
@@ -340,7 +392,7 @@ def test_decision_result_carries_no_position_sizing():
 
 def test_decision_observability_answers_every_operator_question(engine):
     """§7.12 — no component-log reading required."""
-    decision = engine.evaluate(make_opportunity(), base_threshold=0.65)
+    decision = engine.evaluate(make_opportunity(), threshold_decision=threshold_at(0.65))
     obs = decision.observability()
     for key in (
         "approved", "primary_reason", "side", "raw_confidence",

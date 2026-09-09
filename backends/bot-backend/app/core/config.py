@@ -191,9 +191,68 @@ class Settings(BaseSettings):
     # SAFETY: true = close all open positions when daily loss kill switch fires.
     KILL_SWITCH_CLOSE_POSITIONS: bool = True
 
-    # Trade Quality Gate
+    # ── Trade Quality Gate ───────────────────────────────────────────────────
+    # DEPRECATED as a floor. MIN_CONFIDENCE_THRESHOLD used to be applied as an
+    # absolute floor AFTER the dynamic threshold was computed, and because it
+    # sat above the dynamic hard cap of 0.65 it saturated the entire chain --
+    # every candle resolved to exactly 0.70 and two documented, operator-tuned
+    # settings could not affect anything.
+    #
+    # It is now MIGRATED into THRESHOLD_BASE (the centre of the adaptive band)
+    # by app/threshold/migration.py, and is no longer re-applied afterwards.
+    # AdaptiveEntryThresholdEngine is the only entry-threshold authority.
     MIN_CONFIDENCE_THRESHOLD: float = 0.70
     MIN_RISK_REWARD: float = 1.8
+
+    # ── Adaptive Entry Threshold Engine ──────────────────────────────────────
+    # ONE engine, ONE policy, ONE band. Every value below configures the same
+    # AdaptiveEntryThresholdEngine; none of them is applied anywhere else.
+    # Contradictory configuration is fatal at startup (see
+    # app/threshold/policy.py::validate_policy) rather than silently ignored.
+    #
+    # THRESHOLD_ENGINE_MODE: ADAPTIVE (production) | STATIC (reproducibility and
+    #   debugging) | RESEARCH (replay and sensitivity work). MODEL is reserved
+    #   for validated AI calibration and is rejected, not silently downgraded.
+    THRESHOLD_ENGINE_MODE: str = "ADAPTIVE"
+    # 0.0 means "not configured": the base is then migrated from
+    # MIN_CONFIDENCE_THRESHOLD. The engine never invents a base of its own --
+    # which entry bar is correct is a question for the sensitivity study.
+    THRESHOLD_BASE: float = 0.0
+    THRESHOLD_STATIC: float = 0.0       # required when mode is STATIC
+    # The single band. There is no other floor, cap or clamp in the system.
+    THRESHOLD_MIN: float = 0.50
+    THRESHOLD_MAX: float = 0.90
+
+    # Bounded contributions. Each is a maximum absolute magnitude in threshold
+    # units, so the worst case is knowable by reading this block.
+    THRESHOLD_REGIME_BOUND: float = 0.06
+    THRESHOLD_VOLATILITY_BOUND: float = 0.05
+    THRESHOLD_AGREEMENT_BOUND: float = 0.08
+    THRESHOLD_HTF_BOUND: float = 0.05
+    THRESHOLD_MARKET_QUALITY_BOUND: float = 0.04
+    THRESHOLD_PERFORMANCE_BOUND: float = 0.05
+    THRESHOLD_DISTRIBUTION_BOUND: float = 0.05
+
+    # Slow calibration. Below the minimum sample the adjustment is exactly 0.0
+    # and the status is INSUFFICIENT_SAMPLE -- a handful of trades must never
+    # move the entry bar.
+    THRESHOLD_PERFORMANCE_MIN_SAMPLES: int = 30
+    THRESHOLD_PERFORMANCE_LOOKBACK: int = 100
+    THRESHOLD_DISTRIBUTION_MIN_SAMPLES: int = 40
+    THRESHOLD_DISTRIBUTION_WINDOW: int = 200
+    THRESHOLD_DISTRIBUTION_TARGET_PERCENTILE: float = 0.60
+
+    # Smoothing and hysteresis. Tightening faster than loosening is deliberate:
+    # the bar may rise quickly and must fall slowly.
+    THRESHOLD_SMOOTHING_ALPHA: float = 0.35
+    THRESHOLD_MAX_STEP_UP: float = 0.05
+    THRESHOLD_MAX_STEP_DOWN: float = 0.03
+
+    # Optional per-scope overrides, JSON:
+    #   {"SYMBOL": {"ETHUSDT": {"max_threshold": 0.85}}}
+    # Scopes resolve GLOBAL -> ASSET_CLASS -> VENUE -> SYMBOL -> BOT. A narrower
+    # scope may change these values; it may not introduce another authority.
+    THRESHOLD_SCOPED_OVERRIDES: str = ""
 
     # D-3: ATR fixed sizing protection
     MIN_STOP_ATR_MULTIPLIER: float = 0.5   # Stop distance must be >= 0.5 × ATR
@@ -209,9 +268,13 @@ class Settings(BaseSettings):
     # Analysis (2026-06-10) found STRONG_TREND (24% WR) is the primary loss
     # driver, not RANGE (52.9% WR — actually the best regime).
     #
-    # ENSEMBLE_MIN_THRESHOLD_FLOOR: dynamic threshold can never go below this.
-    #   Default 0.50 — slightly tighter than the historic min floor of 0.40.
-    #   Raising to 0.55+ further reduces trade count but improves quality.
+    # ENSEMBLE_MIN_THRESHOLD_FLOOR: **DEPRECATED — NO LONGER HAS ANY EFFECT.**
+    #   This was documented as the binding constraint on the entry threshold and
+    #   it never was. MIN_CONFIDENCE_THRESHOLD=0.70 was applied after it, so a
+    #   value of 0.55 could not bind and the operator tuning recorded in .env as
+    #   "T-04: Raise confidence floor to 0.55 (was 0.50 default)" changed
+    #   nothing at all. It is read only to emit a deprecation warning at
+    #   startup. The single band is THRESHOLD_MIN / THRESHOLD_MAX.
     #
     # ENSEMBLE_BLOCKED_REGIMES: comma-separated regime names to suppress.
     #   Empty string (default) = backward-compatible, no regimes blocked.
@@ -577,9 +640,24 @@ class Settings(BaseSettings):
                 f"MAX_OPEN_POSITIONS={self.MAX_OPEN_POSITIONS} is high — recommend <= 2 during validation."
             )
 
-        if self.MIN_CONFIDENCE_THRESHOLD < 0.70:
+        # The entry bar is now the resolved threshold policy band, not a single
+        # floor. Validating MIN_CONFIDENCE_THRESHOLD against 0.70 here would be
+        # validating a setting that no longer decides anything.
+        try:
+            from app.threshold.policy import ThresholdPolicyError, policy_from_settings
+
+            threshold_policy = policy_from_settings(self)
+        except ThresholdPolicyError as exc:
+            failures.append(f"Threshold policy is contradictory and will not start: {exc}")
+            threshold_policy = None
+        except Exception as exc:  # pragma: no cover - defensive
+            failures.append(f"Threshold policy could not be resolved: {exc}")
+            threshold_policy = None
+
+        if threshold_policy is not None and threshold_policy.base_threshold < 0.50:
             warnings_list.append(
-                f"MIN_CONFIDENCE_THRESHOLD={self.MIN_CONFIDENCE_THRESHOLD} is below recommended 0.70."
+                f"THRESHOLD_BASE={threshold_policy.base_threshold} is a permissive entry bar; "
+                "it has not been justified by an out-of-sample sensitivity study."
             )
 
         if not self.KILL_SWITCH_CLOSE_POSITIONS:

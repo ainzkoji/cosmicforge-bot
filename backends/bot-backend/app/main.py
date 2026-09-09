@@ -277,6 +277,11 @@ app.include_router(trading_evidence_router)
 from app.api.trading_operations import router as trading_operations_router
 app.include_router(trading_operations_router)
 
+# Entry-threshold diagnostics: what the bar is, what made it, and whether the
+# engine is genuinely adapting or is pinned by a configuration artifact.
+from app.api.threshold_diagnostics import router as threshold_diagnostics_router
+app.include_router(threshold_diagnostics_router)
+
 # Register Shadow Trading API router
 from app.api.shadow_routes import router as shadow_router
 

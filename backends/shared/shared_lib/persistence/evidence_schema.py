@@ -81,6 +81,7 @@ def ensure_evidence_schema(db: Any) -> None:
         _execution_and_positions(conn)
         _event_streams(conn)
         _readiness(conn)
+        _threshold_engine(conn)
         _indexes(conn)
 
 
@@ -574,6 +575,138 @@ def _readiness(conn: Any) -> None:
     )
 
 
+def _threshold_engine(conn: Any) -> None:
+    """AdaptiveEntryThresholdEngine evidence and state.
+
+    ``threshold_decisions`` stores every component of every threshold
+    calculation, not just the resulting number. That is what makes the old
+    failure detectable: with only the final value on record, a threshold pinned
+    at 0.70 by a floor is indistinguishable from one a healthy engine chose.
+
+    ``final_threshold`` is nullable on purpose. NOT_EVALUATED and HARD_BLOCKED
+    rows carry NULL, never 0.0.
+    """
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS threshold_decisions (
+            threshold_decision_id TEXT PRIMARY KEY,
+
+            bot_instance_id TEXT NOT NULL,
+            run_id TEXT,
+            cycle_id TEXT,
+            decision_id TEXT,
+            opportunity_id TEXT,
+            market_snapshot_id TEXT,
+
+            symbol TEXT NOT NULL,
+            venue TEXT,
+            market_type TEXT,
+            timeframe TEXT,
+            closed_candle_time INTEGER,
+            decided_at TEXT NOT NULL,
+
+            threshold_engine_version TEXT NOT NULL,
+            threshold_mode TEXT NOT NULL,
+            policy_hash TEXT,
+            provenance TEXT NOT NULL DEFAULT 'PAPER_FORWARD',
+
+            status TEXT NOT NULL,
+            opportunity_confidence REAL,
+            base_threshold REAL,
+
+            regime TEXT,
+            regime_adjustment REAL,
+            volatility_score REAL,
+            volatility_adjustment REAL,
+            expert_agreement_score REAL,
+            agreement_adjustment REAL,
+            htf_alignment_score REAL,
+            htf_adjustment REAL,
+            market_quality_score REAL,
+            market_quality_adjustment REAL,
+
+            performance_score REAL,
+            performance_adjustment REAL,
+            performance_sample_size INTEGER,
+            performance_status TEXT,
+            distribution_percentile REAL,
+            distribution_adjustment REAL,
+            distribution_sample_size INTEGER,
+            distribution_status TEXT,
+
+            market_threshold REAL,
+            calibration_adjustment REAL,
+            raw_unclamped_threshold REAL,
+            smoothed_threshold REAL,
+            rate_limited_threshold REAL,
+            final_threshold REAL,
+
+            min_threshold REAL,
+            max_threshold REAL,
+            previous_threshold REAL,
+            smoothing_applied INTEGER NOT NULL DEFAULT 0,
+            rate_limit_applied INTEGER NOT NULL DEFAULT 0,
+            clamp_applied INTEGER NOT NULL DEFAULT 0,
+
+            passed INTEGER,
+            reason TEXT,
+            detail TEXT,
+            reconciles INTEGER
+        )
+        """
+    )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS expert_evaluations (
+            expert_evaluation_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            threshold_decision_id TEXT,
+            decision_id TEXT,
+            bot_instance_id TEXT NOT NULL,
+            symbol TEXT NOT NULL,
+            timeframe TEXT,
+            closed_candle_time INTEGER,
+            recorded_at TEXT NOT NULL,
+
+            strategy TEXT NOT NULL,
+            eligible INTEGER NOT NULL,
+            executed INTEGER NOT NULL,
+            signal TEXT NOT NULL,
+            confidence REAL,
+            raw_score REAL,
+            weight REAL,
+            weighted_contribution REAL,
+            reason TEXT
+        )
+        """
+    )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS adaptive_threshold_state (
+            bot_instance_id TEXT NOT NULL,
+            symbol TEXT NOT NULL,
+            timeframe TEXT NOT NULL,
+            strategy_version TEXT NOT NULL,
+            previous_threshold REAL,
+            last_candle_time INTEGER,
+            distribution_samples_json TEXT,
+            updated_at TEXT,
+            engine_version TEXT,
+            policy_hash TEXT,
+            PRIMARY KEY (bot_instance_id, symbol, timeframe, strategy_version)
+        )
+        """
+    )
+    # The canonical decision row points at the threshold decision that governed
+    # it, so the two can never drift apart in reporting.
+    for column, decl in (
+        ("threshold_decision_id", "TEXT"),
+        ("threshold_status", "TEXT"),
+        ("threshold_engine_version", "TEXT"),
+        ("threshold_mode", "TEXT"),
+    ):
+        _add_column_if_missing(conn, "trading_decisions", column, decl)
+
+
 def _indexes(conn: Any) -> None:
     """Indexes that the diagnostics API depends on for window queries."""
     for stmt in (
@@ -594,5 +727,11 @@ def _indexes(conn: Any) -> None:
         "CREATE INDEX IF NOT EXISTS idx_cycles_bot_time ON trading_cycles(bot_instance_id, started_at)",
         "CREATE INDEX IF NOT EXISTS idx_runs_bot ON bot_runs(bot_instance_id, started_at)",
         "CREATE INDEX IF NOT EXISTS idx_ms_symbol_time ON market_snapshots(symbol, timeframe, closed_candle_close_time)",
+        "CREATE INDEX IF NOT EXISTS idx_thr_bot_time ON threshold_decisions(bot_instance_id, decided_at)",
+        "CREATE INDEX IF NOT EXISTS idx_thr_symbol ON threshold_decisions(bot_instance_id, symbol, timeframe, closed_candle_time)",
+        "CREATE INDEX IF NOT EXISTS idx_thr_status ON threshold_decisions(bot_instance_id, status)",
+        "CREATE INDEX IF NOT EXISTS idx_thr_decision ON threshold_decisions(decision_id)",
+        "CREATE INDEX IF NOT EXISTS idx_expert_threshold ON expert_evaluations(threshold_decision_id)",
+        "CREATE INDEX IF NOT EXISTS idx_expert_bot_symbol ON expert_evaluations(bot_instance_id, symbol, closed_candle_time)",
     ):
         conn.execute(stmt)

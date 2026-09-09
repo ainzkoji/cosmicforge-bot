@@ -616,11 +616,17 @@ class PaperRunner:
         # Reset cache first so the engine is always created with the current config's
         # min_confidence (not the stale 0.10 default from a previous instantiation).
         reset_policy_engine(bot_id)
+        # NON-AUTHORITY. PolicyEngine's confidence check is skipped on the
+        # orchestrated path (confidence_already_approved), and it must not be
+        # able to reject something the threshold engine approved -- so it is
+        # given the band floor, the lowest value the engine itself can produce.
+        from app.threshold.runtime import get_threshold_policy
+
         self.policy_engine = get_policy_engine(
             bot_id=bot_id,
             budget_engine=self.budget_engine,
             circuit_registry=self.circuit_registry,
-            min_confidence=settings.MIN_CONFIDENCE_THRESHOLD,
+            min_confidence=get_threshold_policy().min_threshold,
         )
 
         # Adaptive Engine â€” per-bot so loss streak / drawdown / rolling stats
@@ -3880,10 +3886,14 @@ class PaperRunner:
                 max_open_positions=int(self.max_open_positions),
                 **self._get_drawdown_context(),
                 # --- Adaptive Parameters Passed Down ---
-                min_confidence_gate=max(
-                    float(a_state.min_confidence_gate),
-                    float(getattr(self.context, "min_confidence", 0.0) if self.context else 0.0),
-                ),
+                # NOTE: no min_confidence_gate is passed any more. This call site
+                # used to compute max(adaptive_gate, context.min_confidence),
+                # which was THE saturation point: context.min_confidence was
+                # 0.70 and the adaptive gate could never exceed 0.65, so the
+                # result was 0.70 on every candle and the entire dynamic
+                # threshold subsystem was dead code. The threshold is now
+                # resolved once, by AdaptiveEntryThresholdEngine, inside the
+                # strategy — and the runner does not get a vote.
                 strategy_weight_adjustments=a_state.strategy_weight_adjustments,
                 adaptive_size_multiplier=a_state.size_multiplier,
                 adaptive_leverage_multiplier=a_state.leverage_multiplier,
@@ -3896,12 +3906,14 @@ class PaperRunner:
             try:
                 _ens = getattr(self.strategy, "last_opportunity", None)
                 _eq = getattr(self.strategy, "last_entry_quality", None)
+                _thr = getattr(self.strategy, "last_threshold_decision", None)
                 _bucket = getattr(self, "_symbol_evidence", None)
                 if _bucket is not None:
                     _bucket.setdefault(symbol, {}).update({
                         "snapshot": market_snapshot,
                         "opportunity": _ens,
                         "entry_quality": _eq,
+                        "threshold_decision": _thr,
                     })
             except Exception:
                 pass
@@ -3919,8 +3931,12 @@ class PaperRunner:
                 
                 # Extract threshold returning from strategy
                 strat_meta = strat_out.get("meta") or {}
-                if "threshold" in strat_meta:
+                if strat_meta.get("threshold") is not None:
                     eval_thr = f"{strat_meta['threshold']:.4f}"
+                elif "threshold_status" in strat_meta:
+                    # No threshold was resolved on this candle. Say so rather
+                    # than printing a number that was never computed.
+                    eval_thr = str(strat_meta["threshold_status"])
 
             st.last_signal = strat_out.get("signal", "HOLD")
 
@@ -6667,7 +6683,14 @@ class PaperRunner:
                             strategy_name=getattr(self.strategy, "name", "unknown"),
                             strategy_version=getattr(self.strategy, "version", "0"),
                             confidence_score=float(self.last_signal_confidence.get(symbol, 0.0)),
-                            min_required_confidence=getattr(settings, "MIN_CONFIDENCE_THRESHOLD", 0.70),
+                            # The threshold that actually governed this entry,
+                            # not a static setting that no longer decides
+                            # anything.
+                            min_required_confidence=getattr(
+                                getattr(self.strategy, "last_threshold_decision", None),
+                                "final_threshold",
+                                None,
+                            ),
                             market_regime=getattr(st, "last_regime", None),
                             market_regime_confidence=getattr(st, "last_regime_confidence", None),
                             atr_at_entry=_atr_e1,

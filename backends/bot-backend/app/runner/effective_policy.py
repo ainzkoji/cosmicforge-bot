@@ -127,7 +127,12 @@ class EffectiveBotPolicy:
     consecutive_loss_soft: int
     consecutive_loss_hard: int
 
-    confidence_absolute_floor: float
+    # Identity of the threshold policy in force, not a threshold. The bot policy
+    # does not own the entry bar and must not carry a second copy of one.
+    threshold_policy_hash: str
+    threshold_mode: str
+    threshold_min: float
+    threshold_max: float
     regime_blocked: Tuple[str, ...]
     session_enabled: bool
     session_windows_utc: str
@@ -255,9 +260,15 @@ def resolve_effective_bot_policy(
             f"Timeframe {timeframe!r} is not supported (expected one of {list(SUPPORTED_TIMEFRAMES)})",
         )
 
-    absolute_floor = max(
-        float(getattr(settings, "MIN_CONFIDENCE_THRESHOLD", 0.70)),
-        float(getattr(settings, "ENSEMBLE_MIN_THRESHOLD_FLOOR", 0.55)),
+    # The bot policy records WHICH threshold policy governs the run, not a
+    # threshold of its own. The previous confidence_absolute_floor was
+    # max(MIN_CONFIDENCE_THRESHOLD, ENSEMBLE_MIN_THRESHOLD_FLOOR) and was the
+    # value the runner applied on top of the resolved threshold.
+    from app.threshold.runtime import get_threshold_policy
+
+    threshold_policy = get_threshold_policy(
+        market_type=str(instance.market_type).upper(),
+        settings=settings,
     )
     execution_mode = normalize_execution_mode(getattr(instance, "mode", "paper"))
     from app.core.strong_trend_guard import evaluate_strong_trend_guard
@@ -289,7 +300,11 @@ def resolve_effective_bot_policy(
         max_stop_loss_fraction=limits.max_stop_loss_pct,
         consecutive_loss_soft=int(getattr(settings, "MAX_CONSECUTIVE_LOSSES_SOFT", 3)),
         consecutive_loss_hard=min(int(getattr(settings, "MAX_CONSECUTIVE_LOSSES_HARD", 5)), limits.max_consecutive_losses),
-        confidence_absolute_floor=absolute_floor, regime_blocked=blocked,
+        threshold_policy_hash=threshold_policy.policy_hash,
+        threshold_mode=threshold_policy.mode,
+        threshold_min=threshold_policy.min_threshold,
+        threshold_max=threshold_policy.max_threshold,
+        regime_blocked=blocked,
         session_enabled=bool(getattr(settings, "ENSEMBLE_SESSION_FILTER_ENABLED", True)),
         session_windows_utc=str(getattr(settings, "ENSEMBLE_SESSION_WINDOWS_UTC", "")),
         volatility_filter_enabled=bool(risk_params.get("additional_params", {}).get("volatility_filter_enabled", True)),
