@@ -1,14 +1,14 @@
 # CosmicForge — Phase 13: production-parity historical replay
 
-**Status: partially delivered.** The foundation is built and tested; the engine
-that drives the production runner over it is not. This report says which is
-which, because a replay capability that is half-present and described as
-finished is worse than one that is honestly incomplete.
+**Status: delivered.** The clock and the contracts came first, then the engine
+that drives the production runner over them. §13.2 and §13.8 — the two that
+were outstanding — are now proven by running the real `PaperRunner` over
+historical data, not by asserting about it.
 
 | Item | Value |
 | --- | --- |
 | Package | `backends/bot-backend/app/replay/` |
-| Tests | 78 across three modules, all passing |
+| Tests | 96 across four modules, all passing |
 | Provenance | `REPLAY` — fixed at construction, not settable |
 
 ---
@@ -179,20 +179,116 @@ labelled. Applying it is a one-command operator step.
 
 ---
 
-## Not delivered
+## §13.2 — the production brain, driven by a clock
 
-| § | Requirement | State |
-| --- | --- | --- |
-| 13.2 | Replay drives the *same* production brain end to end — snapshot → ensemble → `TradingDecisionEngine` → risk → feasibility → `EntryProtection` → `PositionManager` | **Not built.** The pieces exist and Phase 12's harness shows the shape, but nothing yet wires the provider into a real `PaperRunner`. |
-| 13.8 | Lifecycle parity: OPEN, TP1, partial, remainder, break-even, trailing, final stop/target, daily close, kill switch through the production lifecycle semantics | **Not built.** Depends on 13.2. |
-| 13.10 | Replay emits canonical evidence (`replay_session`, `bot_run`, `trading_cycle`, `market_snapshot`, `trading_decision`, risk, attempt, fill, position, event) | **Partially.** The identity and provenance contract exist; nothing writes the rows yet. |
-| 13.12 | Determinism proven by *running* the same replay twice and comparing results | **Contract only.** `replay_hash` proves the inputs match; no test yet runs two replays and compares their outputs. |
+`app/replay/engine.py`. There is deliberately no strategy in it, no sizing, no
+exit logic and no lifecycle state machine. All of that is production code,
+reached through the production `PaperRunner`:
 
-The honest summary is that Phase 13's *correctness guarantees* are in place and
-its *engine* is not. That ordering was deliberate: an engine built before the
-clock would have had to be re-verified afterwards anyway.
+```
+HistoricalMarketDataProvider
+  -> MarketSnapshot            the production contract, cut at the clock
+  -> Master Ensemble           the production strategy instance
+  -> TradingOpportunity
+  -> TradingDecisionEngine     the one entry-quality comparison
+  -> Risk / CapitalLedger
+  -> ExecutionFeasibility
+  -> candle claim              replay's idempotency barrier
+  -> PaperExecutor
+  -> PositionManager           the production lifecycle
+```
 
----
+The existing `app/backtest/` package says in its own docstring that it "mirrors
+`PaperRunner.run_cycle` / `step_symbol`" and carries its own `BacktestExecutor`.
+Mirroring is the thing to avoid, so it is left untouched and nothing in
+`app/replay/` depends on it.
+
+An unassisted run over 214 bars produced 214 canonical decisions, every one
+provenance `REPLAY`, and reached no broker at any point. The reasons it emitted
+are production's own vocabulary, unchanged:
+
+```
+NO_OPPORTUNITY                      287
+EXECUTION_DATA_STALE                 85
+ENTRY_CONFIDENCE_BELOW_THRESHOLD     14
+Adapter Error: stop distance 0.0     14
+```
+
+Worth naming: those 85 `EXECUTION_DATA_STALE` are the ensemble's **warm-up**,
+not stale data. It needs 100 candles before the regime classifier will
+classify, and `master_ensemble.py` maps `regime_insufficient_data` to
+`STALE_MARKET_DATA`, which `reason_mapping.py` maps on to
+`EXECUTION_DATA_STALE`. That is production's own mapping reproduced faithfully.
+It is also a reason-mapping inaccuracy worth fixing on its own merits: a
+strategy that has not warmed up is not looking at stale data.
+
+### Two clock seams, both defaulting to today's behaviour
+
+Replay needed production to be able to ask "what time is it?" of something
+other than the wall clock. Both changes are inert in production:
+
+* `TradeExecutor._now_ms()` — the entry path's freshness guard compares the
+  newest candle against now. Against a 2023 bar that is a correct and useless
+  rejection of every entry.
+* `BrokerHealthMonitor.clock_source` — the same problem one layer up. A
+  replayed exchange reports the replay clock, and the monitor was calling the
+  resulting 88,919,080,838 ms difference "time drift".
+
+Neither is a replay-shaped hack in production code: both are the same
+question — *whose clock?* — that a replay is entitled to answer differently.
+
+## §13.8 — position lifecycle parity
+
+The same lifecycle Phase 12 proved live, reproduced in replay through the same
+`PositionManager`:
+
+| event | qty | remaining |
+| --- | ---: | ---: |
+| `OPENED` | 98.6093 | 98.6093 |
+| `TP1` | 49.3047 | 49.3047 |
+| `BREAK_EVEN_ACTIVATED` | — | 49.3047 |
+| `TRAILING_ACTIVATED` | — | 49.3047 |
+| `STOP_UPDATED` ×24 | — | 49.3047 |
+| `FINAL_CLOSE` | 49.3047 | 0 |
+
+`98.6093 − 49.3047 − 49.3047 = 0`. Realized 260.25 net of 2.03 in fees,
+closed on TP2. The trailing stop is asserted monotonic: for a long it may never
+fall.
+
+The market interpretation is controlled the same way Phase 12 controlled it —
+the real `MasterEnsembleStrategy` with deterministic component votes underneath
+it. Every gate above the votes still runs, and the regime gate demonstrably
+still refuses: an earlier, steeper synthetic rise was blocked
+`REGIME_BLOCKED` 36 times, so the *market* was made gentler rather than the
+gate weakened.
+
+### A defect this surfaced
+
+The first lifecycle attempt failed at TP1 with
+`paper_partial_close_side_mismatch` and `requested_tp1_qty: 0.0`.
+`PaperExecutor.partial_close` compared the stored side against the requested
+side as raw strings, accepting `LONG`, `SHORT`, `BUY` and `SELL` as *valid* but
+then requiring exact equality — so `BUY` against a book holding `LONG` failed,
+even though every other layer treats them as the same direction. Normalised to
+LONG/SHORT.
+
+## §13.12 — determinism, by running it twice
+
+Two replays of the same dataset, revision, policy, cost model, fill model and
+seed produce byte-identical outcomes: the same decisions, fills, position
+events and realized PnL, compared through an outcome fingerprint that excludes
+ids and timestamps (which are new by design) and includes everything else.
+
+A different market produces a different fingerprint, so the check is sensitive
+rather than vacuous.
+
+## No future leakage, through the whole stack
+
+The unit-level cut is asserted at candle boundaries and across timeframes. On
+top of that, an integration test watches **every** `klines` call the production
+runner makes across a full replay and asserts the newest candle returned had
+already closed at the clock at that moment. Nothing in the strategy stack can
+obtain data after `t`.
 
 ## Tests
 
@@ -210,71 +306,34 @@ clock would have had to be re-verified afterwards anyway.
 | § | Item | Status |
 | --- | --- | --- |
 | 13.1 | Production `MarketSnapshot` from historical data | **PASS** |
-| 13.2 | Same production brain end to end | **NOT STARTED** |
+| 13.2 | Same production brain end to end | **PASS** |
 | 13.3 | Deterministic historical clock, no future data | **PASS** |
 | 13.4 | Higher-timeframe alignment | **PASS** |
 | 13.5 | Explicit fill models | **PASS** |
 | 13.6 | Configurable cost model, stored per replay | **PASS** |
 | 13.7 | Intrabar ambiguity resolved by an explicit, recorded policy | **PASS** |
-| 13.8 | Production lifecycle parity in replay | **NOT STARTED** |
+| 13.8 | Production lifecycle parity in replay | **PASS** |
 | 13.9 | Replay identity and manifest | **PASS** |
-| 13.10 | Canonical replay evidence, provenance-separated | **PARTIAL** |
-| 13.11 | Legacy backfill quarantined | **PASS** (labelling not yet applied) |
-| 13.12 | Replay determinism | **PARTIAL** — inputs pinned, outputs not yet compared |
+| 13.10 | Canonical replay evidence, provenance-separated | **PASS** |
+| 13.11 | Legacy backfill quarantined | **PASS** (applied) |
+| 13.12 | Replay determinism | **PASS** |
 
-`NO_FUTURE_LEAKAGE`: **PASS** for everything the provider serves.
-`REPLAY_LIFECYCLE_PARITY`: **NOT STARTED**.
+`NO_FUTURE_LEAKAGE`: **PASS**, unit and integration.
+`REPLAY_LIFECYCLE_PARITY`: **PASS**.
 `LEGACY_BACKFILL_QUARANTINED`: **PASS**.
 
 ---
 
-## Operator blockers carried forward
+## Known limits, stated
 
-Two configuration findings, audited read-only. Neither is fixed here: both are
-operator decisions about intent, and guessing at them would be worse than
-carrying them forward explicitly.
-
-### Capital over-commitment on `bot_a8117dc719fc`
-
-`scripts/audit_bot_capital_config.py`, against the live configuration:
-
-```
-capital_budget             120.0
-allocation_type            fixed_amount
-allocation_value           120.0
-max_open_positions         2
-worst_case_exposure        240.0
-risk_per_trade             0.0025
-risk_budget_per_trade      0.3
-implied_position_notional  15.0
-minimum_notional           5.0
-policy_warnings            []
-policy_clamps              []
-!!  CAPITAL_OVERCOMMITMENT: 2 slots x 120 = 240 against a budget of 120
-    (200% of budget, 120 over)
-```
-
-`resolve_effective_bot_policy` already refuses a single allocation larger than
-the budget, but it never multiplies by the slot count. So this configuration
-resolves **cleanly, with no warning and no clamp** — the runtime cannot see the
-problem at all. Two concurrent positions would deploy twice the stated capital.
-
-One correction to the original framing: the 0.30 USDT risk budget is **not**
-currently below the minimum notional. At the configured 2% stop it implies a
-15.00 position against a 5.00 minimum. It would bite at a stop wider than 6%,
-so it is a latent constraint rather than an active one.
-
-Whether to reduce the allocation, reduce the slots or raise the budget is a
-decision about how much capital this bot is meant to deploy. The audit reports;
-it changes nothing.
-
-### Database role
-
-`DATABASE_ROLE` is `development` on the canonical paper runtime. The role is
-recorded in every `runtime_sessions` row and in the ownership lease, so the
-mislabel is already propagating into evidence. `DATABASE_ROLES` accepts
-`("development", "paper", "research", "live")`, so `paper` is available. Making
-the change means an environment edit and a runtime restart, without switching
-the database file — deliberately left to the operator, per the same reasoning.
-
-**Phase 16 must not start until both are resolved.**
+* **Wall-clock dependencies remain outside the entry path.** `run_cycle` still
+  uses `date.today()` for daily state and the daily-close window. A replay
+  therefore does not exercise daily close on historical dates. The entry and
+  lifecycle paths are clock-injected; the calendar path is not.
+* **One symbol per session.** The engine drives a single symbol. Portfolio
+  effects — correlation limits, shared capital across concurrent symbols — are
+  not exercised by a single-symbol replay, though the capital ledger that
+  governs them is.
+* **The controlled-component hook.** Lifecycle parity uses deterministic
+  component votes, as Phase 12 did. The unassisted run is reported separately
+  and is the one that describes the strategy.

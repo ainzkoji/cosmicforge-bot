@@ -174,29 +174,47 @@ except Exception as _baseline_exc:  # never block startup on diagnostics
 # the role is never inferred from a filename, and a stale copy sitting beside
 # the active file is labelled rather than silently promoted.
 RUNTIME_SESSION_ID = None
-try:
-    from app.evidence.writers import open_runtime_session
-    from app.ops.database_registry import register_database_candidates
 
-    _db_role = str(getattr(settings, "DATABASE_ROLE", "development"))
-    RUNTIME_SESSION_ID = open_runtime_session(
-        DB(),
-        database_role=_db_role,
-        database_path=DB().path,
-        schema_version=RUNTIME_BASELINE.get("db_schema_version"),
-        process_execution_mode=RUNTIME_BASELINE.get("execution_mode"),
-        environment_name=str(getattr(settings, "ENVIRONMENT", "unknown")),
-        code_revision=RUNTIME_BASELINE.get("code_revision"),
-        branch=RUNTIME_BASELINE.get("branch"),
-        working_tree_dirty=RUNTIME_BASELINE.get("working_tree_dirty"),
-    )
-    print(
-        f"[RUNTIME_SESSION] id={RUNTIME_SESSION_ID} database_role={_db_role} "
-        f"path={DB().path} execution_mode={RUNTIME_BASELINE.get('execution_mode')}"
-    )
-    register_database_candidates(DB(), active_path=DB().path, database_role=_db_role)
-except Exception as _session_exc:
-    print(f"[RUNTIME_SESSION_WARNING] session_open_failed={_session_exc}")
+
+def _open_runtime_session_once() -> None:
+    """Open the canonical runtime session for THIS serving process.
+
+    Deliberately not done at import time. Importing this module used to open a
+    session, so every test run and every script that touched it wrote a
+    runtime_sessions row into the canonical evidence database. Those rows are
+    indistinguishable from real process starts, they inflate `process_restarts`
+    in the operations metrics, and §16.4 requires scheduler evidence that does
+    not count test runs.
+
+    A session now belongs to a process that is actually serving, which is what
+    the row was always supposed to mean.
+    """
+    global RUNTIME_SESSION_ID
+    if RUNTIME_SESSION_ID is not None:
+        return
+    try:
+        from app.evidence.writers import open_runtime_session
+        from app.ops.database_registry import register_database_candidates
+
+        _db_role = str(getattr(settings, "DATABASE_ROLE", "development"))
+        RUNTIME_SESSION_ID = open_runtime_session(
+            DB(),
+            database_role=_db_role,
+            database_path=DB().path,
+            schema_version=RUNTIME_BASELINE.get("db_schema_version"),
+            process_execution_mode=RUNTIME_BASELINE.get("execution_mode"),
+            environment_name=str(getattr(settings, "ENVIRONMENT", "unknown")),
+            code_revision=RUNTIME_BASELINE.get("code_revision"),
+            branch=RUNTIME_BASELINE.get("branch"),
+            working_tree_dirty=RUNTIME_BASELINE.get("working_tree_dirty"),
+        )
+        print(
+            f"[RUNTIME_SESSION] id={RUNTIME_SESSION_ID} database_role={_db_role} "
+            f"path={DB().path} execution_mode={RUNTIME_BASELINE.get('execution_mode')}"
+        )
+        register_database_candidates(DB(), active_path=DB().path, database_role=_db_role)
+    except Exception as _session_exc:
+        print(f"[RUNTIME_SESSION_WARNING] session_open_failed={_session_exc}")
 
 # Configure logging to suppress noisy shutdown errors
 from app.core.logging_config import configure_shutdown_logging
@@ -352,6 +370,12 @@ SENSITIVE_KEYS = {
 
 def _utc_now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+@app.on_event("startup")
+async def _startup_open_runtime_session():
+    """Registered first: the runner asks for this id as soon as it starts."""
+    _open_runtime_session_once()
 
 
 @app.on_event("startup")

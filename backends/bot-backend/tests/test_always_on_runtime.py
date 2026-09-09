@@ -296,9 +296,9 @@ def test_the_stalled_bot_list_drives_recovery(watchdog):
 
 def test_recovery_rebuilds_the_runner_without_flattening():
     """§7 — a rebuild is a configuration event, never an exit signal."""
-    from app.runner.multi_runner import MultiBotRunner
+    from app.runner import multi_runner as mr_module
 
-    source = inspect.getsource(MultiBotRunner._check_strategy_clocks)
+    source = _function_source(mr_module, "_check_strategy_clocks")
     assert "_evict_runner" in source
 
     # Check executable lines only: the docstring legitimately explains that a
@@ -792,8 +792,10 @@ def test_tiered_recovery_never_flattens_at_any_tier():
     """A7 -- no tier of automatic recovery may become an exit signal."""
     from app.runner.multi_runner import MultiBotRunner
 
-    for func in (MultiBotRunner._check_strategy_clocks, MultiBotRunner._soft_refresh_bot):
-        source = inspect.getsource(func)
+    from app.runner import multi_runner as mr_module
+
+    for name in ("_check_strategy_clocks", "_soft_refresh_bot"):
+        source = _function_source(mr_module, name)
         docstring_end = source.index('"""', source.index('"""') + 3) + 3
         body = "\n".join(
             line for line in source[docstring_end:].splitlines()
@@ -803,4 +805,29 @@ def test_tiered_recovery_never_flattens_at_any_tier():
             assert forbidden not in body, f"{func.__name__} must not {forbidden}"
 
     # The rebuild tier is still reached -- recovery is tiered, not weakened.
-    assert "_evict_runner" in inspect.getsource(MultiBotRunner._check_strategy_clocks)
+    assert "_evict_runner" in _function_source(mr_module, "_check_strategy_clocks")
+
+
+def _module_source(module) -> str:
+    """The module's source as it is on disk.
+
+    Deliberately not inspect.getsource(some_method): that resolves through
+    linecache and through whatever the attribute currently is, so a test
+    elsewhere that patches the method makes these assertions read the patch.
+    """
+    from pathlib import Path
+
+    return Path(module.__file__).read_text(encoding="utf-8")
+
+
+def _function_source(module, name: str) -> str:
+    """One `def name(` block, from the file, to its dedent."""
+    source = _module_source(module)
+    start = source.index(f"    def {name}(")
+    rest = source[start + 1:]
+    # The next line that starts a sibling definition at the same indent.
+    for marker in ("\n    def ", "\n    @", "\nclass "):
+        index = rest.find(marker)
+        if index != -1:
+            rest = rest[:index]
+    return source[start] + rest

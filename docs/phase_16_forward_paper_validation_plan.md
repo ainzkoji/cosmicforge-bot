@@ -8,44 +8,61 @@ it will take once unblocked, because the answer is not three weeks.
 
 ## Entry conditions
 
-Phase 16 begins only when all of these hold.
+Phase 16 begins only when all of these hold. Updated 2026-09-09.
 
 | Prerequisite | State |
 | --- | --- |
 | Always-on runtime hardening | **PASS** |
 | Phase 12 full lifecycle proof | **PASS** |
-| Phase 13 production-parity replay | **PARTIAL** — §13.2 and §13.8 not built |
-| Phase 14 research data contract | **NOT STARTED** |
-| Phase 15 deterministic baseline | **PASS** (measured; §15.10 left open) |
-| Active-bot capital configuration resolved | **BLOCKED** — see below |
-| Paper database role explicit | **BLOCKED** — see below |
-| Runtime restarted onto the Phase 12 fixes | **BLOCKED** — see below |
+| Phase 13 production-parity replay | **PASS** — §13.2 and §13.8 now proven by running it |
+| Phase 14 research data contract | **PARTIAL** — market-data contract done; training-example contract not started |
+| Phase 14 dataset | **PASS** for 120 days at 100% completeness; multi-year outstanding |
+| Provenance cleanup | **PASS** — applied, economics byte-identical |
+| Capital/risk invariant | **PASS** — enforced and tested |
+| Phase 15 full baseline | see the Phase 15 report |
+| Active-bot capital configuration resolved | **STILL BLOCKED** — see below |
+| Paper database role explicit | **STILL BLOCKED** — see below |
+| Runtime on current HEAD | **PASS** — restarted, verified |
 
-### Blocker 1 — capital over-commitment
+Two of the three original blockers are cleared. The runtime now runs current
+code, and the capital invariant is enforced in the executor rather than left to
+configuration. The remaining two are operator decisions, not engineering.
 
-`bot_a8117dc719fc` resolves to 2 slots × 120 = **240 worst-case exposure
-against a 120 budget**, with no warning and no clamp
-(`scripts/audit_bot_capital_config.py`). A readiness sample gathered under a
-configuration that can deploy twice its stated capital is not a readiness
-sample. Operator decision: reduce the allocation, reduce the slots, or raise
-the budget.
+### Blocker 1 — capital configuration (unchanged, now contained)
 
-### Blocker 2 — database role
+`bot_a8117dc719fc` still resolves to 2 slots × 120 = **240 worst-case exposure
+against a 120 budget**, and `resolve_effective_bot_policy` still says nothing
+about it.
+
+What has changed is the consequence. `CapitalLedger` now enforces
+
+    committed margin + proposed margin <= capital budget
+
+in the executor's pre-trade path, so a second concurrent position is capped at
+whatever remains rather than deploying another full allocation. The
+*configuration* is still wrong and still misleading — it advertises capacity
+the bot does not have — but it can no longer breach the budget.
+
+That is containment, not resolution. A readiness sample gathered under a
+configuration whose stated capacity is twice its real one is still not a
+readiness sample. Operator decision: reduce the allocation, reduce the slots,
+or raise the budget.
+
+### Blocker 2 — database role (unchanged)
 
 `DATABASE_ROLE` is `development` on the canonical paper runtime, and that value
-is stamped into every `runtime_sessions` row and the ownership lease. Phase 16
-evidence would carry a role that contradicts what it is. `paper` is an accepted
-role; the change is an environment edit plus a restart, with no database switch.
+is stamped into every `runtime_sessions` row and the ownership lease. `paper`
+is an accepted role; the change is an environment edit plus a restart, with no
+database switch.
 
-### Blocker 3 — the runtime is running pre-fix code
+### One new note — a graceful stop does not release the lease
 
-The live process started before the Phase 12 fixes landed. Until it is
-restarted it still cannot execute a TP1 partial, still flattens paper positions
-in the PositionManager on the cycle after they open, and still writes no
-`execution_attempts`, `positions` or `position_events`. **Any evidence gathered
-before that restart is not Phase 16 evidence.**
-
----
+The supervised launcher stops the runtime with `Stop-Process -Force`, so the
+application's shutdown path never runs and the ownership lease is left with
+`released_at` NULL against a dead PID. It self-heals — the replacement takes
+over on PID-liveness — and it was observed doing exactly that during this
+restart. It is still a small untidiness: a clean operator stop should release
+its own lease rather than rely on takeover.
 
 ## §16.1 Fresh validation identity
 
@@ -68,15 +85,16 @@ Both conditions, not either:
 
 ### How long that actually takes
 
-Phase 15 measured **0 approvals in 96 evaluations**. Two symbols on 15m produce
-about 192 evaluations per day, so:
+Phase 15 measured **0 approvals** — in the live sample and again over real
+historical data through the replay engine. Two symbols on 15m produce about 192
+evaluations per day, so:
 
 | assumed approval rate | evaluations for 60 trades | calendar time |
 | --- | ---: | ---: |
 | 2% | 3,000 | ~16 days |
 | 1% | 6,000 | ~31 days |
 | 0.5% | 12,000 | ~62 days |
-| observed (0/96) | — | unbounded |
+| observed (0 in 150 live, 0 in the historical baseline) | — | unbounded |
 
 **The binding constraint is the opportunity rate, not the three-week minimum.**
 At the rate actually observed, 60 closed trades will not arrive. This is the
@@ -170,14 +188,18 @@ baseline and nothing more.
 
 ## Recommended order
 
-1. Restart the canonical runtime onto the Phase 12 fixes.
-2. Resolve the capital configuration and the database role.
-3. Apply the fill-provenance labelling (`scripts/classify_fill_provenance.py --apply`).
-4. Answer §15.10 — the opportunity-generation question. Without this, step 6
-   cannot reach 60 trades.
-5. Build Phase 13 §13.2/§13.8 and Phase 14, so a strategy change can be
+1. ~~Restart the canonical runtime onto the Phase 12 fixes.~~ **Done.**
+2. ~~Apply the fill-provenance labelling.~~ **Done.**
+3. ~~Build Phase 13 §13.2/§13.8.~~ **Done** — a strategy change can now be
    evaluated on replay before it is committed to a forward window.
-6. Only then open the Phase 16 window with a fresh identity and a locked policy.
+4. Resolve the capital configuration and the database role. Operator decisions.
+5. Answer §15.10 — the opportunity-generation question. This is now the
+   critical path: without it, step 7 cannot reach 60 trades, and the replay
+   engine exists precisely so candidate answers can be measured before they are
+   committed to forward time.
+6. Extend the dataset toward multi-year and build the §14.1 training-example
+   contract, if the answer to step 5 turns out to need a model.
+7. Only then open the Phase 16 window with a fresh identity and a locked policy.
 
-Steps 4 and 5 are the substantial ones. Step 6 is mostly patience, and it is
-wasted patience if step 4 is skipped.
+Step 5 is the critical path. Step 7 is mostly patience, and it is wasted
+patience if step 5 is skipped.

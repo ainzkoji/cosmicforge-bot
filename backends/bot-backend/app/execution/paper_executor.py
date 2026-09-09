@@ -73,6 +73,16 @@ def latest_reference_price(client: Any, symbol: str, fallback_price: float | Non
     raise RuntimeError(f"No reference price available for paper execution: {symbol}")
 
 
+def _direction(side: Any) -> str | None:
+    """LONG or SHORT, from any of the vocabularies used for a side."""
+    value = str(side or "").upper()
+    if value in {"LONG", "BUY"}:
+        return "LONG"
+    if value in {"SHORT", "SELL"}:
+        return "SHORT"
+    return None
+
+
 class PaperExecutor:
     """Internal paper-mode simulator. It never calls exchange order APIs."""
 
@@ -315,9 +325,14 @@ class PaperExecutor:
             saved = self._positions.get(symbol.upper())
             if saved is None:
                 raise ValueError("paper_partial_close_position_not_found")
-            saved_side = str(saved.get("side") or "").upper()
-            requested_side = str(position_side or "").upper()
-            if requested_side not in {"LONG", "SHORT", "BUY", "SELL"} or requested_side != saved_side:
+            # BUY/LONG and SELL/SHORT are the same direction, and the code
+            # around this uses both vocabularies: the book records whatever the
+            # opening call passed, while the runner holds SymbolState.position.
+            # Comparing the raw strings failed a legitimate TP1 partial with a
+            # "side mismatch" whenever the two happened to disagree.
+            saved_side = _direction(saved.get("side"))
+            requested_side = _direction(position_side)
+            if requested_side is None or requested_side != saved_side:
                 raise ValueError("paper_partial_close_side_mismatch")
             qty = float(quantity or 0.0)
             remaining = float(saved.get("remaining_qty") or 0.0)

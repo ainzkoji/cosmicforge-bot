@@ -101,6 +101,22 @@ from shared_lib.persistence.fill_provenance import (  # noqa: E402
 )
 
 
+def _ensure_position_capital_columns(db):
+    """positions.leverage / positions.committed_margin, for the capital ledger.
+
+    Imported lazily: the ledger lives in the bot-backend app package, which is
+    not importable from every consumer of shared_lib.
+    """
+    try:
+        from app.risk.capital_ledger import ensure_position_capital_columns
+
+        ensure_position_capital_columns(db)
+    except Exception:
+        # A shared_lib consumer without the bot-backend app on its path still
+        # gets a working database; the ledger's own callers ensure the columns.
+        pass
+
+
 def migrate(db_path: str | DB = None):
     db = db_path if isinstance(db_path, DB) else DB(path=db_path)
     ensure_tradingview_schema(db)
@@ -2696,6 +2712,9 @@ def migrate(db_path: str | DB = None):
     # append-only event streams. Never drops or rewrites legacy evidence.
     from shared_lib.persistence.evidence_schema import ensure_evidence_schema
     ensure_evidence_schema(db)
+    # Must follow ensure_evidence_schema: it creates `positions`, and an ALTER
+    # against a table that does not exist yet fails silently.
+    _ensure_position_capital_columns(db)
 
     # 47) Event/News automatic runtime mode controller.
     # Keep this after the main migration connection closes so the helper can

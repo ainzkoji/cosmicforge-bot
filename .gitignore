@@ -125,3 +125,13 @@ desktop.ini
 **/*.db
 **/*.db-wal
 **/*.db-shm
+
+# Research market data (Phase 14).
+# The raw day-shards and the replay databases are large data artefacts, not
+# source. They are reproducible from scripts/acquire_market_data.py, and the
+# manifest -- which carries the dataset hash, the quality assessment and the
+# partitions -- is committed so a result can always name the dataset it used.
+data/research/raw/
+data/research/*.db
+data/research/*.db-journal
+data/research/*.db-wal

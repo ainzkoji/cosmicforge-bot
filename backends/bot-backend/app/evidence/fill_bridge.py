@@ -37,6 +37,8 @@ import logging
 from contextlib import contextmanager
 from typing import Any
 
+from app.risk.capital_ledger import margin_for
+
 logger = logging.getLogger(__name__)
 
 #: Quantity comparisons are float arithmetic on exchange step sizes.
@@ -211,6 +213,26 @@ def record_fill_with_evidence(runner: Any, db: Any, **kw: Any) -> Any:
     return result
 
 
+def _decision_leverage(db: Any, decision_id: str | None) -> float:
+    """Leverage this entry was sized at, from its canonical decision.
+
+    Defaults to 1.0 when unknown, which over-reserves capital rather than
+    under-reserving it -- the safe direction for a budget check.
+    """
+    if not decision_id:
+        return 1.0
+    try:
+        with db.connect() as conn:
+            row = conn.execute(
+                "SELECT leverage FROM trading_decisions WHERE decision_id=?",
+                (decision_id,),
+            ).fetchone()
+        value = float((row[0] if row else None) or 0.0)
+        return value if value >= 1.0 else 1.0
+    except Exception:
+        return 1.0
+
+
 def project_fill(runner: Any, db: Any, kw: dict[str, Any]) -> None:
     """Derive the canonical position row and lifecycle event from one fill."""
     from app.evidence.writers import (
@@ -241,12 +263,17 @@ def project_fill(runner: Any, db: Any, kw: dict[str, Any]) -> None:
 
     with db.connect() as conn:
         row = conn.execute(
-            "SELECT original_qty, remaining_qty, realized_qty, realized_pnl, fees, status "
+            "SELECT original_qty, remaining_qty, realized_qty, realized_pnl, fees, "
+            "status, leverage, committed_margin "
             "FROM positions WHERE position_id=?", (position_id,),
         ).fetchone()
 
     if action == "OPEN":
         if row is None:
+            # Capital accounting lives on the position row so it survives a
+            # restart: the ledger sums committed_margin over OPEN positions
+            # rather than trusting anything held in memory.
+            leverage = _decision_leverage(db, decision_id)
             record_position_opened(
                 db,
                 position_id=position_id,
@@ -262,6 +289,8 @@ def project_fill(runner: Any, db: Any, kw: dict[str, Any]) -> None:
                 decision_id=decision_id,
                 execution_mode=identity["execution_mode"],
                 broker_environment=identity["broker_environment"],
+                leverage=leverage,
+                committed_margin=margin_for(qty, price, leverage),
             )
         else:
             # A second OPEN on a live position is an ADD, not a new position.
@@ -271,10 +300,14 @@ def project_fill(runner: Any, db: Any, kw: dict[str, Any]) -> None:
                 db, position_id,
                 remaining_qty=remaining, realized_qty=float(row["realized_qty"]),
             )
+            leverage = float(row["leverage"] or 1.0)
             with db.connect() as conn:
                 conn.execute(
-                    "UPDATE positions SET original_qty=? WHERE position_id=?",
-                    (original, position_id),
+                    "UPDATE positions SET original_qty=?, committed_margin=? "
+                    "WHERE position_id=?",
+                    (original,
+                     float(row["committed_margin"] or 0.0) + margin_for(qty, price, leverage),
+                     position_id),
                 )
             record_position_event(
                 db, position_id=position_id, bot_instance_id=identity["bot_instance_id"],
@@ -327,6 +360,22 @@ def project_fill(runner: Any, db: Any, kw: dict[str, Any]) -> None:
         status="CLOSED" if is_final else None,
         close_reason=(kw.get("exit_reason") or None) if is_final else None,
     )
+
+    # Release capital in proportion to what was closed. A final close leaves
+    # the row OPEN-less, so the ledger stops counting it entirely; a partial
+    # close has to hand back exactly its share and no more.
+    original_qty = float(row["original_qty"] or 0.0)
+    opening_margin = float(row["committed_margin"] or 0.0)
+    released_margin = (
+        0.0 if is_final
+        else opening_margin * (remaining / original_qty) if original_qty > 0
+        else 0.0
+    )
+    with db.connect() as conn:
+        conn.execute(
+            "UPDATE positions SET committed_margin=? WHERE position_id=?",
+            (released_margin, position_id),
+        )
     record_position_event(
         db, position_id=position_id, bot_instance_id=identity["bot_instance_id"],
         symbol=symbol, event_type=event_type, quantity=qty, remaining_qty=remaining,

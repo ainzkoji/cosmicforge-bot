@@ -304,10 +304,10 @@ def test_tp1_taken_is_not_treated_as_a_completed_tp1():
     "complete", was skipped with requested_tp1_qty=0.0, and the partial close
     could never fire.
     """
-    from app.execution.executor import BinanceExecutor
+    from app.execution import executor as executor_module
     from app.execution.position_manager import PositionPhase
 
-    source = inspect.getsource(BinanceExecutor.execute_tp1_partial_close)
+    source = _function_source(executor_module, "execute_tp1_partial_close")
     guard = source[source.index("safe_phases = {"):source.index("if pos.phase in safe_phases")]
 
     assert "TP1_TAKEN" not in guard.replace("# ", "")
@@ -319,9 +319,9 @@ def test_tp1_taken_is_not_treated_as_a_completed_tp1():
 
 def test_update_price_sets_tp1_taken_before_signalling_hit_tp1():
     """The premise of the guard fix, asserted directly against the source."""
-    from app.execution.position_manager import PositionManager
+    from app.execution import position_manager as pm_module
 
-    source = inspect.getsource(PositionManager.update_price)
+    source = _function_source(pm_module, "update_price")
     marker = source.index("PositionPhase.TP1_TAKEN")
     signal = source.index('return "HIT_TP1"')
     assert marker < signal, "TP1_TAKEN must be set before HIT_TP1 is returned"
@@ -333,9 +333,9 @@ def test_the_position_manager_restore_is_not_the_else_of_a_trailing_check():
     As the ``else`` of the trailing-stop condition, the restore ran on nearly
     every cycle and reset phase, tp1_hit and the stop.
     """
-    from app.runner.runner import PaperRunner
+    from app.runner import runner as runner_module
 
-    source = inspect.getsource(PaperRunner._step_symbol_orchestrated)
+    source = _function_source(runner_module, "_step_symbol_orchestrated")
     anchor = source.index("The PositionManager has no live position")
     # The 400 characters immediately before the restore body are its guard.
     guard = source[max(0, anchor - 400):anchor]
@@ -346,9 +346,9 @@ def test_the_position_manager_restore_is_not_the_else_of_a_trailing_check():
 
 
 def test_paper_mode_never_places_broker_protection():
-    from app.execution.executor import BinanceExecutor
+    from app.execution import executor as executor_module
 
-    source = inspect.getsource(BinanceExecutor.ensure_protection)
+    source = _function_source(executor_module, "ensure_protection")
     start = source.index('if effective_mode == "paper"')
     # The branch runs to its second return; everything after is the broker path.
     end = source.index('"paper": True', start)
@@ -359,3 +359,28 @@ def test_paper_mode_never_places_broker_protection():
     assert '"status": "flat"' in branch
     # The branch returns, so nothing below it can run in paper mode.
     assert branch.count("return") >= 2
+
+
+def _module_source(module) -> str:
+    """The module's source as it is on disk.
+
+    Deliberately not inspect.getsource(some_method): that resolves through
+    linecache and through whatever the attribute currently is, so a test
+    elsewhere that patches the method makes these assertions read the patch.
+    """
+    from pathlib import Path
+
+    return Path(module.__file__).read_text(encoding="utf-8")
+
+
+def _function_source(module, name: str) -> str:
+    """One `def name(` block, from the file, to its dedent."""
+    source = _module_source(module)
+    start = source.index(f"    def {name}(")
+    rest = source[start + 1:]
+    # The next line that starts a sibling definition at the same indent.
+    for marker in ("\n    def ", "\n    @", "\nclass "):
+        index = rest.find(marker)
+        if index != -1:
+            rest = rest[:index]
+    return source[start] + rest

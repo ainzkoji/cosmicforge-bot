@@ -171,6 +171,7 @@ def build(db, *, bot_id: str | None, provenance: str | None) -> dict:
         "never_supported": sorted(set(active) - set(supporting)),
     }
 
+    report["profitability"] = profitability(db, bot_id=bot_id, provenance=provenance)
     report["diagnosis"] = diagnose(report, evaluations)
     return report
 
@@ -239,6 +240,136 @@ def diagnose(report: dict, evaluations: list[dict]) -> dict:
     }
 
 
+# ── §15.6 / §15.7 Profitability, after costs ────────────────────────────────
+
+
+def _session_bucket(iso: str | None) -> str:
+    """Crude UTC session label. Named as crude so nobody over-reads it."""
+    if not iso:
+        return "unknown"
+    try:
+        hour = int(str(iso)[11:13])
+    except Exception:
+        return "unknown"
+    if 0 <= hour < 8:
+        return "asia"
+    if 8 <= hour < 16:
+        return "europe"
+    return "americas"
+
+
+def _drawdown(pnls: list[float]) -> dict:
+    """Peak-to-trough on the realized equity curve, in currency and percent."""
+    equity = 0.0
+    peak = 0.0
+    worst = 0.0
+    worst_pct = 0.0
+    for pnl in pnls:
+        equity += pnl
+        peak = max(peak, equity)
+        drop = peak - equity
+        if drop > worst:
+            worst = drop
+            worst_pct = drop / peak if peak > 0 else 0.0
+    return {"max_drawdown": worst, "max_drawdown_pct": worst_pct}
+
+
+def profitability(db, *, bot_id: str | None, provenance: str | None) -> dict:
+    """Realized results for closed positions, net of the fees actually charged.
+
+    Gross numbers are not reported. A strategy that is profitable before costs
+    and unprofitable after them is unprofitable, and showing the gross figure
+    invites the wrong conclusion.
+    """
+    where, args = ["status='CLOSED'"], []
+    if bot_id:
+        where.append("bot_instance_id=?")
+        args.append(bot_id)
+    if provenance:
+        where.append("provenance=?")
+        args.append(provenance)
+
+    with db.connect() as conn:
+        positions = [dict(r) for r in conn.execute(
+            f"SELECT * FROM positions WHERE {' AND '.join(where)} ORDER BY opened_at",
+            tuple(args),
+        )]
+        decisions = {
+            r["decision_id"]: dict(r) for r in conn.execute(
+                "SELECT decision_id, regime, symbol, raw_confidence, "
+                "consensus_observed, stop_price FROM trading_decisions"
+            )
+        }
+
+    if not positions:
+        return {"closed_trades": 0,
+                "note": "no closed positions; profitability is not measurable"}
+
+    trades = []
+    for row in positions:
+        gross = float(row.get("realized_pnl") or 0.0)
+        fees = float(row.get("fees") or 0.0)
+        net = gross - fees
+        decision = decisions.get(row.get("decision_id")) or {}
+        entry = float(row.get("entry_price") or 0.0)
+        qty = float(row.get("original_qty") or 0.0)
+        stop = float(decision.get("stop_price") or 0.0)
+        risk = abs(entry - stop) * qty if stop > 0 and entry > 0 else None
+        trades.append({
+            "symbol": row.get("symbol"),
+            "side": str(row.get("side") or "").upper(),
+            "gross": gross, "fees": fees, "net": net,
+            "regime": decision.get("regime") or "unknown",
+            "month": str(row.get("opened_at") or "")[:7],
+            "session": _session_bucket(row.get("opened_at")),
+            "r_multiple": (net / risk) if risk else None,
+            "notional": entry * qty,
+        })
+
+    nets = [t["net"] for t in trades]
+    wins = [n for n in nets if n > 0]
+    losses = [n for n in nets if n < 0]
+    gross_profit = sum(wins)
+    gross_loss = abs(sum(losses))
+    r_values = [t["r_multiple"] for t in trades if t["r_multiple"] is not None]
+
+    summary = {
+        "closed_trades": len(trades),
+        "gross_pnl": sum(t["gross"] for t in trades),
+        "total_fees": sum(t["fees"] for t in trades),
+        "net_pnl": sum(nets),
+        "expectancy_per_trade": sum(nets) / len(nets),
+        "win_rate": len(wins) / len(nets),
+        "wins": len(wins), "losses": len(losses),
+        "average_win": (gross_profit / len(wins)) if wins else 0.0,
+        "average_loss": (-gross_loss / len(losses)) if losses else 0.0,
+        "profit_factor": (gross_profit / gross_loss) if gross_loss > 0 else None,
+        "average_r_multiple": (sum(r_values) / len(r_values)) if r_values else None,
+        **_drawdown(nets),
+    }
+
+    def segment(key: str) -> dict:
+        out: dict[str, dict] = {}
+        for trade in trades:
+            bucket = out.setdefault(str(trade[key]), {"trades": 0, "net_pnl": 0.0, "wins": 0})
+            bucket["trades"] += 1
+            bucket["net_pnl"] += trade["net"]
+            bucket["wins"] += 1 if trade["net"] > 0 else 0
+        for bucket in out.values():
+            bucket["win_rate"] = bucket["wins"] / bucket["trades"]
+            bucket["expectancy"] = bucket["net_pnl"] / bucket["trades"]
+        return out
+
+    return {
+        **summary,
+        "by_regime": segment("regime"),
+        "by_symbol": segment("symbol"),
+        "by_side": segment("side"),
+        "by_month": segment("month"),
+        "by_session": segment("session"),
+    }
+
+
 def render(report: dict) -> str:
     if "error" in report:
         return report["error"]
@@ -280,6 +411,28 @@ def render(report: dict) -> str:
     out.append("COMPONENTS (§15.8)")
     for key, value in report["components"].items():
         out.append(f"  {key:<18} {value}")
+    out.append("")
+    profit = report.get("profitability") or {}
+    out.append("PROFITABILITY AFTER COSTS (\u00a715.6)")
+    if not profit.get("closed_trades"):
+        out.append(f"  {profit.get('note', 'no closed positions')}")
+    else:
+        for key in ("closed_trades", "net_pnl", "gross_pnl", "total_fees",
+                    "expectancy_per_trade", "win_rate", "profit_factor",
+                    "average_win", "average_loss", "average_r_multiple",
+                    "max_drawdown", "max_drawdown_pct"):
+            value = profit.get(key)
+            if isinstance(value, float):
+                out.append(f"  {key:<24} {value:.6g}")
+            else:
+                out.append(f"  {key:<24} {value}")
+        for segment in ("by_regime", "by_symbol", "by_side", "by_month", "by_session"):
+            out.append(f"  {segment} (\u00a715.7)")
+            for name, stats in sorted((profit.get(segment) or {}).items()):
+                out.append(
+                    f"    {name:<18} trades={stats['trades']:<4} "
+                    f"net={stats['net_pnl']:.6g} win_rate={stats['win_rate']:.2%}"
+                )
     out.append("")
     diagnosis = report["diagnosis"]
     out.append(f"DIAGNOSIS (§15.9)   sample={diagnosis['sample_size']} "

@@ -1,0 +1,169 @@
+{
+  "dataset_id": "binance_1m_btcusdt_3d",
+  "venue": "binance",
+  "symbols": [
+    "BTCUSDT"
+  ],
+  "base_timeframe": "1m",
+  "derived_timeframes": [
+    "15m",
+    "1h",
+    "4h",
+    "5m"
+  ],
+  "start_ms": 1788652800000,
+  "end_ms": 1788911999999,
+  "rows": {
+    "BTCUSDT:15m": 288,
+    "BTCUSDT:1h": 72,
+    "BTCUSDT:1m": 4320,
+    "BTCUSDT:4h": 18,
+    "BTCUSDT:5m": 864
+  },
+  "checksums": {
+    "BTCUSDT:15m": "0b0e9e9beafe3d4a970c246665934d85",
+    "BTCUSDT:1h": "77c80623a650a8d13fa7a2778c398ddf",
+    "BTCUSDT:1m": "15dd980000faf0c4678cfd9d9672e4ab",
+    "BTCUSDT:4h": "9161d75eec16498d0a50aac247cad5ba",
+    "BTCUSDT:5m": "d9869e0084df63bcac0dd16fe20cba8c"
+  },
+  "quality": {
+    "BTCUSDT:15m": {
+      "symbol": "BTCUSDT",
+      "timeframe": "15m",
+      "rows": 288,
+      "first_open_ms": 1788652800000,
+      "last_close_ms": 1788911999999,
+      "expected_rows": 288,
+      "missing_bars": 0,
+      "duplicate_opens": 0,
+      "out_of_order": 0,
+      "inconsistent_intervals": 0,
+      "non_positive_prices": 0,
+      "negative_volume": 0,
+      "ohlc_violations": 0,
+      "unrealistic_gaps": 0,
+      "missing_windows": [],
+      "completeness": 1.0,
+      "is_usable": true
+    },
+    "BTCUSDT:1h": {
+      "symbol": "BTCUSDT",
+      "timeframe": "1h",
+      "rows": 72,
+      "first_open_ms": 1788652800000,
+      "last_close_ms": 1788911999999,
+      "expected_rows": 72,
+      "missing_bars": 0,
+      "duplicate_opens": 0,
+      "out_of_order": 0,
+      "inconsistent_intervals": 0,
+      "non_positive_prices": 0,
+      "negative_volume": 0,
+      "ohlc_violations": 0,
+      "unrealistic_gaps": 0,
+      "missing_windows": [],
+      "completeness": 1.0,
+      "is_usable": true
+    },
+    "BTCUSDT:1m": {
+      "symbol": "BTCUSDT",
+      "timeframe": "1m",
+      "rows": 4320,
+      "first_open_ms": 1788652800000,
+      "last_close_ms": 1788911999999,
+      "expected_rows": 4320,
+      "missing_bars": 0,
+      "duplicate_opens": 0,
+      "out_of_order": 0,
+      "inconsistent_intervals": 0,
+      "non_positive_prices": 0,
+      "negative_volume": 0,
+      "ohlc_violations": 0,
+      "unrealistic_gaps": 0,
+      "missing_windows": [],
+      "completeness": 1.0,
+      "is_usable": true
+    },
+    "BTCUSDT:4h": {
+      "symbol": "BTCUSDT",
+      "timeframe": "4h",
+      "rows": 18,
+      "first_open_ms": 1788652800000,
+      "last_close_ms": 1788911999999,
+      "expected_rows": 18,
+      "missing_bars": 0,
+      "duplicate_opens": 0,
+      "out_of_order": 0,
+      "inconsistent_intervals": 0,
+      "non_positive_prices": 0,
+      "negative_volume": 0,
+      "ohlc_violations": 0,
+      "unrealistic_gaps": 0,
+      "missing_windows": [],
+      "completeness": 1.0,
+      "is_usable": true
+    },
+    "BTCUSDT:5m": {
+      "symbol": "BTCUSDT",
+      "timeframe": "5m",
+      "rows": 864,
+      "first_open_ms": 1788652800000,
+      "last_close_ms": 1788911999999,
+      "expected_rows": 864,
+      "missing_bars": 0,
+      "duplicate_opens": 0,
+      "out_of_order": 0,
+      "inconsistent_intervals": 0,
+      "non_positive_prices": 0,
+      "negative_volume": 0,
+      "ohlc_violations": 0,
+      "unrealistic_gaps": 0,
+      "missing_windows": [],
+      "completeness": 1.0,
+      "is_usable": true
+    }
+  },
+  "partitions": [
+    {
+      "name": "TRAIN",
+      "start_ms": 1788652800000,
+      "end_ms": 1788808319999,
+      "rows": 2592,
+      "start": "2026-09-06T00:00:00+00:00",
+      "end": "2026-09-07T19:11:59.999000+00:00"
+    },
+    {
+      "name": "VALIDATION",
+      "start_ms": 1788808320000,
+      "end_ms": 1788847199999,
+      "rows": 648,
+      "start": "2026-09-07T19:12:00+00:00",
+      "end": "2026-09-08T05:59:59.999000+00:00"
+    },
+    {
+      "name": "TEST",
+      "start_ms": 1788847200000,
+      "end_ms": 1788886079999,
+      "rows": 648,
+      "start": "2026-09-08T06:00:00+00:00",
+      "end": "2026-09-08T16:47:59.999000+00:00"
+    },
+    {
+      "name": "FINAL_HOLDOUT",
+      "start_ms": 1788886080000,
+      "end_ms": 1788911999999,
+      "rows": 432,
+      "start": "2026-09-08T16:48:00+00:00",
+      "end": "2026-09-08T23:59:59.999000+00:00"
+    }
+  ],
+  "code_revision": "977ee2d56b2cc557fff3b14b32aec075f62c36ee",
+  "feature_schema_version": "1.0.0",
+  "label_schema_version": "1.0.0",
+  "created_at": "2026-09-09T05:06:54.168333+00:00",
+  "provenance": "REAL_HISTORICAL",
+  "dataset_hash": "4a03051bb8eb863f48eba37960af3509",
+  "start": "2026-09-06T00:00:00+00:00",
+  "end": "2026-09-08T23:59:59.999000+00:00"
+}

@@ -286,6 +286,11 @@ class BinanceExecutor:
         self._allocation_type = "fixed_usdt"
         self._allocation_value = 0.0
         self._max_notional_per_symbol = 0.0
+        #: The bot's own capital budget. Distinct from the broker's available
+        #: balance, which is what the pre-trade margin check looks at and which
+        #: says nothing about how much of *this bot's* budget is already
+        #: committed to other open positions.
+        self._capital_budget = 0.0
         self._allow_scale_in = False
         self._allow_hedge_mode = False
         self.paper_executor = PaperExecutor(
@@ -324,6 +329,68 @@ class BinanceExecutor:
     def client(self, value):
         self.__dict__["_client_raw"] = value
         self.__dict__.pop("_client_paper_view", None)
+
+    def _now_ms(self) -> int:
+        """Wall clock, unless a clock source is injected.
+
+        Replay needs the freshness guards to judge a historical candle against
+        the replay timestamp rather than against today, or every historical bar
+        is correctly-but-uselessly rejected as stale. Production leaves this
+        unset and gets `time.time()`.
+        """
+        source = getattr(self, "_clock_source", None)
+        if source is not None:
+            try:
+                return int(source())
+            except Exception:
+                pass
+        import time as _t
+
+        return int(_t.time() * 1000)
+
+    def _authorize_capital(self, symbol: str, notional: float, leverage: int,
+                           min_notional: float):
+        """Apply the capital-budget chain. None when no budget is configured.
+
+        The broker-balance preflight further down answers "can the account
+        afford this?". This answers a different question the account cannot:
+        "has this bot already committed its budget to other open positions?".
+        Both have to pass.
+        """
+        budget = float(getattr(self, "_capital_budget", 0.0) or 0.0)
+        bot_id = getattr(self, "bot_instance_id", None)
+        db = getattr(self, "_db", None)
+        if budget <= 0 or not bot_id or db is None:
+            return None
+        try:
+            from app.risk.capital_ledger import CapitalLedger
+
+            ledger = CapitalLedger(db, bot_instance_id=bot_id, capital_budget=budget)
+            allocation = float(getattr(self, "_allocation_value", 0.0) or 0.0)
+            allocation_type = str(getattr(self, "_allocation_type", "") or "").lower()
+            # A fixed allocation is expressed as MARGIN; the chain works in
+            # notional, so convert with the same leverage the order will use.
+            per_position_cap = (
+                allocation * leverage
+                if allocation_type in {"fixed_amount", "fixed_usdt"} and allocation > 0
+                else 0.0
+            )
+            return ledger.authorize(
+                risk_notional=float(notional),
+                leverage=float(leverage),
+                per_position_cap=per_position_cap,
+                min_notional=float(min_notional or 0.0),
+                max_exposure_notional=float(
+                    getattr(self, "_max_notional_per_symbol", 0.0) or 0.0
+                ),
+            )
+        except Exception as exc:
+            import logging
+
+            logging.getLogger(__name__).error(
+                "[CAPITAL_LEDGER] %s: authorisation failed: %s", symbol, exc,
+            )
+            return None
 
     def _configured_max_exposure(self, current_equity: float) -> float:
         """
@@ -1018,6 +1085,38 @@ class BinanceExecutor:
             total_maint   = float(acc.get("totalMaintMargin",    0.0))
             total_initial = float(acc.get("totalInitialMargin",  0.0))
 
+            # ── The bot's own capital budget, before anything else ─────
+            # committed margin + proposed margin <= capital budget. This is the
+            # bot's constraint; the broker-balance check below is the account's.
+            _capital = self._authorize_capital(
+                symbol, budget_usdt, effective_lev, MIN_NOTIONAL,
+            )
+            if _capital is not None:
+                if not _capital.approved:
+                    from app.decision.reasons import ExecutionReason
+
+                    _is_min_notional = _capital.reason == ExecutionReason.MIN_NOTIONAL
+                    return ExecResult(
+                        status="NO_TRADE_INVALID_QTY" if _is_min_notional
+                        else "INSUFFICIENT_MARGIN",
+                        details={
+                            "symbol": symbol,
+                            "signal": signal,
+                            "reason_code": _capital.reason,
+                            "capital": _capital.observability(),
+                        },
+                        success=False,
+                        error=f"[CAPITAL] {symbol}: {_capital.detail}",
+                    )
+                if _capital.was_reduced:
+                    _exec_logger.info(
+                        "[CAPITAL] %s: notional reduced %.8g -> %.8g "
+                        "(committed=%.8g of budget=%.8g)",
+                        symbol, _capital.requested_notional, _capital.approved_notional,
+                        _capital.committed_margin, _capital.capital_budget,
+                    )
+                budget_usdt = _capital.approved_notional
+
             # ── Compute margin required for this order ──
             margin_required = budget_usdt / max(1, effective_lev)
 
@@ -1164,7 +1263,7 @@ class BinanceExecutor:
                 recent_klines = self.client.klines(symbol=symbol, interval=freshness_interval, limit=2)
             
             if recent_klines is not None:
-                now_ms = int(time.time() * 1000)
+                now_ms = self._now_ms()
                 freshness = _kline_staleness(
                     recent_klines,
                     interval=freshness_interval,
@@ -1182,7 +1281,7 @@ class BinanceExecutor:
                     freshness = _kline_staleness(
                         retry_klines,
                         interval=freshness_interval,
-                        now_ms=int(time.time() * 1000),
+                        now_ms=self._now_ms(),
                         buffer_ms=freshness_buffer_ms,
                     )
                 if not freshness["ok"]:

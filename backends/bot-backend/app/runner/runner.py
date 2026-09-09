@@ -461,6 +461,13 @@ class PaperRunner:
         self.executor._allocation_type = _allocation_type
         self.executor._allocation_value = _allocation_value
         self.executor._max_notional_per_symbol = _max_notional_per_symbol
+        # The capital budget the whole bot may deploy at once, across every
+        # open position. resolve_effective_bot_policy checks a single
+        # allocation against it but never multiplies by max_open_positions, so
+        # without this the executor has no way to know the budget is spent.
+        self.executor._capital_budget = float(
+            getattr(self.context, "capital_budget", 0.0) or 0.0
+        ) if self.context else 0.0
         self.executor._allow_scale_in = False
         self.executor._allow_hedge_mode = False
         # â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€

@@ -56,12 +56,27 @@ class BrokerHealthMonitor:
         error_window_minutes: int = 5  # Track errors in last N minutes
     ):
         self.max_time_drift_ms = max_time_drift_ms
+        #: Injectable "now", in ms. Left unset in production, where it is the
+        #: wall clock. A replay sets it to the historical clock, because a 2023
+        #: candle is not clock drift -- comparing a replayed exchange's time
+        #: against today would fail every historical bar, correctly and
+        #: uselessly.
+        self.clock_source = None
         self.min_rate_limit_weight = min_rate_limit_weight
         self.max_ping_ms = max_ping_ms
         self.error_window_minutes = error_window_minutes
         
         self._recent_errors: Dict[str, list] = {}  # broker_id -> [(timestamp, error), ...]
     
+    def _now_ms(self) -> int:
+        source = getattr(self, "clock_source", None)
+        if source is not None:
+            try:
+                return int(source())
+            except Exception:
+                pass
+        return int(time.time() * 1000)
+
     def check_health(
         self,
         broker_id: str,
@@ -86,7 +101,7 @@ class BrokerHealthMonitor:
             # Check 1: Time synchronization
             try:
                 server_time = client.server_time()
-                local_time = int(time.time() * 1000)
+                local_time = self._now_ms()
                 time_drift = abs(server_time - local_time)
                 
                 if time_drift > self.max_time_drift_ms:
