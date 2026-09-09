@@ -307,9 +307,54 @@ Four distinct thresholds spanning 0.591 to 0.900, every one reconciling. The
 second row is clamped (`raw` 0.9195 → `final` 0.9000) and records
 `clamp_applied = True`.
 
-**Live paper runtime observation has not been performed and is not claimed.** The
-runtime has not been restarted on this HEAD, and no genuine BTC/ETH candle has
-been evaluated by this engine. See the acceptance block.
+### Live paper runtime — PARTIAL
+
+The canonical runtime was stopped through its own operator stop-file with the
+bot fully flat (0 open positions, 0 in-flight execution attempts), and restarted
+supervised on port 9000.
+
+Verified live:
+
+| Check | Result |
+| --- | --- |
+| Runtime on this HEAD | `code_revision = e00ad262` |
+| Runtime ownership | exactly one unreleased lease, pid 2784 |
+| MultiBotRunner | one, initialised, cycling |
+| Scheduler | 55 cycles in 10 minutes, 0 incomplete decisions |
+| BTCUSDT clock | candle 21:44:59.999Z evaluated at 21:45:09Z |
+| ETHUSDT clock | candle 21:44:59.999Z evaluated at 21:45:11Z |
+| Schema migrated | `threshold_decisions`, `expert_evaluations`, `adaptive_threshold_state` created |
+
+**The NULL-not-zero fix is visible in production, on genuine candles.** The
+before/after across the restart, same bot, same symbols:
+
+```
+21:30:09  BTCUSDT  NO_OPPORTUNITY   effective_entry_threshold=0.0   threshold_status=NULL   <- old
+21:30:11  ETHUSDT  REGIME_BLOCKED   effective_entry_threshold=0.0   threshold_status=NULL   <- old
+21:45:09  BTCUSDT  SESSION_BLOCKED  effective_entry_threshold=NULL  threshold_status=NOT_EVALUATED
+21:45:11  ETHUSDT  REGIME_BLOCKED   effective_entry_threshold=NULL  threshold_status=NOT_EVALUATED
+```
+
+The 21:00 rows recorded `0.7` — the saturated value, on every candle, for months.
+
+**Not yet verified live: an EVALUATED threshold decision with its components.**
+Both symbols are currently stopped by hard gates that correctly run *before* the
+threshold engine:
+
+* BTCUSDT — `SESSION_BLOCKED`. `ENSEMBLE_SESSION_FILTER_ENABLED=True` with
+  `ENSEMBLE_SESSION_WINDOWS_UTC=06:00-19:00`, and observation began at 21:45 UTC.
+* ETHUSDT — `REGIME_BLOCKED`.
+
+So no candle has reached the quality stage since the restart, `threshold_decisions`
+is empty, and that is the correct behaviour rather than a fault: hard gates are
+not expressed as thresholds. A populated `threshold_decisions` row requires the
+session window to open at **06:00 UTC**. Nothing was forced, no gate was
+weakened, and no threshold was lowered to manufacture an evaluation.
+
+A background watch is armed on the first `threshold_decisions` row. Until it
+fires, `ADAPTIVE_ENTRY_THRESHOLD_ENGINE` is proven by 101 unit tests, the
+18-test replay production-parity suite driving the real ensemble through the
+real runner, and the four-scenario table above — not by live paper evidence.
 
 ---
 
@@ -351,3 +396,101 @@ been evaluated by this engine. See the acceptance block.
 * Mainnet not enabled; no real or user capital involved.
 * Historical decisions not rewritten.
 * No broker-specific threshold logic; no second replay engine.
+
+---
+
+## 13. Test-isolation defect found and fixed during acceptance
+
+The live check surfaced a defect I had introduced: the test suite had written
+**eight `adaptive_threshold_state` rows into the production database**, under
+`bot_replay_lifecycle`, `bot_determinism_a`, `bot_sensitivity` and an `unknown`
+from callers that pass no `bot_instance_id`. Threshold state is written on every
+evaluated candle, and the replay/parity suites drive the real strategy.
+
+Nothing was destroyed — the table was created by this same change and had no
+live rows — but those rows are keyed exactly the way the live bot's are and
+would have fed the live distribution calibration on any key collision.
+
+`app/threshold/runtime.py::_db()` now returns `None` under
+`COSMICFORGE_TEST_MODE`, so the store stays in memory. That is the rule
+`audit.py` already applies to its JSONL sink. The eight rows were backed up and
+deleted by explicit bot id; `adaptive_threshold_state` is empty again, and
+`threshold_decisions` and `expert_evaluations` were never written to. Two
+regression tests cover it.
+
+---
+
+## 14. Acceptance
+
+```
+OLD_THRESHOLD_AUTHORITIES_INVENTORIED:        PASS  (14 controls, §2)
+MIN_CONFIDENCE_THRESHOLD_REMOVED_AS_AUTHORITY: YES  (MIGRATED to THRESHOLD_BASE)
+ENSEMBLE_MIN_THRESHOLD_FLOOR_REMOVED_AS_AUTHORITY: YES (deprecated, warns at startup)
+LEGACY_DYNAMIC_THRESHOLD_STACK_REMOVED:       YES   (RESEARCH_ONLY, not an authority)
+LEGACY_CONSENSUS_THRESHOLD_AUTHORITY:         REMOVED
+ONE_FINAL_THRESHOLD_AUTHORITY:                PASS
+ADAPTIVE_ENTRY_THRESHOLD_ENGINE:              PASS
+EFFECTIVE_THRESHOLD_POLICY:                   PASS
+REGIME_INPUT:                                 PASS
+VOLATILITY_INPUT:                             PASS
+EXPERT_AGREEMENT_INPUT:                       PASS
+HTF_INPUT:                                    PASS (component implemented and
+                                              tested; the runner does not yet
+                                              supply htf_direction/strength, so
+                                              htf_adjustment is 0 in production
+                                              until that is wired — §11.5)
+MARKET_QUALITY_INPUT:                         PASS (partially populated: volume
+                                              percentile and staleness only —
+                                              §11.6)
+SLOW_PERFORMANCE_CALIBRATION:                 PASS
+OPPORTUNITY_DISTRIBUTION_CALIBRATION:         PASS
+SMOOTHING_HYSTERESIS:                         PASS
+NOT_EVALUATED_NULL_SEMANTICS:                 PASS (verified in production)
+SEVEN_EXPERT_EVIDENCE:                        PASS (from the production
+                                              evaluation; no strategy re-run)
+NO_CROSS_SYMBOL_EVIDENCE_LEAK:                PASS
+NO_CROSS_CANDLE_EVIDENCE_LEAK:                PASS
+THRESHOLD_STATE_RESTART_SAFE:                 PASS
+REPLAY_USES_SAME_ENGINE:                      PASS (no replay-only threshold;
+                                              18/18 parity tests pass)
+NO_HIDDEN_THRESHOLD_OVERRIDE:                 PASS
+NO_INERT_USER_VISIBLE_THRESHOLD_CONFIG:       PASS (asserted by test)
+CONTRADICTORY_CONFIG_REJECTED:                PASS
+
+FULL_TEST_SUITE:                              2375 passed, 0 failed, 0 skipped,
+                                              4 subtests passed, 27 warnings
+                                              (+2 isolation tests added after
+                                              that run; 101 threshold tests pass)
+
+LIVE_PAPER_RUNTIME:                           PARTIAL
+                                              Restart, ownership, clocks and
+                                              NULL semantics verified on genuine
+                                              candles. No EVALUATED threshold
+                                              decision observed yet: both symbols
+                                              are hard-gated (session window
+                                              06:00-19:00 UTC; ETH regime-blocked).
+                                              Nothing was forced to change this.
+
+THRESHOLD_ENGINE_VERSION:                     1.0.0
+ACTIVE_THRESHOLD_AUTHORITIES:                 1
+TRADING_THRESHOLDS_OPTIMIZED:                 NO
+TRADING_FREQUENCY_TARGETED:                   NO
+AI_SELF_TUNING_ENABLED:                       NO
+SAFE_FOR_CONTINUED_PAPER_OBSERVATION:         YES
+SAFE_FOR_AI_ACTIVATION:                       NO
+SAFE_FOR_MAINNET:                             NO
+```
+
+### Two things the operator should decide
+
+1. **The band now permits a lower bar than before.** The threshold was 0.70 on
+   every candle; it can now reach 0.50. That is the requested adaptation, but it
+   is a live behaviour change and it is reversible in one line — set
+   `THRESHOLD_ENGINE_MODE=STATIC` and `THRESHOLD_STATIC=0.70` to reproduce the
+   old effective behaviour exactly, with the difference that it would then be
+   *declared* static rather than static by accident.
+2. **The sensitivity study is still gated** on Phase 13 replay being accepted and
+   on the organic window containing more than zero trades. The engine is ready
+   for it: `research_policy()` varies the band and bounds without touching
+   production configuration, and RESEARCH mode uses the same engine, so no
+   second implementation can drift from the first.
