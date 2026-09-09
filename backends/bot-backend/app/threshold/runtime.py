@@ -31,6 +31,18 @@ _startup_reported = False
 
 
 def _db() -> Any | None:
+    """The canonical database, or ``None`` under test.
+
+    Under ``COSMICFORGE_TEST_MODE`` this returns ``None`` so the state store
+    stays in memory. Threshold state is written on every evaluated candle, and
+    the replay and parity suites drive the real strategy -- without this, a test
+    run deposits adaptive state into the production database under test bot ids
+    and pollutes the live distribution calibration.
+    """
+    import os
+
+    if os.environ.get("COSMICFORGE_TEST_MODE") == "1":
+        return None
     try:
         from shared_lib.persistence.db import DB
 

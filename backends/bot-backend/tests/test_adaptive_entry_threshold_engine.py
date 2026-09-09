@@ -1295,6 +1295,42 @@ class TestQualityComparison:
 # ═════════════════════════════════════════════════════════════════════════════
 
 
+class TestTestIsolation:
+    def test_the_state_store_never_touches_the_production_database_under_test(self):
+        """Threshold state is written on every evaluated candle.
+
+        The replay and parity suites drive the real strategy, so without this
+        isolation a test run deposits adaptive state into the production
+        database under test bot ids -- which is exactly what happened once, and
+        would silently pollute the live distribution calibration.
+        """
+        import os
+
+        from app.threshold import runtime as threshold_runtime
+
+        assert os.environ.get("COSMICFORGE_TEST_MODE") == "1", "conftest sets test mode"
+        assert threshold_runtime._db() is None
+
+        threshold_runtime.reset_for_tests()
+        try:
+            store = threshold_runtime.get_threshold_state_store()
+            assert type(store) is ThresholdStateStore, (
+                f"expected an in-memory store under test, got {type(store).__name__}"
+            )
+        finally:
+            threshold_runtime.reset_for_tests()
+
+    def test_the_performance_source_is_also_isolated(self):
+        from app.threshold import runtime as threshold_runtime
+
+        threshold_runtime.reset_for_tests()
+        try:
+            calibrator = threshold_runtime.get_performance_calibrator()
+            assert calibrator._source is None
+        finally:
+            threshold_runtime.reset_for_tests()
+
+
 class TestPercentile:
     def test_interpolates_between_samples(self):
         assert percentile([0.0, 1.0], 0.5) == pytest.approx(0.5)
