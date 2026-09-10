@@ -11,7 +11,8 @@ The other session's runtime-lifecycle work (preflight, graceful stop, ownership-
 background jobs, `ENVIRONMENT_NAME`) was preserved unchanged and is committed
 separately, before this fix.
 
-> Sections marked **PENDING** are completed after the final commit and restart.
+> The code is commit `4bf6d19a`, which the live runtime now runs. This report
+> is committed on top of it as a docs-only change.
 
 ---
 
@@ -280,16 +281,248 @@ TEST_DATABASE_ROLE=test
 
 ## 8. Commits
 
-PENDING.
+Before committing I inspected the whole working tree: 24 modified and 21
+untracked files, all accounted for, with no editor or temp files. It went in as
+two commits on top of `a4d3106c`, so the session-gate commits `8622fc73` and
+`a4d3106c` remain ancestors.
+
+| Commit | Content |
+|---|---|
+| `7027b1958fcc0ccea25d0bf219b0da7edd24bbf4` | **Runtime lifecycle**, the other session's work, committed exactly as left: preflight, graceful stop, ownership-gated jobs, `ENVIRONMENT_NAME`, operator CLI, its tests and its report. 15 files. |
+| `4bf6d19aaffe7daffd4225f0ae5a72fcdac6b7a1` | **This correctness fix**: code, tests, the audit report and this report. |
+
+`app/main.py` contained both sessions' changes. I separated them without
+touching the working tree:
+
+* The lifecycle commit's `main.py` was staged from a copy with only my one dotenv hunk reverted.
+* The staged content was verified byte-identical to that copy.
+* The dotenv hunk was confirmed absent from the lifecycle commit and present in the fix commit.
+
+A first staging attempt, run from the wrong working directory, left `main.py`
+half-staged. It was reset in the index only and redone from the repository
+root before anything was committed.
+
+After the second commit, `git status` was empty.
 
 ## 9. Restart and live acceptance
 
-PENDING.
+### Restart
+
+The restart used the completed runtime-management path,
+`scripts/trading_runtime.ps1 restart` in supervised mode.
+
+**Pre-restart gate** (read-only, run immediately before the stop):
+
+* 0 open positions;
+* both symbols flat, with nothing pending;
+* 0 in-flight execution attempts;
+* 0 pending entries;
+* HEAD `4bf6d19a` and an empty `git status`.
+
+**Old runtime** (PID 46412, `rts_5548a9cb6dee44579790`):
+
+* graceful stop through the STOP file, with **no forced termination**;
+* session `STOPPED` at 2026-09-10T23:32:44Z, `shutdown_reason=OPERATOR_STOP_FILE`;
+* lease released and port freed.
+
+**New runtime:**
+
+| Check | Result |
+|---|---|
+| port 9000 listeners | 1 (PID 38908) |
+| runtime lease | 1 row, `rts_419a2687a78c45058121`, PID 38908, heartbeat fresh, not released |
+| MultiBotRunner / scheduler owner | 1 / 1: `BACKGROUND_JOBS_OWNER reason=RUNTIME_OWNER`, logged once |
+| process tree | supervisor PowerShell 41424 → venv launcher 33308 → server 38908 |
+| sessions RUNNING | 1 |
+| code revision | `4bf6d19aaffe7daffd4225f0ae5a72fcdac6b7a1` = HEAD at launch |
+| database role / environment | `paper` / `paper_forward_local` |
+| migration | `provenance` added to `decision_traces` and `canonical_trade_decisions` |
+| logs | now persisted: `logs/runtime/runtime-20260911-013252.log` (+ `.err`) |
+| `/health` | `status=ok`, `code_version=4bf6d19a` |
+
+**Evidence gap found here, not fixed in this pass.** The new session records
+`working_tree_dirty=NULL`, not `0`, although `git status` was empty at launch.
+`runtime_baseline._git()` returns `None` for empty output, so a clean tree reads
+as "unknown". It is a one-line fix
+(`bool(dirty)` must see `""` as clean), left for the next pass because it would
+need another commit and restart. The clean-tree proof for this epoch rests on
+the empty `git status` recorded in §8 and `code_revision == HEAD`.
+
+### Live acceptance: first organic candle on the new code
+
+The 15m candle closed 2026-09-10T23:44:59.999Z and was evaluated at 23:45:02–07Z.
+Nothing was forced or injected.
+
+| Check | BTCUSDT | ETHUSDT |
+|---|---|---|
+| decision | `NO_OPPORTUNITY` (WEAK_TREND) | `ENTRY_CONFIDENCE_BELOW_THRESHOLD` 0.3040 < 0.808147 |
+| sma_cross | `HOLD` reason `no_cross`, **no `data_error`** | `HOLD` reason `no_cross`, **no `data_error`** |
+| seven expert states | 4 eligible and executed (all HOLD), 3 DISABLED for WEAK_TREND, 0 ERROR | 4 eligible and executed (supertrend SELL 0.608, 3 HOLD), 3 DISABLED, 0 ERROR |
+| threshold decision | `NOT_EVALUATED` / `NO_OPPORTUNITY` | `EVALUATED`, final 0.808147 |
+| threshold policy hash | `afd2b463…f17802` | `afd2b463…f17802` (unchanged) |
+| performance calibration | `INSUFFICIENT_SAMPLE`, sample 0 | `INSUFFICIENT_SAMPLE`, sample 0 |
+| session | `market_type=CRYPTO`, `CRYPTO_SESSION_24_7_BYPASS`, `session_allowed=true` | same |
+| `htf_opposed` | NULL (veto disabled, not evaluated) | NULL |
+| provenance | `PAPER_FORWARD` on the decision, the canonical row and the trace | same |
+
+What each check proves:
+
+* **A. Experts.** sma_cross returns a genuine opinion on both symbols. ERROR is not HOLD: no expert errored, so none was booked as HOLD.
+* **B. Session.** This candle closed at 23:45 UTC, **outside** the 06:00–19:00 window, so it discriminates. Both symbols took the CRYPTO 24/7 bypass with identical inputs; that is the cross-symbol consistency proof the audit could not make. The NOT_EVALUATED / NULL path for a skipped gate did not occur on this candle, because neither symbol was regime-blocked. It is proven by tests, not yet observed live.
+* **C. Calibration.** The canonical query ran: a failure would read UNAVAILABLE, and the log has 0 `no such column` / `THRESHOLD_CALIBRATION` lines. The sample is genuinely 0 closed positions.
+* **D. Capital.** No organic entry occurred and none was forced. The oversubscription is proven by tests in both modes (§3).
+* **E. External signal.** No queue item was injected. Proven by contract tests (§4).
+* **F. Paper broker isolation.** Since the restart: 0 `PAPER_BROKER_MUTATION_FORBIDDEN`, 0 execution attempts, 0 positions, 0 tracebacks, 0 `data_error`, 0 `snapshot_timeframe_unavailable` in the log.
+* **Provenance.** All 148 traces written by the new run carry `PAPER_FORWARD`.
+
+### Also found during this pass (not fixed; for the next pass)
+
+* **`working_tree_dirty` recorded as NULL for a clean tree** (above).
+* **The old run's `bot_runs` row (`2ee0ef5a…`) is still `RUNNING`** after a graceful stop. `quiesce()` closes the runtime session and the lease, but not the bot run. This is the audit's P3-2 hygiene item.
+* **Replay history has no 5m candles.** In replay, vwap_reversion in RANGE reports ERROR and that candle fails closed (§2).
+* **The historical classifier has not been applied.** The provenance column now exists, so `scripts/classify_test_evidence_provenance.py --apply` would label the 9,339 + 9,339 rows. That is an operator decision.
 
 ## 10. Phase-15 clean evidence boundary
 
-PENDING.
+```
+CLEAN_PHASE15_EVIDENCE_START
+  runtime_session_id : rts_419a2687a78c45058121
+  bot_run (run_id)   : 8afa88d4a5664b3eacd6be30c43d6c3c   (RunManager run 662ece74-2229-4840-aeb6-51f44bae05d6)
+  commit             : 4bf6d19aaffe7daffd4225f0ae5a72fcdac6b7a1   (git status empty at launch)
+  started_at         : 2026-09-10T23:32:57.669888Z
+  bot                : bot_a8117dc719fc, paper, provenance PAPER_FORWARD
+  bot policy hash    : cbdf8436686f7c0dbb503dc09caf7972a5ff0ce857413b0a0e173d4b209aa557
+  threshold policy   : afd2b4636b9d89e9d99dabc46ea08338386e717e66d7b8cb226911c601f17802 (see §9)
+```
+
+Excluded from the Phase-15 baseline. Nothing is deleted; the exclusions are
+applied by query, and by provenance once the classifier is applied:
+
+| Exclusion | Exact window / selector | Rows |
+|---|---|---|
+| False `SESSION_BLOCKED` | `primary_reason='SESSION_BLOCKED'`, 2026-09-09T21:45:09Z → 2026-09-10T04:00:07Z, sessions `rts_1d57cb6f…`, `rts_a2820430…`, `rts_1784a869…` | 35 decisions |
+| `sma_cross` broken | 2026-09-08T05:00:09Z → 2026-09-10T23:30:06Z (every evaluated candle carried `SnapshotMarketClient.klines() takes…`), 5 sessions ending with `rts_5548a9cb…` | 54 decisions; 30 `expert_evaluations` booked as HOLD |
+| Test / replay contamination | bot families `bot_replay_*`, `bot_determinism_*`, `bot_sensitivity`, `test-bot` | 9,339 + 9,339 trace rows; 2 daily-state rows |
+| Dirty / uncommitted source | `runtime_sessions.working_tree_dirty=1`: 38 sessions, 2026-09-08T01:05Z → 2026-09-10T23:32:44Z (last: `rts_5548a9cb…`) | all their evidence |
+
+The boundary is later than every window. Everything before it is excluded by
+construction.
 
 ## Final verdict
 
-PENDING.
+```
+TEST_DATABASE_ISOLATION:
+PASS
+
+PYTEST_CAN_WRITE_CANONICAL_PAPER_DB:
+NO
+
+TEST_EVIDENCE_PROVENANCE:
+PASS
+
+HISTORICAL_TEST_ROWS_DELETED:
+NO
+
+SMA_CROSS:
+PASS
+
+ALL_EXPERT_SNAPSHOT_CONTRACTS:
+PASS
+
+EXPERT_ERROR_DISTINCT_FROM_HOLD:
+PASS
+
+CAPITAL_LEDGER_PAPER:
+PASS
+
+CAPITAL_LEDGER_LIVE:
+PASS
+
+CAPITAL_LEDGER_FAIL_CLOSED:
+PASS
+
+CURRENT_CAPITAL_CONFIG_OVERSUBSCRIBED:
+YES
+
+EXTERNAL_SIGNAL_THRESHOLD_PATH:
+PASS
+
+ACTIVE_FINAL_THRESHOLD_AUTHORITY_COUNT:
+1
+
+PERFORMANCE_CALIBRATION_QUERY:
+PASS
+
+PERFORMANCE_FAILURE_SEMANTICS:
+PASS
+
+PAPER_BROKER_MUTATION_BLOCK:
+PASS
+
+STRATEGY_CONSTRUCTOR_TYPEERROR_GUARD:
+PASS
+
+SESSION_NOT_EVALUATED_SEMANTICS:
+PASS
+
+ML_SCHEDULED_AUTO_ACTIVATION:
+DISABLED
+
+AI_DECISION_AUTHORITY:
+DISABLED
+
+FOCUSED_TESTS:
+10 new test files: 124 passed, 1 skipped (the in-subprocess isolation probe), 0 failed
+
+FULL_TEST_SUITE:
+2598 passed, 0 failed, 1 skipped, 27 warnings, 4 subtests passed, 879.26s
+
+FULL_SUITE_DATABASE:
+C:\Users\favou\AppData\Local\Temp\cosmicforge_pytest_fbcc5qpa\test_session.db (DATABASE_ROLE=test)
+
+CANONICAL_DB_WRITTEN_BY_TESTS:
+NO
+
+WORKING_TREE_CLEAN:
+YES
+
+FINAL_COMMIT:
+4bf6d19aaffe7daffd4225f0ae5a72fcdac6b7a1 (code, running); preceded by
+7027b1958fcc0ccea25d0bf219b0da7edd24bbf4 (runtime lifecycle); this report is a
+docs-only commit on top
+
+RUNTIME_RESTARTED_ON_FINAL_COMMIT:
+YES
+
+LIVE_SMA_CROSS:
+PASS
+
+LIVE_CALIBRATION_ERROR:
+NONE
+
+PAPER_BROKER_ORDER_CALLS:
+0
+
+CLEAN_PHASE15_EVIDENCE_START:
+runtime_session_id rts_419a2687a78c45058121
+run_id 8afa88d4a5664b3eacd6be30c43d6c3c
+commit 4bf6d19aaffe7daffd4225f0ae5a72fcdac6b7a1
+timestamp 2026-09-10T23:32:57.669888Z
+threshold policy_hash afd2b4636b9d89e9d99dabc46ea08338386e717e66d7b8cb226911c601f17802
+
+SAFE_TO_KEEP_RUNNING_IN_PAPER:
+YES
+
+SAFE_FOR_PHASE_15_BASELINE:
+YES (from CLEAN_PHASE15_EVIDENCE_START forward, applying the §10 exclusions to
+anything earlier)
+
+SAFE_FOR_PHASE_16:
+NO
+
+SAFE_FOR_AI_ACTIVATION:
+NO
+
+SAFE_FOR_MAINNET:
+NO
+```
