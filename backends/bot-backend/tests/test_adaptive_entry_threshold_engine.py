@@ -54,10 +54,10 @@ from app.threshold.engine import (
     htf_component,
 )
 from app.threshold.migration import (
+    DELETED,
     DISPOSITIONS,
     LEGACY_SETTINGS,
-    deprecation_warnings,
-    global_scope_from_settings,
+    MIGRATED_THEN_DELETED,
     legacy_inventory,
     startup_report,
 )
@@ -1137,64 +1137,168 @@ class TestInertDetection:
 # ═════════════════════════════════════════════════════════════════════════════
 
 
-class TestMigration:
-    def test_every_legacy_setting_has_a_valid_disposition(self):
+class TestLegacyRemoval:
+    """The old architecture is gone, not deprecated."""
+
+    def test_every_legacy_control_has_a_valid_disposition(self):
         for entry in legacy_inventory():
             assert entry["disposition"] in DISPOSITIONS, entry
 
-    def test_the_settings_that_caused_the_failure_are_accounted_for(self):
+    def test_the_controls_that_caused_the_failure_are_all_deleted(self):
         by_name = {e["setting"]: e for e in legacy_inventory()}
-        assert by_name["MIN_CONFIDENCE_THRESHOLD"]["disposition"] == "MIGRATED"
-        assert by_name["ENSEMBLE_MIN_THRESHOLD_FLOOR"]["disposition"] == "REMOVED"
-        assert by_name["confidence_absolute_floor"]["disposition"] == "REMOVED"
-        assert by_name["runner.min_confidence_gate_max"]["disposition"] == "REMOVED"
-        assert by_name["consensus_threshold"]["disposition"] == "REMOVED"
-        for key in ("DYNAMIC_THRESHOLD_MIN", "DYNAMIC_THRESHOLD_MAX", "DYNAMIC_THRESHOLD_FALLBACK"):
-            assert by_name[key]["disposition"] == "RESEARCH_ONLY"
+        assert by_name["MIN_CONFIDENCE_THRESHOLD"]["disposition"] == MIGRATED_THEN_DELETED
+        for key in (
+            "ENSEMBLE_MIN_THRESHOLD_FLOOR",
+            "confidence_absolute_floor",
+            "runner.min_confidence_gate_max",
+            "consensus_threshold",
+            "consensus_required",
+            "app/risk/dynamic_threshold.py",
+            "DYNAMIC_THRESHOLD_MIN",
+            "DYNAMIC_THRESHOLD_MAX",
+            "DYNAMIC_THRESHOLD_FALLBACK",
+            "AdaptiveState.min_confidence_gate",
+            "BotContext.min_confidence",
+            "PolicyEngine.min_confidence",
+            "SafetyEngine.min_confidence_soft/hard",
+        ):
+            assert by_name[key]["disposition"] == DELETED, key
 
-    def test_min_confidence_threshold_is_migrated_to_the_base(self):
-        settings = SimpleNamespace(MIN_CONFIDENCE_THRESHOLD=0.70, THRESHOLD_BASE=0.0)
-        _, base = global_scope_from_settings(settings)
-        assert base == pytest.approx(0.70)
+    def test_nothing_is_merely_deprecated_or_research_only(self):
+        """A control kept 'for research' is still a second way to compute one."""
+        dispositions = {e["disposition"] for e in legacy_inventory()}
+        for forbidden in ("DEPRECATED", "RESEARCH_ONLY", "LEGACY_COMPATIBILITY", "RETAINED_AS_NON_AUTHORITY"):
+            assert forbidden not in dispositions
 
-    def test_an_explicit_base_supersedes_the_legacy_setting(self):
-        settings = SimpleNamespace(MIN_CONFIDENCE_THRESHOLD=0.70, THRESHOLD_BASE=0.62)
+    def test_the_old_calculator_module_is_gone_from_the_repository(self):
+        import importlib
+
+        with pytest.raises(ModuleNotFoundError):
+            importlib.import_module("app.risk.dynamic_threshold")
+
+    def test_the_base_comes_only_from_threshold_base(self):
+        from app.threshold.policy import global_scope_from_settings
+
+        settings = SimpleNamespace(THRESHOLD_BASE=0.62)
         _, base = global_scope_from_settings(settings)
         assert base == pytest.approx(0.62)
 
-    def test_the_dead_setting_warns_instead_of_being_silently_ignored(self):
-        settings = SimpleNamespace(
-            MIN_CONFIDENCE_THRESHOLD=0.70,
-            ENSEMBLE_MIN_THRESHOLD_FLOOR=0.55,
-            THRESHOLD_BASE=0.0,
-        )
-        warnings = deprecation_warnings(settings)
-        assert any("ENSEMBLE_MIN_THRESHOLD_FLOOR" in w for w in warnings)
-        assert any("no longer affects" in w for w in warnings)
+    def test_a_reinstated_legacy_setting_is_not_consulted(self):
+        """The old key must not be able to decide the entry bar ever again."""
+        from app.threshold.policy import global_scope_from_settings
 
-    def test_the_startup_report_names_one_authority(self):
+        settings = SimpleNamespace(MIN_CONFIDENCE_THRESHOLD=0.99, THRESHOLD_BASE=0.62)
+        _, base = global_scope_from_settings(settings)
+        assert base == pytest.approx(0.62)
+
+    def test_a_missing_base_fails_rather_than_falling_back(self):
+        from app.threshold.policy import global_scope_from_settings
+
+        settings = SimpleNamespace(MIN_CONFIDENCE_THRESHOLD=0.70)
+        with pytest.raises(ThresholdPolicyError) as exc:
+            global_scope_from_settings(settings)
+        assert exc.value.code == "THRESHOLD_BASE_UNRESOLVED"
+
+    def test_the_startup_report_names_one_authority_and_no_legacy_config(self):
         policy = make_policy()
-        report = startup_report(policy, SimpleNamespace(MIN_CONFIDENCE_THRESHOLD=0.70))
+        report = startup_report(policy)
         assert "AdaptiveEntryThresholdEngine" in report
         assert "active final threshold authorities = 1" in report
+        assert "legacy threshold configuration     = none" in report
         assert policy.policy_hash in report
 
     def test_no_inert_user_visible_threshold_config_remains(self):
         """Every THRESHOLD_* setting must reach the resolved policy.
 
         A setting an operator can see and set, which cannot affect behaviour, is
-        the exact defect this rebuild removes.
+        the exact defect this removal exists to end.
         """
         from app.core.config import Settings
-        from app.threshold.migration import _SETTING_MAP
+        from app.threshold.policy import SETTING_MAP
 
-        exposed = {
-            name
-            for name in Settings.model_fields
-            if name.startswith("THRESHOLD_")
-        }
-        accounted = set(_SETTING_MAP) | {"THRESHOLD_SCOPED_OVERRIDES"}
+        exposed = {n for n in Settings.model_fields if n.startswith("THRESHOLD_")}
+        accounted = set(SETTING_MAP) | {"THRESHOLD_SCOPED_OVERRIDES"}
         assert exposed <= accounted, f"inert threshold settings: {exposed - accounted}"
+
+    def test_no_deleted_key_survives_in_settings(self):
+        from app.core.config import LEGACY_THRESHOLD_KEYS, Settings
+
+        for key in LEGACY_THRESHOLD_KEYS:
+            assert key not in Settings.model_fields, f"{key} is still a setting"
+
+
+class TestLegacyConfigurationIsRejected:
+    """Reappearance of a deleted key is a startup failure, not a warning."""
+
+    def test_a_reinstated_key_in_the_environment_is_detected(self):
+        from app.core.config import detect_legacy_threshold_keys
+
+        found = detect_legacy_threshold_keys(
+            environ={"MIN_CONFIDENCE_THRESHOLD": "0.70", "PATH": "/x"},
+            env_file="/nonexistent",
+        )
+        assert found == ["MIN_CONFIDENCE_THRESHOLD"]
+
+    @pytest.mark.parametrize(
+        "key",
+        [
+            "MIN_CONFIDENCE_THRESHOLD",
+            "ENSEMBLE_MIN_THRESHOLD_FLOOR",
+            "DYNAMIC_THRESHOLD_MIN",
+            "DYNAMIC_THRESHOLD_MAX",
+            "DYNAMIC_THRESHOLD_FALLBACK",
+            "DYNAMIC_THRESHOLD_MIN_SAMPLES",
+            "CONSENSUS_THRESHOLD",
+            "CONSENSUS_REQUIRED",
+        ],
+    )
+    def test_every_deleted_key_is_rejected(self, key):
+        from app.core.config import detect_legacy_threshold_keys
+
+        assert detect_legacy_threshold_keys(
+            environ={key: "0.5"}, env_file="/nonexistent"
+        ) == [key]
+
+    def test_a_reinstated_key_in_a_dotenv_file_is_detected(self, tmp_path):
+        """pydantic ignores unknown .env keys, so an operator could re-add one
+        and see it sit there looking authoritative while doing nothing."""
+        from app.core.config import detect_legacy_threshold_keys
+
+        env = tmp_path / ".env"
+        env.write_text(
+            "\n".join(
+                [
+                    "# MIN_CONFIDENCE_THRESHOLD=0.70 commented out",
+                    "THRESHOLD_BASE=0.70",
+                    "ENSEMBLE_MIN_THRESHOLD_FLOOR=0.55",
+                ]
+            ),
+            encoding="utf-8",
+        )
+        found = detect_legacy_threshold_keys(environ={}, env_file=str(env))
+        assert found == ["ENSEMBLE_MIN_THRESHOLD_FLOOR"]
+
+    def test_a_clean_new_configuration_passes(self, tmp_path):
+        from app.core.config import detect_legacy_threshold_keys
+
+        env = tmp_path / ".env"
+        env.write_text(
+            "\n".join(
+                [
+                    "THRESHOLD_ENGINE_MODE=ADAPTIVE",
+                    "THRESHOLD_BASE=0.70",
+                    "THRESHOLD_MIN=0.50",
+                    "THRESHOLD_MAX=0.90",
+                ]
+            ),
+            encoding="utf-8",
+        )
+        assert detect_legacy_threshold_keys(environ={}, env_file=str(env)) == []
+
+    def test_the_live_repository_configuration_is_clean(self):
+        from app.core.config import detect_legacy_threshold_keys
+
+        assert detect_legacy_threshold_keys() == []
 
 
 # ═════════════════════════════════════════════════════════════════════════════

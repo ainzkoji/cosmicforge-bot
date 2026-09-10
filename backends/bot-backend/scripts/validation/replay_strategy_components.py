@@ -43,6 +43,7 @@ from app.strategy.squeeze_breakout import SqueezeBreakoutStrategy
 from app.strategy.supertrend import SuperTrendStrategy
 from app.strategy.trend_pullback import TrendPullbackStrategy, calculate_rsi
 from app.strategy.vwap_reversion import VWAPReversionStrategy
+from app.threshold.runtime import get_threshold_policy  # single threshold authority
 
 
 WARMUP_CANDLES = 250
@@ -541,7 +542,7 @@ def main() -> int:
 
     symbols = [value.strip().upper() for value in args.symbols.split(",") if value.strip()]
     db_path = resolve_db_path(args.db_path)
-    threshold = float(settings.ENSEMBLE_MIN_THRESHOLD_FLOOR)
+    threshold = float(get_threshold_policy().base_threshold)
     blocked = {
         value.strip().upper()
         for value in str(settings.ENSEMBLE_BLOCKED_REGIMES or "").split(",")

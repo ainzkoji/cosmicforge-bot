@@ -35,7 +35,7 @@ class StaticStrategy:
 
 
 def _ensemble(monkeypatch, directional: Signal) -> MasterEnsembleStrategy:
-    monkeypatch.setattr(config_module.settings, "ENSEMBLE_MIN_THRESHOLD_FLOOR", 0.55)
+    # ENSEMBLE_MIN_THRESHOLD_FLOOR is deleted. The band is THRESHOLD_MIN/MAX.
     monkeypatch.setattr(config_module.settings, "ENSEMBLE_BLOCKED_REGIMES", "")
     monkeypatch.setattr(config_module.settings, "ENSEMBLE_SESSION_FILTER_ENABLED", False)
     monkeypatch.setattr(config_module.settings, "ENSEMBLE_SESSION_WINDOWS_UTC", "00:00-24:00")

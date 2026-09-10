@@ -47,7 +47,7 @@ class TestPaperLiveParity:
 
     def _create_safety_engine(self, mocks, live_mode: bool):
         config = SafetyConfig()
-        config.min_confidence_hard = 0.1
+        # SafetyConfig no longer carries a confidence threshold.
         config.require_kyc_for_live = live_mode
         # Verify if SafetyEngine has other mode-specific logic? 
         return SafetyEngine(mocks["db"], mocks["budget"], mocks["protection"], config)

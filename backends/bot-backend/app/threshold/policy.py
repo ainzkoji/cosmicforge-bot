@@ -5,7 +5,8 @@ absolute floor, and a runner-level ``max()``) applied in series by components
 that did not know about each other. The observable result was that
 ``MIN_CONFIDENCE_THRESHOLD = 0.70`` sat above the dynamic system's hard cap of
 0.65, so no dynamic value could ever survive and two documented, operator-tuned
-settings had no effect at all.
+settings had no effect at all. Every one of those controls has since been
+deleted; this is the only threshold policy in the system.
 
 So this module enforces one rule above all others: **there is exactly one
 band**. ``policy_min_threshold`` and ``policy_max_threshold`` are the only
@@ -48,14 +49,14 @@ class ThresholdPolicyError(ValueError):
         super().__init__(f"[{code}] {message}")
 
 
-#: Canonical defaults. Every one of these is a *policy* value, not an answer:
-#: the base is migrated from the legacy configuration rather than invented (see
-#: :mod:`app.threshold.migration`), and which base is correct is a question for
-#: the sensitivity study, not for this module.
+#: Canonical defaults. Every one of these is a *policy* value, not an answer.
+#: Which entry bar is correct is a question for the sensitivity study, not for
+#: this module -- so ``base_threshold`` has no default at all.
 DEFAULTS: dict[str, Any] = {
     "mode": ThresholdMode.ADAPTIVE,
-    # Migrated from MIN_CONFIDENCE_THRESHOLD at startup. Left None here so that
-    # nothing in this file can be mistaken for a chosen production value.
+    # Supplied by THRESHOLD_BASE. Left None here so that nothing in this file
+    # can be mistaken for a chosen production value: the engine never invents a
+    # base, and resolution fails if configuration does not supply one.
     "base_threshold": None,
     "static_threshold": None,
     "min_threshold": 0.50,
@@ -378,6 +379,73 @@ def resolve_threshold_policy(
     return policy
 
 
+#: settings attribute -> policy field. This is the entire threshold
+#: configuration surface. There is no alias, no fallback and no legacy key: a
+#: deleted setting is rejected at startup by
+#: ``app.core.config.detect_legacy_threshold_keys``, never quietly read.
+SETTING_MAP: dict[str, str] = {
+    "THRESHOLD_ENGINE_MODE": "mode",
+    "THRESHOLD_BASE": "base_threshold",
+    "THRESHOLD_STATIC": "static_threshold",
+    "THRESHOLD_MIN": "min_threshold",
+    "THRESHOLD_MAX": "max_threshold",
+    "THRESHOLD_REGIME_ADJUSTMENT_MAX": "regime_bound",
+    "THRESHOLD_VOLATILITY_ADJUSTMENT_MAX": "volatility_bound",
+    "THRESHOLD_AGREEMENT_ADJUSTMENT_MAX": "agreement_bound",
+    "THRESHOLD_HTF_ADJUSTMENT_MAX": "htf_bound",
+    "THRESHOLD_MARKET_QUALITY_ADJUSTMENT_MAX": "market_quality_bound",
+    "THRESHOLD_PERFORMANCE_ADJUSTMENT_MAX": "performance_bound",
+    "THRESHOLD_DISTRIBUTION_ADJUSTMENT_MAX": "distribution_bound",
+    "THRESHOLD_PERFORMANCE_MIN_SAMPLES": "performance_min_samples",
+    "THRESHOLD_PERFORMANCE_LOOKBACK": "performance_lookback",
+    "THRESHOLD_DISTRIBUTION_MIN_SAMPLES": "distribution_min_samples",
+    "THRESHOLD_DISTRIBUTION_WINDOW": "distribution_window",
+    "THRESHOLD_DISTRIBUTION_PERCENTILE": "distribution_target_percentile",
+    "THRESHOLD_SMOOTHING_ALPHA": "smoothing_alpha",
+    "THRESHOLD_MAX_STEP_UP": "max_step_up",
+    "THRESHOLD_MAX_STEP_DOWN": "max_step_down",
+    "THRESHOLD_HARD_BLOCK_REGIMES": "hard_block_regimes",
+}
+
+#: Numeric settings for which 0 means "not configured". 0 is not a legitimate
+#: value for either.
+_UNSET_IS_ZERO = frozenset({"THRESHOLD_BASE", "THRESHOLD_STATIC"})
+
+
+def global_scope_from_settings(settings: Any) -> tuple[dict[str, Any], float]:
+    """Return ``(global_overrides, base_threshold)`` for the GLOBAL scope.
+
+    ``base_threshold`` comes from ``THRESHOLD_BASE`` and from nowhere else. There
+    is deliberately no second branch: the previous stack's habit of falling back
+    to another setting is what let an obsolete key keep deciding the entry bar.
+    """
+    overrides: dict[str, Any] = {}
+    for setting_name, field_name in SETTING_MAP.items():
+        value = getattr(settings, setting_name, None)
+        if value is None:
+            continue
+        if setting_name in _UNSET_IS_ZERO and not float(value):
+            continue
+        if isinstance(value, str) and not value.strip():
+            continue
+        if field_name == "hard_block_regimes":
+            value = tuple(
+                r.strip().upper() for r in str(value).split(",") if r.strip()
+            )
+        overrides[field_name] = value
+
+    base = overrides.pop("base_threshold", None)
+    if base is None:
+        raise ThresholdPolicyError(
+            "THRESHOLD_BASE_UNRESOLVED",
+            "THRESHOLD_BASE is not configured. The engine does not invent an "
+            "entry bar, and no legacy setting is consulted.",
+        )
+
+    overrides["mode"] = str(overrides.get("mode", DEFAULTS["mode"])).upper()
+    return overrides, float(base)
+
+
 def policy_from_settings(
     settings: Any,
     *,
@@ -386,21 +454,12 @@ def policy_from_settings(
     market_type: str | None = None,
     bot_overrides: Mapping[str, Any] | None = None,
 ) -> EffectiveThresholdPolicy:
-    """Build the effective policy for one (venue, market, symbol, bot).
-
-    Global values come from settings via :mod:`app.threshold.migration`, which
-    also maps the legacy settings and reports what it did. The narrower scopes
-    read optional structured overrides; absent overrides simply leave the more
-    general values in place.
-    """
-    from app.threshold.migration import global_scope_from_settings
-
-    global_scope, migrated_base = global_scope_from_settings(settings)
+    """Build the effective policy for one (venue, market, symbol, bot)."""
+    global_scope, base = global_scope_from_settings(settings)
 
     scopes: list[tuple[str, Mapping[str, Any]]] = [("GLOBAL", global_scope)]
 
-    scoped = getattr(settings, "THRESHOLD_SCOPED_OVERRIDES", None)
-    table = _parse_scoped_overrides(scoped)
+    table = _parse_scoped_overrides(getattr(settings, "THRESHOLD_SCOPED_OVERRIDES", None))
     if market_type:
         scopes.append(("ASSET_CLASS", table.get("ASSET_CLASS", {}).get(str(market_type).upper(), {})))
     if venue:
@@ -410,7 +469,7 @@ def policy_from_settings(
     if bot_overrides:
         scopes.append(("BOT", bot_overrides))
 
-    return resolve_threshold_policy(scopes=scopes, base_threshold=migrated_base)
+    return resolve_threshold_policy(scopes=scopes, base_threshold=base)
 
 
 def _parse_scoped_overrides(raw: Any) -> dict[str, dict[str, dict[str, Any]]]:

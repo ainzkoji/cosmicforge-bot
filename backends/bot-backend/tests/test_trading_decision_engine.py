@@ -232,21 +232,34 @@ def test_exactly_one_confidence_comparison_exists_in_the_decision_engine():
     assert len(comparisons) == 1, f"expected one comparison, found {comparisons}"
 
 
-# ── 6/7. Safety and Policy must not reapply LOW_CONFIDENCE after a PASS ─────
+# ── 6/7. Safety and Policy have NO confidence gate left to reapply ────────
 
 
-def test_policy_engine_skips_its_confidence_gate_when_quality_is_approved():
+def test_policy_engine_has_no_confidence_gate_at_all():
+    """Previously this asserted the gate was *bypassed* when quality approved.
+
+    Bypassing left the gate in place, one flag away from re-litigating a
+    decision it does not own. It is now deleted outright, which is the stronger
+    guarantee: there is nothing to bypass.
+    """
     from app.policy import policy_engine
+    from app.policy.policy_engine import PolicyEngine
 
     source = inspect.getsource(policy_engine)
-    assert "if not ctx.confidence_already_approved and ctx.confidence < self.min_confidence:" in source
+    assert "self.min_confidence" not in source
+    assert "min_confidence" not in inspect.signature(PolicyEngine.__init__).parameters
 
 
-def test_safety_engine_skips_its_confidence_gate_when_quality_is_approved():
+def test_safety_engine_has_no_confidence_gate_at_all():
+    """Gate 3 resolved its own threshold and returned LOW_CONFIDENCE. Deleted."""
     from app.risk import safety_engine
+    from app.risk.safety_engine import SafetyConfig
 
     source = inspect.getsource(safety_engine)
-    assert "if not confidence_already_approved and confidence < threshold:" in source
+    assert "confidence < threshold" not in source
+    fields = set(SafetyConfig.__dataclass_fields__)
+    assert "min_confidence_hard" not in fields
+    assert "min_confidence_soft" not in fields
 
 
 def test_orchestrator_declares_quality_already_decided_to_both_engines():

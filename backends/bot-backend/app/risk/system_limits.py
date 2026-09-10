@@ -106,7 +106,6 @@ class UserConfigurableLimits:
     paper_mode: bool = True  # Default to paper trading
     
     # Advanced Risk Filters
-    min_strategy_confidence: float = 0.70  # Entry quality is resolved by EffectiveBotPolicy
     volatility_filter_enabled: bool = True  # Enable volatility gating/scaling
     strict_circuit_breakers: bool = False  # Enable tighter circuit breakers
     
@@ -147,7 +146,6 @@ class ConfigValidator:
             fixed_size_usdt=user_config.fixed_size_usdt,
             paper_mode=user_config.paper_mode,
             allowed_symbols=user_config.allowed_symbols.copy(),
-            min_strategy_confidence=user_config.min_strategy_confidence,
             volatility_filter_enabled=user_config.volatility_filter_enabled,
             strict_circuit_breakers=user_config.strict_circuit_breakers
         )

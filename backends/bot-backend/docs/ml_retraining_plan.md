@@ -32,7 +32,7 @@ All of the following must be satisfied simultaneously:
 | P6 | ≥ 500 closed trades (`trade_fills` WHERE `action='CLOSE'`) with `realized_pnl IS NOT NULL` | `SELECT COUNT(*) FROM trade_fills WHERE action='CLOSE' AND realized_pnl IS NOT NULL` ≥ 500 |
 | P7 | ≥ 50 closed trades per regime class (STRONG_TREND, WEAK_TREND, RANGE, HIGH_VOLATILITY) | Per-regime count query below |
 | P8 | `slippage_pct` populated for ≥ 80% of fills | `SELECT AVG(slippage_pct IS NULL) < 0.20 FROM trade_fills` |
-| P9 | Dynamic threshold at P55 stable for ≥ 14 days (no manual overrides) | Check `DYNAMIC_THRESHOLD_PERCENTILE` env var history |
+| P9 | Entry threshold policy stable for ≥ 14 days (no manual overrides) | Check `policy_hash` history via `/api/v1/admin/trading/threshold/history/{bot_id}` |
 
 **Estimated earliest retraining date:** 2026-04-29 (30 days after Stage 1A deploy)
 

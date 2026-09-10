@@ -149,7 +149,6 @@ class TradingOrchestrator:
         safety_config = SafetyConfig(
             max_leverage=self._get_max_leverage_for_symbols(),
             max_trades_per_day=self.validated_config.max_trades_per_day,
-            min_confidence_hard=self.validated_config.min_strategy_confidence,
             min_margin_buffer_pct=0.30,
             
             # ✅ DYNAMIC LIMITS from Policy
@@ -175,7 +174,6 @@ class TradingOrchestrator:
         # Create policy engine
         self.policy_engine = PolicyEngine(
             budget_engine=self.risk_budget,
-            min_confidence=self.validated_config.min_strategy_confidence,
             max_stop_distance_pct=self.risk_policy.config.max_stop_loss_pct,
         )
     
@@ -440,7 +438,7 @@ class TradingOrchestrator:
         if is_fallback_mode:
             logger.info(
                 f"⚠️ DAILY ACTIVITY FALLBACK ACTIVE: {fallback_status['reason']} "
-                f"(confidence threshold: {self.safety.config.min_confidence_soft:.1%})"
+                "(entry quality was decided upstream by AdaptiveEntryThresholdEngine)"
             )
         
         # Step 5: LAYER A - Pre-trade gating

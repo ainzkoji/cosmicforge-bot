@@ -70,7 +70,6 @@ class BotRunContext:
     risk_per_trade: float = 0.0
     max_weekly_drawdown_pct: float = 0.0
     max_monthly_drawdown_pct: float = 0.0
-    min_confidence: float = 0.0
     higher_timeframe: str = "4h"
     effective_policy_hash: str = ""
     effective_policy: Any = None
@@ -266,11 +265,6 @@ class BotRunContext:
             risk_per_trade=policy.risk_per_trade,
             max_weekly_drawdown_pct=policy.max_weekly_drawdown,
             max_monthly_drawdown_pct=policy.max_monthly_drawdown,
-            # NON-AUTHORITY. Reaches only PolicyEngine, whose confidence check
-            # the orchestrated path bypasses via confidence_already_approved.
-            # Sourced from the threshold policy's band floor so it can never be
-            # stricter than the engine's own lowest possible answer.
-            min_confidence=policy.threshold_min,
             higher_timeframe=policy.higher_timeframe,
             effective_policy_hash=policy.policy_hash,
             effective_policy=policy,

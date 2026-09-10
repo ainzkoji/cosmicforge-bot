@@ -171,6 +171,9 @@ def threshold_policy(
     policy = get_threshold_policy(symbol=symbol, venue=venue, market_type=market_type)
     return {
         "policy": policy.summary(),
-        "legacy_settings": legacy_inventory(),
         "active_threshold_authorities": 1,
+        # The removal record. Every entry is DELETED, MIGRATED_THEN_DELETED or
+        # RETAINED_NON_THRESHOLD -- no admin caller can set any of them, because
+        # none of them exists any more.
+        "removed_legacy_controls": legacy_inventory(),
     }

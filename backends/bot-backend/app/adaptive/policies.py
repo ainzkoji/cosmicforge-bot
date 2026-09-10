@@ -66,7 +66,7 @@ class LossStreakPolicy:
     Raises the minimum confidence threshold when consecutive losses are detected.
 
     Trigger: loss_streak from trade_fills (DURABLE)
-    Output:  confidence_gate_modifier in [0.0, 0.12]
+    Output:  caution_modifier in [0.0, 0.12]
     Min Samples: 1 (any confirmed consecutive loss qualifies)
     Smoothing:  alpha_up=0.30 (penalty), alpha_down=0.05 (recovery) — applied by engine EMA
     Recovery:   When loss_streak returns to 0, raw_target returns to 0.0 and EMA recovers slowly
@@ -89,7 +89,7 @@ class LossStreakPolicy:
             sample_size=loss_streak,
             min_samples_required=self.MIN_SAMPLES,
             bounds_applied=self.BOUNDS,
-            output_field="confidence_gate_modifier",
+            output_field="caution_modifier",
             persistence="DURABLE",
             confidence_in_adjustment=confidence,
             notes=f"Streak={loss_streak}; modifier target={raw_target:.4f}",
@@ -337,16 +337,20 @@ class AggressivenessRecoveryPolicy:
 # Policy 7: Confidence Gate Tightening / Relaxation
 # ---------------------------------------------------------------------------
 
-class ConfidenceGatePolicy:
+class LossStreakCautionPolicy:
     """
-    Unifies confidence gate computation, combining streak penalty and regime offset.
-    Replaces the raw streak penalty in the engine with a structured policy output.
-    Coordination rule: If cooldown is HARD, cap penalty at 0.06 to avoid blind compounding.
+    Combines loss streak and regime into a single caution scalar.
+
+    This is NOT an entry threshold and does not gate confidence. It was
+    ``ConfidenceGatePolicy``, whose output was added to a base threshold by the
+    now-deleted dynamic threshold stack. Its arithmetic is unchanged, but its
+    only consumer is the aggressiveness score, which governs SIZE and LEVERAGE.
+    Coordination rule: if cooldown is HARD, cap at 0.06 to avoid blind compounding.
 
     Trigger: loss_streak + regime_offset + cooldown_state (DURABLE + HEURISTIC)
-    Output:  confidence_gate_modifier in [0.0, 0.12]
+    Output:  caution_modifier in [0.0, 0.12]
     """
-    NAME = "ConfidenceGatePolicy"
+    NAME = "LossStreakCautionPolicy"
     BOUNDS = (0.0, 0.12)
     MIN_SAMPLES = 1
     HARD_COOLDOWN_CAP = 0.06  # coordination cap when size is already crushed
@@ -379,7 +383,7 @@ class ConfidenceGatePolicy:
             sample_size=loss_streak,
             min_samples_required=self.MIN_SAMPLES,
             bounds_applied=self.BOUNDS,
-            output_field="confidence_gate_modifier",
+            output_field="caution_modifier",
             persistence="DURABLE",
             confidence_in_adjustment=confidence,
             notes=(

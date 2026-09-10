@@ -16,7 +16,8 @@ SHADOW MODE INVARIANTS (hard-enforced):
 
 Config flags (set at class level or pass via constructor):
   MIN_IMPACT_THRESHOLD      = 0.02
-  MIN_CONFIDENCE_THRESHOLD  = 0.70
+  min_confidence_threshold  = 0.70   # news-narrative confidence, NOT the entry
+                                     # threshold (that is AdaptiveEntryThresholdEngine's)
   LINK_WINDOW_BEFORE_MIN    = 30
   LINK_WINDOW_AFTER_MIN     = 90
 """

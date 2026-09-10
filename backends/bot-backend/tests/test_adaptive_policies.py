@@ -111,7 +111,7 @@ class TestBoundsEnforcement:
             conn.commit()
         engine = _engine(db)
         state = engine.get_adaptive_state("cfg1", "BTCUSDT")
-        assert state.confidence_gate_modifier <= 0.12
+        assert state.caution_modifier <= 0.12
 
     def test_size_multiplier_never_below_0_20(self, tmp_db_path):
         db = _make_db(tmp_db_path)
@@ -221,7 +221,7 @@ class TestRestartPersistence:
         engine = _engine(db)
         state = engine.get_adaptive_state("cfg1", "BTCUSDT")
         # Cold start: EMA should snap exactly to the DB-driven target
-        assert state.confidence_gate_modifier == pytest.approx(0.10, abs=0.01)
+        assert state.caution_modifier == pytest.approx(0.10, abs=0.01)
 
 
 class TestDeterministicReconstruction:
@@ -237,18 +237,18 @@ class TestDeterministicReconstruction:
         state1 = engine1.get_adaptive_state("cfg1", "BTCUSDT")
         state2 = engine2.get_adaptive_state("cfg1", "BTCUSDT")
         assert state1.loss_streak == state2.loss_streak
-        assert state1.confidence_gate_modifier == state2.confidence_gate_modifier
+        assert state1.caution_modifier == state2.caution_modifier
 
 
 class TestNoDuplicatePaths:
     """Section 12.7 — Exec degradation and cooldown don't double-penalize."""
 
     def test_hard_cooldown_caps_confidence_penalty(self, tmp_db_path):
-        from app.adaptive.policies import ConfidenceGatePolicy
-        policy = ConfidenceGatePolicy()
+        from app.adaptive.policies import LossStreakCautionPolicy
+        policy = LossStreakCautionPolicy()
         # 10-loss streak with HARD cooldown → penalty capped at 0.06
         decision = policy.evaluate(loss_streak=10, regime_offset=0.0, cooldown_state="HARD")
-        assert decision.raw_target <= ConfidenceGatePolicy.HARD_COOLDOWN_CAP
+        assert decision.raw_target <= LossStreakCautionPolicy.HARD_COOLDOWN_CAP
 
 
 class TestStableWeightNormalization:
@@ -266,8 +266,8 @@ class TestCoordinatedThresholdSize:
     """Section 12.9 — When size is crushed by HARD cooldown, confidence is capped."""
 
     def test_confidence_capped_when_cooldown_hard(self, tmp_db_path):
-        from app.adaptive.policies import ConfidenceGatePolicy
-        pol = ConfidenceGatePolicy()
+        from app.adaptive.policies import LossStreakCautionPolicy
+        pol = LossStreakCautionPolicy()
         # HARD cooldown with heavy streak
         decision = pol.evaluate(loss_streak=8, regime_offset=0.0, cooldown_state="HARD")
         # Must be at or below coordination cap
@@ -313,7 +313,7 @@ class TestValidationScenarios:
         engine = _engine(db)
         state = engine.get_adaptive_state("cfg1", "BTCUSDT")
         # Confidence gate raised slightly
-        assert state.confidence_gate_modifier > 0.0
+        assert state.caution_modifier > 0.0
         # Size should be close to 1.0 (no drawdown yet)
         assert state.size_multiplier >= 0.90
         # PASS criteria
@@ -329,7 +329,7 @@ class TestValidationScenarios:
         engine = _engine(db)
         state = engine.get_adaptive_state("cfg1", "BTCUSDT")
         # EMA penalty well above 0.0 (snapped from target on cold start)
-        assert state.confidence_gate_modifier > 0.0
+        assert state.caution_modifier > 0.0
         assert state.loss_streak == 8
 
     def test_scenario_3_drawdown_breach_then_recovery(self, tmp_db_path):
@@ -389,7 +389,7 @@ class TestValidationScenarios:
         engine = _engine(db)
         state = engine.get_adaptive_state("cfg1", "BTCUSDT")
         # No losses → EMA should snap to target=0.0 penalty
-        assert state.confidence_gate_modifier == pytest.approx(0.0, abs=0.01)
+        assert state.caution_modifier == pytest.approx(0.0, abs=0.01)
 
     def test_scenario_8_oscillating_near_threshold(self, tmp_db_path):
         """Oscillating: alternating loss/win prevents cooldown escalation."""
@@ -480,7 +480,7 @@ class TestAuditLog:
         engine = _engine(db)
         engine.get_adaptive_state("cfg1", "BTCUSDT")
         explanation = engine.audit_log.explain_current({
-            "confidence_gate_modifier": 0.04,
+            "caution_modifier": 0.04,
             "size_multiplier": 0.70,
             "leverage_multiplier": 1.0,
             "aggressiveness_score": 0.60,
@@ -514,7 +514,7 @@ class TestSpecOutputAliases:
         assert state.risk_multiplier == state.size_multiplier
         assert state.risk_multiplier < 1.0  # compression active at 12% drawdown
 
-    def test_threshold_adjustment_alias_equals_confidence_gate_modifier(self, tmp_db_path):
+    def test_threshold_adjustment_alias_equals_caution_modifier(self, tmp_db_path):
         db = _make_db(tmp_db_path)
         with db.connect() as conn:
             for _ in range(3):
@@ -522,8 +522,10 @@ class TestSpecOutputAliases:
             conn.commit()
         engine = _engine(db)
         state = engine.get_adaptive_state("cfg1", "BTCUSDT")
-        assert state.threshold_adjustment == state.confidence_gate_modifier
-        assert state.threshold_adjustment > 0.0  # streak raised it
+        # The threshold_adjustment alias is DELETED: caution_modifier no longer
+        # adjusts any threshold, it feeds size and leverage.
+        assert not hasattr(state, "threshold_adjustment")
+        assert state.caution_modifier > 0.0  # streak raised caution
 
     def test_max_position_size_modifier_alias_equals_size_multiplier(self, tmp_db_path):
         db = _make_db(tmp_db_path)
@@ -536,7 +538,7 @@ class TestSpecOutputAliases:
         engine = _engine(db)
         state = engine.get_adaptive_state("cfg1", "BTCUSDT", drawdown_pct_hint=0.20, current_atr_pct=5.0)
         assert 0.20 <= state.risk_multiplier <= 1.0
-        assert 0.0 <= state.threshold_adjustment <= 0.12
+        assert 0.0 <= state.caution_modifier <= 0.12
         assert 0.20 <= state.max_position_size_modifier <= 1.0
 
 
@@ -683,38 +685,13 @@ class TestPerformanceExpansionPolicy:
 
 
 # ============================================================================
-# GAP 5 — DynamicThresholdCalculator adaptive_offset Integration
+# GAP 5 -- the DynamicThresholdCalculator adaptive_offset integration is GONE
 # ============================================================================
-
-class TestDynamicThresholdAdaptiveOffset:
-    """Gap 4 (plan): get_threshold() accepts adaptive_offset from AdaptiveEngine."""
-
-    def test_zero_offset_does_not_change_threshold(self):
-        from app.risk.dynamic_threshold import DynamicThresholdCalculator, FALLBACK_THRESHOLD
-        calc = DynamicThresholdCalculator()
-        # Not enough samples → fallback path used (offset has no effect here either)
-        r_no_offset = calc.get_threshold("BTCUSDT", adaptive_offset=0.0)
-        r_default   = calc.get_threshold("BTCUSDT")           # default adaptive_offset=0.0
-        assert r_no_offset.threshold == r_default.threshold
-
-    def test_positive_offset_shifts_threshold_up(self):
-        """Positive adaptive_offset from AdaptiveEngine (streak penalty) should raise the bar."""
-        from app.risk.dynamic_threshold import DynamicThresholdCalculator, MIN_SAMPLES, MAX_THRESHOLD
-        calc = DynamicThresholdCalculator()
-        # Seed enough samples for the dynamic branch
-        for _ in range(MIN_SAMPLES + 10):
-            calc.record("BTCUSDT", 0.35)   # all in the same band
-        r_baseline = calc.get_threshold("BTCUSDT", adaptive_offset=0.0)
-        r_offset   = calc.get_threshold("BTCUSDT", adaptive_offset=0.05)
-        # With a positive offset the threshold can only go up or hit the cap
-        assert r_offset.threshold >= r_baseline.threshold
-
-    def test_offset_is_bounded_by_max_threshold(self):
-        """Even a huge offset must not push threshold past MAX_THRESHOLD."""
-        from app.risk.dynamic_threshold import DynamicThresholdCalculator, MIN_SAMPLES, MAX_THRESHOLD
-        calc = DynamicThresholdCalculator()
-        for _ in range(MIN_SAMPLES + 10):
-            calc.record("BTCUSDT", 0.30)
-        result = calc.get_threshold("BTCUSDT", adaptive_offset=99.0)  # extreme offset
-        assert result.threshold <= MAX_THRESHOLD
+#
+# These tests exercised get_threshold(adaptive_offset=...), i.e. a second
+# component computing an entry threshold from a streak penalty. Both the
+# calculator and the offset are deleted; the caution scalar now feeds size and
+# leverage only. Coverage of the one remaining authority lives in
+# tests/test_adaptive_entry_threshold_engine.py, and
+# tests/test_threshold_authority_invariants.py fails CI if a second one returns.
 

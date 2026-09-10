@@ -408,7 +408,6 @@ class PolicyEngine:
         self,
         budget_engine: Optional["RiskBudgetEngine"] = None,
         circuit_registry: Optional["CircuitBreakerRegistry"] = None,
-        min_confidence: float = 0.10,
         min_margin_buffer_pct: float = 0.30,
         max_total_exposure_mult: float = 2.0,
         max_stop_distance_pct: float = 0.10,
@@ -416,7 +415,6 @@ class PolicyEngine:
     ):
         self.budget_engine = budget_engine
         self.circuit_registry = circuit_registry
-        self.min_confidence = min_confidence
         self.min_margin_buffer_pct = min_margin_buffer_pct
         self.max_total_exposure_mult = max_total_exposure_mult
         self.max_stop_distance_pct = max_stop_distance_pct
@@ -658,17 +656,14 @@ class PolicyEngine:
             )
         
         # -----------------------------------------------------------------
-        # 6. Confidence check
+        # 6. Confidence check -- DELETED
         # -----------------------------------------------------------------
-        if not ctx.confidence_already_approved and ctx.confidence < self.min_confidence:
-            return PolicyDecision.blocked(
-                ReasonCode.LOW_CONFIDENCE,
-                f"Confidence {ctx.confidence:.1%} < {self.min_confidence:.1%}",
-                pending_open=pending_open,
-                reentry_confirm_signal=reentry_sig,
-                reentry_confirm_count=reentry_cnt,
-            )
-        
+        # This compared confidence against a policy-local floor, i.e. a second
+        # entry-quality authority. Entry quality is decided once, by
+        # TradingDecisionEngine, against AdaptiveEntryThresholdEngine's number.
+        # PolicyEngine keeps budget, exposure, margin, R:R and circuit-breaker
+        # responsibilities.
+
         # -----------------------------------------------------------------
         # 6.5 Risk/Reward enforcement (D-2) — only for new opens
         # -----------------------------------------------------------------
@@ -1193,7 +1188,6 @@ def get_policy_engine(
     bot_id: str = "default",
     budget_engine: Optional["RiskBudgetEngine"] = None,
     circuit_registry: Optional["CircuitBreakerRegistry"] = None,
-    min_confidence: float = 0.10,
     **kwargs,
 ) -> "PolicyEngine":
     """Return the PolicyEngine for *bot_id*, creating it on first call."""
@@ -1202,7 +1196,6 @@ def get_policy_engine(
             _policy_engines[bot_id] = PolicyEngine(
                 budget_engine=budget_engine,
                 circuit_registry=circuit_registry,
-                min_confidence=min_confidence,
                 **kwargs,
             )
         return _policy_engines[bot_id]

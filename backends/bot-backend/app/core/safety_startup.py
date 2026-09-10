@@ -129,14 +129,27 @@ def run_startup_safety_check(settings, mode: str = "paper") -> StartupSafetyRepo
         message="" if 0 < max_pos <= 5 else "Should be 1-5; recommend 2 during validation",
     )
 
-    # 8. Minimum confidence threshold
-    min_conf = getattr(settings, "MIN_CONFIDENCE_THRESHOLD", 0.0)
-    report.add(
-        name="MIN_CONFIDENCE_THRESHOLD",
-        passed=min_conf >= 0.60,
-        value=str(min_conf),
-        message="" if min_conf >= 0.60 else f"Too low: {min_conf}. Recommend >= 0.70",
-    )
+    # 8. Entry threshold policy -- resolved, not a single setting.
+    try:
+        from app.threshold.runtime import get_threshold_policy
+
+        _policy = get_threshold_policy()
+        report.add(
+            name="ENTRY_THRESHOLD_POLICY",
+            passed=True,
+            value=(
+                f"{_policy.mode} base={_policy.base_threshold} "
+                f"band=[{_policy.min_threshold}, {_policy.max_threshold}]"
+            ),
+            message="",
+        )
+    except Exception as _thr_exc:
+        report.add(
+            name="ENTRY_THRESHOLD_POLICY",
+            passed=False,
+            value="unresolved",
+            message=f"Threshold policy did not resolve: {_thr_exc}",
+        )
 
     # 9. Execution mode
     exec_mode = getattr(settings, "EXECUTION_MODE", "paper")

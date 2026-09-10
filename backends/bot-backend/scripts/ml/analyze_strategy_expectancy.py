@@ -333,7 +333,7 @@ def run_analysis(
         "metrics": candidates.get(best_key, {}),
         "config_recommendation": {
             "ENSEMBLE_BLOCKED_REGIMES": "STRONG_TREND",
-            "ENSEMBLE_MIN_THRESHOLD_FLOOR": 0.50,
+            "THRESHOLD_MIN": 0.50,
             "ENSEMBLE_SESSION_FILTER_ENABLED": True,
             "ENSEMBLE_SESSION_WINDOWS_UTC": "06:00-19:00",
         },

@@ -98,7 +98,8 @@ class TradingDecision:
     buy_score: float | None = None
     sell_score: float | None = None
     consensus_observed: float | None = None
-    consensus_required: float | None = None
+    # NOTE: no consensus requirement column is written. No component applies
+    # one, so the legacy column stays NULL as a LEGACY_READ_ONLY_EVIDENCE_COLUMN.
     raw_confidence: float | None = None
 
     threshold_base: float | None = None
@@ -206,8 +207,6 @@ class TradingDecision:
         # made two independent-looking values that were always identical.
         self.threshold_dynamic = None
         self.threshold_adaptive_modifier = None
-        # No consensus requirement is applied by any component.
-        self.consensus_required = None
         if self.raw_confidence is None:
             self.raw_confidence = decision.raw_confidence
         return self
@@ -299,7 +298,7 @@ class TradingDecision:
             "buy_score": self.buy_score,
             "sell_score": self.sell_score,
             "consensus_observed": self.consensus_observed,
-            "consensus_required": self.consensus_required,
+            "consensus_required": None,   # legacy read-only evidence column
             "raw_confidence": self.raw_confidence,
             "threshold_base": self.threshold_base,
             "threshold_dynamic": self.threshold_dynamic,

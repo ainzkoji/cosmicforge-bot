@@ -216,64 +216,74 @@ class TestCircuitBreakerIsolation:
         assert self.registry.is_tripped(key_b) is False
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# Issue 4 — Dynamic Threshold Calculator
-# ═══════════════════════════════════════════════════════════════════════════
+# ══════════════════════════════════════════════════════════════════════════
+# Issue 4 -- Adaptive threshold state isolation
+#
+# These tests used to cover DynamicThresholdCalculator, which is deleted. The
+# property they protect -- one tenant's confidence history must never move
+# another tenant's entry bar -- still matters, so they now cover the component
+# that actually holds that state.
+# ══════════════════════════════════════════════════════════════════════════
 
-class TestDynamicThresholdIsolation:
-    def setup_method(self):
-        from app.risk.dynamic_threshold import reset_all_dynamic_threshold_calculators
-        reset_all_dynamic_threshold_calculators()
+class TestAdaptiveThresholdStateIsolation:
+    @staticmethod
+    def _store():
+        from app.threshold.state import ThresholdStateStore
 
-    def teardown_method(self):
-        from app.risk.dynamic_threshold import reset_all_dynamic_threshold_calculators
-        reset_all_dynamic_threshold_calculators()
+        return ThresholdStateStore()
 
-    def test_different_bots_get_different_instances(self):
-        from app.risk.dynamic_threshold import get_dynamic_threshold_calculator
-        calc_a = get_dynamic_threshold_calculator(bot_id="botA")
-        calc_b = get_dynamic_threshold_calculator(bot_id="botB")
-        assert calc_a is not calc_b
+    @staticmethod
+    def _key(bot, symbol="BTCUSDT", timeframe="15m", version="2.0.0"):
+        from app.threshold.state import ThresholdStateStore
 
-    def test_same_bot_gets_same_instance(self):
-        from app.risk.dynamic_threshold import get_dynamic_threshold_calculator
-        calc1 = get_dynamic_threshold_calculator(bot_id="botA")
-        calc2 = get_dynamic_threshold_calculator(bot_id="botA")
-        assert calc1 is calc2
+        return ThresholdStateStore.make_key(bot, symbol, timeframe, version)
 
-    def test_bot_a_history_does_not_affect_bot_b_threshold(self):
-        from app.risk.dynamic_threshold import get_dynamic_threshold_calculator
-        calc_a = get_dynamic_threshold_calculator(bot_id="botA")
-        calc_b = get_dynamic_threshold_calculator(bot_id="botB")
-        # Fill botA with 50 samples
-        for i in range(50):
-            calc_a.record("BTCUSDT", 0.90)  # high confidence
-        # botB starts cold
-        assert calc_b.sample_count("BTCUSDT") == 0
+    def test_different_bots_get_different_state(self):
+        store = self._store()
+        a = store.get(self._key("botA"))
+        b = store.get(self._key("botB"))
+        assert a.bot_instance_id != b.bot_instance_id
 
-    def test_reconstructing_bot_a_does_not_overwrite_bot_b(self):
-        from app.risk.dynamic_threshold import get_dynamic_threshold_calculator
-        calc_a = get_dynamic_threshold_calculator(bot_id="botA")
-        calc_b = get_dynamic_threshold_calculator(bot_id="botB")
-        for _ in range(30):
-            calc_a.record("ETHUSDT", 0.8)
-        for _ in range(20):
-            calc_b.record("ETHUSDT", 0.5)
-        assert calc_a.sample_count("ETHUSDT") == 30
-        assert calc_b.sample_count("ETHUSDT") == 20
+    def test_same_bot_and_symbol_get_the_same_state(self):
+        store = self._store()
+        state = store.get(self._key("botA"))
+        state.previous_threshold = 0.63
+        store.put(state)
+        assert store.get(self._key("botA")).previous_threshold == 0.63
 
-    def test_reset_single_bot_does_not_affect_other(self):
-        from app.risk.dynamic_threshold import get_dynamic_threshold_calculator, reset_dynamic_threshold_calculator
-        calc_a = get_dynamic_threshold_calculator(bot_id="botA")
-        for _ in range(10):
-            calc_a.record("BTCUSDT", 0.7)
-        calc_b = get_dynamic_threshold_calculator(bot_id="botB")
-        for _ in range(10):
-            calc_b.record("BTCUSDT", 0.7)
-        reset_dynamic_threshold_calculator("botA")
-        new_a = get_dynamic_threshold_calculator(bot_id="botA")
-        assert new_a.sample_count("BTCUSDT") == 0
-        assert calc_b.sample_count("BTCUSDT") == 10
+    def test_bot_a_history_does_not_affect_bot_b(self):
+        store = self._store()
+        a = store.get(self._key("botA"))
+        a.distribution_samples = [0.9] * 50
+        a.previous_threshold = 0.88
+        store.put(a)
+
+        b = store.get(self._key("botB"))
+        assert b.distribution_samples == []
+        assert b.previous_threshold is None
+
+    def test_one_symbol_does_not_affect_another(self):
+        store = self._store()
+        btc = store.get(self._key("botA", symbol="BTCUSDT"))
+        btc.distribution_samples = [0.8] * 30
+        store.put(btc)
+
+        eth = store.get(self._key("botA", symbol="ETHUSDT"))
+        assert eth.distribution_samples == []
+
+    def test_state_is_copied_out_not_shared(self):
+        """A caller mutating what it read must not reach into the store."""
+        store = self._store()
+        state = store.get(self._key("botA"))
+        state.previous_threshold = 0.70
+        store.put(state)
+
+        borrowed = store.get(self._key("botA"))
+        borrowed.previous_threshold = 0.10
+        borrowed.distribution_samples.append(0.99)
+
+        assert store.get(self._key("botA")).previous_threshold == 0.70
+        assert store.get(self._key("botA")).distribution_samples == []
 
 
 # ═══════════════════════════════════════════════════════════════════════════

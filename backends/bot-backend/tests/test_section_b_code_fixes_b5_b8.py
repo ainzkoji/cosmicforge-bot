@@ -235,27 +235,38 @@ class TestDailyActivityFallback:
         )
         assert nudge.reduction_applied == 0.0
 
-    def test_low_confidence_after_inactivity_still_rejected(self):
-        """After 24h no trades, a 0.50 confidence signal must still be rejected at 0.70 floor."""
-        from app.policy.policy_engine import PolicyEngine, PolicyContext, ReasonCode
+    def test_inactivity_cannot_soften_the_entry_bar(self):
+        """The property B-6 protects, tested where the bar actually lives.
 
-        engine = PolicyEngine(min_confidence=0.70)
-        ctx = PolicyContext(
-            symbol="BTCUSDT", signal="BUY", confidence=0.50,
-            position="NONE", adds=0, last_trade_ms=0, last_stop_ms=0,
-            equity=10000.0, daily_realized_pnl=0.0, daily_trade_count=0,
-            open_positions_count=0, leverage=3.0, stop_loss_pct=0.02,
-            take_profit_pct=0.03, cooldown_seconds=0, sl_cooldown_seconds=0,
-            max_adds=0, trade_mode="normal", max_daily_loss=50.0,
-            max_daily_trades=6, max_open_positions=3, kill_switch=False,
-            execution_mode="paper", now_ms=int(1e12), entry_price=50000.0, atr=500.0,
-            weekly_drawdown_pct=0.0, monthly_drawdown_pct=0.0,
-            max_weekly_drawdown_pct=5.0, max_monthly_drawdown_pct=10.0,
-            consecutive_losses=0, max_consecutive_losses=3,
+        This used to assert PolicyEngine rejected 0.50 against its own 0.70
+        floor. That floor was a second entry-quality authority and is deleted.
+        The bar is now AdaptiveEntryThresholdEngine's, and the rule that a quiet
+        period must not lower it is enforced in its distribution calibrator:
+        samples come only from opportunities that reached the quality stage, so
+        fewer trades yields a smaller sample, never a weaker one.
+        """
+        from app.threshold.calibration import DistributionCalibrator
+
+        busy = DistributionCalibrator.evaluate(
+            [0.70] * 200, base_threshold=0.60, target_percentile=0.6,
+            min_samples=40, bound=0.05,
         )
-        decision = engine.evaluate(ctx)
-        assert not decision.allowed
-        assert decision.reason_code == ReasonCode.LOW_CONFIDENCE
+        quiet = DistributionCalibrator.evaluate(
+            [0.70] * 45, base_threshold=0.60, target_percentile=0.6,
+            min_samples=40, bound=0.05,
+        )
+        assert busy.adjustment == quiet.adjustment
+        assert quiet.adjustment >= 0.0, "inactivity must never lower the bar"
+
+    def test_trade_frequency_is_not_an_input_to_the_threshold(self):
+        """No count of trades or candles reaches the threshold calculation."""
+        import inspect
+
+        from app.threshold import engine as threshold_engine
+
+        source = inspect.getsource(threshold_engine)
+        for forbidden in ("trade_count", "trades_today", "daily_trade", "_trades_today"):
+            assert forbidden not in source
 
     def test_activity_fallback_disabled_in_source(self):
         """activity_targets.py must contain the DAILY_ACTIVITY_FALLBACK_DISABLED marker."""

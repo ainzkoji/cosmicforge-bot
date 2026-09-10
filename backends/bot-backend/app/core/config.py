@@ -191,17 +191,16 @@ class Settings(BaseSettings):
     # SAFETY: true = close all open positions when daily loss kill switch fires.
     KILL_SWITCH_CLOSE_POSITIONS: bool = True
 
-    # ── Trade Quality Gate ───────────────────────────────────────────────────
-    # DEPRECATED as a floor. MIN_CONFIDENCE_THRESHOLD used to be applied as an
-    # absolute floor AFTER the dynamic threshold was computed, and because it
-    # sat above the dynamic hard cap of 0.65 it saturated the entire chain --
-    # every candle resolved to exactly 0.70 and two documented, operator-tuned
-    # settings could not affect anything.
+    # MIN_CONFIDENCE_THRESHOLD is DELETED.
     #
-    # It is now MIGRATED into THRESHOLD_BASE (the centre of the adaptive band)
-    # by app/threshold/migration.py, and is no longer re-applied afterwards.
-    # AdaptiveEntryThresholdEngine is the only entry-threshold authority.
-    MIN_CONFIDENCE_THRESHOLD: float = 0.70
+    # It was applied as an absolute floor AFTER the dynamic threshold was
+    # computed, and because it sat above the dynamic hard cap of 0.65 it
+    # saturated the entire chain: every candle resolved to exactly 0.70 and two
+    # documented, operator-tuned settings could not affect anything.
+    #
+    # Its value was migrated ONCE into THRESHOLD_BASE. The key is now REJECTED
+    # at startup (LEGACY_THRESHOLD_KEYS) rather than read, because a setting
+    # that quietly returns is how this class of conflict comes back.
     MIN_RISK_REWARD: float = 1.8
 
     # ── Adaptive Entry Threshold Engine ──────────────────────────────────────
@@ -214,10 +213,10 @@ class Settings(BaseSettings):
     #   debugging) | RESEARCH (replay and sensitivity work). MODEL is reserved
     #   for validated AI calibration and is rejected, not silently downgraded.
     THRESHOLD_ENGINE_MODE: str = "ADAPTIVE"
-    # 0.0 means "not configured": the base is then migrated from
-    # MIN_CONFIDENCE_THRESHOLD. The engine never invents a base of its own --
-    # which entry bar is correct is a question for the sensitivity study.
-    THRESHOLD_BASE: float = 0.0
+    # The centre of the adaptive band. Required: the engine never invents one,
+    # and startup fails if it is unset. Which entry bar is correct remains a
+    # question for the sensitivity study, not for a default.
+    THRESHOLD_BASE: float = 0.70
     THRESHOLD_STATIC: float = 0.0       # required when mode is STATIC
     # The single band. There is no other floor, cap or clamp in the system.
     THRESHOLD_MIN: float = 0.50
@@ -225,13 +224,13 @@ class Settings(BaseSettings):
 
     # Bounded contributions. Each is a maximum absolute magnitude in threshold
     # units, so the worst case is knowable by reading this block.
-    THRESHOLD_REGIME_BOUND: float = 0.06
-    THRESHOLD_VOLATILITY_BOUND: float = 0.05
-    THRESHOLD_AGREEMENT_BOUND: float = 0.08
-    THRESHOLD_HTF_BOUND: float = 0.05
-    THRESHOLD_MARKET_QUALITY_BOUND: float = 0.04
-    THRESHOLD_PERFORMANCE_BOUND: float = 0.05
-    THRESHOLD_DISTRIBUTION_BOUND: float = 0.05
+    THRESHOLD_REGIME_ADJUSTMENT_MAX: float = 0.06
+    THRESHOLD_VOLATILITY_ADJUSTMENT_MAX: float = 0.05
+    THRESHOLD_AGREEMENT_ADJUSTMENT_MAX: float = 0.08
+    THRESHOLD_HTF_ADJUSTMENT_MAX: float = 0.05
+    THRESHOLD_MARKET_QUALITY_ADJUSTMENT_MAX: float = 0.04
+    THRESHOLD_PERFORMANCE_ADJUSTMENT_MAX: float = 0.05
+    THRESHOLD_DISTRIBUTION_ADJUSTMENT_MAX: float = 0.05
 
     # Slow calibration. Below the minimum sample the adjustment is exactly 0.0
     # and the status is INSUFFICIENT_SAMPLE -- a handful of trades must never
@@ -240,7 +239,7 @@ class Settings(BaseSettings):
     THRESHOLD_PERFORMANCE_LOOKBACK: int = 100
     THRESHOLD_DISTRIBUTION_MIN_SAMPLES: int = 40
     THRESHOLD_DISTRIBUTION_WINDOW: int = 200
-    THRESHOLD_DISTRIBUTION_TARGET_PERCENTILE: float = 0.60
+    THRESHOLD_DISTRIBUTION_PERCENTILE: float = 0.60
 
     # Smoothing and hysteresis. Tightening faster than loosening is deliberate:
     # the bar may rise quickly and must fall slowly.
@@ -253,6 +252,10 @@ class Settings(BaseSettings):
     # Scopes resolve GLOBAL -> ASSET_CLASS -> VENUE -> SYMBOL -> BOT. A narrower
     # scope may change these values; it may not introduce another authority.
     THRESHOLD_SCOPED_OVERRIDES: str = ""
+
+    # Regimes the policy refuses to evaluate a threshold for at all. These are
+    # hard gates and are never expressed as an unreachable threshold.
+    THRESHOLD_HARD_BLOCK_REGIMES: str = "LOW_VOLATILITY_CHOP"
 
     # D-3: ATR fixed sizing protection
     MIN_STOP_ATR_MULTIPLIER: float = 0.5   # Stop distance must be >= 0.5 × ATR
@@ -268,13 +271,8 @@ class Settings(BaseSettings):
     # Analysis (2026-06-10) found STRONG_TREND (24% WR) is the primary loss
     # driver, not RANGE (52.9% WR — actually the best regime).
     #
-    # ENSEMBLE_MIN_THRESHOLD_FLOOR: **DEPRECATED — NO LONGER HAS ANY EFFECT.**
-    #   This was documented as the binding constraint on the entry threshold and
-    #   it never was. MIN_CONFIDENCE_THRESHOLD=0.70 was applied after it, so a
-    #   value of 0.55 could not bind and the operator tuning recorded in .env as
-    #   "T-04: Raise confidence floor to 0.55 (was 0.50 default)" changed
-    #   nothing at all. It is read only to emit a deprecation warning at
-    #   startup. The single band is THRESHOLD_MIN / THRESHOLD_MAX.
+    # NOTE: ENSEMBLE_MIN_THRESHOLD_FLOOR is DELETED. The single band is
+    # THRESHOLD_MIN / THRESHOLD_MAX.
     #
     # ENSEMBLE_BLOCKED_REGIMES: comma-separated regime names to suppress.
     #   Empty string (default) = backward-compatible, no regimes blocked.
@@ -286,7 +284,6 @@ class Settings(BaseSettings):
     #
     # ENSEMBLE_SESSION_WINDOWS_UTC: comma-separated HH:MM-HH:MM windows (UTC only).
     #   Example: "06:00-19:00" or "08:00-11:00,13:00-16:00"
-    ENSEMBLE_MIN_THRESHOLD_FLOOR: float = 0.50
     ENSEMBLE_BLOCKED_REGIMES: str = ""          # e.g. "STRONG_TREND" to block
     # Monitoring evidence is a control input for the temporary paper experiment.
     # When its latest report recommends STOP, the runtime blocks STRONG_TREND
@@ -640,9 +637,19 @@ class Settings(BaseSettings):
                 f"MAX_OPEN_POSITIONS={self.MAX_OPEN_POSITIONS} is high — recommend <= 2 during validation."
             )
 
-        # The entry bar is now the resolved threshold policy band, not a single
-        # floor. Validating MIN_CONFIDENCE_THRESHOLD against 0.70 here would be
-        # validating a setting that no longer decides anything.
+        # Obsolete threshold keys are a hard failure, not a warning. An
+        # obsolete setting that quietly returns is exactly how the previous
+        # threshold conflict was reintroduced and went unnoticed for months.
+        legacy_present = detect_legacy_threshold_keys()
+        if legacy_present:
+            failures.append(
+                "LEGACY_THRESHOLD_CONFIGURATION_PRESENT: "
+                + ", ".join(sorted(legacy_present))
+                + ". These controls were deleted. The only threshold namespace "
+                "is THRESHOLD_*; AdaptiveEntryThresholdEngine is the only "
+                "entry-threshold authority."
+            )
+
         try:
             from app.threshold.policy import ThresholdPolicyError, policy_from_settings
 
@@ -677,6 +684,67 @@ class Settings(BaseSettings):
 
         all_pass = len(failures) == 0
         return all_pass, failures, warnings_list
+
+
+#: Configuration keys that were deleted with the old threshold architecture.
+#: Their reappearance is a startup failure, never a silent fallback.
+LEGACY_THRESHOLD_KEYS = (
+    "MIN_CONFIDENCE_THRESHOLD",
+    "ENSEMBLE_MIN_THRESHOLD_FLOOR",
+    "DYNAMIC_THRESHOLD_ENABLED",
+    "DYNAMIC_THRESHOLD_MIN",
+    "DYNAMIC_THRESHOLD_MAX",
+    "DYNAMIC_THRESHOLD_FALLBACK",
+    "DYNAMIC_THRESHOLD_MIN_SAMPLES",
+    "DYNAMIC_THRESHOLD_WINDOW_SIZE",
+    "DYNAMIC_THRESHOLD_PERCENTILE",
+    "CONSENSUS_THRESHOLD",
+    "CONSENSUS_REQUIRED",
+)
+
+#: Prefixes whose reappearance also indicates a resurrected legacy control.
+LEGACY_THRESHOLD_PREFIXES = ("DYNAMIC_THRESHOLD_",)
+
+
+def detect_legacy_threshold_keys(
+    environ: "dict[str, str] | None" = None,
+    env_file: str | None = None,
+) -> list[str]:
+    """Return any deleted threshold keys found in the environment or .env file.
+
+    Checked in both places on purpose: pydantic ignores unknown keys, so a
+    reinstated ``MIN_CONFIDENCE_THRESHOLD=0.70`` in ``.env`` would otherwise sit
+    there looking authoritative and doing nothing -- which is the precise
+    failure mode this whole removal exists to end.
+    """
+    import os
+    from pathlib import Path
+
+    environ = os.environ if environ is None else environ
+    found: set[str] = set()
+
+    def _consider(name: str) -> None:
+        upper = name.strip().upper()
+        if upper in LEGACY_THRESHOLD_KEYS or any(
+            upper.startswith(prefix) for prefix in LEGACY_THRESHOLD_PREFIXES
+        ):
+            found.add(upper)
+
+    for key in environ:
+        _consider(key)
+
+    candidate = Path(env_file) if env_file else Path(__file__).resolve().parents[2] / ".env"
+    try:
+        if candidate.is_file():
+            for line in candidate.read_text(encoding="utf-8", errors="replace").splitlines():
+                stripped = line.strip()
+                if not stripped or stripped.startswith("#") or "=" not in stripped:
+                    continue
+                _consider(stripped.split("=", 1)[0])
+    except OSError:
+        pass
+
+    return sorted(found)
 
 
 settings = Settings()

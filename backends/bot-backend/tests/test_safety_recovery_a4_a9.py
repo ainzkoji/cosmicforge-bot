@@ -142,7 +142,7 @@ class TestKillSwitch:
 
     def test_kill_switch_blocks_new_entry_via_policy(self):
         from app.policy.policy_engine import PolicyEngine, Action
-        engine = PolicyEngine(min_confidence=0.10)
+        engine = PolicyEngine()
         ctx = _make_ctx(kill_switch=True, position="NONE", signal="BUY")
         decision = engine.evaluate(ctx)
         assert not decision.allowed
@@ -170,7 +170,7 @@ class TestMaxOpenPositions:
 
     def test_fourth_position_rejected(self):
         from app.policy.policy_engine import PolicyEngine, ReasonCode
-        engine = PolicyEngine(min_confidence=0.10)
+        engine = PolicyEngine()
         ctx = _make_ctx(
             position="NONE", signal="BUY",
             open_positions_count=3,
@@ -182,7 +182,7 @@ class TestMaxOpenPositions:
 
     def test_third_position_allowed(self):
         from app.policy.policy_engine import PolicyEngine, Action
-        engine = PolicyEngine(min_confidence=0.10)
+        engine = PolicyEngine()
         ctx = _make_ctx(
             position="NONE", signal="BUY",
             open_positions_count=2,
@@ -205,7 +205,7 @@ class TestMaxDailyTrades:
 
     def test_seventh_trade_rejected(self):
         from app.policy.policy_engine import PolicyEngine, ReasonCode
-        engine = PolicyEngine(min_confidence=0.10)
+        engine = PolicyEngine()
         ctx = _make_ctx(daily_trade_count=3, max_daily_trades=3)
         decision = engine.evaluate(ctx)
         assert not decision.allowed
@@ -213,7 +213,7 @@ class TestMaxDailyTrades:
 
     def test_third_trade_allowed(self):
         from app.policy.policy_engine import PolicyEngine, Action
-        engine = PolicyEngine(min_confidence=0.10)
+        engine = PolicyEngine()
         ctx = _make_ctx(daily_trade_count=2, max_daily_trades=3)
         decision = engine.evaluate(ctx)
         assert decision.action == Action.OPEN_LONG

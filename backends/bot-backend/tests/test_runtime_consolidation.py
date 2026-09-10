@@ -133,8 +133,6 @@ def test_downstream_risk_engines_do_not_repeat_approved_confidence(tmp_path):
 
     db = DB(str(tmp_path / "confidence.db"))
     safety = SafetyEngine(db, risk_budget=None, protection=None, config=SafetyConfig(
-        min_confidence_hard=0.95,
-        min_confidence_soft=0.90,
     ))
     safety_result = safety.check_pre_trade(
         "bot-1", "BTCUSDT", 0.58, 1.0, 1_000.0, 0,
@@ -142,7 +140,7 @@ def test_downstream_risk_engines_do_not_repeat_approved_confidence(tmp_path):
     )
     assert safety_result.block_reason != BlockReason.LOW_CONFIDENCE
 
-    policy = PolicyEngine(min_confidence=0.95)
+    policy = PolicyEngine()
     policy_result = policy.evaluate(PolicyContext(
         symbol="BTCUSDT", signal="BUY", confidence=0.58,
         confidence_already_approved=True, entry_price=100.0, atr=1.0,

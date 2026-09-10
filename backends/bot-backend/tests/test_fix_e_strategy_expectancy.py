@@ -285,7 +285,6 @@ class TestMasterEnsembleGateIntegration(unittest.TestCase):
 
         # Patch settings
         mock_settings = SimpleNamespace(
-            ENSEMBLE_MIN_THRESHOLD_FLOOR=threshold_floor,
             ENSEMBLE_BLOCKED_REGIMES=blocked_regimes,
             ENSEMBLE_SESSION_FILTER_ENABLED=session_filter_enabled,
             ENSEMBLE_SESSION_WINDOWS_UTC=session_windows,
@@ -383,7 +382,6 @@ class TestMasterEnsembleGateIntegration(unittest.TestCase):
             ensemble._strategies[name] = m
 
         mock_settings = SimpleNamespace(
-            ENSEMBLE_MIN_THRESHOLD_FLOOR=0.0,
             ENSEMBLE_BLOCKED_REGIMES="STRONG_TREND",
             ENSEMBLE_SESSION_FILTER_ENABLED=False,
             ENSEMBLE_SESSION_WINDOWS_UTC="00:00-24:00",
@@ -597,22 +595,24 @@ class TestFIXEConfigFields(unittest.TestCase):
         except ImportError as exc:
             self.skipTest(f"Cannot import Settings: {exc}")
 
-    def test_ensemble_min_threshold_floor_exists(self):
-        s = self.Settings()
-        self.assertTrue(hasattr(s, "ENSEMBLE_MIN_THRESHOLD_FLOOR"))
+    def test_ensemble_min_threshold_floor_is_deleted(self):
+        """The setting that was documented as binding and never bound.
 
-    def test_ensemble_min_threshold_floor_default_is_0_50(self):
-        """Floor must be a float >= 0.50.
-
-        The code default is 0.50.  The Section 2 emergency .env sets 0.55.
-        Both values are safe — the assertion accepts either.
+        It sat below MIN_CONFIDENCE_THRESHOLD=0.70, so it could not affect the
+        entry threshold, and the operator tuning recorded in .env as
+        "T-04: Raise confidence floor to 0.55" changed nothing. It is deleted,
+        not deprecated: reappearance fails startup validation.
         """
-        s = self.Settings()
-        self.assertIsInstance(s.ENSEMBLE_MIN_THRESHOLD_FLOOR, float)
-        self.assertGreaterEqual(
-            s.ENSEMBLE_MIN_THRESHOLD_FLOOR, 0.50,
-            "Threshold floor must be >= 0.50 (code default) or higher if set in .env",
-        )
+        from app.core.config import LEGACY_THRESHOLD_KEYS, Settings
+
+        self.assertNotIn("ENSEMBLE_MIN_THRESHOLD_FLOOR", Settings.model_fields)
+        self.assertIn("ENSEMBLE_MIN_THRESHOLD_FLOOR", LEGACY_THRESHOLD_KEYS)
+
+    def test_the_threshold_band_replaced_the_floor(self):
+        from app.core.config import Settings
+
+        for field in ("THRESHOLD_BASE", "THRESHOLD_MIN", "THRESHOLD_MAX"):
+            self.assertIn(field, Settings.model_fields)
 
     def test_ensemble_blocked_regimes_default_is_empty(self):
         """ENSEMBLE_BLOCKED_REGIMES must be a string (may be '' or 'STRONG_TREND').

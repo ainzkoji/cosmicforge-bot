@@ -200,7 +200,6 @@ class BacktestRunner:
             requested_leverage={s: self.config.max_leverage for s in self.config.symbols},
             allowed_symbols=self.config.symbols,
             paper_mode=True,  # Backtest is similar to paper
-            min_strategy_confidence=0.5,
             strict_circuit_breakers=False
         )
         

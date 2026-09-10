@@ -13,8 +13,7 @@ Architecture:
 Single source of truth:
   - RegimeClassifier.classify_stable() is the ONLY regime authority.
   - AdaptiveEntryThresholdEngine is the ONLY entry-threshold authority.
-  - DynamicThresholdCalculator is RESEARCH_ONLY: its rolling window is still
-    fed, but it no longer resolves the threshold.
+    There is no other threshold calculator anywhere in the system.
   - All 7 sub-strategies are untouched; activation is external filtering.
 
 Failure policy:
@@ -52,8 +51,6 @@ from app.strategy.bollinger_reversion import BollingerReversionStrategy
 # Regime authority
 from app.strategy.regime import RegimeClassifier, MarketRegime
 
-# Dynamic percentile calculator -- RESEARCH_ONLY, no longer a threshold authority
-from app.risk.dynamic_threshold import get_dynamic_threshold_calculator
 from app.threshold.contracts import (
     AdaptiveThresholdInput,
     HTFContext,
@@ -171,10 +168,9 @@ _REGIME_SPIKE_MULTIPLIERS: Dict[str, float] = {
     params_schema={
         "type": "object",
         "properties": {
-            # NOTE: consensus_threshold is deliberately absent. It was advertised
-            # here as a tunable and was never compared against anything. A
-            # setting an operator can see and set, which cannot affect
-            # behaviour, is the defect this rebuild removes.
+            # NOTE: the consensus gate is deleted, parameter and all. It was
+            # advertised here as a tunable and was never compared against
+            # anything. Expert agreement is one bounded input to the threshold.
             "min_confidence": {
                 "type": "number", "minimum": 0.0, "maximum": 1.0, "default": 0.20,
             },
@@ -206,18 +202,12 @@ class MasterEnsembleStrategy(Strategy):
         client,
         interval: str = "15m",
         min_confidence: float = 0.15,
-        consensus_threshold: float = 0.40,
         klines_limit: int = 250,
         htf_bias_enabled: bool = False,
     ) -> None:
         self.client = client
         self.interval = interval
         self.min_confidence = float(min_confidence)
-        # Kept for signature compatibility with stored strategy params. It is
-        # NOT an authority: expert agreement is one bounded input to
-        # AdaptiveEntryThresholdEngine, not a separate gate. The old default of
-        # 0.40 was stored here and never compared against anything.
-        self.consensus_threshold = float(consensus_threshold)
         self.klines_limit = int(klines_limit)
         self.htf_bias_enabled = bool(htf_bias_enabled)
 
@@ -245,10 +235,6 @@ class MasterEnsembleStrategy(Strategy):
         # classifier per symbol lazily so hysteresis is correctly separated.
         self._regime_classifiers: Dict[str, RegimeClassifier] = {}
 
-        # Dynamic percentile calculator — RESEARCH_ONLY. Its rolling window is
-        # still recorded so research keeps a continuous series; it does not
-        # resolve the entry threshold.
-        self._threshold_calc = get_dynamic_threshold_calculator()
 
         # Sub-strategies — all 7, always instantiated
         self._strategies: Dict[str, Strategy] = {}
@@ -329,40 +315,117 @@ class MasterEnsembleStrategy(Strategy):
         )
 
     @staticmethod
-    def _htf_context(market_snapshot, kwargs: dict) -> HTFContext:
-        """Higher-timeframe context, from closed candles only.
+    def _ema(values: List[float], period: int) -> Optional[float]:
+        """EMA seeded with an SMA over the first ``period`` values.
 
-        When the snapshot cannot confirm the HTF candle is closed and aligned,
-        the context is returned as unavailable. Reporting it as neutral would
-        assert something we did not verify.
+        Returns ``None`` rather than a partial value when there is not enough
+        history: an EMA200 computed from 40 candles is a number, not a trend.
+        """
+        if len(values) < period or period <= 0:
+            return None
+        multiplier = 2.0 / (period + 1)
+        ema = sum(values[:period]) / period
+        for value in values[period:]:
+            ema = (value - ema) * multiplier + ema
+        return ema
+
+    @classmethod
+    def _htf_context(cls, market_snapshot, kwargs: dict) -> HTFContext:
+        """Higher-timeframe context, derived from CLOSED higher-timeframe candles.
+
+        The snapshot's ``higher_timeframe_candles`` are already filtered to
+        closed candles, so no in-progress candle can reach this, and nothing
+        here issues a network request -- the candles were fetched once, for the
+        evaluation this belongs to.
+
+        Direction is price versus the HTF EMA200, matching the existing HTF bias
+        veto rather than inventing a second definition of "the 4h trend".
+        Strength is the distance from that EMA, normalised by the EMA and
+        saturating at 5%, so it is comparable across instruments.
+
+        Unavailable stays unavailable: if the snapshot has no HTF series, the
+        series is too short for a stable EMA200, or the HTF candle is not
+        timestamp-aligned with the entry candle, the context reports nothing.
+        Calling that "neutral" would assert something we did not verify.
         """
         if market_snapshot is None:
             return HTFContext()
         timeframe = getattr(market_snapshot, "higher_timeframe", None)
         if not timeframe:
             return HTFContext()
+
         aligned = getattr(market_snapshot, "htf_is_timestamp_aligned", None)
         try:
             fresh = bool(aligned()) if callable(aligned) else True
         except Exception:
             fresh = False
+
+        close_time = getattr(market_snapshot, "higher_timeframe_closed_candle_time", None)
+        candles = list(getattr(market_snapshot, "higher_timeframe_candles", ()) or ())
+        if not fresh or len(candles) < 200:
+            return HTFContext(
+                timeframe=str(timeframe),
+                candle_close_time=close_time,
+                is_fresh=fresh,
+            )
+
+        try:
+            closes = [float(k[4]) for k in candles]
+        except (IndexError, TypeError, ValueError):
+            return HTFContext(timeframe=str(timeframe), is_fresh=False)
+
+        ema200 = cls._ema(closes, 200)
+        if ema200 is None or ema200 <= 0:
+            return HTFContext(
+                timeframe=str(timeframe),
+                candle_close_time=close_time,
+                is_fresh=fresh,
+            )
+
+        price = closes[-1]
+        # Same 0.05% buffer as the HTF bias veto: inside it, the trend is not
+        # making a claim in either direction.
+        buffer = 0.0005
+        if price > ema200 * (1 + buffer):
+            direction = "BUY"
+        elif price < ema200 * (1 - buffer):
+            direction = "SELL"
+        else:
+            direction = "NEUTRAL"
+
+        distance = abs(price - ema200) / ema200
+        strength = max(0.0, min(1.0, distance / 0.05))
+
         return HTFContext(
             timeframe=str(timeframe),
-            direction=kwargs.get("htf_direction"),
-            strength=float(kwargs.get("htf_strength", 0.0) or 0.0),
-            candle_close_time=getattr(market_snapshot, "htf_closed_candle_time", None),
-            is_fresh=fresh,
+            direction=direction,
+            strength=round(strength, 6),
+            candle_close_time=close_time,
+            is_fresh=True,
         )
 
     @staticmethod
     def _market_quality_context(market_snapshot, klines) -> MarketQualityContext:
         """Market quality from what the snapshot actually knows.
 
-        Only genuinely observed fields are populated. An absent field is left
-        as ``None`` so the engine skips it, rather than being filled with a
-        neutral-looking default that would dilute the real inputs.
+        Populated from the canonical candles, which is all the snapshot carries:
+
+        * ``volume_percentile`` -- this candle's volume against the recent
+          distribution of the same measure, so it means the same thing on any
+          instrument.
+        * ``price_discontinuity`` -- an open that gapped from the previous close
+          by more than 0.5%.
+        * ``data_stale`` -- the snapshot's own staleness flag, which is a hard
+          gate rather than an adjustment.
+
+        ``spread_percentile``, ``estimated_slippage_bps`` and ``liquidity_score``
+        are deliberately left ``None``. The MarketSnapshot carries no order-book
+        data, and the engine skips absent inputs. Filling them with a
+        neutral-looking default would dilute the inputs that are real and would
+        claim knowledge the runtime does not have.
         """
         volume_percentile: float | None = None
+        discontinuity = False
         try:
             volumes = [float(k[5]) for k in klines[-120:]]
             if len(volumes) >= 20 and volumes[-1] >= 0:
@@ -371,8 +434,18 @@ class MasterEnsembleStrategy(Strategy):
         except (IndexError, TypeError, ValueError):
             volume_percentile = None
 
+        try:
+            if len(klines) >= 2:
+                prev_close = float(klines[-2][4])
+                this_open = float(klines[-1][1])
+                if prev_close > 0:
+                    discontinuity = abs(this_open - prev_close) / prev_close > 0.005
+        except (IndexError, TypeError, ValueError):
+            discontinuity = False
+
         return MarketQualityContext(
             volume_percentile=volume_percentile,
+            price_discontinuity=discontinuity,
             data_stale=bool(getattr(market_snapshot, "is_stale", False)),
         )
 
@@ -847,10 +920,6 @@ class MasterEnsembleStrategy(Strategy):
         # the bar.  The threshold comparison below is the only one in the
         # active path.
         raw_conf = max(buy_pct, sell_pct)
-        # The dynamic percentile calculator is RESEARCH_ONLY now. Its rolling
-        # window is still fed so the research path keeps a continuous series,
-        # but it no longer resolves the entry threshold.
-        self._threshold_calc.record(symbol, raw_conf)
 
         _direction = None
         if buy_pct > sell_pct:

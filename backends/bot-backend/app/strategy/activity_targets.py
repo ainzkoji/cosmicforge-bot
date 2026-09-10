@@ -12,7 +12,8 @@ is set to in an ActivityTargets instance, `get_current_reduction()` will
 always return 0.0 (DAILY_ACTIVITY_FALLBACK_DISABLED).
 
 Required behavior:
-- MIN_CONFIDENCE_THRESHOLD remains static and must not be softened by inactivity.
+- The entry threshold is decided solely by AdaptiveEntryThresholdEngine and
+  must never be softened by inactivity. Trade frequency is not an input to it.
 - CONFIDENCE_THRESHOLD_STATIC: the minimum confidence is what it is.
 - NO_TRADE_HIGH_QUALITY_SETUP_REQUIRED: prefer no trade over a forced trade.
 """

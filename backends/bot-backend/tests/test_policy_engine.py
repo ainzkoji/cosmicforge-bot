@@ -175,19 +175,25 @@ class TestPolicyEngineGating:
         # Should pass cooldown (may fail other checks, but not cooldown)
         assert decision.reason_code != ReasonCode.COOLDOWN_ACTIVE
     
-    def test_low_confidence_blocks(self, engine):
-        """Low confidence should block."""
+    def test_policy_engine_has_no_confidence_gate(self, engine):
+        """PolicyEngine used to block on a confidence floor of its own.
+
+        That was a second entry-quality authority. Entry quality is decided
+        once, by TradingDecisionEngine, against the threshold that
+        AdaptiveEntryThresholdEngine produced -- so a low confidence reaching
+        PolicyEngine is somebody else's verdict to make, not this one's.
+        """
+        assert not hasattr(engine, "min_confidence")
+
         ctx = PolicyContext(
             symbol="BTCUSDT",
             signal="BUY",
-            confidence=0.05,  # 5% < 10% threshold
+            confidence=0.05,
             now_ms=int(time.time() * 1000),
         )
-        
         decision = engine.evaluate(ctx)
-        
-        assert decision.allowed is False
-        assert decision.reason_code == ReasonCode.LOW_CONFIDENCE
+
+        assert decision.reason_code != ReasonCode.LOW_CONFIDENCE
 
 
 class TestPolicyEngineAction:

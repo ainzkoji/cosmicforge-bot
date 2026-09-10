@@ -128,6 +128,19 @@ _REASON_MAP = {
     "exposure_limit":                 "max_positions",
 }
 
+def _governing_threshold(strategy: Any) -> str:
+    """Format the threshold that actually governed the last evaluation.
+
+    The runner does not resolve a threshold and must not print one as if it
+    had. This reads the value off the AdaptiveThresholdDecision the strategy
+    produced, and prints ``not-evaluated`` when no threshold was decided --
+    rather than a zero, which would read as "the bar was zero".
+    """
+    decision = getattr(strategy, "last_threshold_decision", None)
+    final = getattr(decision, "final_threshold", None)
+    return "not-evaluated" if final is None else f"{float(final):.4f}"
+
+
 def _normalize_reason(raw_reason: str) -> str:
     """Map internal reason strings to standardized log labels."""
     if not raw_reason:
@@ -616,17 +629,12 @@ class PaperRunner:
         # Reset cache first so the engine is always created with the current config's
         # min_confidence (not the stale 0.10 default from a previous instantiation).
         reset_policy_engine(bot_id)
-        # NON-AUTHORITY. PolicyEngine's confidence check is skipped on the
-        # orchestrated path (confidence_already_approved), and it must not be
-        # able to reject something the threshold engine approved -- so it is
-        # given the band floor, the lowest value the engine itself can produce.
-        from app.threshold.runtime import get_threshold_policy
-
+        # No confidence floor is passed: PolicyEngine's confidence gate was
+        # deleted. Entry quality has one authority.
         self.policy_engine = get_policy_engine(
             bot_id=bot_id,
             budget_engine=self.budget_engine,
             circuit_registry=self.circuit_registry,
-            min_confidence=get_threshold_policy().min_threshold,
         )
 
         # Adaptive Engine â€” per-bot so loss streak / drawdown / rolling stats
@@ -738,36 +746,10 @@ class PaperRunner:
                     f"PM will use defaults â€” ensure_protection heartbeat will repair."
                 )
 
-        # F-8: Reconstruct dynamic threshold rolling-window history from DB so
-        # the first cycle after restart uses the real historical distribution instead
-        # of cold-starting at the fallback threshold (0.45) for 30+ cycles.
-        try:
-            from app.risk.dynamic_threshold import get_dynamic_threshold_calculator
-            _thresh_bot_id = self.context.bot_instance_id if self.context else bot_id
-            _thresh_calc = get_dynamic_threshold_calculator(bot_id=_thresh_bot_id)
-            for _sym in self.symbols:
-                try:
-                    _thresh_calc.reconstruct_memory_from_db(
-                        config_id=_thresh_bot_id,
-                        symbol=_sym,
-                    )
-                    logger.info(
-                        "[THRESHOLD] Reconstructed memory for %s (%d samples)",
-                        _sym, _thresh_calc.sample_count(_sym),
-                    )
-                except Exception as _thresh_sym_err:
-                    logger.warning("[THRESHOLD] Failed to reconstruct memory for %s: %s", _sym, _thresh_sym_err)
-        except Exception as _thresh_err:
-            logger.warning("[THRESHOLD] reconstruct_memory_from_db startup hook failed: %s", _thresh_err)
-
-        # Only reconcile if running (avoid doing this purely on init if not about to run)
-        # But PaperRunner is usually instantied to run.
-        # self.reconcile_positions_from_exchange()
-        # Skip legacy reconcile, use new one
-
-        # âœ… FIX: DEFER position reconciliation to first run_cycle()
-        # DON'T call exchange APIs in __init__() - this causes startup failures!
-        # self.reconcile_positions_on_startup()
+        # The dynamic threshold rolling window is GONE along with its
+        # calculator. Nothing reconstructs a confidence history at startup any
+        # more; AdaptiveEntryThresholdEngine persists its own state, keyed per
+        # bot/symbol/timeframe, and reloads it on restart.
         self._reconciliation_done = False  # Track if we've done startup reconciliation
         
         # âœ… LOAD ORCHESTRATOR
@@ -1030,9 +1012,6 @@ class PaperRunner:
                 requested_leverage={s: int(self.context.max_leverage) for s in self.context.symbols},
                 allowed_symbols=self.context.symbols,
                 paper_mode=self.context.execution_mode == "paper",
-                # Pass min confidence from context if available, else use SafetyConfig default (0.40)
-                # NOTE: Do NOT hardcode 0.5 here â€” it overrides safety_engine's min_confidence_hard
-                min_strategy_confidence=getattr(self.context, 'min_confidence', 0.40), 
                 strict_circuit_breakers=False,
                 
                 # âœ… CORRECTION: Pass allocation settings
@@ -3841,17 +3820,12 @@ class PaperRunner:
             _atr_hint = float(calculate_atr(klines, period=14)) if klines and len(klines) >= 14 else (price * 0.02)
             _atr_pct_hint = (_atr_hint / price * 100) if price > 0 else 1.5
             
-            from app.risk.dynamic_threshold import get_dynamic_threshold_calculator
-            dyntc = get_dynamic_threshold_calculator()
-            dyn_res = dyntc.get_threshold(symbol)
-
             a_state = self.adaptive_engine.get_adaptive_state(
                 config_id=getattr(self, "run_id", "default") or "default",
                 symbol=symbol,
                 drawdown_pct_hint=_hint_dd,
                 current_atr_pct=_atr_pct_hint,
                 active_regime="UNKNOWN", # Will be recorded internally by Strategy later
-                base_threshold=dyn_res.threshold,
             )
 
             orch_res = self.orchestrator.process_trading_opportunity(
@@ -4023,7 +3997,6 @@ class PaperRunner:
             _cs = getattr(self, "_cycle_stats", None)
             _vis_sig = str(eval_sig).upper() if eval_sig else "NONE"
             _vis_conf = float(strat_out.get("confidence", 0.0)) if isinstance(strat_out, dict) else 0.0
-            _vis_thr_f = float(dyn_res.threshold) if dyn_res is not None else 0.0
             if _cs:
                 _cs.evaluated += 1
             if _vis_sig in ("HOLD", "NONE", "SIGNAL.HOLD"):
@@ -4031,15 +4004,16 @@ class PaperRunner:
                 if _cs:
                     _cs.record_hold(symbol, _vis_conf, eval_reason)
                 logger.debug(
-                    "[HOLD] %s | conf=%.3f thr=%.3f | reason=%s",
-                    symbol, _vis_conf, _vis_thr_f, _normalize_reason(eval_reason),
+                    "[HOLD] %s | conf=%.3f | reason=%s",
+                    symbol, _vis_conf, _normalize_reason(eval_reason),
                 )
             elif decision == "execute":
                 # Non-HOLD signal approved by orchestrator â†’ [PASS]
                 _pass_icon = "ðŸŸ¢" if _vis_sig == "BUY" else "ðŸ”´"
                 logger.info(
-                    "%s [PASS] %s | side=%s | conf=%.4f | threshold=%.4f | reason=%s",
-                    _pass_icon, symbol, _vis_sig, _vis_conf, _vis_thr_f,
+                    "%s [PASS] %s | side=%s | conf=%.4f | threshold=%s | reason=%s",
+                    _pass_icon, symbol, _vis_sig, _vis_conf,
+                    _governing_threshold(self.strategy),
                     _normalize_reason(eval_reason),
                 )
                 if _cs:
@@ -4047,8 +4021,9 @@ class PaperRunner:
             else:
                 # Non-HOLD signal BLOCKED by orchestrator
                 logger.info(
-                    "ðŸš« [ORCH_DECISION] %s | decision=BLOCKED | side=%s | conf=%.4f | threshold=%.4f | reason=%s",
-                    symbol, _vis_sig, _vis_conf, _vis_thr_f,
+                    "ðŸš« [ORCH_DECISION] %s | decision=BLOCKED | side=%s | conf=%.4f | threshold=%s | reason=%s",
+                    symbol, _vis_sig, _vis_conf,
+                    _governing_threshold(self.strategy),
                     _normalize_reason(eval_reason),
                 )
                 if _cs:
@@ -4062,12 +4037,11 @@ class PaperRunner:
             try:
                 from shared_lib.persistence.trace_recorder import get_trace_recorder as _gtr_gate_orch
                 _gate_conf_orch = float(strat_out.get("confidence", 0.0)) if isinstance(strat_out, dict) else 0.0
-                _gate_thr_orch  = float(dyn_res.threshold) if dyn_res is not None else 0.0
                 _gate_reason_orch = str(orch_res.get("reason", "") or "")
+                # The governing threshold lives on the AdaptiveThresholdDecision
+                # for this opportunity, not on a value recomputed here.
                 _gate_details_orch = {
                     "confidence": _gate_conf_orch,
-                    "dynamic_threshold": _gate_thr_orch,
-                    "confidence_gap": round(_gate_conf_orch - _gate_thr_orch, 4),
                     "orchestrator_reason": _gate_reason_orch,
                     "orchestrator_decision": decision,
                     "hold_breakdown": _hold_breakdown_s1,
@@ -4130,7 +4104,9 @@ class PaperRunner:
                     regime_state=st.last_regime or "UNKNOWN",
                     regime_confidence=float(st.last_regime_confidence or 0.0),
                     aggressiveness_score=float(a_state.aggressiveness_score) if a_state is not None else None,
-                    confidence_gate_modifier=float(a_state.confidence_gate_modifier) if a_state is not None else None,
+                    # Persisted under its historical column name; the value is the renamed
+                # caution scalar, which no longer adjusts any threshold.
+                confidence_gate_modifier=float(a_state.caution_modifier) if a_state is not None else None,
                     size_multiplier=float(a_state.size_multiplier) if a_state is not None else None,
                     rolling_win_rate=float(a_state.rolling_win_rate) if a_state is not None else None,
                     rolling_expectancy=float(a_state.rolling_expectancy) if a_state is not None else None,
@@ -4200,7 +4176,9 @@ class PaperRunner:
                         stop_loss_price=float(orch_res.get("trade_params", {}).get("stop_loss")) if orch_res.get("trade_params", {}).get("stop_loss") is not None else None,
                         tp_plan=float(orch_res.get("trade_params", {}).get("take_profit")) if orch_res.get("trade_params", {}).get("take_profit") is not None else None,
                         aggressiveness_score=float(a_state.aggressiveness_score) if a_state is not None else None,
-                        confidence_gate_modifier=float(a_state.confidence_gate_modifier) if a_state is not None else None,
+                        # Persisted under its historical column name; the value is the renamed
+                # caution scalar, which no longer adjusts any threshold.
+                confidence_gate_modifier=float(a_state.caution_modifier) if a_state is not None else None,
                         size_multiplier=float(a_state.size_multiplier) if a_state is not None else None,
                         rolling_win_rate=float(a_state.rolling_win_rate) if a_state is not None else None,
                         rolling_expectancy=float(a_state.rolling_expectancy) if a_state is not None else None,
@@ -4684,7 +4662,7 @@ class PaperRunner:
                     orch_res=locals().get("orch_res"),
                     ml_score=locals().get("_ml_score"),
                     ml_action=locals().get("_ml_action"),
-                    dyn_threshold=locals().get("dyn_res").threshold if locals().get("dyn_res") else None,
+                    dyn_threshold=None,   # no dynamic threshold exists any more
                     entry_price=locals().get("price"),
                     klines=klines,
                     client=self.client,
@@ -5454,29 +5432,18 @@ class PaperRunner:
                 except Exception:
                     pass
 
-                from app.risk.dynamic_threshold import get_dynamic_threshold_calculator
-                try:
-                    # Pass bot_id so each bot owns its own rolling confidence window
-                    _dyntc = get_dynamic_threshold_calculator(bot_id=_bot_id_guard)
-                    _dyn_res = _dyntc.get_threshold(symbol)
-                    _base_thr = _dyn_res.threshold
-                except Exception:
-                    _base_thr = 0.5
-
                 a_state = self.adaptive_engine.get_adaptive_state(
                     config_id=getattr(self, "run_id", "default") or "default",
                     symbol=symbol,
                     drawdown_pct_hint=_hint_dd,
                     current_atr_pct=_atr_hint,
                     active_regime="UNKNOWN",  # Runner doesn't know regime directly
-                    base_threshold=_base_thr,
                 )
 
                 # Feed strictly separated adaptive params to strategy
                 try:
                     res = self.strategy.get_signal(
                         symbol,
-                        min_confidence_gate=a_state.min_confidence_gate,
                         drawdown_pct=0.0,  # Strategy no longer receives drawdown
                         strategy_weight_adjustments=a_state.strategy_weight_adjustments,
                         execution_mode=self._effective_execution_mode(),
@@ -5683,7 +5650,9 @@ class PaperRunner:
                 portfolio_risk_used=portfolio_risk_used,
                 # Frozen adaptive engine state snapshot (pre-execution)
                 aggressiveness_score=float(a_state.aggressiveness_score) if a_state is not None else None,
-                confidence_gate_modifier=float(a_state.confidence_gate_modifier) if a_state is not None else None,
+                # Persisted under its historical column name; the value is the renamed
+                # caution scalar, which no longer adjusts any threshold.
+                confidence_gate_modifier=float(a_state.caution_modifier) if a_state is not None else None,
                 size_multiplier=float(a_state.size_multiplier) if a_state is not None else None,
                 rolling_win_rate=float(a_state.rolling_win_rate) if a_state is not None else None,
                 rolling_expectancy=float(a_state.rolling_expectancy) if a_state is not None else None,
@@ -6017,18 +5986,10 @@ class PaperRunner:
             # Now captures: confidence, policy floor, dynamic threshold, gap, and reason code.
             if trace_id:
                 try:
-                    _pe_floor = float(getattr(self.policy_engine, "min_confidence", 0.40))
                     _pe_gate_details: dict = {
                         "confidence": float(ctx.confidence),
-                        "policy_floor": _pe_floor,
-                        "confidence_gap_floor": round(float(ctx.confidence) - _pe_floor, 4),
                         "policy_reason": policy.reason or "",
                     }
-                    # Include dynamic threshold if it was computed this cycle
-                    _pe_dyn_thr = locals().get("_base_thr")
-                    if _pe_dyn_thr is not None:
-                        _pe_gate_details["dynamic_threshold"] = float(_pe_dyn_thr)
-                        _pe_gate_details["confidence_gap_dyn"] = round(float(ctx.confidence) - float(_pe_dyn_thr), 4)
                     recorder.record_gate(
                         trace_id,
                         allowed=bool(policy.allowed),
@@ -6109,7 +6070,9 @@ class PaperRunner:
                         stop_loss_price=float(getattr(policy, "sl_plan", None)) if getattr(policy, "sl_plan", None) is not None else None,
                         tp_plan=float(getattr(policy, "tp_plan", None)) if getattr(policy, "tp_plan", None) is not None else None,
                         aggressiveness_score=float(a_state.aggressiveness_score) if a_state is not None else None,
-                        confidence_gate_modifier=float(a_state.confidence_gate_modifier) if a_state is not None else None,
+                        # Persisted under its historical column name; the value is the renamed
+                # caution scalar, which no longer adjusts any threshold.
+                confidence_gate_modifier=float(a_state.caution_modifier) if a_state is not None else None,
                         size_multiplier=float(a_state.size_multiplier) if a_state is not None else None,
                         rolling_win_rate=float(a_state.rolling_win_rate) if a_state is not None else None,
                         rolling_expectancy=float(a_state.rolling_expectancy) if a_state is not None else None,

@@ -175,9 +175,9 @@ class TestScenario1_LossStreakGrows:
     """
     SCENARIO 1: Loss streak grows across multiple trades.
 
-    Initial state : 0 consecutive losses → confidence_gate_modifier = 0.0
+    Initial state : 0 consecutive losses → caution_modifier = 0.0
     Trigger       : DB shows 5 consecutive CLOSE fills with negative PnL
-    Expected      : confidence_gate_modifier = 0.10 (5 × 0.02, capped at 0.10)
+    Expected      : caution_modifier = 0.10 (5 × 0.02, capped at 0.10)
                     size_multiplier unchanged by streak (no double-penalty)
                     bounded_reason_codes includes 'STREAK_5'
     """
@@ -186,7 +186,7 @@ class TestScenario1_LossStreakGrows:
         db_path = _make_db_with_fills([])
         eng = _make_engine(db_path)
         state = eng.get_adaptive_state("cfg", "BTCUSDT")
-        assert state.confidence_gate_modifier == 0.0
+        assert state.caution_modifier == 0.0
         assert "STREAK" not in " ".join(state.bounded_reason_codes)
         _safe_unlink(db_path)
 
@@ -195,7 +195,7 @@ class TestScenario1_LossStreakGrows:
         db_path = _make_db_with_fills(fills)
         eng = _make_engine(db_path)
         state = eng.get_adaptive_state("cfg", "BTCUSDT")
-        assert state.confidence_gate_modifier == pytest.approx(0.06, abs=1e-6)
+        assert state.caution_modifier == pytest.approx(0.06, abs=1e-6)
         assert "STREAK_3" in state.bounded_reason_codes
         _safe_unlink(db_path)
 
@@ -205,8 +205,8 @@ class TestScenario1_LossStreakGrows:
         eng = _make_engine(db_path)
         state = eng.get_adaptive_state("cfg", "BTCUSDT")
         # 5 × 0.02 = 0.10, exactly at the cap
-        assert state.confidence_gate_modifier == pytest.approx(0.10, abs=1e-6)
-        assert state.confidence_gate_modifier <= 0.12   # hard bound
+        assert state.caution_modifier == pytest.approx(0.10, abs=1e-6)
+        assert state.caution_modifier <= 0.12   # hard bound
         _safe_unlink(db_path)
 
     def test_streak_does_not_affect_size_multiplier(self):
@@ -226,7 +226,7 @@ class TestScenario1_LossStreakGrows:
         eng = _make_engine(db_path)
         state = eng.get_adaptive_state("cfg", "BTCUSDT")
         # Only 2 losses before the win; newest-first: loss, loss, WIN → streak = 2
-        assert state.confidence_gate_modifier == pytest.approx(0.04, abs=1e-6)
+        assert state.caution_modifier == pytest.approx(0.04, abs=1e-6)
         _safe_unlink(db_path)
 
 
@@ -240,7 +240,7 @@ class TestScenario2_RestartDuringStreak:
     Trigger       : New AdaptiveEngine instance created (simulating restart)
     Expected      : loss_streak correctly reconstructed = 4 from trade_fills
                     was_reconstructed = True
-                    confidence_gate_modifier = 0.08  (4 × 0.02)
+                    caution_modifier = 0.08  (4 × 0.02)
     Pass/Fail     : state.loss_streak == 4, state.was_reconstructed is True
     """
 
@@ -251,7 +251,7 @@ class TestScenario2_RestartDuringStreak:
         state = eng.get_adaptive_state("cfg", "BTCUSDT")
         assert state.loss_streak == 4
         assert state.was_reconstructed is True
-        assert state.confidence_gate_modifier == pytest.approx(0.08, abs=1e-6)
+        assert state.caution_modifier == pytest.approx(0.08, abs=1e-6)
         _safe_unlink(db_path)
 
     def test_loss_streak_trust_level_is_durable(self):
@@ -368,9 +368,9 @@ class TestScenario5_ConfidenceHistorySurvivesRestart:
     but AdaptiveEngine's DURABLE loss_streak ensures the threshold MODIFIER is
     always deterministically reconstructed from DB.
 
-    Initial state : 3 losses in DB, giving confidence_gate_modifier = 0.06
+    Initial state : 3 losses in DB, giving caution_modifier = 0.06
     Trigger       : new engine instance (restart)
-    Expected      : confidence_gate_modifier == 0.06 (reconstructed from DB streak)
+    Expected      : caution_modifier == 0.06 (reconstructed from DB streak)
                     trigger_sources records exact DB-sourced streak value
     """
 
@@ -384,7 +384,7 @@ class TestScenario5_ConfidenceHistorySurvivesRestart:
         eng2 = _make_engine(db_path)   # simulated restart
         s2 = eng2.get_adaptive_state("cfg", "BTCUSDT")
 
-        assert s1.confidence_gate_modifier == s2.confidence_gate_modifier
+        assert s1.caution_modifier == s2.caution_modifier
         assert s1.loss_streak == s2.loss_streak
         _safe_unlink(db_path)
 
@@ -433,7 +433,7 @@ class TestScenario7_BoundedUnderStackedStress:
     Initial state : 6 consecutive losses, 15%+ drawdown, ATR% = 8%, 15 BLOCKED decisions
     Trigger       : get_adaptive_state called
     Expected      : All outputs within defined hard bounds
-                    confidence_gate_modifier ≤ 0.12
+                    caution_modifier ≤ 0.12
                     size_multiplier ≥ 0.20
                     leverage_multiplier ≥ 0.25
                     aggressiveness_score ≥ 0.0 and ≤ 1.0
@@ -449,7 +449,7 @@ class TestScenario7_BoundedUnderStackedStress:
         eng.get_adaptive_state("cfg", "BTCUSDT", current_atr_pct=9.0)
         state = eng.get_adaptive_state("cfg", "BTCUSDT", current_atr_pct=9.0)
 
-        assert state.confidence_gate_modifier <= 0.12
+        assert state.caution_modifier <= 0.12
         assert state.size_multiplier >= 0.20
         assert state.leverage_multiplier >= 0.25
         assert 0.0 <= state.aggressiveness_score <= 1.0
@@ -477,7 +477,7 @@ class TestScenario8_PostRestartMatchesPreRestart:
 
     Initial state : DB contains 4 losses, 8% drawdown
     Trigger       : new engine instance created
-    Expected      : loss_streak, drawdown_pct, confidence_gate_modifier, size_multiplier
+    Expected      : loss_streak, drawdown_pct, caution_modifier, size_multiplier
                     all identical between pre-restart and post-restart instances
     """
 
@@ -494,7 +494,7 @@ class TestScenario8_PostRestartMatchesPreRestart:
 
         assert s_pre.loss_streak == s_post.loss_streak
         assert s_pre.drawdown_pct == pytest.approx(s_post.drawdown_pct, abs=1e-4)
-        assert s_pre.confidence_gate_modifier == pytest.approx(s_post.confidence_gate_modifier, abs=1e-6)
+        assert s_pre.caution_modifier == pytest.approx(s_post.caution_modifier, abs=1e-6)
         assert s_pre.size_multiplier == pytest.approx(s_post.size_multiplier, abs=1e-4)
         _safe_unlink(db_path)
 
@@ -513,8 +513,8 @@ class TestScenario9_NoDuplicatePenaltyPaths:
     SCENARIO 9: No duplicate penalty path for the same condition.
 
     Verifies that:
-    - Loss streak ONLY affects confidence_gate_modifier, NOT size_multiplier
-    - Drawdown ONLY affects size_multiplier, NOT confidence_gate_modifier
+    - Loss streak ONLY affects caution_modifier, NOT size_multiplier
+    - Drawdown ONLY affects size_multiplier, NOT caution_modifier
     - Volatility ONLY affects leverage_multiplier, NOT the others
     """
 
@@ -525,7 +525,7 @@ class TestScenario9_NoDuplicatePenaltyPaths:
         state = eng.get_adaptive_state("cfg", "BTCUSDT", current_atr_pct=1.0)
 
         # Streak touches confidence gate
-        assert state.confidence_gate_modifier > 0.0
+        assert state.caution_modifier > 0.0
         # But NOT size (drawdown = 0.0 → size stays 1.0 before any cooldown)
         assert state.size_multiplier == pytest.approx(1.0, abs=0.01)
         # And NOT leverage (ATR = 1.0 → no compression)
@@ -541,7 +541,7 @@ class TestScenario9_NoDuplicatePenaltyPaths:
         # Drawdown touches size
         assert state.size_multiplier == pytest.approx(0.40, abs=0.01)
         # But NOT confidence gate (no loss streak)
-        assert state.confidence_gate_modifier == pytest.approx(0.0, abs=1e-6)
+        assert state.caution_modifier == pytest.approx(0.0, abs=1e-6)
         # And NOT leverage (ATR = 1.0)
         assert state.leverage_multiplier == pytest.approx(1.0, abs=0.01)
         _safe_unlink(db_path)
@@ -556,7 +556,7 @@ class TestScenario9_NoDuplicatePenaltyPaths:
         # But NOT size (no drawdown)
         assert state.size_multiplier == pytest.approx(1.0, abs=0.01)
         # And NOT confidence gate (no streak)
-        assert state.confidence_gate_modifier == pytest.approx(0.0, abs=1e-6)
+        assert state.caution_modifier == pytest.approx(0.0, abs=1e-6)
         _safe_unlink(db_path)
 
     def test_no_cross_contamination_under_all_stress(self):
@@ -568,7 +568,7 @@ class TestScenario9_NoDuplicatePenaltyPaths:
         state = eng.get_adaptive_state("cfg", "BTCUSDT", current_atr_pct=5.0)
 
         # Each penalty only in its lane
-        assert pytest.approx(0.06, abs=1e-6) == state.confidence_gate_modifier   # streak lane
+        assert pytest.approx(0.06, abs=1e-6) == state.caution_modifier   # streak lane
         assert state.size_multiplier <= 0.40      # drawdown lane (may be further compressed by cooldown)
         assert state.leverage_multiplier < 1.0    # volatility lane
 
@@ -587,12 +587,14 @@ class TestOutputContractCompleteness:
 
     REQUIRED_FIELDS = [
         "timestamp_utc", "adaptive_state_version",
-        "aggressiveness_score", "confidence_gate_modifier",
+        "aggressiveness_score", "caution_modifier",
         "size_multiplier", "leverage_multiplier",
         "strategy_weight_adjustments", "cooldown_state",
         "trigger_sources", "bounded_reason_codes",
         "input_trust_levels", "was_reconstructed",
-        "min_confidence_gate", "loss_streak", "drawdown_pct", "regime",
+        # min_confidence_gate is deliberately absent: it was the last value
+        # outside AdaptiveEntryThresholdEngine that looked like a threshold.
+        "loss_streak", "drawdown_pct", "regime",
     ]
 
     def test_all_contract_fields_present(self):

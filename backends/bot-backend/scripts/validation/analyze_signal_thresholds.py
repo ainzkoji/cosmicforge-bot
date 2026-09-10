@@ -22,6 +22,7 @@ for _path in (str(_BOT_ROOT), str(_SHARED_ROOT)):
 
 from app.core.config import settings
 from app.strategy.hold_breakdown import classify_hold_reason
+from app.threshold.runtime import get_threshold_policy  # single threshold authority
 from scripts.validation.run_paper_cycle_diagnostic import (
     connect_read_only,
     load_env_values,
@@ -103,7 +104,7 @@ def derive_hold_reason(row: dict[str, Any], meta: dict[str, Any]) -> str:
     return classify_hold_reason(
         str(row.get("gate_reason") or row.get("reason_codes") or ""),
         confidence=float(row.get("confidence") or 0.0),
-        threshold_floor=float(row.get("threshold") or settings.ENSEMBLE_MIN_THRESHOLD_FLOOR),
+        threshold_floor=float(row.get("threshold") or get_threshold_policy().base_threshold),
         meta=meta,
     )
 
@@ -513,7 +514,7 @@ def run_audit(
     env_values = load_env_values(env_path)
     runtime_windows = str(settings.ENSEMBLE_SESSION_WINDOWS_UTC)
     narrow_windows = str(settings.IOFS_SESSION_WINDOWS_UTC)
-    current_floor = float(settings.ENSEMBLE_MIN_THRESHOLD_FLOOR)
+    current_floor = float(get_threshold_policy().base_threshold)
 
     with connect_read_only(db_path) as conn:
         decisions = load_decisions(conn, symbols, lookback_decisions)

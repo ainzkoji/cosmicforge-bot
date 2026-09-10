@@ -56,7 +56,6 @@ def create_safety_engine(config_id: str, risk_profile: str = "balanced") -> Safe
     safety_config = SafetyConfig(
         max_leverage=20.0,
         max_trades_per_day=100,
-        min_strategy_confidence=0.3,
         min_margin_buffer_pct=0.30,
         max_stop_distance_pct=0.10,
         max_compound_risk_pct=0.15

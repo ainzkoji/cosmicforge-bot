@@ -25,8 +25,6 @@ def verify():
     # 2. Setup Config
     try:
         config = SafetyConfig(
-            min_confidence_hard=0.30,
-            min_confidence_soft=0.05,
             daily_activity_fallback_enabled=True,
             daily_activity_fallback_hours=24,
             fallback_position_size_multiplier=0.25,

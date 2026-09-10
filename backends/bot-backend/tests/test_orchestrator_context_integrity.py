@@ -51,7 +51,7 @@ def _orchestrator(signal: Signal):
     )
     orchestrator.config_validator = SimpleNamespace(get_risk_per_trade_limit=lambda risk: 0.01)
     orchestrator.safety = SimpleNamespace(
-        config=SimpleNamespace(min_confidence_soft=0.5, fallback_max_leverage=2.0),
+        config=SimpleNamespace( fallback_max_leverage=2.0),
         check_daily_activity_fallback=lambda config_id: {"should_activate": False},
     )
     orchestrator.record_decision = lambda **kwargs: None

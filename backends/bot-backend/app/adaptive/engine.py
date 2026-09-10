@@ -19,7 +19,7 @@ Input Trust Levels (Section 4):
   HEURISTIC — runtime-only; flagged here so we know to harden it later
 
 Safety Bounds (Section 6):
-  confidence_gate_modifier : [0.0, +0.12]  — hard cap
+  caution_modifier         : [0.0, +0.12]  — hard cap (size/leverage only)
   size_multiplier          : [0.20, 1.0]   — hard floor
   leverage_multiplier      : [0.25, 1.0]   — hard floor
   strategy weight adjust.  : [0.70, 1.30]  — clipped to PerformanceTracker range
@@ -46,7 +46,7 @@ from app.adaptive.policies import (
     LossStreakPolicy, DrawdownPolicy,
     RegimeUnderperformancePolicy, RegimeRecoveryPolicy,
     StrategyDeweightingPolicy, AggressivenessRecoveryPolicy,
-    ConfidenceGatePolicy, ExecutionDegradationPolicy,
+    LossStreakCautionPolicy, ExecutionDegradationPolicy,
     PolicyDecision,
 )
 from app.adaptive.audit_log import AdaptiveAuditLog
@@ -74,7 +74,11 @@ class AdaptiveState:
 
     # ── Core multipliers ─────────────────────────────────────────────────────
     aggressiveness_score: float                 # 0.0 (defensive) → 1.0 (aggressive)
-    confidence_gate_modifier: float             # Net delta added to base threshold
+    # A caution scalar in [0.0, 0.12] driven by loss streak and regime. It is NOT
+    # a threshold and is not expressed in threshold units any more: it feeds the
+    # aggressiveness score, which governs SIZE and LEVERAGE. The entry threshold
+    # has exactly one authority, AdaptiveEntryThresholdEngine.
+    caution_modifier: float
     size_multiplier: float                      # Position size factor [0.20 – 1.0]
     leverage_multiplier: float                  # Leverage compression  [0.25 – 1.0]
 
@@ -93,8 +97,10 @@ class AdaptiveState:
     was_reconstructed: bool = False             # True if rebuilt from DB on cold-start
     sample_quality_flag: str = "weak"           # "strong" (≥30) | "moderate" (10–29) | "weak" (<10)
 
-    # ── Backward-compat (consumed by dynamic_threshold offset calculation) ───
-    min_confidence_gate: float = 0.50           # = base_threshold + confidence_gate_modifier
+    # NOTE: min_confidence_gate is DELETED. It was base_threshold +
+    # confidence_gate_modifier, existed to feed the removed dynamic threshold
+    # calculator, and was the last value outside the threshold engine that still
+    # looked like an entry threshold.
     loss_streak: int = 0
     drawdown_pct: float = 0.0
     regime: str = "UNKNOWN"
@@ -108,11 +114,6 @@ class AdaptiveState:
     def risk_multiplier(self) -> float:
         """Spec alias → size_multiplier.  Penalty router: drawdown domain only."""
         return self.size_multiplier
-
-    @property
-    def threshold_adjustment(self) -> float:
-        """Spec alias → confidence_gate_modifier.  Penalty router: streak domain only."""
-        return self.confidence_gate_modifier
 
     @property
     def max_position_size_modifier(self) -> float:
@@ -133,7 +134,7 @@ def _state_to_dict(state: Optional[AdaptiveState]) -> Optional[dict]:
 
 # Hard limits — nothing may violate these regardless of input values
 _BOUNDS = {
-    "confidence_gate_modifier": (0.0,  0.12),
+    "caution_modifier": (0.0,  0.12),
     "size_multiplier":          (0.20, 1.0),
     "leverage_multiplier":      (0.25, 1.0),
     "aggressiveness_score":     (0.0,  1.0),
@@ -189,7 +190,7 @@ class AdaptiveEngine:
         self._pol_regime_rec = RegimeRecoveryPolicy()
         self._pol_deweight   = StrategyDeweightingPolicy()
         self._pol_recovery   = AggressivenessRecoveryPolicy()
-        self._pol_conf       = ConfidenceGatePolicy()
+        self._pol_conf       = LossStreakCautionPolicy()
         self._pol_exec       = ExecutionDegradationPolicy()
         # Hysteresis counter for aggressiveness recovery (needs N clean ticks)
         self._clean_ticks: Dict[str, int] = {}
@@ -430,7 +431,7 @@ class AdaptiveEngine:
         # Build a concise diff of scalar fields
         changed_fields: Dict[str, Any] = {}
         if prev:
-            for k in ("aggressiveness_score", "confidence_gate_modifier",
+            for k in ("aggressiveness_score", "caution_modifier",
                       "size_multiplier", "leverage_multiplier",
                       "cooldown_state", "loss_streak", "drawdown_pct"):
                 if curr.get(k) != prev.get(k):
@@ -443,10 +444,9 @@ class AdaptiveEngine:
             "was_reconstructed":        new_state.was_reconstructed,
             "changed_fields":           changed_fields,
             "aggressiveness_score":     new_state.aggressiveness_score,
-            "confidence_gate_modifier": new_state.confidence_gate_modifier,
+            "caution_modifier":         new_state.caution_modifier,
             # Spec-required Section 8 field names (aliases)
             "risk_multiplier":          new_state.size_multiplier,
-            "threshold_adjustment":     new_state.confidence_gate_modifier,
             "max_position_size_modifier": new_state.size_multiplier,
             "size_multiplier":          new_state.size_multiplier,
             "leverage_multiplier":      new_state.leverage_multiplier,
@@ -470,7 +470,6 @@ class AdaptiveEngine:
         drawdown_pct_hint: Optional[float] = None,    # HEURISTIC fallback
         current_atr_pct: Optional[float] = None,      # HEURISTIC (no DB source)
         active_regime: str = "UNKNOWN",
-        base_threshold: float = 0.50,
     ) -> AdaptiveState:
         """
         Resolve the full AdaptiveState from trusted sources.
@@ -526,7 +525,7 @@ class AdaptiveEngine:
         #    +0.02 per consecutive loss, but only activated after 5+ samples
         raw_streak_penalty = 0.0
         if loss_streak >= 1:
-            raw_streak_penalty = _clamp(loss_streak * 0.02, *_BOUNDS["confidence_gate_modifier"])
+            raw_streak_penalty = _clamp(loss_streak * 0.02, *_BOUNDS["caution_modifier"])
             reason_codes.append(f"STREAK_{loss_streak}")
 
         # 2. Drawdown → size multiplier (Section 6 bound: floor at 0.20)
@@ -637,7 +636,7 @@ class AdaptiveEngine:
             clean_ticks=self._clean_ticks.get(symbol, 0),
         )
 
-        # Use ConfidenceGatePolicy as the source-of-truth for raw streak penalty
+        # Use LossStreakCautionPolicy as the source-of-truth for raw streak penalty
         raw_streak_penalty = pol_conf.raw_target
 
         # ---- Section 4 — Performance-based expansion nudge -----------------
@@ -675,18 +674,16 @@ class AdaptiveEngine:
         if symbol not in self._ema_leverage:
             self._ema_leverage[symbol] = AsymmetricEMA(alpha_up=0.01, alpha_down=0.20)
 
-        confidence_gate_modifier = self._ema_confidence[symbol].update(raw_streak_penalty)
+        caution_modifier = self._ema_confidence[symbol].update(raw_streak_penalty)
         size_multiplier = self._ema_size[symbol].update(raw_size_multiplier)
         
         # FINAL SAFETY FLOOR: Ensure size_multiplier never reaches 0.0 regardless of EMA state
         size_multiplier = max(0.10, size_multiplier)
         leverage_multiplier = self._ema_leverage[symbol].update(raw_leverage_multiplier)
 
-        min_confidence_gate = base_threshold + confidence_gate_modifier
-
         # ---- Aggressiveness score (Section 5) -----------------------------
         size_score = (size_multiplier - 0.20) / (1.0 - 0.20)           # normalise to [0,1]
-        conf_score = 1.0 - (confidence_gate_modifier / 0.12)            # 0 at max penalty
+        conf_score = 1.0 - (caution_modifier / 0.12)                    # 0 at max caution
         aggressiveness_score = _clamp(
             round((size_score + conf_score) / 2.0, 3),
             *_BOUNDS["aggressiveness_score"],
@@ -718,14 +715,13 @@ class AdaptiveEngine:
             "sample_quality_flag":    sample_quality_flag,
             "atr_pct":                round(atr_pct, 4),
             "active_regime":          active_regime,
-            "base_threshold":         base_threshold,
         }
 
         new_state = AdaptiveState(
             timestamp_utc                = now_utc,
             adaptive_state_version       = self._STATE_VERSION,
             aggressiveness_score         = aggressiveness_score,
-            confidence_gate_modifier     = round(confidence_gate_modifier, 4),
+            caution_modifier             = round(caution_modifier, 4),
             size_multiplier              = round(size_multiplier, 4),
             leverage_multiplier          = round(leverage_multiplier, 4),
             strategy_weight_adjustments  = strategy_weight_adjustments,
@@ -737,7 +733,6 @@ class AdaptiveEngine:
             was_reconstructed            = self._reconstructed,
             sample_quality_flag          = sample_quality_flag,
             # Backward-compat fields
-            min_confidence_gate          = round(min_confidence_gate, 4),
             loss_streak                  = loss_streak,
             drawdown_pct                 = round(drawdown_pct, 4),
             regime                       = active_regime,

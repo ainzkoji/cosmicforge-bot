@@ -22,11 +22,6 @@ from app.risk.risk_budget import RiskBudgetEngine, RiskBudgetConfig, PositionRis
 from app.risk.account_protection import AccountProtection
 from app.risk.risk_policy import RiskPolicy
 from app.risk.sizing_engine import SizingResult
-from app.risk.dynamic_threshold import (
-    DynamicThresholdCalculator,
-    log_threshold_event,
-    get_dynamic_threshold_calculator,
-)
 logger = logging.getLogger(__name__)
 
 
@@ -144,14 +139,11 @@ class SafetyConfig:
     max_leverage: float = 20.0
     max_trades_per_day: int = 100
     
-    # Dual confidence thresholds for flexibility
-    # - hard: Standard threshold for normal trading (raised from 0.10 to reduce low-quality signals)
-    # - soft: Fallback threshold for daily activity targets
-    min_confidence_hard: float = 0.40
-    # Standard threshold
-    
-    # Daily Activity Fallback
-    min_confidence_soft: float = 0.05  # Soft confidence threshold for fallback trades (5%)
+    # NOTE: min_confidence_hard / min_confidence_soft are GONE. They were a
+    # second entry-quality gate living in the safety layer, resolved from a
+    # second threshold calculator. Entry quality has exactly one authority:
+    # AdaptiveEntryThresholdEngine. Safety keeps loss, drawdown, exposure,
+    # leverage, market-condition and kill-switch responsibilities.
     daily_activity_fallback_enabled: bool = False  # B-6 Fix: never soften thresholds due to inactivity — waiting is correct behavior
     daily_activity_fallback_hours: int = 24  # Hours of inactivity before fallback activates
     fallback_position_size_multiplier: float = 0.25  # Reduce size to 25% for fallback trades
@@ -181,18 +173,6 @@ class SafetyConfig:
         if self.volatility_base_atr is None:
             self.volatility_base_atr = {}
         
-        # Normalize confidence thresholds (handle 0-100 scale values)
-        self.min_confidence_hard = normalize_threshold(self.min_confidence_hard)
-        self.min_confidence_soft = normalize_threshold(self.min_confidence_soft)
-        
-        # Validate that soft <= hard
-        if self.min_confidence_soft > self.min_confidence_hard:
-            logger.warning(
-                f"min_confidence_soft ({self.min_confidence_soft:.3f}) is greater than "
-                f"min_confidence_hard ({self.min_confidence_hard:.3f}). Swapping values."
-            )
-            self.min_confidence_soft, self.min_confidence_hard = self.min_confidence_hard, self.min_confidence_soft
-            self.volatility_base_atr = {}
 
 
 class SafetyEngine:
@@ -213,15 +193,12 @@ class SafetyEngine:
         protection: AccountProtection,
         config: SafetyConfig,
         risk_policy: Optional[RiskPolicy] = None,
-        dyn_threshold_calculator: Optional[DynamicThresholdCalculator] = None
     ):
         self.db = db
         self.risk_budget = risk_budget
         self.protection = protection
         self.config = config
         self.risk_policy = risk_policy
-        # Dynamic confidence threshold: adapts per-symbol from rolling history
-        self._dyn_threshold = dyn_threshold_calculator or get_dynamic_threshold_calculator()
         self._init_monitoring_state()
     
     def _init_monitoring_state(self):
@@ -308,23 +285,13 @@ class SafetyEngine:
         strategy_name = kwargs.get('strategy_name', 'unknown')
         signal = kwargs.get('signal', 'unknown')
         
-        # Determine threshold used for the outer eval log
-        is_fallback_mode = kwargs.get('is_fallback_mode', False)
-        use_soft_threshold = kwargs.get('use_soft_threshold', False) or is_fallback_mode
-        if use_soft_threshold:
-            threshold_used = self.config.min_confidence_soft
-        else:
-            dyn_result = self._dyn_threshold.get_threshold(symbol)
-            threshold_used = dyn_result.threshold
-        
         decision_str = "PASS" if decision.allowed else "BLOCK"
         reason_code = decision.block_reason.value if decision.block_reason else "None"
         
         # Mandatory Logging for Analysis
         logger.debug(
             f"Layer A Eval: symbol={symbol}, strategy_name={strategy_name}, signal={signal}, "
-            f"confidence_raw={confidence:.4f}, confidence_normalized={confidence:.4f}, "
-            f"threshold_used={threshold_used:.4f}, decision={decision_str}, reason_code={reason_code}"
+            f"confidence_raw={confidence:.4f}, decision={decision_str}, reason_code={reason_code}"
         )
 
         return decision
@@ -377,83 +344,19 @@ class SafetyEngine:
                 layer="A"
             )
         
-        # Gate 3: Strategy confidence — legacy compatibility only.  The active
-        # orchestrated MasterEnsemble path has already made the sole entry-quality
-        # decision and passes confidence_already_approved=True.
-        # Check if we should apply fallback soft threshold (daily-activity mode)
-        is_fallback_mode = kwargs.get('is_fallback_mode', False)
-        use_soft_threshold = kwargs.get('use_soft_threshold', False) or is_fallback_mode
-        strategy_name = kwargs.get('strategy_name', None)
+        # Gate 3 (entry confidence) is DELETED.
+        #
+        # It resolved a threshold from a second calculator, capped it against a
+        # second configured floor, and compared confidence again -- a complete
+        # duplicate of the entry-quality decision, in the safety layer, with its
+        # own numbers. Entry quality has exactly one authority:
+        # AdaptiveEntryThresholdEngine, compared once by TradingDecisionEngine.
+        #
+        # Safety keeps the responsibilities that are actually its own: daily
+        # loss, drawdown, kill switch, capital, exposure, position count,
+        # leverage, stale data and market conditions. It does not re-litigate
+        # whether a signal was good enough.
 
-        # --- Step 1: Logic check removed ---
-        # The strategy (MasterEnsemble) already records the confidence sample.
-        # Recording it again here in Layer A causes double-weighting and ceiling creep.
-
-        # --- Step 2: Compute dynamic threshold ---
-        confidence_already_approved = bool(kwargs.get("confidence_already_approved", False))
-        if confidence_already_approved:
-            threshold = confidence
-            threshold_type = "approved_by_strategy"
-            dyn_result = None
-        elif use_soft_threshold:
-            # Daily-activity fallback mode: honour the configured soft (low-bar) threshold.
-            threshold = self.config.min_confidence_soft
-            threshold_type = "soft"
-            dyn_result = None
-        else:
-            dyn_result = self._dyn_threshold.get_threshold(symbol)
-            threshold = dyn_result.threshold
-            threshold_type = dyn_result.threshold_type
-            # Critical: during cold start the module fallback (0.5) may be HIGHER
-            # than the actual configured hard threshold. Always cap the threshold at
-            # config.min_confidence_hard so cold start is never MORE restrictive.
-            if dyn_result.threshold_type == "fallback_static":
-                threshold = min(threshold, self.config.min_confidence_hard)
-                threshold_type = "fallback_hard_config"
-
-        # --- Step 3: Log confidence check details ---
-        logger.debug(
-            f"Confidence Check [{symbol}] - "
-            f"Raw: {confidence:.4f} ({confidence:.2%}), "
-            f"Threshold: {threshold:.4f} ({threshold:.2%}) [{threshold_type}], "
-            f"Strategy: {strategy_name or 'unknown'}"
-        )
-
-        # --- Step 4: Compare and decide ---
-        decision_label = "PASS" if confidence >= threshold else "BLOCK"
-
-        # Emit structured JSON debug log + human-readable INFO line
-        if dyn_result is not None:
-            log_threshold_event(symbol, confidence, dyn_result, decision_label)
-
-        if not confidence_already_approved and confidence < threshold:
-            block_msg = (
-                f"Strategy confidence {confidence:.4f} ({confidence:.2%}) below "
-                f"{threshold_type} threshold {threshold:.4f} ({threshold:.2%})"
-            )
-            signal_dir = kwargs.get('signal', '?')
-            print(f"BLOCKED [{symbol} | Signal.{signal_dir}] - {block_msg} - Reason: {BlockReason.LOW_CONFIDENCE.value}")
-
-            return SafetyDecision(
-                allowed=False,
-                block_reason=BlockReason.LOW_CONFIDENCE,
-                message=block_msg,
-                layer="A",
-                details={
-                    "raw_confidence": confidence,
-                    "threshold": threshold,
-                    "threshold_type": threshold_type,
-                    "strategy_name": strategy_name,
-                    "is_fallback_mode": is_fallback_mode,
-                    "samples_available": dyn_result.samples_available if dyn_result else None,
-                }
-            )
-
-        print(
-            f"PASSED_LAYER_A [{symbol}] - Confidence {confidence:.2%} meets {threshold_type} threshold {threshold:.2%} "
-            f"(Layer A passed — sizing, risk, and execution gates still apply)"
-        )
-        
         # Gate 4: Market conditions (Volatility Spike Entry Gate & Spread Gate)
         if market_conditions:
             # 🚀 Phase 3: Spread Gate (Execution Cost Realism)
@@ -537,11 +440,11 @@ class SafetyEngine:
             message="All pre-trade gates passed",
             layer="A",
             details={
-                "threshold": threshold,
-                "threshold_type": threshold_type,
+                # No threshold is reported here. The safety layer does not
+                # resolve one, so quoting a number would imply an authority it
+                # no longer has. The governing threshold is on the
+                # AdaptiveThresholdDecision for this opportunity.
                 "confidence": confidence,
-                "is_fallback_mode": is_fallback_mode,
-                "samples_available": dyn_result.samples_available if dyn_result else None,
             }
         )
     

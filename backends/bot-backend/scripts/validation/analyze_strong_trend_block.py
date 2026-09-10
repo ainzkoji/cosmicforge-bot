@@ -32,6 +32,7 @@ from app.strategy.master_ensemble import (
 from app.strategy.iofs_components.models import Candle
 from app.strategy.regime import RegimeClassifier
 from app.symbols.universe import parse_symbols
+from app.threshold.runtime import get_threshold_policy  # single threshold authority
 from scripts.validation.iofs_trade_simulator import simulate_trade
 from scripts.validation.replay_strategy_components import (
     NOMINAL_CONSENSUS_WEIGHT,
@@ -586,7 +587,7 @@ def run_audit(
     env_path = _BOT_ROOT / ".env"
     env_hash_before = sha256(env_path)
     resolved_db = db_path or resolve_db_path(None)
-    threshold = float(settings.ENSEMBLE_MIN_THRESHOLD_FLOOR)
+    threshold = float(get_threshold_policy().base_threshold)
     windows = _session_windows(str(settings.ENSEMBLE_SESSION_WINDOWS_UTC))
     per_symbol, remainder = divmod(lookback_decisions, len(symbols))
     decision_counts = [per_symbol + (1 if index < remainder else 0) for index in range(len(symbols))]

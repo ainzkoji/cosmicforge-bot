@@ -29,7 +29,6 @@ from app.strategy.mode import (
     PRECISION_MODE_CONFIG,
     FLOW_MODE_CONFIG,
 )
-from app.risk.dynamic_threshold import log_threshold_event
 
 
 @dataclass

@@ -129,7 +129,7 @@ class TestConsecutiveLossPolicyEngine:
 
     def test_day_pause_blocks_new_entry(self):
         from app.policy.policy_engine import PolicyEngine, ReasonCode
-        engine = PolicyEngine(min_confidence=0.10)
+        engine = PolicyEngine()
         ctx = _ctx(consec_loss_day_paused=True)
         d = engine.evaluate(ctx)
         assert not d.allowed
@@ -138,7 +138,7 @@ class TestConsecutiveLossPolicyEngine:
 
     def test_soft_cooldown_blocks_new_entry(self):
         from app.policy.policy_engine import PolicyEngine, ReasonCode
-        engine = PolicyEngine(min_confidence=0.10)
+        engine = PolicyEngine()
         future_ms = _now_ms() + 7_200_000
         ctx = _ctx(
             consec_loss_cooldown_until_ms=future_ms,
@@ -152,7 +152,7 @@ class TestConsecutiveLossPolicyEngine:
 
     def test_expired_cooldown_allows_trade(self):
         from app.policy.policy_engine import PolicyEngine, Action
-        engine = PolicyEngine(min_confidence=0.10)
+        engine = PolicyEngine()
         ctx = _ctx(
             consec_loss_cooldown_until_ms=_now_ms() - 1000,  # expired
             consec_loss_day_paused=False,
@@ -164,7 +164,7 @@ class TestConsecutiveLossPolicyEngine:
 
     def test_correct_rejection_reasons(self):
         from app.policy.policy_engine import PolicyEngine, ReasonCode
-        engine = PolicyEngine(min_confidence=0.10)
+        engine = PolicyEngine()
         # Day pause
         d1 = engine.evaluate(_ctx(consec_loss_day_paused=True))
         assert d1.reason_code == ReasonCode.CONSECUTIVE_LOSS_DAY_PAUSE
@@ -181,7 +181,7 @@ class TestRiskRewardEnforcement:
 
     def test_rr_below_minimum_rejected(self):
         from app.policy.policy_engine import PolicyEngine, ReasonCode
-        engine = PolicyEngine(min_confidence=0.10)
+        engine = PolicyEngine()
         # LONG: entry=50000, sl=49000, tp=50500 → risk=1000, reward=500 → RR=0.5
         ctx = _ctx(
             entry_price=50000.0, stop_loss_price=49000.0, take_profit_price=50500.0,
@@ -194,7 +194,7 @@ class TestRiskRewardEnforcement:
 
     def test_rr_at_minimum_allowed(self):
         from app.policy.policy_engine import PolicyEngine, Action
-        engine = PolicyEngine(min_confidence=0.10)
+        engine = PolicyEngine()
         # LONG: entry=50000, sl=49000, tp=51500 → risk=1000, reward=1500 → RR=1.5
         ctx = _ctx(
             entry_price=50000.0, stop_loss_price=49000.0, take_profit_price=51500.0,
@@ -206,7 +206,7 @@ class TestRiskRewardEnforcement:
 
     def test_rr_above_minimum_allowed(self):
         from app.policy.policy_engine import PolicyEngine, Action
-        engine = PolicyEngine(min_confidence=0.10)
+        engine = PolicyEngine()
         # LONG: RR = 2000/1000 = 2.0 > 1.5
         ctx = _ctx(
             entry_price=50000.0, stop_loss_price=49000.0, take_profit_price=52000.0,
@@ -217,7 +217,7 @@ class TestRiskRewardEnforcement:
 
     def test_invalid_risk_rejected(self):
         from app.policy.policy_engine import PolicyEngine, ReasonCode
-        engine = PolicyEngine(min_confidence=0.10)
+        engine = PolicyEngine()
         # LONG with SL above entry → risk < 0
         ctx = _ctx(
             entry_price=50000.0, stop_loss_price=51000.0, take_profit_price=52000.0,
@@ -229,7 +229,7 @@ class TestRiskRewardEnforcement:
 
     def test_invalid_reward_rejected(self):
         from app.policy.policy_engine import PolicyEngine, ReasonCode
-        engine = PolicyEngine(min_confidence=0.10)
+        engine = PolicyEngine()
         # LONG with TP below entry → reward < 0
         ctx = _ctx(
             entry_price=50000.0, stop_loss_price=49000.0, take_profit_price=48000.0,
@@ -242,7 +242,7 @@ class TestRiskRewardEnforcement:
     def test_rr_check_disabled_when_zero(self):
         """min_risk_reward=0 disables the check entirely."""
         from app.policy.policy_engine import PolicyEngine
-        engine = PolicyEngine(min_confidence=0.10)
+        engine = PolicyEngine()
         # Very bad R:R but check is disabled
         ctx = _ctx(
             entry_price=50000.0, stop_loss_price=49000.0, take_profit_price=50100.0,
@@ -254,7 +254,7 @@ class TestRiskRewardEnforcement:
     def test_rr_not_checked_for_existing_position_close(self):
         """R:R check only applies to new opens (position=NONE)."""
         from app.policy.policy_engine import PolicyEngine
-        engine = PolicyEngine(min_confidence=0.10)
+        engine = PolicyEngine()
         ctx = _ctx(
             position="LONG", signal="SELL",  # closing
             entry_price=50000.0, stop_loss_price=51000.0, take_profit_price=48000.0,
@@ -265,7 +265,7 @@ class TestRiskRewardEnforcement:
 
     def test_short_side_rr_calculation(self):
         from app.policy.policy_engine import PolicyEngine, ReasonCode
-        engine = PolicyEngine(min_confidence=0.10)
+        engine = PolicyEngine()
         # SHORT: entry=50000, sl=51000, tp=49500 → risk=1000, reward=500 → RR=0.5
         ctx = _ctx(
             signal="SELL",
@@ -285,7 +285,7 @@ class TestATRFixedSizingProtection:
 
     def test_stop_below_atr_noise_floor_rejected(self):
         from app.policy.policy_engine import PolicyEngine, ReasonCode
-        engine = PolicyEngine(min_confidence=0.10)
+        engine = PolicyEngine()
         # ATR=500, stop_distance=100, floor=0.5*500=250 → 100 < 250 → reject
         ctx = _ctx(
             trade_amount_mode="fixed", trade_amount_value=50.0,
@@ -299,7 +299,7 @@ class TestATRFixedSizingProtection:
 
     def test_missing_atr_rejected_for_fixed_sizing(self):
         from app.policy.policy_engine import PolicyEngine, ReasonCode
-        engine = PolicyEngine(min_confidence=0.10)
+        engine = PolicyEngine()
         ctx = _ctx(
             trade_amount_mode="fixed", trade_amount_value=50.0,
             entry_price=50000.0, stop_loss_price=49000.0,
@@ -311,7 +311,7 @@ class TestATRFixedSizingProtection:
 
     def test_stop_above_atr_noise_floor_passes(self):
         from app.policy.policy_engine import PolicyEngine
-        engine = PolicyEngine(min_confidence=0.10)
+        engine = PolicyEngine()
         # ATR=500, stop_distance=600, floor=250 → 600 > 250 → pass
         ctx = _ctx(
             trade_amount_mode="fixed", trade_amount_value=50.0,
@@ -326,7 +326,7 @@ class TestATRFixedSizingProtection:
 
     def test_estimated_loss_above_risk_cap_rejected(self):
         from app.policy.policy_engine import PolicyEngine, ReasonCode
-        engine = PolicyEngine(min_confidence=0.10)
+        engine = PolicyEngine()
         # fixed_amount=50, leverage=3 → qty=50*3/50000=0.003
         # stop_distance=5000 → loss=0.003*5000=15 > 1% of 100 equity=1.0
         ctx = _ctx(
@@ -344,7 +344,7 @@ class TestATRFixedSizingProtection:
         """F-5 fix: ATR noise-floor check must also apply to ATR_RISK mode (not just fixed).
         Previously the gate was bypassed for atr_risk — that was the bug F-5 corrected."""
         from app.policy.policy_engine import PolicyEngine, ReasonCode
-        engine = PolicyEngine(min_confidence=0.10)
+        engine = PolicyEngine()
         ctx = _ctx(
             trade_amount_mode="atr_risk",  # was previously excluded — F-5 removed that guard
             entry_price=50000.0, stop_loss_price=49900.0,  # tiny stop (100 < 0.5*500=250)
@@ -357,7 +357,7 @@ class TestATRFixedSizingProtection:
 
     def test_rejection_reason_is_correct(self):
         from app.policy.policy_engine import PolicyEngine, ReasonCode
-        engine = PolicyEngine(min_confidence=0.10)
+        engine = PolicyEngine()
         ctx = _ctx(
             trade_amount_mode="fixed", trade_amount_value=50.0,
             entry_price=50000.0, stop_loss_price=49900.0,
@@ -368,7 +368,7 @@ class TestATRFixedSizingProtection:
 
     def test_details_contain_atr_fields(self):
         from app.policy.policy_engine import PolicyEngine
-        engine = PolicyEngine(min_confidence=0.10)
+        engine = PolicyEngine()
         ctx = _ctx(
             trade_amount_mode="fixed", trade_amount_value=50.0,
             entry_price=50000.0, stop_loss_price=49900.0,

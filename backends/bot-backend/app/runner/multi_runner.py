@@ -46,7 +46,7 @@ class MultiBotRunner:
         
         # FIX: Persistent PaperRunner cache — keyed by bot_id.
         # Runners are created ONCE and reused across cycles so that:
-        #   (a) DynamicThresholdCalculator rolling window accumulates samples over time
+        #   (a) AdaptiveEntryThresholdEngine state accumulates over time
         #   (b) The 690-instrument registry refresh is not called every 15 seconds
         #   (c) TradingOrchestrator state is preserved across cycles
         # A runner is evicted from the cache on circuit-breaker open or config change.
@@ -704,7 +704,7 @@ class MultiBotRunner:
                 #
                 # FIX (process restart loop): Previously a new PaperRunner was created
                 # every 15-second cycle, which:
-                #   - Wiped the DynamicThresholdCalculator rolling window (stuck in cold-start)
+                #   - Wiped the adaptive threshold state (stuck in cold-start)
                 #   - Re-loaded 690 Binance instrument specs on every cycle (~1s overhead)
                 #   - Re-initialised the TradingOrchestrator, DB connections, etc.
                 #

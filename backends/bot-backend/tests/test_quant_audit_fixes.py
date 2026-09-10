@@ -78,27 +78,33 @@ class TestF1DailyStateUpdate:
 
 
 # ---------------------------------------------------------------------------
-# F-2: PolicyEngine uses MIN_CONFIDENCE_THRESHOLD from settings
+# F-2 (superseded): PolicyEngine no longer holds an entry-confidence bar
 # ---------------------------------------------------------------------------
+#
+# F-2 originally required PolicyEngine to read MIN_CONFIDENCE_THRESHOLD from
+# settings, so that its floor matched the strategy's. That coupling *was* the
+# problem: two components holding the same number is two authorities, and they
+# drifted. Both the setting and the gate are now deleted.
 
-class TestF2PolicyEngineConfidence:
-    def test_policy_engine_created_with_settings_threshold(self):
-        from app.policy.policy_engine import reset_policy_engine, get_policy_engine
+class TestF2PolicyEngineHasNoConfidenceBar:
+    def test_policy_engine_takes_no_confidence_threshold(self):
+        from app.policy.policy_engine import get_policy_engine, reset_policy_engine
+
         reset_policy_engine("test_f2")
-        engine = get_policy_engine(bot_id="test_f2", min_confidence=0.70)
-        assert engine.min_confidence == pytest.approx(0.70)
+        engine = get_policy_engine(bot_id="test_f2")
+        assert not hasattr(engine, "min_confidence")
         reset_policy_engine("test_f2")
 
-    def test_default_confidence_not_0_10_when_settings_passed(self):
-        from app.policy.policy_engine import reset_policy_engine, get_policy_engine
-        from app.core.config import settings
-        reset_policy_engine("test_f2b")
-        engine = get_policy_engine(bot_id="test_f2b", min_confidence=settings.MIN_CONFIDENCE_THRESHOLD)
-        assert engine.min_confidence >= 0.65, (
-            f"Expected min_confidence >= 0.65, got {engine.min_confidence}. "
-            "The PolicyEngine must use settings.MIN_CONFIDENCE_THRESHOLD, not 0.10."
-        )
-        reset_policy_engine("test_f2b")
+    def test_the_setting_it_used_to_read_is_gone(self):
+        from app.core.config import Settings
+
+        assert "MIN_CONFIDENCE_THRESHOLD" not in Settings.model_fields
+
+    def test_the_entry_bar_now_has_exactly_one_owner(self):
+        from app.threshold.runtime import get_threshold_policy
+
+        policy = get_threshold_policy()
+        assert policy.min_threshold <= policy.base_threshold <= policy.max_threshold
 
 
 # ---------------------------------------------------------------------------
@@ -125,7 +131,7 @@ class TestF3F4RRGate:
     def test_d2_blocks_when_rr_below_minimum(self):
         """Gate should block: R:R = (tp-entry)/(entry-sl) = 3.0/2.0 = 1.5 < 1.8"""
         from app.policy.policy_engine import PolicyEngine
-        pe = PolicyEngine(min_confidence=0.10)
+        pe = PolicyEngine()
         ctx = self._make_context(entry=100.0, sl=98.0, tp=103.0, min_rr=1.8)
         result = pe.evaluate(ctx)
         assert not result.allowed, f"Expected D-2 block (R:R=1.5 < 1.8), got {result.reason}"
@@ -134,7 +140,7 @@ class TestF3F4RRGate:
     def test_d2_passes_when_rr_meets_minimum(self):
         """Gate should pass: R:R = 3.8/2.0 = 1.9 >= 1.8"""
         from app.policy.policy_engine import PolicyEngine
-        pe = PolicyEngine(min_confidence=0.10)
+        pe = PolicyEngine()
         ctx = self._make_context(entry=100.0, sl=98.0, tp=103.8, min_rr=1.8)
         # We're only checking D-2 doesn't block — other gates may fire for other reasons
         result = pe.evaluate(ctx)
@@ -265,7 +271,7 @@ def test_f5_d3_gate_fires_in_atr_risk_mode():
     # Functional check: with ATR provided, D-3 should evaluate stop distance
     # We test by calling with a zero-distance SL which should trigger the floor check
     from app.policy.policy_engine import PolicyContext
-    pe = PolicyEngine(min_confidence=0.10)
+    pe = PolicyEngine()
     ctx = PolicyContext(
         symbol="BTCUSDT",
         signal="BUY",

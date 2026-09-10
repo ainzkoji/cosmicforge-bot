@@ -210,8 +210,9 @@ def parse_gate_details(row: dict) -> str:
     except Exception:
         return ""
     parts = []
-    if "dynamic_threshold" in d:
-        parts.append(f"dyn_thr={d['dynamic_threshold']:.3f}")
+    # The dynamic threshold is deleted. A trace shows the governing value.
+    if d.get("final_threshold") is not None:
+        parts.append(f"thr={d['final_threshold']:.3f}")
     if "confidence_gap" in d:
         parts.append(f"gap={d['confidence_gap']:+.3f}")
     return " ".join(parts)

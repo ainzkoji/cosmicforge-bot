@@ -163,7 +163,7 @@ class TestConfigSafety:
 class TestPositionAddProtection:
     def test_add_blocked_when_max_adds_zero_long(self):
         from app.policy.policy_engine import PolicyEngine, Action
-        engine = PolicyEngine(min_confidence=0.10)
+        engine = PolicyEngine()
         ctx = _make_policy_context(position="LONG", signal="BUY", max_adds=0, adds=0)
         decision = engine.evaluate(ctx)
         # Should HOLD, not ADD_LONG
@@ -172,7 +172,7 @@ class TestPositionAddProtection:
 
     def test_add_blocked_when_max_adds_zero_short(self):
         from app.policy.policy_engine import PolicyEngine, Action
-        engine = PolicyEngine(min_confidence=0.10)
+        engine = PolicyEngine()
         ctx = _make_policy_context(position="SHORT", signal="SELL", max_adds=0, adds=0)
         decision = engine.evaluate(ctx)
         assert decision.action == Action.HOLD
@@ -180,7 +180,7 @@ class TestPositionAddProtection:
 
     def test_add_allowed_when_max_adds_nonzero(self):
         from app.policy.policy_engine import PolicyEngine, Action
-        engine = PolicyEngine(min_confidence=0.10)
+        engine = PolicyEngine()
         ctx = _make_policy_context(
             position="LONG", signal="BUY", max_adds=2, adds=0,
             # Give enough margin for sizing
@@ -192,7 +192,7 @@ class TestPositionAddProtection:
     def test_new_position_still_opens_when_adds_zero(self):
         """max_adds=0 must not prevent new positions, only adds."""
         from app.policy.policy_engine import PolicyEngine, Action
-        engine = PolicyEngine(min_confidence=0.10)
+        engine = PolicyEngine()
         ctx = _make_policy_context(position="NONE", signal="BUY", max_adds=0, equity=10000.0)
         decision = engine.evaluate(ctx)
         assert decision.action == Action.OPEN_LONG
@@ -205,7 +205,7 @@ class TestPositionAddProtection:
 class TestDrawdownProtection:
     def test_weekly_drawdown_at_limit_blocks_trade(self):
         from app.policy.policy_engine import PolicyEngine, Action, ReasonCode
-        engine = PolicyEngine(min_confidence=0.10)
+        engine = PolicyEngine()
         ctx = _make_policy_context(
             weekly_drawdown_pct=5.0,
             max_weekly_drawdown_pct=5.0,
@@ -216,7 +216,7 @@ class TestDrawdownProtection:
 
     def test_weekly_drawdown_below_limit_allows_trade(self):
         from app.policy.policy_engine import PolicyEngine, Action
-        engine = PolicyEngine(min_confidence=0.10)
+        engine = PolicyEngine()
         ctx = _make_policy_context(
             weekly_drawdown_pct=4.9,
             max_weekly_drawdown_pct=5.0,
@@ -228,7 +228,7 @@ class TestDrawdownProtection:
 
     def test_monthly_drawdown_at_limit_blocks_trade(self):
         from app.policy.policy_engine import PolicyEngine, ReasonCode
-        engine = PolicyEngine(min_confidence=0.10)
+        engine = PolicyEngine()
         ctx = _make_policy_context(
             monthly_drawdown_pct=10.0,
             max_monthly_drawdown_pct=10.0,
@@ -240,7 +240,7 @@ class TestDrawdownProtection:
     def test_drawdown_zero_limit_does_not_block(self):
         """Drawdown limit of 0 means disabled — must not block."""
         from app.policy.policy_engine import PolicyEngine
-        engine = PolicyEngine(min_confidence=0.10)
+        engine = PolicyEngine()
         ctx = _make_policy_context(
             weekly_drawdown_pct=99.0,
             max_weekly_drawdown_pct=0.0,  # disabled
@@ -261,7 +261,7 @@ class TestConsecutiveLossPause:
         """D-1 redesign: soft cooldown uses consec_loss_cooldown_until_ms."""
         import time
         from app.policy.policy_engine import PolicyEngine, ReasonCode
-        engine = PolicyEngine(min_confidence=0.10)
+        engine = PolicyEngine()
         # Simulate soft cooldown active (2h from now)
         ctx = _make_policy_context(
             consecutive_losses=3,
@@ -275,7 +275,7 @@ class TestConsecutiveLossPause:
 
     def test_two_consecutive_losses_still_allows_trade(self):
         from app.policy.policy_engine import PolicyEngine
-        engine = PolicyEngine(min_confidence=0.10)
+        engine = PolicyEngine()
         ctx = _make_policy_context(
             consecutive_losses=2, max_consecutive_losses=3, equity=10000.0
         )
@@ -284,7 +284,7 @@ class TestConsecutiveLossPause:
 
     def test_max_consecutive_zero_disables_check(self):
         from app.policy.policy_engine import PolicyEngine
-        engine = PolicyEngine(min_confidence=0.10)
+        engine = PolicyEngine()
         ctx = _make_policy_context(
             consecutive_losses=100, max_consecutive_losses=0, equity=10000.0
         )
