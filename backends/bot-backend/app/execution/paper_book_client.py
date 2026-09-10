@@ -35,6 +35,69 @@ from typing import Any
 logger = logging.getLogger(__name__)
 
 
+PAPER_BROKER_MUTATION_FORBIDDEN = "PAPER_BROKER_MUTATION_FORBIDDEN"
+
+#: Broker-side mutations, by exact name. In paper mode none of these may reach
+#: the broker: routing already keeps them away (the executor's paper branch
+#: returns first), and this is the second line of defence against a future call
+#: site that forgets to ask which mode it is in.
+_MUTATION_METHODS = frozenset({
+    "place_order",
+    "place_protection",
+    "place_algo_order",
+    "close_position_market",
+    "cancel_all_orders",
+    "cancel_order",
+    "cancel_algo_order",
+    "cancel_open_orders",
+    "new_order",
+    "create_order",
+    "submit_order",
+    "amend_order",
+    "modify_order",
+    "replace_order",
+    "reduce_position",
+    "reduce_only_close",
+    "set_leverage",
+    "change_leverage",
+    "set_margin_type",
+    "change_margin_type",
+    "set_position_mode",
+    "change_position_mode",
+    "_signed_post",
+    "_signed_put",
+    "_signed_delete",
+})
+
+#: Name families that mutate broker state on every adapter the project ships.
+_MUTATION_PREFIXES = (
+    "place_", "cancel_", "close_position", "new_order", "create_order",
+    "submit_order", "amend_order", "modify_order", "replace_order",
+    "set_leverage", "change_leverage", "set_margin", "change_margin",
+    "set_position_mode", "change_position_mode",
+    "_signed_post", "_signed_put", "_signed_delete",
+)
+
+
+def is_broker_mutation(name: str) -> bool:
+    return name in _MUTATION_METHODS or name.startswith(_MUTATION_PREFIXES)
+
+
+class PaperBrokerMutationForbidden(RuntimeError):
+    """A broker-side mutation was attempted through the paper client."""
+
+    code = PAPER_BROKER_MUTATION_FORBIDDEN
+
+    def __init__(self, method: str) -> None:
+        self.method = method
+        super().__init__(
+            f"[{PAPER_BROKER_MUTATION_FORBIDDEN}] {method}() is a broker-side "
+            f"mutation and was refused in paper mode. Paper execution is local: "
+            f"PaperExecutor and the canonical evidence tables are the only "
+            f"authority. Nothing was forwarded to the broker."
+        )
+
+
 class PaperBookClient:
     """Market data from the real client; positions and orders from the book."""
 
@@ -46,8 +109,12 @@ class PaperBookClient:
         object.__setattr__(self, "_paper", paper_executor)
 
     # Anything not defined here is the real client's job (klines, prices,
-    # exchange info, account, server time, ...).
+    # exchange info, account, server time, ...) -- except a broker mutation,
+    # which is refused rather than forwarded.
     def __getattr__(self, name: str) -> Any:
+        if is_broker_mutation(name):
+            logger.error("[PAPER_BOOK] refused broker mutation %s() in paper mode", name)
+            raise PaperBrokerMutationForbidden(name)
         return getattr(object.__getattribute__(self, "_inner"), name)
 
     def __setattr__(self, name: str, value: Any) -> None:
@@ -123,9 +190,15 @@ class PaperBookClient:
     # ── Order management: never reaches the broker ──────────────────────────
 
     def cancel_all_orders(self, symbol: str) -> dict:
-        """No-op. A paper position has no broker orders to cancel."""
-        logger.debug("[PAPER_BOOK] %s: cancel_all_orders suppressed (paper mode)", symbol)
-        return {"status": "PAPER_NOOP", "symbol": str(symbol).upper()}
+        """Refused. ``cancel_all_orders`` is a broker order endpoint.
+
+        This used to be a silent no-op, which hid every paper call site that
+        should never have made the call. Paper routing no longer reaches it
+        (``ensure_protection`` returns for paper first), so a call here is a
+        regression and is reported as one.
+        """
+        logger.error("[PAPER_BOOK] %s: refused cancel_all_orders in paper mode", symbol)
+        raise PaperBrokerMutationForbidden("cancel_all_orders")
 
     def open_orders(self, symbol: str | None = None) -> list:
         return []

@@ -247,8 +247,16 @@ def retrain_entry_model_if_ready(
     section5a_validator: Callable[..., dict[str, Any]] = validate_section5a_candidate,
     promotion_validator: Callable[..., dict[str, Any]] = validate_promotion_candidate,
     promoter: Callable[..., dict[str, Any]] = run_promotion,
+    operator_approved_promotion: bool = False,
 ) -> dict[str, Any]:
-    """Retry Section 5A only when ready, and never raise into the scheduler."""
+    """Retry Section 5A only when ready, and never raise into the scheduler.
+
+    Promotion is always a dry run unless ``operator_approved_promotion`` is
+    passed explicitly. The monthly scheduler never passes it, so a scheduled
+    run can train, validate and report a candidate, but cannot copy it into
+    ``models/production``, touch ``.env``, toggle ``ML_ENABLED`` or activate a
+    model. AI decision authority stays disabled until an operator acts.
+    """
     dataset = Path(dataset_path)
     env_path = Path(active_env)
     artifacts = Path(artifacts_dir)
@@ -427,19 +435,33 @@ def retrain_entry_model_if_ready(
             return report
 
         report["promotion_attempted"] = True
+        # A scheduled retrain never promotes on its own authority. It trains,
+        # validates and runs the promotion guard as a DRY RUN, then stops: the
+        # candidate waits for an operator. Copying artifacts into
+        # models/production is a separate, explicit human decision
+        # (operator_approved_promotion=True, or scripts/ml/promote_model.py).
+        promotion_dry_run = not bool(operator_approved_promotion)
+        report["promotion_mode"] = (
+            "DRY_RUN_AWAITING_OPERATOR_APPROVAL" if promotion_dry_run
+            else "OPERATOR_APPROVED"
+        )
         promotion = promoter(
             model_version=model_version,
             artifacts_dir=artifacts,
             production_dir=production,
-            dry_run=False,
+            dry_run=promotion_dry_run,
             active_env=env_path,
         )
         report["promotion_result"] = promotion
         report["promotion_allowed"] = bool(promotion.get("promotion_allowed"))
-        report["promoted"] = bool(promotion.get("promoted"))
-        report["section5b_status"] = (
-            "PROMOTED_SHADOW_PREP" if report["promoted"] else "BLOCKED"
-        )
+        # A dry run cannot have promoted anything, whatever the guard reports.
+        report["promoted"] = bool(promotion.get("promoted")) and not promotion_dry_run
+        if report["promoted"]:
+            report["section5b_status"] = "PROMOTED_SHADOW_PREP"
+        elif promotion_dry_run and report["promotion_allowed"]:
+            report["section5b_status"] = "AWAITING_OPERATOR_APPROVAL"
+        else:
+            report["section5b_status"] = "BLOCKED"
         if not report["promotion_allowed"]:
             report["blocking_reasons"].extend(promotion.get("blocking_reasons") or [])
         if report["promoted"]:
@@ -493,6 +515,15 @@ def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--dataset-path", default=str(DEFAULT_DATASET_PATH))
     parser.add_argument("--model-version", default=DEFAULT_MODEL_VERSION)
+    parser.add_argument(
+        "--operator-approved-promotion",
+        action="store_true",
+        help=(
+            "Explicit operator approval to copy a validated candidate into "
+            "models/production. Without it promotion is a dry run. Never set by "
+            "the scheduler; it still does not edit .env or enable ML."
+        ),
+    )
     parser.add_argument("--min-organic-rows", type=int, default=DEFAULT_MIN_ORGANIC_ROWS)
     parser.add_argument("--min-iofs-rows", type=int, default=DEFAULT_MIN_IOFS_ROWS)
     parser.add_argument(
@@ -517,6 +548,7 @@ def main() -> int:
         force_check_only=args.force_check_only,
         report_json=args.report_json,
         report_md=args.report_md,
+        operator_approved_promotion=args.operator_approved_promotion,
     )
     print(json.dumps(report, indent=2, sort_keys=True))
     return 0

@@ -50,11 +50,23 @@ class MarketSnapshot:
     source_environment: str | None = None
     latest_closed_candle_open_time: int | None = None
     higher_timeframe_closed_candle_time: int | None = None
+    #: Further closed-candle series, keyed by timeframe, for experts that read
+    #: their own timeframe (vwap_reversion runs on 5m). Every series is cut at
+    #: the strategy candle's close in :meth:`build`, so none can carry a candle
+    #: the decision could not have seen.
+    auxiliary_candles: dict[str, tuple[Any, ...]] = field(default_factory=dict)
 
     @property
     def data_hash(self) -> str:
         """Deterministic fingerprint of the candle data this snapshot pins."""
-        payload = repr((self.symbol, self.timeframe, self.candles, self.higher_timeframe_candles))
+        parts: tuple[Any, ...] = (
+            self.symbol, self.timeframe, self.candles, self.higher_timeframe_candles,
+        )
+        if self.auxiliary_candles:
+            # Only when present, so a snapshot without auxiliary series keeps
+            # exactly the fingerprint it had before they existed.
+            parts = parts + (tuple(sorted(self.auxiliary_candles.items())),)
+        payload = repr(parts)
         return hashlib.sha256(payload.encode()).hexdigest()[:32]
 
     def htf_is_timestamp_aligned(self) -> bool:
@@ -85,6 +97,7 @@ class MarketSnapshot:
         higher_timeframe: str | None = None,
         higher_timeframe_candles: Sequence[Any] | None = None,
         source_environment: str | None = None,
+        auxiliary_candles: dict[str, Sequence[Any]] | None = None,
     ) -> "MarketSnapshot":
         primary = closed_candles(candles)
         if not primary:
@@ -93,6 +106,18 @@ class MarketSnapshot:
         close_time = _value(last, 6, "closeTime", "close_time", "close_timestamp")
         if close_time is None:
             close_time = _value(last, 0, "openTime", "open_time", "timestamp")
+        # Auxiliary series are cut at the strategy candle's close: a 5m candle
+        # closing after the 15m decision candle did not exist at decision time.
+        # A row whose close cannot be read is dropped rather than trusted.
+        auxiliary: dict[str, tuple[Any, ...]] = {}
+        for aux_timeframe, aux_rows in (auxiliary_candles or {}).items():
+            series = []
+            for row in closed_candles(aux_rows or ()):
+                aux_close = _value(row, 6, "closeTime", "close_time", "close_timestamp")
+                if aux_close is not None and int(aux_close) <= int(close_time):
+                    series.append(row)
+            if series:
+                auxiliary[str(aux_timeframe)] = tuple(series)
         htf = closed_candles(higher_timeframe_candles or ())
         htf_close_time = None
         if htf:
@@ -112,11 +137,19 @@ class MarketSnapshot:
             source=source,
             higher_timeframe=higher_timeframe,
             higher_timeframe_candles=htf,
+            auxiliary_candles=auxiliary,
         )
 
 
 class SnapshotMarketClient:
-    """Read-through client that pins strategy candle reads to one immutable snapshot."""
+    """Read-through client that pins strategy candle reads to one immutable snapshot.
+
+    The contract is keyword-only (``klines(symbol=..., interval=..., limit=...)``)
+    and serves exactly the series the snapshot pins: the strategy timeframe, the
+    higher timeframe, and any auxiliary timeframes. Anything else raises
+    ``snapshot_timeframe_unavailable`` -- which an expert must surface as an
+    ERROR, never fold into a HOLD.
+    """
 
     def __init__(self, delegate: Any, snapshot: MarketSnapshot) -> None:
         self._delegate = delegate
@@ -129,6 +162,9 @@ class SnapshotMarketClient:
             return list(self._snapshot.candles[-limit:])
         if interval == self._snapshot.higher_timeframe:
             return list(self._snapshot.higher_timeframe_candles[-limit:])
+        auxiliary = getattr(self._snapshot, "auxiliary_candles", None) or {}
+        if interval in auxiliary:
+            return list(auxiliary[interval][-limit:])
         raise ValueError(f"snapshot_timeframe_unavailable:{interval}")
 
     def __getattr__(self, name: str) -> Any:

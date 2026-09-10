@@ -211,6 +211,19 @@ def apply_evidence(decision: Any, result: Mapping[str, Any], evidence: Mapping[s
             if decision.raw_confidence is None:
                 decision.raw_confidence = entry_quality.get("raw_confidence")
 
+    # The approved sizing of an entry the policy passed: quantity, executed
+    # leverage, stop, and the risk approved for that quantity. Without it
+    # trading_decisions.risk_amount was never written, so realised R -- and
+    # with it performance calibration -- had no denominator.
+    sizing = evidence.get("sizing")
+    if isinstance(sizing, Mapping) and sizing:
+        fields = {k: v for k, v in sizing.items() if k not in {"approved", "reason"}}
+        decision.set_risk(
+            approved=bool(sizing.get("approved", True)),
+            reason=str(sizing.get("reason") or "RISK_APPROVED"),
+            **fields,
+        )
+
     for field in ("execution_attempt_id", "order_id", "position_id"):
         value = evidence.get(field)
         if value:

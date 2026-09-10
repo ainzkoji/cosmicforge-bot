@@ -28,7 +28,13 @@ sys.path.insert(0, str(shared_path))
 # os.environ.get(), sees the same values as the pydantic Settings model.
 from dotenv import load_dotenv as _load_dotenv
 
-_load_dotenv(dotenv_path=Path(__file__).parent.parent / ".env", override=True)
+# Under test, ``override=True`` was how the canonical DATABASE_URL replaced the
+# pytest bootstrap's temporary one, and the test suite wrote 9,339 decision rows
+# into the paper database. In test mode the environment the bootstrap built wins.
+_load_dotenv(
+    dotenv_path=Path(__file__).parent.parent / ".env",
+    override=os.environ.get("COSMICFORGE_TEST_MODE") != "1",
+)
 CONFIG_LOADED_AT = datetime.now(timezone.utc).isoformat()
 # Phase 5F-2 reload trigger v2: 2026-04-04 — shadow side-normalization fix
 

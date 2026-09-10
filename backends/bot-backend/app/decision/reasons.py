@@ -50,6 +50,16 @@ class QualityReason:
     SESSION_BLOCKED: Final = "SESSION_BLOCKED"
     EVENT_BLACKOUT: Final = "EVENT_BLACKOUT"
 
+    #: An eligible expert failed to evaluate (an exception, or data it needs was
+    #: unavailable). The candle fails closed: a failure is not a neutral vote,
+    #: and the opportunity cannot be judged without evidence the regime asked for.
+    EXPERT_EVALUATION_ERROR: Final = "EXPERT_EVALUATION_ERROR"
+
+    #: An external signal could not be expressed as a TradingOpportunity (too
+    #: little market data to classify the regime, for example), so it never
+    #: reached the threshold authority and cannot execute.
+    OPPORTUNITY_CONTRACT_UNSATISFIED: Final = "OPPORTUNITY_CONTRACT_UNSATISFIED"
+
 
 class RiskReason:
     """Account/portfolio affordability and sizing. Never speaks about confidence."""
@@ -70,6 +80,9 @@ class RiskReason:
     RR_BELOW_MINIMUM: Final = "RISK_RR_BELOW_MINIMUM"
     ATR_NOISE_FLOOR: Final = "RISK_ATR_NOISE_FLOOR"
     INSUFFICIENT_CAPITAL: Final = "RISK_INSUFFICIENT_CAPITAL"
+    #: The capital ledger could not be read or evaluated. Infrastructure failure
+    #: is never authorisation: the entry is rejected in paper and live alike.
+    CAPITAL_LEDGER_UNAVAILABLE: Final = "RISK_CAPITAL_LEDGER_UNAVAILABLE"
 
 
 class ExecutionReason:

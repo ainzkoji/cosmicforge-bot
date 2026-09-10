@@ -283,14 +283,24 @@ def test_margin_for_is_one_definition(db):
 
 
 def test_the_executor_authorises_capital_before_sizing():
-    """execute_signal is a thin dispatcher; the pre-trade path is _execute_impl."""
+    """execute_signal is a thin dispatcher; the pre-trade path is _execute_impl.
+
+    The gate must come before the PAPER branch as well as before sizing. The
+    earlier version of this test only checked the order relative to
+    ``_size_qty``, and so stayed green while the paper branch returned before
+    the ledger was ever consulted.
+    """
     from app.execution import executor as executor_module
 
     source = _function_source(executor_module, "_execute_impl")
-    assert "_authorize_capital" in source
-    assert source.index("_authorize_capital") < source.index("self._size_qty("), (
+    gate = source.index("self._capital_gate(")
+    assert gate < source.index('if effective_mode != "live":'), (
+        "capital must be authorised before the paper/live split"
+    )
+    assert gate < source.index("self._size_qty("), (
         "capital must be authorised before the order is sized"
     )
+    assert "_authorize_capital" in _function_source(executor_module, "_capital_gate")
 
 
 def test_the_capital_check_precedes_the_broker_balance_check():
@@ -302,7 +312,7 @@ def test_the_capital_check_precedes_the_broker_balance_check():
     from app.execution import executor as executor_module
 
     source = _function_source(executor_module, "_execute_impl")
-    assert source.index("_authorize_capital") < source.index("margin_required =")
+    assert source.index("self._capital_gate(") < source.index("margin_required =")
 
 
 def test_the_runner_teaches_the_executor_its_budget():

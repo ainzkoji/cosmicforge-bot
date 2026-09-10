@@ -65,6 +65,10 @@ REASON_NO_OPPORTUNITY = "NO_OPPORTUNITY"
 REASON_REGIME_HARD_BLOCK = "REGIME_HARD_BLOCK"
 REASON_MARKET_DATA_STALE = "MARKET_DATA_STALE"
 REASON_NON_FINITE = "THRESHOLD_INPUT_NOT_FINITE"
+#: An eligible expert is in ERROR. Decided here, in the one threshold
+#: authority, so every caller -- the ensemble and external signals alike --
+#: fails closed the same way.
+REASON_EXPERT_ERROR = "EXPERT_EVALUATION_ERROR"
 
 #: How much each regime argues for more evidence. Positive raises the bar.
 #: Grounded in the regime win-rate analysis already recorded in config.py:
@@ -326,6 +330,27 @@ class AdaptiveEntryThresholdEngine:
                 status=ThresholdStatus.HARD_BLOCKED,
                 reason=REASON_MARKET_DATA_STALE,
                 detail="market data is stale; quality is not evaluated on stale data",
+                regime=request.regime.regime,
+                min_threshold=policy.min_threshold,
+                max_threshold=policy.max_threshold,
+                experts=request.experts,
+                **identity,
+            )
+
+        # An eligible expert that failed is not a neutral vote, and an
+        # opportunity cannot be judged without the evidence the regime asked
+        # for. Fail closed -- before the no-opportunity check, because "nothing
+        # pointed anywhere" cannot be asserted while an expert never answered.
+        # Deliberately NOT "drop it from the denominator": that would raise
+        # agreement and lower the bar on the strength of a failure.
+        errored = sorted(e.strategy for e in request.experts if e.eligible and e.signal == "ERROR")
+        if errored:
+            return not_evaluated(
+                engine_version=self.version,
+                mode=policy.mode,
+                status=ThresholdStatus.ERROR,
+                reason=REASON_EXPERT_ERROR,
+                detail="eligible experts in ERROR: " + ", ".join(errored),
                 regime=request.regime.regime,
                 min_threshold=policy.min_threshold,
                 max_threshold=policy.max_threshold,

@@ -132,9 +132,21 @@ class TradingDecisionEngine:
         """
         # No candidate: report why, and never invent a confidence verdict.
         if not opportunity.is_opportunity:
+            # An expert in ERROR outranks "no opportunity": with an expert that
+            # never answered, "nothing pointed anywhere" cannot be asserted. The
+            # threshold engine fails such a candle closed; say so here too.
+            errored = (
+                threshold_decision is not None
+                and threshold_decision.status == ThresholdStatus.ERROR
+                and bool(threshold_decision.reason)
+            )
+            if errored:
+                secondary_reasons = tuple(secondary_reasons) + (opportunity.reason_code,)
             return EntryQualityDecision(
                 approved=False,
-                primary_reason=opportunity.reason_code,
+                primary_reason=(
+                    threshold_decision.reason if errored else opportunity.reason_code
+                ),
                 market_snapshot_id=opportunity.market_snapshot_id,
                 symbol=opportunity.symbol,
                 timeframe=opportunity.timeframe,

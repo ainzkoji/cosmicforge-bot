@@ -2476,6 +2476,7 @@ class PaperRunner:
                 user_id=self.context.user_id if self.context else None,
                 effective_policy_hash=self.effective_policy_hash,
                 signal_source="TRADINGVIEW_EXTERNAL",
+                provenance=self._evidence_provenance(),
             )
         except Exception:
             trace_id = None
@@ -2544,6 +2545,67 @@ class PaperRunner:
                 event_filter_result="PASS",
                 execution_result="NOT_CALLED:NO_KLINES",
             )
+
+        # ── The one threshold authority, before risk and execution ──────────
+        # External candidates used to reach the executor through the policy
+        # engine and the execution filter without ever meeting
+        # AdaptiveEntryThresholdEngine: the 0.75 cap above was compared with
+        # nothing. They now take exactly the canonical chain -- TradingOpportunity
+        # -> AdaptiveEntryThresholdEngine -> AdaptiveThresholdDecision (persisted)
+        # -> TradingDecisionEngine -- and only a pass continues to risk. No second
+        # threshold calculator exists for them.
+        from app.decision.external_signal_gate import evaluate_external_candidate
+
+        try:
+            _external_gate = evaluate_external_candidate(
+                db=self.db,
+                symbol=symbol,
+                side=action,
+                confidence=confidence,
+                klines=kl,
+                timeframe=self.interval,
+                source=source,
+                bot_instance_id=self.context.bot_instance_id if self.context else "unknown",
+                run_id=getattr(self, "run_id", None),
+                cycle_id=getattr(self, "cycle_id", None),
+                market_type=self.context.market_type if self.context else None,
+                provenance=self._evidence_provenance(),
+            )
+        except Exception as exc:
+            logger.exception("[ExtSigRunner] threshold evaluation failed for %s", symbol)
+            return _result(
+                queue_status="REJECTED",
+                final_status="REJECTED_THRESHOLD_UNAVAILABLE",
+                final_reason=f"Threshold evaluation failed: {type(exc).__name__}: {exc}",
+                event_filter_result="PASS",
+                execution_result="NOT_CALLED:THRESHOLD_UNAVAILABLE",
+            )
+        if trace_id:
+            try:
+                recorder.record_gate(
+                    trace_id,
+                    allowed=bool(_external_gate.passed),
+                    reason_code=str(_external_gate.reason),
+                    reason=str(_external_gate.detail or _external_gate.reason),
+                    details=_external_gate.observability(),
+                )
+            except Exception:
+                pass
+        if not _external_gate.passed:
+            rejected = _result(
+                queue_status="REJECTED",
+                final_status=(
+                    "REJECTED_THRESHOLD_NOT_MET"
+                    if _external_gate.reason == "ENTRY_CONFIDENCE_BELOW_THRESHOLD"
+                    else "REJECTED_THRESHOLD_GATE"
+                ),
+                final_reason=f"{_external_gate.reason}: {_external_gate.detail}".strip(": "),
+                event_filter_result="PASS",
+                policy_result="NOT_CHECKED",
+                execution_result="NOT_CALLED:THRESHOLD",
+            )
+            rejected["threshold_decision_id"] = _external_gate.threshold_decision_id
+            return rejected
 
         price = float(self.client.last_price(symbol) or 0.0)
         if clean_proof_enabled and proof_context.get("clean_reference_price"):
@@ -2742,6 +2804,19 @@ class PaperRunner:
                 )
         except Exception as exc:
             logger.warning("[ExtSigRunner] execution filter failed safely for %s: %s", symbol, exc)
+
+        # Defence in depth: nothing reaches the executor without exactly one
+        # persisted, passing threshold decision from the one authority.
+        if not (_external_gate.passed and _external_gate.persisted and _external_gate.threshold_decision_id):
+            return _result(
+                queue_status="REJECTED",
+                final_status="REJECTED_THRESHOLD_GATE",
+                final_reason="No persisted passing threshold decision for this external candidate",
+                event_filter_result="PASS",
+                policy_result=policy_result,
+                sizing_result=sizing_result,
+                execution_result="NOT_CALLED:THRESHOLD",
+            )
 
         try:
             st.last_action = f"EXTERNAL_{source}_{action}"
@@ -3983,7 +4058,11 @@ class PaperRunner:
                     sell_score=_strat_meta_s1.get("sell_score"),
                     threshold=_strat_meta_s1.get("threshold"),
                     active_strategy_count=len(_active_strats_s1) if _active_strats_s1 else None,
-                    htf_opposed=bool(_strat_meta_s1.get("htf_opposed")) if "htf_opposed" in _strat_meta_s1 else None,
+                    # None (veto not evaluated) must stay None, not become False.
+                    htf_opposed=(
+                        bool(_strat_meta_s1["htf_opposed"])
+                        if _strat_meta_s1.get("htf_opposed") is not None else None
+                    ),
                 )
             except Exception as _s1_err:
                 import logging as _s1_log
@@ -4171,7 +4250,10 @@ class PaperRunner:
                         sell_score=_strat_meta.get("sell_score"),
                         threshold=_strat_meta.get("threshold"),
                         active_strategy_count=len(_strat_meta.get("active_strategies", [])) if "active_strategies" in _strat_meta else None,
-                        htf_opposed=bool(_strat_meta.get("htf_opposed")) if "htf_opposed" in _strat_meta else None,
+                        htf_opposed=(
+                            bool(_strat_meta["htf_opposed"])
+                            if _strat_meta.get("htf_opposed") is not None else None
+                        ),
                         open_price=float(orch_res.get("trade_params", {}).get("entry_price", price)),
                         stop_loss_price=float(orch_res.get("trade_params", {}).get("stop_loss")) if orch_res.get("trade_params", {}).get("stop_loss") is not None else None,
                         tp_plan=float(orch_res.get("trade_params", {}).get("take_profit")) if orch_res.get("trade_params", {}).get("take_profit") is not None else None,
@@ -4369,6 +4451,37 @@ class PaperRunner:
                     or p.get("quantity", 0.0)
                 )
 
+                # Approved sizing onto the canonical decision (apply_evidence ->
+                # TradingDecision.set_risk). Nothing wrote these fields before,
+                # so trading_decisions.risk_amount was always NULL and realised R
+                # had no denominator. risk_amount is the risk approved for the
+                # executed quantity, |entry - stop| * qty. The executed leverage
+                # is also what the position's committed margin is computed with.
+                try:
+                    _res_details = res.details if isinstance(res.details, dict) else {}
+                    _exec_lev = _res_details.get("leverage") or p.get("leverage")
+                    _stop_dist = abs(float(_oc_entry) - float(_oc_sl)) if _oc_sl else None
+                    _capital_obs = _res_details.get("capital") or {}
+                    _evidence_map = getattr(self, "_symbol_evidence", None)
+                    if _evidence_map is None:
+                        _evidence_map = {}
+                        self._symbol_evidence = _evidence_map
+                    _evidence_map.setdefault(symbol, {})["sizing"] = {
+                        "approved": True,
+                        "reason": "RISK_APPROVED",
+                        "quantity": _executed_qty,
+                        "leverage": float(_exec_lev) if _exec_lev else None,
+                        "stop_price": float(_oc_sl) if _oc_sl else None,
+                        "target_price": float(_oc_tp2) if _oc_tp2 else None,
+                        "stop_distance": _stop_dist,
+                        "risk_amount": (_stop_dist * _executed_qty) if _stop_dist else None,
+                        "requested_notional": float(trade_usdt),
+                        "approved_notional": _capital_obs.get("approved_notional"),
+                        "approved_margin": _capital_obs.get("approved_margin"),
+                    }
+                except Exception as _sizing_exc:
+                    logger.error("[EVIDENCE] %s: sizing evidence not recorded: %s", symbol, _sizing_exc)
+
                 # â”€â”€ Step 5F-1 execution linkage fix â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
                 # Bind execution result (order_id, fill_price) into the decision trace
                 # so decision_traces.order_id is populated and joins trade_fills correctly.
@@ -4486,7 +4599,15 @@ class PaperRunner:
                             action="OPEN",
                             qty=_executed_qty,
                             price=_fill_actual,
-                            fee=None,
+                            # The entry fee is part of the trade's net result.
+                            # It was recorded as None here, which left every
+                            # position's net R unknowable.
+                            fee=(
+                                float((res.details or {}).get("fee"))
+                                if isinstance(res.details, dict)
+                                and (res.details or {}).get("fee") is not None
+                                else None
+                            ),
                             realized_pnl=None,
                             order_id=res.order_id,
                             strategy=_fill_strat,
@@ -4974,6 +5095,30 @@ class PaperRunner:
         normalized = str(mode or "paper").strip().lower()
         return "broker" if normalized in {"live", "broker", "testnet", "demo"} else "paper"
 
+    def _evidence_provenance(self) -> str:
+        """Provenance for trace evidence: the same authority canonical decisions use.
+
+        The run's own classification wins (REPLAY, PAPER_FORWARD_VALIDATION, ...),
+        falling back to the execution-mode derivation. Cached per run because
+        the heartbeat starts a trace every few seconds.
+        """
+        from app.evidence.runner_bridge import resolve_provenance, run_provenance
+
+        run_id = getattr(self, "run_id", None)
+        cached = getattr(self, "_evidence_provenance_cache", None)
+        if cached is not None and cached[0] == run_id:
+            return cached[1]
+        value = run_provenance(
+            getattr(self, "db", None),
+            run_id,
+            resolve_provenance(
+                self._effective_execution_mode(),
+                getattr(self.context, "broker_environment", None) if self.context else None,
+            ),
+        )
+        self._evidence_provenance_cache = (run_id, value)
+        return value
+
     def _effective_iofs_mode(self) -> str:
         if not bool(getattr(settings, "IOFS_GATE_ENABLED", False)):
             return "disabled"
@@ -5081,6 +5226,7 @@ class PaperRunner:
             user_id=self.context.user_id if self.context else None,
             effective_policy_hash=self.effective_policy_hash,
             signal_source="INTERNAL_MASTER_ENSEMBLE",
+            provenance=self._evidence_provenance(),
         )
         # Store for internal use if needed (hacky, but simple)
         recorder._active_trace_id = trace_id
@@ -5233,6 +5379,25 @@ class PaperRunner:
             if _evaluate_entry:
                 _htf = self.context.higher_timeframe if self.context else "4h"
                 _htf_rows = self.client.klines(symbol=symbol, interval=_htf, limit=250)
+                # Experts that read their own timeframe (vwap_reversion: 5m) must
+                # get it from the snapshot as well: SnapshotMarketClient serves
+                # only what the snapshot pins, and without these series such an
+                # expert raised snapshot_timeframe_unavailable on every candle.
+                _aux_rows: Dict[str, Any] = {}
+                _aux_timeframes = getattr(getattr(self, "strategy", None), "snapshot_timeframes", ()) or ()
+                for _aux_tf in _aux_timeframes:
+                    if _aux_tf in {self.interval, _htf}:
+                        continue
+                    try:
+                        _aux_rows[_aux_tf] = self.client.klines(symbol=symbol, interval=_aux_tf, limit=250)
+                    except Exception as _aux_exc:
+                        # Not fatal for the candle: an expert that needs this
+                        # series will report ERROR, and the threshold engine
+                        # fails that candle closed.
+                        logger.error(
+                            "[MARKET_DATA] %s: %s candles unavailable: %s",
+                            symbol, _aux_tf, _aux_exc,
+                        )
                 _snapshot = MarketSnapshot.build(
                     symbol=symbol,
                     timeframe=self.interval,
@@ -5240,6 +5405,7 @@ class PaperRunner:
                     source=type(self.client).__name__,
                     higher_timeframe=_htf,
                     higher_timeframe_candles=_htf_rows,
+                    auxiliary_candles=_aux_rows,
                 )
             kl = list(_snapshot.candles)
 
@@ -5589,7 +5755,9 @@ class PaperRunner:
                 sell_score=float(_meta["sell_score"]) if "sell_score" in _meta else None,
                 threshold=float(_meta["threshold"]) if "threshold" in _meta else None,
                 active_strategy_count=len(_meta["active_strategies"]) if "active_strategies" in _meta else None,
-                htf_opposed=bool(_meta["htf_opposed"]) if "htf_opposed" in _meta else None,
+                htf_opposed=(
+                    bool(_meta["htf_opposed"]) if _meta.get("htf_opposed") is not None else None
+                ),
             )
 
             price = self.client.last_price(symbol)
@@ -6074,7 +6242,10 @@ class PaperRunner:
                         sell_score=_sig_meta.get("sell_score"),
                         threshold=_sig_meta.get("threshold"),
                         active_strategy_count=len(_sig_meta.get("active_strategies", [])) or None,
-                        htf_opposed=bool(_sig_meta.get("htf_opposed")) if "htf_opposed" in _sig_meta else None,
+                        htf_opposed=(
+                            bool(_sig_meta["htf_opposed"])
+                            if _sig_meta.get("htf_opposed") is not None else None
+                        ),
                         open_price=float(_ml_price),
                         stop_loss_price=float(getattr(policy, "sl_plan", None)) if getattr(policy, "sl_plan", None) is not None else None,
                         tp_plan=float(getattr(policy, "tp_plan", None)) if getattr(policy, "tp_plan", None) is not None else None,

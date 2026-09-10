@@ -65,10 +65,20 @@ class ThresholdStatus:
 
 
 class CalibrationStatus:
+    """Why a slow-calibration term has the value it has.
+
+    ``INSUFFICIENT_SAMPLE`` means the data has not accumulated yet.
+    ``UNAVAILABLE`` means the source could not be read (a query or database
+    failure). ``ERROR`` means the data was read but could not be scored. The
+    last two are broken subsystems and must never be reported as the first.
+    Every non-OK status leaves the adjustment at exactly 0.0.
+    """
+
     OK = "OK"
     INSUFFICIENT_SAMPLE = "INSUFFICIENT_SAMPLE"
     DISABLED = "DISABLED"
     UNAVAILABLE = "UNAVAILABLE"
+    ERROR = "ERROR"
 
 
 def new_threshold_decision_id() -> str:
@@ -467,15 +477,22 @@ def experts_from_votes(
     weights: Mapping[str, float] | None = None,
     reasons: Mapping[str, str] | None = None,
     scores: Mapping[str, float] | None = None,
+    errors: Mapping[str, str] | None = None,
 ) -> tuple[ExpertEvidence, ...]:
     """Build expert evidence from the ensemble's own vote list.
 
     The strategies are not re-executed. Every field here comes from the single
     production evaluation that already happened.
+
+    ``errors`` names experts that ran and failed (an exception, or data they
+    needed was unavailable), with the failure reason. They are recorded as
+    ``ERROR`` -- never HOLD, never NOT_RUN -- with their eligibility kept, so a
+    system failure cannot pass for a neutral opinion.
     """
     weights = weights or {}
     reasons = reasons or {}
     scores = scores or {}
+    errors = {str(k): str(v) for k, v in (errors or {}).items()}
     eligible_set = {str(n) for n in eligible}
     executed: dict[str, tuple[str, float]] = {}
     for name, signal, conf in votes:
@@ -483,8 +500,25 @@ def experts_from_votes(
         executed[str(name)] = (str(sig).upper(), float(conf))
 
     out: list[ExpertEvidence] = []
-    for name in sorted({*all_strategies, *eligible_set, *executed}):
+    for name in sorted({*all_strategies, *eligible_set, *executed, *errors}):
         weight = float(weights.get(name, 0.0))
+        if name in errors:
+            out.append(
+                ExpertEvidence(
+                    strategy=name,
+                    eligible=name in eligible_set,
+                    executed=True,
+                    signal="ERROR",
+                    confidence=0.0,
+                    raw_score=0.0,
+                    weight=weight,
+                    weighted_contribution=0.0,
+                    # One line, bounded: a traceback in a reason column is not
+                    # evidence, it is noise that breaks every consumer.
+                    reason=" ".join(str(errors[name] or "error").split())[:500],
+                )
+            )
+            continue
         if name in executed:
             sig, conf = executed[name]
             out.append(

@@ -58,7 +58,14 @@ class DB:
                 else:
                      path = "../../data/bot.db"
                 logging.getLogger(__name__).warning(f"[DB INIT] DATABASE_URL missing or invalid. Falling back to legacy path: {path}")
-        
+
+        # Test isolation is enforced where a database is opened. Under
+        # COSMICFORGE_TEST_MODE this raises before any directory or table is
+        # created, so a refused database is never touched at all.
+        from shared_lib.persistence.test_isolation import enforce_test_database
+
+        enforce_test_database(path)
+
         self.path = path
         self._sqlite_target = path
         self._sqlite_uri = False
@@ -899,7 +906,10 @@ class DB:
                     event_block_reason TEXT,
                     event_block_event_id TEXT,
                     event_block_type TEXT,
-                    event_block_details TEXT
+                    event_block_details TEXT,
+
+                    -- What produced this row; written by the caller, never inferred
+                    provenance TEXT
                 )
                 """
             )
@@ -948,7 +958,8 @@ class DB:
                     effective_policy_hash TEXT,
                     signal_source TEXT NOT NULL DEFAULT 'INTERNAL_MASTER_ENSEMBLE',
                     complete INTEGER NOT NULL DEFAULT 0,
-                    decision_json TEXT NOT NULL
+                    decision_json TEXT NOT NULL,
+                    provenance TEXT
                 )
                 """
             )

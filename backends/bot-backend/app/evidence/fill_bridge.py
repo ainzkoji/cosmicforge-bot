@@ -233,6 +233,32 @@ def _decision_leverage(db: Any, decision_id: str | None) -> float:
         return 1.0
 
 
+def _entry_leverage(runner: Any, db: Any, symbol: str, decision_id: str | None,
+                    kw: dict[str, Any]) -> float:
+    """The leverage this entry was actually executed at.
+
+    The canonical decision row is finalized only *after* the evaluation that
+    produced the fill, so at OPEN time ``_decision_leverage`` finds no row and
+    returns 1.0 -- committing the full notional as margin. The executed
+    leverage is therefore taken, in order, from the fill itself, then from the
+    sizing evidence the runner stashed for this symbol before executing, then
+    from the decision row, and only then defaults to 1.0 (over-reserving, the
+    safe direction).
+    """
+    for candidate in (
+        kw.get("leverage"),
+        ((getattr(runner, "_symbol_evidence", None) or {}).get(symbol, {})
+         .get("sizing", {}) or {}).get("leverage"),
+    ):
+        try:
+            value = float(candidate)
+        except (TypeError, ValueError):
+            continue
+        if value >= 1.0:
+            return value
+    return _decision_leverage(db, decision_id)
+
+
 def project_fill(runner: Any, db: Any, kw: dict[str, Any]) -> None:
     """Derive the canonical position row and lifecycle event from one fill."""
     from app.evidence.writers import (
@@ -273,7 +299,7 @@ def project_fill(runner: Any, db: Any, kw: dict[str, Any]) -> None:
             # Capital accounting lives on the position row so it survives a
             # restart: the ledger sums committed_margin over OPEN positions
             # rather than trusting anything held in memory.
-            leverage = _decision_leverage(db, decision_id)
+            leverage = _entry_leverage(runner, db, symbol, decision_id, kw)
             record_position_opened(
                 db,
                 position_id=position_id,

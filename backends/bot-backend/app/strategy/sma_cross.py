@@ -79,8 +79,11 @@ class SMACrossStrategy(Strategy):
 
     def get_signal(self, symbol: str) -> SignalResult:
         try:
+            # Keyword arguments only: SnapshotMarketClient.klines is keyword-only,
+            # and the positional call made every sma_cross evaluation since
+            # 2026-09-08 fail with a TypeError that was then booked as HOLD.
             kl = self.client.klines(
-                symbol, interval=self.interval, limit=max(self.slow + 5, 120)
+                symbol=symbol, interval=self.interval, limit=max(self.slow + 5, 120)
             )
             closes = [float(x[4]) for x in kl]
         except Exception as e:

@@ -109,6 +109,31 @@ class CapitalAuthorization:
         }
 
 
+def capital_rejection(
+    reason: str,
+    detail: str,
+    *,
+    capital_budget: float = 0.0,
+    requested_notional: float = 0.0,
+    leverage: float = 1.0,
+) -> CapitalAuthorization:
+    """A rejection produced before the chain could run.
+
+    Used for infrastructure failures -- an unreadable ledger, a missing budget
+    or database -- which must reject the entry, never authorise it.
+    """
+    lev = max(1.0, float(leverage or 1.0))
+    requested = float(requested_notional or 0.0)
+    return CapitalAuthorization(
+        approved=False, reason=reason, detail=detail,
+        capital_budget=float(capital_budget or 0.0), committed_margin=0.0,
+        available_capital=0.0, requested_notional=requested,
+        approved_notional=0.0, requested_margin=requested / lev,
+        approved_margin=0.0, leverage=lev,
+        stages=({"stage": "unavailable", "notional": 0.0, "margin": 0.0, "note": detail},),
+    )
+
+
 class CapitalLedger:
     """Committed capital for one bot, derived from persisted positions."""
 
@@ -119,6 +144,16 @@ class CapitalLedger:
 
     # ── Persisted state ─────────────────────────────────────────────────────
 
+    def _read_committed_margin(self) -> float:
+        """The committed margin, or an exception. Never a substituted value."""
+        with self.db.connect() as conn:
+            row = conn.execute(
+                "SELECT COALESCE(SUM(committed_margin), 0.0) FROM positions "
+                "WHERE bot_instance_id=? AND status='OPEN'",
+                (self.bot_instance_id,),
+            ).fetchone()
+        return max(0.0, float(row[0] or 0.0))
+
     def committed_margin(self) -> float:
         """Margin currently tied up in this bot's open positions.
 
@@ -127,13 +162,7 @@ class CapitalLedger:
         close would invalidate.
         """
         try:
-            with self.db.connect() as conn:
-                row = conn.execute(
-                    "SELECT COALESCE(SUM(committed_margin), 0.0) FROM positions "
-                    "WHERE bot_instance_id=? AND status='OPEN'",
-                    (self.bot_instance_id,),
-                ).fetchone()
-            return max(0.0, float(row[0] or 0.0))
+            return self._read_committed_margin()
         except Exception as exc:
             # Fail closed: an unreadable ledger must not read as "nothing
             # committed", which would authorise the whole budget again.
@@ -173,7 +202,21 @@ class CapitalLedger:
         leverage = max(1.0, float(leverage or 1.0))
         requested_notional = float(risk_notional or 0.0)
         requested_margin = requested_notional / leverage
-        committed = self.committed_margin()
+        try:
+            committed = self._read_committed_margin()
+        except Exception as exc:
+            # Infrastructure failure is never authorisation. Reported as its own
+            # reason, not as "budget exhausted", so the cause stays visible.
+            logger.error(
+                "[CAPITAL_LEDGER] bot=%s ledger unreadable, entry rejected: %s",
+                self.bot_instance_id, exc,
+            )
+            return capital_rejection(
+                RiskReason.CAPITAL_LEDGER_UNAVAILABLE,
+                f"the capital ledger could not be read: {type(exc).__name__}: {exc}",
+                capital_budget=self.capital_budget,
+                requested_notional=requested_notional, leverage=leverage,
+            )
         available = max(0.0, self.capital_budget - committed)
         stages: list[dict[str, Any]] = []
 

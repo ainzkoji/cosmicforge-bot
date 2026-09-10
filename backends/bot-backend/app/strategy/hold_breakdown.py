@@ -285,8 +285,13 @@ def build_hold_breakdown(
         "symbol": symbol,
         "timestamp": timestamp or datetime.now(timezone.utc).isoformat(),
         "regime": regime,
-        "session_allowed": details.get("session_gate_result") in {"allowed", "disabled", "bypassed"},
-        "session_status": details.get("session_reason_code"),
+        # NOT_EVALUATED is not FALSE. A session gate the evaluation never reached
+        # (a regime block, no active strategies) has no verdict, and recording
+        # False made a skipped gate indistinguishable from a closed session.
+        "session_allowed": {
+            "allowed": True, "bypassed": True, "disabled": True, "blocked": False,
+        }.get(str(details.get("session_gate_result") or "")),
+        "session_status": details.get("session_reason_code") or "NOT_EVALUATED",
         "raw_strategy_signal": str(raw_strategy_signal),
         "raw_confidence": float(raw_confidence),
         "final_action": str(final_action),

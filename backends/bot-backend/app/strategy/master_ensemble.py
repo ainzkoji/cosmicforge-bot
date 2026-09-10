@@ -271,6 +271,20 @@ class MasterEnsembleStrategy(Strategy):
     # Threshold-engine inputs
     # -------------------------------------------------------------------------
 
+    @property
+    def snapshot_timeframes(self) -> tuple[str, ...]:
+        """Timeframes, beyond the ensemble's own, that its experts read.
+
+        The runner fetches these into the MarketSnapshot so every expert is
+        served from the one immutable market view. vwap_reversion runs on 5m;
+        without this the snapshot carried no 5m series and it could only fail.
+        """
+        return tuple(sorted({
+            str(interval)
+            for interval in (getattr(s, "interval", None) for s in self._strategies.values())
+            if interval and str(interval) != str(self.interval)
+        }))
+
     def _reset_evaluation_state(self) -> None:
         """Drop every piece of per-evaluation evidence.
 
@@ -609,7 +623,12 @@ class MasterEnsembleStrategy(Strategy):
         # All regime-level indicator fields + FIX-E observability fields.
         _imeta: dict = {
             "regime":                      regime.value,
-            "htf_opposed":                 False,
+            # None until the HTF bias veto actually runs. NOT_EVALUATED is not
+            # FALSE: a veto that never ran did not find the trend aligned.
+            "htf_opposed":                 None,
+            # Likewise the session gate: no verdict until it is reached. The
+            # early returns (regime block, no active strategies) keep these.
+            "session_allowed":             None,
             "regime_confidence":           round(regime_result.regime_confidence, 3),
             "adx":                         round(regime_result.adx, 1),
             "atr_pct":                     round(regime_result.atr_percent, 3),
@@ -631,7 +650,7 @@ class MasterEnsembleStrategy(Strategy):
             ),
             "regime_gate_result":          "pending",   # updated below
             "session_gate_result":         "pending",   # updated below
-            "session_reason_code":         None,
+            "session_reason_code":         "NOT_EVALUATED",
             "execution_block_reason":      None,        # set if blocked
         }
 
@@ -709,6 +728,7 @@ class MasterEnsembleStrategy(Strategy):
         if _crypto_bypass:
             _imeta["session_gate_result"] = "bypassed"
             _imeta["session_reason_code"] = "CRYPTO_SESSION_24_7_BYPASS"
+            _imeta["session_allowed"] = True
             logger.info(
                 "[ENSEMBLE SESSION GATE] %s: CRYPTO defaults to 24/7; fixed session bypassed",
                 symbol,
@@ -717,6 +737,7 @@ class MasterEnsembleStrategy(Strategy):
             _session_allowed, _utc_hour = self._check_session_gate(_session_windows)
             _imeta["session_gate_result"] = "allowed" if _session_allowed else "blocked"
             _imeta["session_reason_code"] = "SESSION_ALLOWED" if _session_allowed else "SESSION_BLOCKED"
+            _imeta["session_allowed"] = bool(_session_allowed)
             if not _session_allowed:
                 block_reason = "SESSION_BLOCKED"
                 logger.info(
@@ -737,6 +758,7 @@ class MasterEnsembleStrategy(Strategy):
         else:
             _imeta["session_gate_result"] = "disabled"
             _imeta["session_reason_code"] = "SESSION_FILTER_DISABLED"
+            _imeta["session_allowed"] = True
 
         # ------------------------------------------------------------------
         # Step 3.7 — Volatility Spike Guard (Regime-Aware)
@@ -787,6 +809,23 @@ class MasterEnsembleStrategy(Strategy):
         votes: List[Tuple[str, Signal, float]] = []
         components: List[dict] = []
         errors: List[str] = []
+        #: Experts that ran and FAILED, with the failure reason. Recorded as
+        #: ERROR -- never as a HOLD vote -- and the threshold engine fails the
+        #: candle closed. See AdaptiveEntryThresholdEngine.evaluate.
+        expert_errors: Dict[str, str] = {}
+
+        def _expert_failure(reason: str) -> Optional[str]:
+            """An expert's own report that it could not evaluate.
+
+            The experts catch their own exceptions and return HOLD with an
+            ``error:`` or ``data_error:`` reason. That is a failure to
+            evaluate, not an opinion, and it was being counted as a neutral
+            vote: sma_cross did exactly that on every candle from 2026-09-08.
+            """
+            text = str(reason or "").strip()
+            if text.lower().startswith(("error:", "data_error:", "strategy_error")):
+                return text
+            return None
 
         def _run(
             name: str,
@@ -808,9 +847,10 @@ class MasterEnsembleStrategy(Strategy):
                 conf = float(result.confidence) if hasattr(result, "confidence") else 0.0
                 reason = str(getattr(result, "reason", "") or "")
                 meta = getattr(result, "meta", None) or {}
-                return name, sig, conf, reason, meta, None
+                return name, sig, conf, reason, meta, _expert_failure(reason)
             except Exception as exc:
-                return name, Signal.HOLD, 0.0, "strategy_error", {}, str(exc)
+                failure = f"strategy_error:{type(exc).__name__}: {exc}"
+                return name, Signal.HOLD, 0.0, failure, {}, failure
 
         with concurrent.futures.ThreadPoolExecutor(
             max_workers=len(active_strategies)
@@ -825,9 +865,11 @@ class MasterEnsembleStrategy(Strategy):
                     components.append(
                         component_breakdown(
                             strategy=name,
-                            signal=sig.value,
-                            confidence=conf,
-                            reason=reason,
+                            # A failed expert is recorded as ERROR, not as the
+                            # HOLD it returned while reporting its failure.
+                            signal="ERROR" if err else sig.value,
+                            confidence=0.0 if err else conf,
+                            reason=err or reason,
                             meta=component_meta,
                             threshold_floor=_reference_threshold,
                             symbol=symbol,
@@ -838,10 +880,13 @@ class MasterEnsembleStrategy(Strategy):
                     )
                     if err:
                         errors.append(f"{name}:{err}")
+                        expert_errors[name] = err
                     else:
                         votes.append((name, sig, conf))
                 except Exception as exc:
-                    errors.append(f"{future_map[future]}:{type(exc).__name__}")
+                    failed_name = future_map[future]
+                    errors.append(f"{failed_name}:{type(exc).__name__}")
+                    expert_errors[failed_name] = f"strategy_error:{type(exc).__name__}: {exc}"
 
         for name in deactivated:
             components.append(
@@ -860,7 +905,10 @@ class MasterEnsembleStrategy(Strategy):
                 )
             )
 
-        if not votes:
+        # Every expert failing is still an ERROR candle, not "no valid votes":
+        # it continues to the threshold engine, which fails it closed with the
+        # expert evidence on record.
+        if not votes and not expert_errors:
             logger.warning(f"[ENSEMBLE] {symbol}: no valid votes (all strategies errored)")
             return self._hold(symbol, "no_valid_votes", meta={
                 **_imeta,
@@ -987,6 +1035,7 @@ class MasterEnsembleStrategy(Strategy):
                 for n in self._strategies
             },
             reasons={c.get("strategy"): c.get("reason", "") for c in components if isinstance(c, dict)},
+            errors=expert_errors,
         )
         self.last_expert_evidence = expert_evidence
 
@@ -1078,8 +1127,11 @@ class MasterEnsembleStrategy(Strategy):
             final_signal = Signal.HOLD
 
         # HTF Bias check (Hard enforcement of 4h EMA200 trend)
-        htf_opposed = False
+        # None = the veto never ran (disabled, or nothing to veto). NOT_EVALUATED
+        # is not FALSE: a veto that did not run did not find the trend aligned.
+        htf_opposed = None
         if self.htf_bias_enabled and final_signal != Signal.HOLD:
+            htf_opposed = False
             try:
                 # Need ~250 candles for stable EMA200
                 htf_klines = (

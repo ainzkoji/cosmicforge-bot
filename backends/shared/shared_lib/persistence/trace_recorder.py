@@ -154,6 +154,10 @@ class DecisionTrace:
     candle_open_time: Optional[int] = None
     candle_close_time: Optional[int] = None
     signal_source: str = "INTERNAL_MASTER_ENSEMBLE"
+    #: What produced this evidence (PAPER_FORWARD, REPLAY, TEST_FIXTURE, ...).
+    #: Supplied by the caller at write time; None means the caller did not say,
+    #: and is stored as NULL rather than guessed.
+    provenance: Optional[str] = None
 
     # ── [STAGE 2 AUDIT] Detailed Entry Funnel Telemetry (Added 2026-04-04) ──
     allocation_mode: Optional[str] = None
@@ -183,13 +187,34 @@ class TraceRecorder:
     """
     
     def __init__(self, db_path: str = "../../data/bot.db"):
+        # The recorder opens its own sqlite connections rather than going
+        # through DB(), so it enforces test isolation itself.
+        from shared_lib.persistence.test_isolation import enforce_test_database
+
+        enforce_test_database(db_path)
         self._db_path = db_path
         self._traces: Dict[str, DecisionTrace] = {}
         self._lock = threading.Lock()
-    
+        self._provenance_columns_ready = False
+
     def _conn(self) -> sqlite3.Connection:
         return sqlite3.connect(self._db_path, timeout=1)
-    
+
+    def _ensure_provenance_columns(self, conn: sqlite3.Connection) -> None:
+        """Add the provenance columns if this database predates them.
+
+        Additive and idempotent, like every migration. Done here as well as in
+        migrate() because the recorder can be pointed at a database that was
+        never migrated, and a trace must not be lost for want of a column.
+        """
+        if self._provenance_columns_ready:
+            return
+        for table in ("decision_traces", "canonical_trade_decisions"):
+            columns = {row[1] for row in conn.execute(f"PRAGMA table_info({table})")}
+            if columns and "provenance" not in columns:
+                conn.execute(f"ALTER TABLE {table} ADD COLUMN provenance TEXT")
+        self._provenance_columns_ready = True
+
     def start_trace(
         self,
         run_id: str,
@@ -202,8 +227,13 @@ class TraceRecorder:
         user_id: Optional[str] = None,
         effective_policy_hash: Optional[str] = None,
         signal_source: str = "INTERNAL_MASTER_ENSEMBLE",
+        provenance: Optional[str] = None,
     ) -> str:
-        """Start a new trace. Returns trace_id."""
+        """Start a new trace. Returns trace_id.
+
+        ``provenance`` is written to both trace ledgers exactly as given. The
+        runtime passes the same value its canonical decisions carry.
+        """
         trace_id = str(uuid.uuid4())
         ts = datetime.now(timezone.utc).isoformat()
 
@@ -220,6 +250,7 @@ class TraceRecorder:
             user_id=user_id,
             effective_policy_hash=effective_policy_hash,
             signal_source=signal_source,
+            provenance=provenance,
         )
         
         with self._lock:
@@ -523,6 +554,7 @@ class TraceRecorder:
         try:
             conn = self._conn()
             try:
+                self._ensure_provenance_columns(conn)
                 signals_json = json.dumps([
                     {
                         "strategy": s.strategy_name,
@@ -558,14 +590,16 @@ class TraceRecorder:
                         broker_response, fill_recorded, position_opened,
                         rejection_reason,
                         event_blocked, event_block_reason, event_block_event_id,
-                        event_block_type, event_block_details
+                        event_block_type, event_block_details,
+                        provenance
                     ) VALUES (
                         ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
                         ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
                         ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
                         ?, ?, ?, ?, ?,
                         ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-                        ?, ?, ?, ?, ?
+                        ?, ?, ?, ?, ?,
+                        ?
                     )
                     """,
                     (
@@ -607,6 +641,7 @@ class TraceRecorder:
                         trace.event_block_event_id,
                         trace.event_block_type,
                         trace.event_block_details,
+                        trace.provenance,
                     )
                 )
                 primary_reason = trace.rejection_reason or trace.gate_reason
@@ -655,8 +690,8 @@ class TraceRecorder:
                         candle_open_time,candle_close_time,decision_timestamp,final_action,
                         primary_reason_code,secondary_reason_codes_json,confidence,
                         effective_entry_threshold,order_id,executor_status,executor_error,
-                        effective_policy_hash,signal_source,complete,decision_json)
-                       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                        effective_policy_hash,signal_source,complete,decision_json,provenance)
+                       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                     (
                         trace.trace_id, trace.cycle_id, trace.run_id, trace.bot_instance_id,
                         trace.user_id, trace.symbol, trace.timeframe, trace.candle_open_time,
@@ -664,7 +699,7 @@ class TraceRecorder:
                         str(primary_reason), json.dumps(secondary), trace.final_confidence,
                         trace.threshold, trace.order_id, trace.execution_status,
                         trace.execution_error, trace.effective_policy_hash, trace.signal_source,
-                        1, json.dumps(canonical, sort_keys=True),
+                        1, json.dumps(canonical, sort_keys=True), trace.provenance,
                     ),
                 )
                 conn.commit()
@@ -722,29 +757,44 @@ class TraceRecorder:
             return []
 
 
-# Global instance
+# Global instance, and the database identity it was built for.
 _recorder: Optional[TraceRecorder] = None
+_recorder_key: Optional[tuple] = None
 
 
 def get_trace_recorder(db_path: str = None) -> TraceRecorder:
-    """Get or create global trace recorder.
+    """Get or create the process trace recorder, for the database in force *now*.
 
-    When called with no argument, derives the DB path from DB() so that
-    the TraceRecorder always writes to the same database as every other
+    When called with no argument, derives the DB path from DB() so that the
+    TraceRecorder always writes to the same database as every other
     persistence component (resolved via DATABASE_URL if set).
+
+    The cached recorder is keyed by that identity -- the explicit path, or the
+    current DATABASE_URL. It used to be built once and reused forever, so a
+    recorder created against the canonical database kept writing there after a
+    test pointed DATABASE_URL at a temporary one: that is how replay-parity test
+    traces reached the paper database.
     """
-    global _recorder
-    if _recorder is None:
+    import os
+
+    global _recorder, _recorder_key
+    if db_path is not None:
+        key = ("path", os.path.normcase(os.path.abspath(db_path)))
+    else:
+        key = ("url", os.environ.get("DATABASE_URL", ""))
+    if _recorder is None or _recorder_key != key:
         if db_path is None:
             from shared_lib.persistence.db import DB
             db_path = DB().path
         _recorder = TraceRecorder(db_path)
+        _recorder_key = key
     return _recorder
 
 def reset_trace_recorder():
     """Clear the singleton instance so it can be re-initialized with a new path."""
-    global _recorder
+    global _recorder, _recorder_key
     _recorder = None
+    _recorder_key = None
 
 
 def get_current_trace_id() -> Optional[str]:

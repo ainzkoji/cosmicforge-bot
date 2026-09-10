@@ -247,6 +247,26 @@ class ExecResult:
     error: str | None = None  # Error message if failed
     action: str = "OPEN"
 
+#: Exchange minimum notional the capital chain enforces (Binance futures).
+_CAPITAL_MIN_NOTIONAL = 5.0
+
+
+@dataclass(frozen=True)
+class CapitalGate:
+    """The capital verdict for one entry, decided once, before the paper/live split.
+
+    ``rejection`` is the ExecResult to return when the entry may not proceed;
+    ``authorization`` is the ledger's full verdict (None only for an unmanaged
+    executor); ``approved_notional`` is the size the chain allowed, which may
+    only ever be smaller than what was requested.
+    """
+
+    rejection: object
+    authorization: object
+    approved_notional: float
+    leverage: int
+
+
 # =========================
 # Generic Executor (Formerly BinanceExecutor)
 # =========================
@@ -350,18 +370,43 @@ class BinanceExecutor:
 
     def _authorize_capital(self, symbol: str, notional: float, leverage: int,
                            min_notional: float):
-        """Apply the capital-budget chain. None when no budget is configured.
+        """Apply the capital-budget chain. Fails closed.
 
-        The broker-balance preflight further down answers "can the account
-        afford this?". This answers a different question the account cannot:
-        "has this bot already committed its budget to other open positions?".
-        Both have to pass.
+        One capital policy governs paper and live: ``_execute_impl`` calls this
+        before the paper/live split. (Previously the paper branch returned
+        before this was ever reached, so paper trading ignored the budget.)
+        The live broker-balance preflight answers "can the account afford
+        this?"; this answers the question the account cannot: "has this bot
+        already committed its budget to other open positions?".
+
+        Returns ``None`` only for an unmanaged executor -- no bot identity and
+        no budget (the legacy global runner, backtests) -- where there is no bot
+        budget to protect. Everything else gets a verdict, and an
+        infrastructure failure is a rejection, never an authorisation.
         """
+        from app.decision.reasons import RiskReason
+        from app.risk.capital_ledger import capital_rejection
+
         budget = float(getattr(self, "_capital_budget", 0.0) or 0.0)
         bot_id = getattr(self, "bot_instance_id", None)
+        managed_bot = bool(bot_id) and str(bot_id) != "default"
         db = getattr(self, "_db", None)
-        if budget <= 0 or not bot_id or db is None:
+        if budget <= 0 and not managed_bot:
             return None
+        if budget <= 0:
+            return capital_rejection(
+                RiskReason.CAPITAL_BUDGET_REQUIRED,
+                f"bot {bot_id} has no capital budget; its entries are rejected "
+                f"until one is configured",
+                requested_notional=notional, leverage=leverage,
+            )
+        if not managed_bot or db is None:
+            missing = "a bot identity" if not managed_bot else "a database"
+            return capital_rejection(
+                RiskReason.CAPITAL_LEDGER_UNAVAILABLE,
+                f"the capital ledger has no {missing}, so the budget cannot be checked",
+                capital_budget=budget, requested_notional=notional, leverage=leverage,
+            )
         try:
             from app.risk.capital_ledger import CapitalLedger
 
@@ -388,9 +433,77 @@ class BinanceExecutor:
             import logging
 
             logging.getLogger(__name__).error(
-                "[CAPITAL_LEDGER] %s: authorisation failed: %s", symbol, exc,
+                "[CAPITAL_LEDGER] %s: authorisation failed, entry rejected: %s", symbol, exc,
             )
-            return None
+            return capital_rejection(
+                RiskReason.CAPITAL_LEDGER_UNAVAILABLE,
+                f"capital authorisation failed: {type(exc).__name__}: {exc}",
+                capital_budget=budget, requested_notional=notional, leverage=leverage,
+            )
+
+    def _resolve_effective_leverage(self, symbol: str, leverage_mult: float,
+                                    leverage_override: int | None) -> int:
+        """The leverage the order will use. One definition for paper and live."""
+        from app.symbols.leverage import leverage_for, parse_leverage_map
+
+        if leverage_override is not None and leverage_override > 0:
+            # Cast to int -- Binance rejects fractional leverage.
+            return int(leverage_override)
+        lev_map = parse_leverage_map(settings.SYMBOL_LEVERAGE_MAP)
+        base_lev = leverage_for(symbol, lev_map, settings.DEFAULT_LEVERAGE, settings.MIN_LEVERAGE)
+        return max(1, int(float(base_lev) * float(leverage_mult or 1.0)))
+
+    def _capital_gate(self, symbol: str, signal: str, usdt: float,
+                      leverage_mult: float, leverage_override: int | None) -> "CapitalGate":
+        """Authorise an entry's capital once, before the paper/live split.
+
+        ``usdt`` is the requested NOTIONAL. The verdict carries the approved
+        notional (the chain may only shrink it), the leverage used to convert
+        it to margin, and -- on rejection -- the ExecResult to return.
+        """
+        requested = float(usdt or 0.0)
+        if requested <= 0:
+            usdt_map = parse_usdt_map(getattr(settings, "SYMBOL_USDT_MAP", None))
+            requested = float(usdt_for(symbol, usdt_map, settings.TRADE_USDT_PER_ORDER))
+        try:
+            leverage = self._resolve_effective_leverage(symbol, leverage_mult, leverage_override)
+        except Exception:
+            # Unknown leverage: 1x over-reserves margin, the safe direction.
+            leverage = 1
+        authorization = self._authorize_capital(symbol, requested, leverage, _CAPITAL_MIN_NOTIONAL)
+        if authorization is None:
+            return CapitalGate(None, None, requested, leverage)
+        if not authorization.approved:
+            from app.decision.reasons import ExecutionReason, RiskReason
+
+            if authorization.reason == ExecutionReason.MIN_NOTIONAL:
+                status = "NO_TRADE_INVALID_QTY"
+            elif authorization.reason == RiskReason.CAPITAL_LEDGER_UNAVAILABLE:
+                status = "CAPITAL_LEDGER_UNAVAILABLE"
+            else:
+                status = "INSUFFICIENT_MARGIN"
+            rejection = ExecResult(
+                status=status,
+                details={
+                    "symbol": symbol,
+                    "signal": signal,
+                    "reason_code": authorization.reason,
+                    "capital": authorization.observability(),
+                    "leverage": leverage,
+                },
+                success=False,
+                error=f"[CAPITAL] {symbol}: {authorization.detail}",
+            )
+            return CapitalGate(rejection, authorization, 0.0, leverage)
+        if authorization.was_reduced:
+            import logging
+
+            logging.getLogger(__name__).info(
+                "[CAPITAL] %s: notional reduced %.8g -> %.8g (committed=%.8g of budget=%.8g)",
+                symbol, authorization.requested_notional, authorization.approved_notional,
+                authorization.committed_margin, authorization.capital_budget,
+            )
+        return CapitalGate(None, authorization, authorization.approved_notional, leverage)
 
     def _configured_max_exposure(self, current_equity: float) -> float:
         """
@@ -767,6 +880,18 @@ class BinanceExecutor:
                 action="NO_TRADE",
             )
 
+        # ── One capital policy for paper and live ──────────────────────────
+        #     committed margin + proposed margin <= bot capital budget
+        # decided HERE, before the paper/live split. The paper branch below used
+        # to return before the ledger was ever consulted, so paper trading
+        # ignored the budget entirely. A rejection (including an unreadable
+        # ledger) stops the entry in both modes.
+        capital_gate = None
+        if signal in {"BUY", "SELL"}:
+            capital_gate = self._capital_gate(symbol, signal, usdt, leverage_mult, leverage_override)
+            if capital_gate.rejection is not None:
+                return capital_gate.rejection
+
         # Paper mode means no exchange order is sent, but the internal lifecycle
         # still receives a simulated order/fill result so runners can persist
         # paper fills and managed positions.
@@ -783,13 +908,24 @@ class BinanceExecutor:
                 paper = self.paper_executor.open_position(
                     symbol=symbol,
                     side=signal,
-                    notional_usdt=float(usdt or 0.0),
+                    notional_usdt=(
+                        capital_gate.approved_notional
+                        if capital_gate is not None and capital_gate.authorization is not None
+                        else float(usdt or 0.0)
+                    ),
                     sl_price=sl_price,
                     tp_price=tp_price,
                 )
+            details = dict(paper.details or {})
+            if capital_gate is not None:
+                # The executed leverage is what the position's committed margin
+                # must be computed with; the ledger reads it back on restart.
+                details.setdefault("leverage", capital_gate.leverage)
+                if capital_gate.authorization is not None:
+                    details["capital"] = capital_gate.authorization.observability()
             return ExecResult(
                 status=paper.status,
-                details=paper.details,
+                details=details,
                 order_id=paper.order_id,
                 success=paper.success,
                 avg_price=paper.avg_price,
@@ -1088,34 +1224,13 @@ class BinanceExecutor:
             # ── The bot's own capital budget, before anything else ─────
             # committed margin + proposed margin <= capital budget. This is the
             # bot's constraint; the broker-balance check below is the account's.
-            _capital = self._authorize_capital(
-                symbol, budget_usdt, effective_lev, MIN_NOTIONAL,
-            )
+            # Authorised ONCE, before the paper/live split (capital_gate at the
+            # top of _execute_impl); a rejection already returned there. The
+            # live path uses that verdict rather than asking the ledger a second
+            # time -- two reads of one question can only disagree.
+            _capital = capital_gate.authorization if capital_gate is not None else None
             if _capital is not None:
-                if not _capital.approved:
-                    from app.decision.reasons import ExecutionReason
-
-                    _is_min_notional = _capital.reason == ExecutionReason.MIN_NOTIONAL
-                    return ExecResult(
-                        status="NO_TRADE_INVALID_QTY" if _is_min_notional
-                        else "INSUFFICIENT_MARGIN",
-                        details={
-                            "symbol": symbol,
-                            "signal": signal,
-                            "reason_code": _capital.reason,
-                            "capital": _capital.observability(),
-                        },
-                        success=False,
-                        error=f"[CAPITAL] {symbol}: {_capital.detail}",
-                    )
-                if _capital.was_reduced:
-                    _exec_logger.info(
-                        "[CAPITAL] %s: notional reduced %.8g -> %.8g "
-                        "(committed=%.8g of budget=%.8g)",
-                        symbol, _capital.requested_notional, _capital.approved_notional,
-                        _capital.committed_margin, _capital.capital_budget,
-                    )
-                budget_usdt = _capital.approved_notional
+                budget_usdt = capital_gate.approved_notional
 
             # ── Compute margin required for this order ──
             margin_required = budget_usdt / max(1, effective_lev)

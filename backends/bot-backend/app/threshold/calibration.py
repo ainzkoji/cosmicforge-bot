@@ -101,11 +101,26 @@ class PerformanceCalibrator:
                     limit=max(1, int(lookback)),
                 )
             )
-        except Exception as exc:  # pragma: no cover - defensive
-            logger.warning("[THRESHOLD_CALIBRATION] performance source failed: %s", exc)
-            return CalibrationResult(None, 0.0, 0, CalibrationStatus.UNAVAILABLE, str(exc))
+        except Exception as exc:
+            # The source could not be read: a broken subsystem. That is
+            # UNAVAILABLE, never INSUFFICIENT_SAMPLE -- which would claim the
+            # data simply has not accumulated yet. The adjustment stays neutral.
+            logger.warning("[THRESHOLD_CALIBRATION] performance source unavailable: %s", exc)
+            return CalibrationResult(
+                None, 0.0, 0, CalibrationStatus.UNAVAILABLE,
+                " ".join(f"{type(exc).__name__}: {exc}".split())[:500],
+            )
 
-        return self.score(samples, min_samples=min_samples, bound=bound)
+        try:
+            return self.score(samples, min_samples=min_samples, bound=bound)
+        except Exception as exc:
+            # The data was read but could not be scored. Distinct from both a
+            # shortage and an unreadable source; still neutral.
+            logger.error("[THRESHOLD_CALIBRATION] performance scoring failed: %s", exc)
+            return CalibrationResult(
+                None, 0.0, len(samples), CalibrationStatus.ERROR,
+                " ".join(f"{type(exc).__name__}: {exc}".split())[:500],
+            )
 
     @staticmethod
     def score(
@@ -206,12 +221,87 @@ class DistributionCalibrator:
         )
 
 
-class SqlitePerformanceSource:
-    """Reads realised R-multiples from the canonical positions table.
+class PerformanceSourceUnavailable(RuntimeError):
+    """The realised-performance source could not be read.
 
-    Only closed positions with a usable stop distance are counted. A position
-    without one has no R to report, and inventing a denominator would be exactly
-    the kind of fabricated evidence the calibration must not run on.
+    Raised rather than returned as an empty list: an empty list reads as "no
+    trades yet" (INSUFFICIENT_SAMPLE), and that is how a query against a column
+    that never existed passed for a data shortage on every evaluated candle.
+    """
+
+
+#: Provenance whose positions may calibrate a live threshold. Replay, backtest,
+#: synthetic, validation and test evidence never move the production bar.
+CALIBRATION_PROVENANCE = ("PAPER_FORWARD", "TESTNET", "LIVE_MAINNET")
+
+#: A closed position's remaining quantity below this is zero.
+_QTY_TOLERANCE = 1e-9
+
+#: The canonical realised-R query. Kept at module level so a schema contract test
+#: can run exactly this statement against a freshly migrated database.
+#:
+#: Economic definitions, resolved from the writers rather than assumed:
+#:
+#: * ``positions.realized_pnl`` is **gross**: the sum of each close leg's price
+#:   P&L, ``(exit - entry) * qty`` (fill_bridge.project_fill). Fees are carried
+#:   separately.
+#: * ``positions.fees`` holds close-leg fees only -- the OPEN fill's fee is not
+#:   projected onto the position. The complete fee is therefore the sum of every
+#:   ``trade_fills`` leg for the position, entry included.
+#: * Partial closes accumulate into ``realized_pnl`` and ``trade_fills``; only
+#:   a position that is CLOSED with nothing remaining is a complete result.
+#: * One position has one originating decision (``positions.decision_id``, the
+#:   decision active when the OPEN fill landed). A position that was ADDED to
+#:   carries more risk than its originating decision approved, so it has no
+#:   well-defined R and is excluded.
+#: * ``trading_decisions.risk_amount`` is the risk approved at entry for the
+#:   executed quantity: |entry - stop| * quantity.
+#: * A position whose entry fee is unknown (no OPEN fill with a fee) has an
+#:   unknown net result and is excluded rather than assumed fee-free.
+#:
+#:     R = (gross realised P&L - all fees) / approved risk amount
+REALIZED_R_QUERY = f"""
+    SELECT
+        p.position_id,
+        p.realized_pnl                               AS gross_realized_pnl,
+        d.risk_amount                                AS approved_risk,
+        (SELECT SUM(f.fee) FROM trade_fills f
+          WHERE f.position_id = p.position_id)       AS total_fees,
+        (SELECT COUNT(*) FROM trade_fills f
+          WHERE f.position_id = p.position_id
+            AND f.action = 'OPEN' AND f.fee IS NOT NULL) AS entry_fee_legs
+    FROM positions p
+    JOIN trading_decisions d ON d.decision_id = p.decision_id
+    WHERE p.bot_instance_id = ?
+      AND p.symbol = ?
+      AND p.status = 'CLOSED'
+      AND p.closed_at IS NOT NULL
+      AND p.remaining_qty <= {_QTY_TOLERANCE}
+      AND p.realized_pnl IS NOT NULL
+      AND d.risk_amount IS NOT NULL
+      AND d.risk_amount > 0
+      AND p.provenance IN ({", ".join("'" + p + "'" for p in CALIBRATION_PROVENANCE)})
+      AND d.provenance IN ({", ".join("'" + p + "'" for p in CALIBRATION_PROVENANCE)})
+      AND NOT EXISTS (
+          SELECT 1 FROM position_events e
+           WHERE e.position_id = p.position_id AND e.event_type = 'ADDED'
+      )
+    ORDER BY p.closed_at DESC
+    LIMIT ?
+"""
+
+
+class SqlitePerformanceSource:
+    """Realised R-multiples from canonical lineage: positions joined to decisions.
+
+    ``risk_amount`` lives on ``trading_decisions``, not ``positions``; the
+    previous query selected ``positions.risk_amount``, a column that never
+    existed, and failed on every evaluated candle. See :data:`REALIZED_R_QUERY`
+    for the economic definitions.
+
+    Only complete results count. A position without an approved risk amount or
+    a known entry fee has no R to report, and inventing a denominator or a fee
+    would be exactly the fabricated evidence calibration must not run on.
     """
 
     def __init__(self, db: Any) -> None:
@@ -223,27 +313,20 @@ class SqlitePerformanceSource:
         try:
             with self._db.connect() as conn:
                 rows = conn.execute(
-                    """
-                    SELECT realized_pnl, risk_amount
-                    FROM positions
-                    WHERE bot_instance_id = ?
-                      AND symbol = ?
-                      AND status = 'CLOSED'
-                      AND realized_pnl IS NOT NULL
-                      AND risk_amount IS NOT NULL
-                      AND risk_amount > 0
-                    ORDER BY closed_at DESC
-                    LIMIT ?
-                    """,
+                    REALIZED_R_QUERY,
                     (str(bot_instance_id), str(symbol).upper(), int(limit)),
                 ).fetchall()
-        except Exception as exc:  # pragma: no cover - defensive
-            logger.warning("[THRESHOLD_CALIBRATION] positions query failed: %s", exc)
-            return []
+        except Exception as exc:
+            raise PerformanceSourceUnavailable(
+                f"realised-R query failed: {type(exc).__name__}: {exc}"
+            ) from exc
         out: list[float] = []
-        for realized, risk in rows:
+        for _position_id, gross, risk, total_fees, entry_fee_legs in rows:
+            if not entry_fee_legs:
+                continue
             try:
-                out.append(float(realized) / float(risk))
+                net = float(gross) - float(total_fees or 0.0)
+                out.append(net / float(risk))
             except (TypeError, ValueError, ZeroDivisionError):
                 continue
         return out

@@ -68,5 +68,39 @@ def build_strategy(
 
     try:
         return cls(client=client, interval=interval, **params)  # type: ignore
-    except TypeError:
+    except TypeError as exc:
+        # Retry without params ONLY when the constructor's signature rejects
+        # them. A TypeError raised inside __init__ is a bug in the strategy;
+        # swallowing it would build the strategy with defaults and silently
+        # discard the configured params -- the same failure class as the
+        # get_signal retry that relabelled NO_OPPORTUNITY as SESSION_BLOCKED.
+        if not params or not _signature_rejects(
+            cls, client=client, interval=interval, **params
+        ):
+            raise
+        logger.error(
+            "STRATEGY_PARAMS_REJECTED_BY_SIGNATURE strategy=%s rejected_params=%s "
+            "error=%s -- constructing with default params",
+            name, sorted(params), exc,
+        )
         return cls(client=client, interval=interval)  # type: ignore
+
+
+def _signature_rejects(callable_: Any, /, **kwargs: Any) -> bool:
+    """True only when ``callable_``'s signature cannot bind ``kwargs``.
+
+    Decided from the signature, never from the exception message. When the
+    signature cannot be inspected the answer is False, so the original error
+    propagates: failing closed.
+    """
+    import inspect
+
+    try:
+        signature = inspect.signature(callable_)
+    except (TypeError, ValueError):
+        return False
+    try:
+        signature.bind(**kwargs)
+    except TypeError:
+        return True
+    return False

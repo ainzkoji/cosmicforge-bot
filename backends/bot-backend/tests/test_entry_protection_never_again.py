@@ -21,7 +21,13 @@ from shared_lib.persistence.db import DB
 def _make_temp_db() -> tuple[str, DB]:
     fd, path = tempfile.mkstemp(suffix=".db")
     os.close(fd)
-    return path, DB(path)
+    db = DB(path)
+    # The capital ledger reads the canonical positions table; without the
+    # migration it is unreadable and (correctly) rejects every entry.
+    from shared_lib.persistence.migrations import migrate
+
+    migrate(db)
+    return path, db
 
 
 @pytest.fixture
@@ -46,6 +52,10 @@ def _make_live_executor(db: DB, client: MagicMock, bot_id: str = "bot-never-agai
         db=db,
     )
     executor.run_id = "run-1"
+    # A managed bot with no capital budget is rejected before execution
+    # (fail closed). These tests exercise entry protection, not the capital
+    # chain, so the bot gets a budget that is never the binding constraint.
+    executor._capital_budget = 1_000_000.0
     executor._allocation_type = "fixed_amount"
     executor._allocation_value = 100.0
     executor._max_notional_per_symbol = 100.0

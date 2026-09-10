@@ -212,6 +212,14 @@ def migrate(db_path: str | DB = None):
         _add_column_if_missing(conn, "decision_traces", "ml_model_version", "TEXT")
         _add_column_if_missing(conn, "decision_traces", "ml_threshold", "REAL")
 
+        # 2c-bis) Explicit provenance on the two trace ledgers. Recorded when the
+        # row is written -- never inferred later from a bot name. Rows written
+        # before this column existed stay NULL: their origin is unknown, and
+        # scripts/classify_test_evidence_provenance.py labels the known test
+        # families only on an explicit --apply.
+        _add_column_if_missing(conn, "decision_traces", "provenance", "TEXT")
+        _add_column_if_missing(conn, "canonical_trade_decisions", "provenance", "TEXT")
+
         # 2d) Phase 4 Fix 1 — position_id persistence in bot_symbol_state
         # Enables OPEN→CLOSE fill linkage to survive restarts.
         _add_column_if_missing(conn, "bot_symbol_state", "position_id", "TEXT")
