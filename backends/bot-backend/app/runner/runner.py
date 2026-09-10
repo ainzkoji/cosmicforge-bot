@@ -5448,7 +5448,16 @@ class PaperRunner:
                         strategy_weight_adjustments=a_state.strategy_weight_adjustments,
                         execution_mode=self._effective_execution_mode(),
                     )
-                except TypeError:
+                except TypeError as _sig_exc:
+                    # Only retry bare when Python rejected the signature. A
+                    # TypeError from inside the strategy must surface: retrying
+                    # without kwargs silently evaluates against different policy
+                    # inputs and re-runs every expert. See
+                    # trading_orchestrator._is_signature_rejection.
+                    from app.core.trading_orchestrator import _is_signature_rejection
+
+                    if not _is_signature_rejection(_sig_exc, self.strategy.get_signal):
+                        raise
                     res = self.strategy.get_signal(symbol)
             except Exception as e:
                 logger.error(f"[STRATEGY FATAL] {symbol} get_signal crashed: {e}", exc_info=True)

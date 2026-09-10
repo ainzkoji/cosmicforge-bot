@@ -940,6 +940,39 @@ class TradingOrchestrator:
 
 
 
+def _is_signature_rejection(exc: TypeError, func: Any) -> bool:
+    """True only when this TypeError is Python rejecting the call signature.
+
+    A TypeError raised *inside* a strategy body looks identical to one raised by
+    the interpreter when a function does not accept the arguments given. Telling
+    them apart matters: retrying without kwargs is a legitimate fallback for the
+    first case and a silent change of policy inputs in the second.
+
+    The check is deliberately conservative -- it inspects the signature rather
+    than pattern-matching the message, and returns False when it cannot tell.
+    """
+    import inspect
+
+    try:
+        signature = inspect.signature(func)
+    except (TypeError, ValueError):  # pragma: no cover - builtins/C functions
+        return False
+
+    accepts_kwargs = any(
+        parameter.kind is inspect.Parameter.VAR_KEYWORD
+        for parameter in signature.parameters.values()
+    )
+    if accepts_kwargs:
+        # It declared **kwargs, so it accepted whatever we passed. Any TypeError
+        # came from its body.
+        return False
+
+    # No **kwargs: the interpreter itself may have rejected the call. Confirm the
+    # error names this function rather than something deeper in the stack.
+    name = getattr(func, "__name__", "")
+    return bool(name) and name in str(exc)
+
+
 class LegacyStrategyAdapter(BaseStrategy):
     """
     Adapts a System 1 Legacy Strategy (get_signal) to System 2 BaseStrategy (analyze).
@@ -960,8 +993,26 @@ class LegacyStrategyAdapter(BaseStrategy):
         try:
             try:
                 result = self.legacy.get_signal(symbol, **kwargs)
-            except TypeError:
-                # Fallback if the legacy signature doesn't accept kwargs
+            except TypeError as exc:
+                # This fallback exists for a legacy signature that cannot accept
+                # kwargs. It must NOT swallow a TypeError raised from *inside* a
+                # strategy that accepted them: re-running with no kwargs is a
+                # different evaluation against different policy inputs -- it
+                # loses market_type, so a CRYPTO symbol stops qualifying for the
+                # 24/7 session bypass and is recorded as SESSION_BLOCKED when the
+                # real outcome was something else entirely. It also re-executes
+                # every expert a second time.
+                if not _is_signature_rejection(exc, self.legacy.get_signal):
+                    logger.error(
+                        "[STRATEGY] %s: get_signal raised TypeError from inside the "
+                        "strategy; NOT retrying without kwargs: %s",
+                        symbol, exc,
+                    )
+                    raise
+                logger.warning(
+                    "[STRATEGY] %s: legacy get_signal does not accept kwargs; "
+                    "retrying without them", symbol,
+                )
                 result = self.legacy.get_signal(symbol)
             
             # Map System 1 Signal enum/string to System 2 Signal enum

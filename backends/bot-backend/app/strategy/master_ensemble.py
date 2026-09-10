@@ -1162,7 +1162,13 @@ class MasterEnsembleStrategy(Strategy):
                     classify_hold_reason(
                         primary_reason,
                         confidence=float(final_confidence),
-                        threshold_floor=float(effective_threshold),
+                        # None when no threshold was evaluated. float(None) here
+                        # raised a TypeError that two callers silently swallowed
+                        # by re-running the strategy with no kwargs at all.
+                        threshold_floor=(
+                            None if effective_threshold is None
+                            else float(effective_threshold)
+                        ),
                         meta={
                             "htf_opposed": htf_opposed,
                             "component_breakdown": components,

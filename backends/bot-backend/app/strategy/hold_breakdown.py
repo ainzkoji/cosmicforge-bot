@@ -144,10 +144,15 @@ def classify_hold_reason(
     reason: str | None,
     *,
     confidence: float = 0.0,
-    threshold_floor: float = 0.0,
+    threshold_floor: float | None = 0.0,
     meta: dict[str, Any] | None = None,
 ) -> str:
-    """Map internal strategy reasons to a stable signal-starvation category."""
+    """Map internal strategy reasons to a stable signal-starvation category.
+
+    ``threshold_floor`` may be ``None``: a candle that produced no directional
+    candidate never had a threshold evaluated. That is not a floor of zero, and
+    the CONFIDENCE_BELOW_FLOOR branch below must not fire for it.
+    """
     details = meta or {}
     text = " ".join(
         [
@@ -173,7 +178,12 @@ def classify_hold_reason(
         return "MOMENTUM_FILTER_FAILED"
     if any(value in text for value in ("trend", "adx", "ema_slope", "ema20", "ema50", "ema200", "htf_opposed")):
         return "TREND_FILTER_FAILED"
-    if confidence > 0 and threshold_floor > 0 and confidence < threshold_floor:
+    if (
+        confidence > 0
+        and threshold_floor is not None
+        and threshold_floor > 0
+        and confidence < threshold_floor
+    ):
         return "CONFIDENCE_BELOW_FLOOR"
     return "NO_PATTERN"
 
