@@ -309,16 +309,83 @@ Hard-gate evidence on genuine candles after the restart:
 00:30:25  ETHUSDT  SESSION_BLOCKED  effective_entry_threshold=NULL  threshold_status=NOT_EVALUATED
 ```
 
-**No EVALUATED threshold decision was observed, and none could be.** Both
-symbols are stopped by `SESSION_BLOCKED`: `ENSEMBLE_SESSION_FILTER_ENABLED=True`
-with `ENSEMBLE_SESSION_WINDOWS_UTC=06:00-19:00`, and observation ran from
-00:21 to 00:31 UTC. The session gate correctly runs *before* the threshold
-engine, so `threshold_decisions` is empty -- which is the specified behaviour,
-not a fault: hard gates are never expressed as an unreachable threshold.
+### The first live EVALUATED threshold decision
 
-A populated `threshold_decisions` row requires the session window to open at
-**06:00 UTC**. Per §37, live acceptance therefore remains **PARTIAL**. No gate
-was weakened, no threshold lowered and no trade forced to change that.
+At **01:30:05 UTC** an ETHUSDT candle reached the quality stage and the engine
+ran end to end in production. Nothing was forced: no gate weakened, no threshold
+lowered, no trade manufactured.
+
+```
+threshold_decision_id     thr_b1cd0f630be34451
+symbol / timeframe        ETHUSDT 15m          regime WEAK_TREND
+status                    EVALUATED            mode ADAPTIVE   engine 1.0.0
+policy_hash               afd2b463...1f17802   provenance PAPER_FORWARD
+
+base_threshold                          0.700000
+  regime_adjustment                    +0.018000   WEAK_TREND, confidence-weighted
+  volatility_adjustment                -0.005000   percentile 0.642, healthy band
+  agreement_adjustment                 +0.044596   agreement 0.221: 1 of 4 experts voted
+  htf_adjustment                       +0.050000   alignment -1.0: 4h fully opposed
+  market_quality_adjustment            +0.002667   quality 0.467
+  performance_adjustment                0.000000   INSUFFICIENT_SAMPLE
+  distribution_adjustment               0.000000   INSUFFICIENT_SAMPLE
+= raw_unclamped_threshold               0.810263
+-> smoothed / rate_limited / final      0.810263   no previous; band [0.50, 0.90]
+
+opportunity_confidence                  0.346667
+passed                                  false      THRESHOLD_NOT_MET
+reconciles                              true       components - raw = 0.00e+00
+```
+
+Four things this proves that unit tests cannot:
+
+1. **The arithmetic reconciles exactly in production** -- 0.00e+00, not merely
+   within tolerance.
+2. **HTF is genuinely wired.** `htf_alignment_score = -1.0` is a real value
+   derived from closed 4h candles. Before this pass it was structurally always
+   absent.
+3. **All seven experts persisted, from the production evaluation**, with
+   `NOT_RUN` and `DISABLED` correctly distinguished:
+
+   | strategy | eligible | executed | signal | conf | weight | contribution |
+   | --- | --- | --- | --- | --- | --- | --- |
+   | supertrend | yes | yes | HOLD | 0.00 | 1.50 | 0.000 |
+   | trend_pullback | yes | yes | **SELL** | 0.80 | 1.30 | 1.040 |
+   | donchian_breakout | yes | yes | HOLD | 0.00 | 1.00 | 0.000 |
+   | sma_cross | yes | yes | HOLD | 0.00 | 0.90 | 0.000 |
+   | bollinger_reversion | no | no | DISABLED | 0.00 | 1.00 | 0.000 |
+   | squeeze_breakout | no | no | DISABLED | 0.00 | 1.10 | 0.000 |
+   | vwap_reversion | no | no | DISABLED | 0.00 | 1.20 | 0.000 |
+
+4. **The engine raised the bar on weak evidence.** One expert of four voting,
+   with the 4h timeframe fully opposed, produced **0.810** -- higher than the
+   old constant 0.70, not lower. The `trading_decision` links to it by
+   `threshold_decision_id` and records `ENTRY_CONFIDENCE_BELOW_THRESHOLD` with
+   `effective_entry_threshold = 0.810263`. Adaptive state persisted for
+   ETHUSDT/15m with `previous_threshold = 0.810263`, so the next candle smooths
+   against it.
+
+The other nine post-restart evaluations were hard-gated and carry
+`final_threshold = NULL` / `threshold_status = NOT_EVALUATED`, as specified.
+
+**Live acceptance remains PARTIAL** under §37: one opportunity is not a sample
+from which to show the threshold varies across contexts. That needs several
+organic opportunities, and the session window does not open until 06:00 UTC.
+The single decision proves the engine runs, reconciles and adapts its
+components; it does not yet prove a distribution.
+
+### Open observation, not caused by this work
+
+At 01:30 the two symbols diverged: BTCUSDT recorded `SESSION_BLOCKED` while
+ETHUSDT passed the session gate and evaluated, **two seconds apart, in the same
+bot, both with `market_type = CRYPTO` on record**. The session gate is a UTC
+time-window check and should treat both identically, and the CRYPTO 24/7 bypass
+should have applied to both or neither.
+
+I did not establish the cause, and it is outside this mandate: both affected
+code paths predate the threshold work, and nothing changed here touches the
+session gate. It is flagged because it means one symbol may be reaching the
+quality stage on a rule the other is not. Worth a separate look.
 
 ---
 
@@ -374,8 +441,12 @@ FULL_TEST_SUITE:                           2392 passed, 0 failed, 0 skipped,
 
 RUNTIME_ON_FINAL_HEAD:                     PASS (28341638)
 LIVE_HARD_GATE_EVIDENCE:                   PASS
-LIVE_EVALUATED_THRESHOLD:                  NOT_YET_OBSERVED (both symbols
-                                           session-blocked until 06:00 UTC)
+LIVE_EVALUATED_THRESHOLD:                  PASS (ETHUSDT 01:30:05 UTC,
+                                           thr_b1cd0f630be34451, final 0.810263,
+                                           reconciles exactly, 7 experts persisted)
+LIVE_ADAPTATION_PROOF:                     PARTIAL (n=1 opportunity; a
+                                           distribution needs several, and the
+                                           session window opens at 06:00 UTC)
 
 DOWNSTREAM_THRESHOLD_OVERRIDE:             NONE
 HIDDEN_THRESHOLD_FLOOR:                    NONE
