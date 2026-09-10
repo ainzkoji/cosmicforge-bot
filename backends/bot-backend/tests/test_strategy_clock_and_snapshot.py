@@ -12,7 +12,9 @@ not run the strategy at all, and says so with NO_NEW_CANDLE.
 """
 from __future__ import annotations
 
-import inspect
+import ast
+from functools import lru_cache
+from pathlib import Path
 
 import pytest
 
@@ -27,6 +29,47 @@ from app.runner.runner import PaperRunner
 from shared_lib.persistence.db import DB
 
 MINUTE_MS = 60_000
+
+
+@lru_cache(maxsize=1)
+def _runner_module_ast() -> ast.Module:
+    import app.runner.runner as runner_module
+
+    return ast.parse(
+        Path(runner_module.__file__).read_text(encoding="utf-8"),
+        filename=runner_module.__file__,
+    )
+
+
+@lru_cache(maxsize=None)
+def method_source(name: str, class_name: str = "PaperRunner") -> str:
+    """Source of a method, read from the file rather than from the attribute.
+
+    ``inspect.getsource`` resolves through the *current* value of the
+    attribute. When any other test in the suite patches a method on
+    ``PaperRunner`` -- and several do -- these assertions end up reading
+    someone else's lambda or a MagicMock, so they pass when the file is run
+    alone and fail when the suite is run together. What these tests are
+    actually about is the code on disk, so that is what they read.
+    """
+    tree = _runner_module_ast()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ClassDef) and node.name == class_name:
+            for member in node.body:
+                if (
+                    isinstance(member, (ast.FunctionDef, ast.AsyncFunctionDef))
+                    and member.name == name
+                ):
+                    return ast.get_source_segment(
+                        Path(_module_file()).read_text(encoding="utf-8"), member
+                    ) or ""
+    raise AssertionError(f"{class_name}.{name} not found in the runner module")
+
+
+def _module_file() -> str:
+    import app.runner.runner as runner_module
+
+    return runner_module.__file__
 
 
 def candle(index: int, *, tf_ms: int = 15 * MINUTE_MS, close: float = 100.0) -> list:
@@ -52,7 +95,7 @@ def db():
 
 def test_run_once_has_no_unique_business_logic():
     """§5.8 — run_once must be a thin wrapper, not a second trading system."""
-    source = inspect.getsource(PaperRunner.run_once)
+    source = method_source("run_once")
 
     assert "return self.run_cycle()" in source
     body = [
@@ -66,9 +109,19 @@ def test_run_once_has_no_unique_business_logic():
         assert forbidden not in source, f"run_once still owns {forbidden}"
 
 
+def test_these_assertions_survive_another_test_patching_the_method(monkeypatch):
+    """Regression: these read the file, so a patched attribute cannot fool them.
+
+    Reading through ``PaperRunner.run_once`` made this suite order-dependent --
+    green on its own, red once another module patched the method first.
+    """
+    monkeypatch.setattr(PaperRunner, "run_once", lambda self: "patched", raising=False)
+    assert "return self.run_cycle()" in method_source("run_once")
+
+
 def test_run_cycle_owns_the_canonical_management_sequence():
     """§5.2 — the whole sequence is invoked from run_cycle, in order."""
-    source = inspect.getsource(PaperRunner.run_cycle)
+    source = method_source("run_cycle")
 
     expected_order = [
         "reconcile_positions_on_startup",   # 2. reconcile
@@ -82,32 +135,32 @@ def test_run_cycle_owns_the_canonical_management_sequence():
 
 
 def test_kill_switch_is_evaluated_inside_run_cycle():
-    source = inspect.getsource(PaperRunner.run_cycle)
+    source = method_source("run_cycle")
     assert "activate_kill_switch" in source
 
 
 def test_daily_close_runs_inside_run_cycle():
-    source = inspect.getsource(PaperRunner.run_cycle)
+    source = method_source("run_cycle")
     assert "_run_daily_close_from_cycle" in source
 
 
 def test_daily_close_uses_the_managed_remaining_quantity_not_the_original():
     """After a TP1 the daily close must close the remainder."""
-    source = inspect.getsource(PaperRunner._run_daily_close_from_cycle)
+    source = method_source("_run_daily_close_from_cycle")
     assert "pos.current_qty" in source
     assert "_close_managed_position(symbol, \"DAILY_CLOSE\")" in source
 
 
 def test_daily_close_marks_are_durable_not_in_memory():
     """§5.6 — an in-memory flag would not survive a restart."""
-    source = inspect.getsource(PaperRunner._mark_daily_close)
+    source = method_source("_mark_daily_close")
     assert "bot_daily_close_marks" in source
     assert "INSERT OR REPLACE" in source
 
 
 def test_daily_close_idempotency_lookup_fails_closed():
     """If we cannot prove it is unclosed, we must not close it again."""
-    source = inspect.getsource(PaperRunner._daily_close_already_marked)
+    source = method_source("_daily_close_already_marked")
     assert "return True" in source
     assert "except Exception" in source
 
@@ -137,7 +190,7 @@ def test_daily_close_marker_round_trips_and_blocks_a_repeat(db):
 
 def test_paper_reconciliation_never_consults_broker_positions():
     """§5.3 — a demo exchange is flat while a paper position is open."""
-    source = inspect.getsource(PaperRunner._step_symbol_orchestrated)
+    source = method_source("_step_symbol_orchestrated")
     assert 'if self._effective_execution_mode() == "broker":' in source
     guard_at = source.index('if self._effective_execution_mode() == "broker":')
     call_at = source.index("get_position_info", guard_at)
@@ -145,7 +198,7 @@ def test_paper_reconciliation_never_consults_broker_positions():
 
 
 def test_broker_mode_reconciliation_still_reads_exchange_truth():
-    source = inspect.getsource(PaperRunner._step_symbol_orchestrated)
+    source = method_source("_step_symbol_orchestrated")
     assert "self.executor.client.get_position_info(symbol)" in source
 
 
@@ -358,7 +411,7 @@ def test_no_htf_data_counts_as_aligned(candles):
 
 def test_no_new_candle_is_not_reported_as_a_strategy_hold():
     """§6.9 — the runner must not manufacture a HOLD it never computed."""
-    source = inspect.getsource(PaperRunner._step_symbol_orchestrated)
+    source = method_source("_step_symbol_orchestrated")
 
     assert '{"symbol": symbol, "decision": "HOLD", "reason": "NO_NEW_CANDLE"}' not in source
     assert '"decision": CycleReason.NO_NEW_CANDLE' in source
@@ -373,7 +426,7 @@ def test_no_new_candle_and_no_opportunity_are_different_codes():
 
 def test_management_continues_on_heartbeats_without_a_new_candle():
     """Position management must not be gated behind the entry clock."""
-    source = inspect.getsource(PaperRunner._step_symbol_orchestrated)
+    source = method_source("_step_symbol_orchestrated")
     gate_at = source.index("if not evaluate_entry:")
     # Exit management (PositionManager price ticks) runs before the entry gate.
     assert source.index("self.position_manager.update_price") < gate_at

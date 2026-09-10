@@ -569,6 +569,13 @@ class Settings(BaseSettings):
     # never be promoted just because it is newer or larger.
     DATABASE_ROLE: str = "development"  # development | paper | research | live
 
+    # Phase 11 §21 again, for the other half of the identity: what this
+    # deployment *is*. Previously read as ``settings.ENVIRONMENT``, which no
+    # setting ever defined, so every runtime session recorded
+    # environment_name="unknown". "unknown" is not a fact, and evidence rows
+    # are supposed to carry facts.
+    ENVIRONMENT_NAME: str = "development_local"
+
     
     class Config:
         env_file = ".env"

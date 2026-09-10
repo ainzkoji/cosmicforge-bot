@@ -249,6 +249,34 @@ class RuntimeOwnership:
             return True
 
 
+def pid_is_alive(pid: int | None) -> bool:
+    """Public form of the liveness check the lease uses to decide a takeover.
+
+    Exposed so runtime preflight asks the same question the same way. Unknown
+    counts as alive, so a process we cannot inspect is never treated as dead.
+    """
+    if not pid:
+        return False
+    return RuntimeOwnership._pid_alive(int(pid))
+
+
+def lease_is_stale(heartbeat_at: str | None, *, stale_seconds: int = LEASE_STALE_SECONDS) -> bool:
+    """Public form of the staleness policy, so preflight cannot drift from it.
+
+    A missing or unparseable heartbeat is stale: the alternative is treating an
+    unreadable lease as healthy, which would block startup forever.
+    """
+    if not heartbeat_at:
+        return True
+    try:
+        last = datetime.fromisoformat(heartbeat_at)
+    except Exception:
+        return True
+    if last.tzinfo is None:
+        last = last.replace(tzinfo=timezone.utc)
+    return (_now() - last) > timedelta(seconds=int(stale_seconds))
+
+
 def current_owner(db: Any, database_path: str, lease_name: str = TRADING_SCHEDULER) -> dict | None:
     """Read the active lease row, if any."""
     try:

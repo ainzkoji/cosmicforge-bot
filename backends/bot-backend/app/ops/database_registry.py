@@ -24,12 +24,17 @@ ARCHIVED = "ARCHIVED"
 STALE_COPY = "STALE_COPY"
 RESEARCH = "RESEARCH"
 BACKUP = "BACKUP"
+VALIDATION = "VALIDATION"
 
 #: Filename markers that indicate a file is a copy, not the runtime database.
 #: These classify; they never select.
 _SYNC_CONFLICT_MARKERS = ("-LAPTOP-", "-DESKTOP-", " (1)", " - Copy", "conflicted copy")
 _BACKUP_MARKERS = (".backup", ".bak", "pre_", "_backup")
 _RESEARCH_MARKERS = ("research", "shadow", "backtest", "tmp_", "test")
+#: A deliberately-created validation database is not a stale copy of anything.
+#: ``phase12_paper_validation.db`` was being labelled STALE_COPY, which reads
+#: as "leftover" and is the opposite of what it is.
+_VALIDATION_MARKERS = ("validation", "phase12", "paper_forward")
 
 
 def classify(path: Path, *, active_path: Path) -> str:
@@ -42,6 +47,8 @@ def classify(path: Path, *, active_path: Path) -> str:
         return FORENSIC
     if any(marker in name for marker in _BACKUP_MARKERS):
         return BACKUP
+    if any(marker in name.lower() for marker in _VALIDATION_MARKERS):
+        return VALIDATION
     if any(marker in name.lower() for marker in _RESEARCH_MARKERS):
         return RESEARCH
     return STALE_COPY

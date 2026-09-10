@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     Canonical always-on launcher for the CosmicForge trading backend.
 
@@ -26,7 +26,10 @@
 param(
     [switch]$Once,
     [switch]$Force,
-    [int]$Port = 9000
+    [int]$Port = 9000,
+    # How long a graceful stop may take before force is used. A cycle is ~10s;
+    # this allows for one in flight plus lease release and session close.
+    [int]$GracefulStopSeconds = 45
 )
 
 $ErrorActionPreference = 'Stop'
@@ -37,6 +40,9 @@ $BackendDir = Join-Path $RepoRoot 'backends\bot-backend'
 $Python     = Join-Path $RepoRoot 'backends\venv\Scripts\python.exe'
 $LogDir     = Join-Path $BackendDir 'logs\runtime'
 $StopFile   = Join-Path $BackendDir 'logs\runtime\STOP'
+# Written by the runtime itself when it stops on request. Read after the child
+# exits, so the supervisor never has to win a polling race to learn why.
+$StoppedMarker = Join-Path $BackendDir 'logs\runtime\STOPPED_BY_OPERATOR'
 
 function Write-Step($msg) { Write-Host "[start_trading_runtime] $msg" }
 function Fail($msg) { Write-Host "[start_trading_runtime] FATAL: $msg" -ForegroundColor Red; exit 1 }
@@ -107,6 +113,14 @@ while ($true) {
 
     Write-Step "launch #$($attempt + 1) -> $outLog"
 
+    # Clear any stop request left over from a previous run BEFORE launching.
+    # A marker still on disk from the last shutdown was read as a request to
+    # stop the child that had only just started, which then failed to exit
+    # (nobody had asked it to) and was force-killed mid-cycle at the grace
+    # deadline. Anything found after this point belongs to this child.
+    Remove-Item $StopFile -Force -ErrorAction SilentlyContinue
+    Remove-Item $StoppedMarker -Force -ErrorAction SilentlyContinue
+
     Push-Location $BackendDir
     try {
         $env:PYTHONUTF8 = '1'          # 9. force UTF-8
@@ -120,22 +134,73 @@ while ($true) {
             -RedirectStandardError  "$outLog.err" `
             -NoNewWindow -PassThru
 
-        Set-Content -Path $pidFile -Value $proc.Id -Encoding utf8   # 11. record PID
-        Write-Step "pid          : $($proc.Id)"
+        # The venv python.exe is a redirector that re-execs the real
+        # interpreter, so $proc.Id is the stub and the server is its child.
+        # Recording the stub meant the pid file never named the process that
+        # actually held the port.
+        Start-Sleep -Milliseconds 800
+        $listenerPid = $proc.Id
+        $child = Get-CimInstance Win32_Process -Filter "ParentProcessId=$($proc.Id)" -ErrorAction SilentlyContinue |
+                 Where-Object { $_.Name -eq 'python.exe' } | Select-Object -First 1
+        if ($child) { $listenerPid = $child.ProcessId }
+        Set-Content -Path $pidFile -Value $listenerPid -Encoding utf8   # 11. record PID
+        Write-Step "pid          : $listenerPid (supervisor child $($proc.Id))"
 
         if ($Once) { Wait-Process -Id $proc.Id; Write-Step "process exited (-Once)"; break }
 
         # Poll so an operator stop file is noticed promptly.
+        #
+        # The stop file is NOT consumed here. The runtime itself watches for it,
+        # quiesces -- stops new entries, stops the scheduler, drains the current
+        # cycle, releases the ownership lease, closes its runtime session -- and
+        # then raises SIGINT so uvicorn runs its own shutdown. Force-killing here
+        # is what used to skip all of that and leave a lease with released_at
+        # NULL against a dead PID.
         while (-not $proc.HasExited) {
-            if (Test-Path $StopFile) {
-                Write-Step "stop file detected - operator shutdown"
-                Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
-                Wait-Process -Id $proc.Id -ErrorAction SilentlyContinue
-                Remove-Item $StopFile -Force -ErrorAction SilentlyContinue
-                Write-Step "stopped by operator; not restarting"
+            if ((Test-Path $StopFile) -or (Test-Path $StoppedMarker)) {
+                Write-Step "stop file detected - waiting for graceful shutdown"
+                $graceDeadline = (Get-Date).AddSeconds($GracefulStopSeconds)
+                while ((-not $proc.HasExited) -and ((Get-Date) -lt $graceDeadline)) {
+                    Start-Sleep -Seconds 1
+                }
+
+                if ($proc.HasExited) {
+                    Remove-Item $StopFile -Force -ErrorAction SilentlyContinue
+                    Remove-Item $StoppedMarker -Force -ErrorAction SilentlyContinue
+                    Write-Step "graceful shutdown complete; not restarting"
+                } else {
+                    # Escalation, and it is recorded rather than silent. The
+                    # stale lease is recovered by PID-liveness takeover at the
+                    # next start.
+                    Write-Step "FORCED_RUNTIME_TERMINATION: no graceful exit within ${GracefulStopSeconds}s"
+                    Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
+                    Wait-Process -Id $proc.Id -ErrorAction SilentlyContinue
+                    Remove-Item $StopFile -Force -ErrorAction SilentlyContinue
+                    Remove-Item $StoppedMarker -Force -ErrorAction SilentlyContinue
+                    Write-Step "stopped by force; lease will be recovered on next start"
+                }
+
+                $stillListening = Get-NetTCPConnection -State Listen -LocalPort $Port -ErrorAction SilentlyContinue
+                if ($stillListening) {
+                    Write-Step "WARNING: port $Port still held by pid $($stillListening.OwningProcess)"
+                } else {
+                    Write-Step "port $Port released"
+                }
                 return
             }
             Start-Sleep -Seconds 2
+        }
+
+        # The child is gone. Ask why before deciding whether to restart: an
+        # operator stop that the poll above never saw would otherwise read as a
+        # crash, and the runtime the operator just stopped would come straight
+        # back up. That is exactly what happened before this check existed.
+        if (Test-Path $StoppedMarker) {
+            $reason = (Get-Content $StoppedMarker -Raw -ErrorAction SilentlyContinue)
+            Remove-Item $StoppedMarker -Force -ErrorAction SilentlyContinue
+            Remove-Item $StopFile -Force -ErrorAction SilentlyContinue
+            Write-Step "operator shutdown ($($reason.Trim())) - not restarting"
+            break
         }
 
         $code = $proc.ExitCode

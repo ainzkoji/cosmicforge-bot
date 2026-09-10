@@ -71,6 +71,40 @@ from app.ops.run_manager import RunManager
 from app.ops.context import set_run_id, clear_run_id
 from app.ops.run_tracker import RunTracker
 from shared_lib.persistence.db import DB
+
+# ── Runtime preflight ───────────────────────────────────────────────────────
+# This runs at IMPORT, and it has to.
+#
+# uvicorn's Server.startup() awaits lifespan.startup() and only afterwards
+# creates the socket. A second `uvicorn app.main:app --port 9000` therefore ran
+# the entire trading startup -- canonical runtime session, signal scheduler,
+# MultiBotRunner, bot restore -- and only then died on
+#
+#     [Errno 10048] only one usage of each socket address is normally permitted
+#
+# leaving a runtime_sessions row behind every time. uvicorn imports this module
+# during config.load(), before _serve, so a refusal here happens before any of
+# that and writes nothing.
+#
+# Tests and diagnostic tools set COSMICFORGE_TEST_MODE (conftest already does)
+# or COSMICFORGE_SKIP_RUNTIME_PREFLIGHT, and are never refused.
+RUNTIME_PREFLIGHT = None
+try:
+    from app.ops.runtime_preflight import DEFAULT_PORT as _PREFLIGHT_PORT
+    from app.ops.runtime_preflight import enforce as _enforce_runtime_preflight
+
+    RUNTIME_PREFLIGHT = _enforce_runtime_preflight(
+        port=int(os.environ.get("COSMICFORGE_RUNTIME_PORT", _PREFLIGHT_PORT) or _PREFLIGHT_PORT),
+    )
+except SystemExit:
+    # A refusal. Let it terminate the process cleanly -- catching it here would
+    # be the very behaviour this block exists to remove.
+    raise
+except Exception as _preflight_exc:
+    # Preflight is a guard, not a dependency. If it cannot run, say so loudly
+    # and continue: the lease still fails closed later.
+    print(f"[RUNTIME_PREFLIGHT_WARNING] preflight_failed={_preflight_exc}")
+
 from app.ops.context import set_cycle_id, clear_cycle_id
 from app.strategy.registry import list_strategies, get_strategy_spec
 
@@ -145,7 +179,7 @@ try:
         "[DATABASE_EVIDENCE] "
         f"path={_active_db} size={_stat.st_size if _stat else 0} "
         f"modified={datetime.fromtimestamp(_stat.st_mtime, timezone.utc).isoformat() if _stat else None} "
-        f"schema_version={_schema_version} pid={os.getpid()} environment={getattr(settings, 'ENVIRONMENT', 'unknown')}"
+        f"schema_version={_schema_version} pid={os.getpid()} environment={getattr(settings, 'ENVIRONMENT_NAME', 'development_local')}"
     )
     if len(_candidates) > 1:
         print(f"[DATABASE_EVIDENCE_WARNING] multiple_candidates={[str(p) for p in _candidates]}")
@@ -162,7 +196,7 @@ try:
         db_path=DB().path,
         execution_mode=normalize_execution_mode(getattr(settings, "EXECUTION_MODE", "paper")),
         broker_environment=str(getattr(settings, "BROKER_ENVIRONMENT", "resolved-per-bot")),
-        environment_name=str(getattr(settings, "ENVIRONMENT", "unknown")),
+        environment_name=str(getattr(settings, "ENVIRONMENT_NAME", "development_local")),
     )
 except Exception as _baseline_exc:  # never block startup on diagnostics
     RUNTIME_BASELINE = {"error": str(_baseline_exc)}
@@ -193,7 +227,10 @@ def _open_runtime_session_once() -> None:
     if RUNTIME_SESSION_ID is not None:
         return
     try:
-        from app.evidence.writers import open_runtime_session
+        from app.evidence.writers import (
+            open_runtime_session,
+            reap_abandoned_sessions,
+        )
         from app.ops.database_registry import register_database_candidates
 
         _db_role = str(getattr(settings, "DATABASE_ROLE", "development"))
@@ -203,7 +240,7 @@ def _open_runtime_session_once() -> None:
             database_path=DB().path,
             schema_version=RUNTIME_BASELINE.get("db_schema_version"),
             process_execution_mode=RUNTIME_BASELINE.get("execution_mode"),
-            environment_name=str(getattr(settings, "ENVIRONMENT", "unknown")),
+            environment_name=str(getattr(settings, "ENVIRONMENT_NAME", "development_local")),
             code_revision=RUNTIME_BASELINE.get("code_revision"),
             branch=RUNTIME_BASELINE.get("branch"),
             working_tree_dirty=RUNTIME_BASELINE.get("working_tree_dirty"),
@@ -213,6 +250,14 @@ def _open_runtime_session_once() -> None:
             f"path={DB().path} execution_mode={RUNTIME_BASELINE.get('execution_mode')}"
         )
         register_database_candidates(DB(), active_path=DB().path, database_role=_db_role)
+
+        # Sessions left RUNNING by a force-kill describe a process that no
+        # longer exists. Correct the status now that it is knowably false --
+        # the rows themselves are preserved, and stopped_at stays NULL because
+        # nobody knows when they actually ended.
+        _reaped = reap_abandoned_sessions(DB(), exclude_session_id=RUNTIME_SESSION_ID)
+        if _reaped:
+            print(f"[RUNTIME_SESSION] abandoned_sessions_marked={_reaped}")
     except Exception as _session_exc:
         print(f"[RUNTIME_SESSION_WARNING] session_open_failed={_session_exc}")
 
@@ -416,6 +461,56 @@ async def _startup_validate_config():
 
 
 @app.on_event("startup")
+async def _startup_stop_file_watcher():
+    """Watch for the operator stop file and shut down gracefully when it lands.
+
+    Windows has no useful process signal for "please stop cleanly", so the
+    operator scripts drop a file. Raising SIGINT afterwards is what makes
+    uvicorn run its own shutdown path -- and therefore the lifespan shutdown
+    hook above -- rather than the process simply being killed.
+    """
+    import asyncio as _asyncio
+    import os as _os
+    import signal as _signal
+
+    from app.ops.runtime_shutdown import (
+        STOP_FILE,
+        clear_stop_signals,
+        quiesce,
+        record_operator_stop,
+    )
+
+    # A request left over from the previous run is not a request to stop this
+    # one. Clear before watching, never after.
+    clear_stop_signals()
+
+    async def _watch() -> None:
+        while True:
+            await _asyncio.sleep(1.0)
+            try:
+                if not _os.path.exists(STOP_FILE):
+                    continue
+                print(f"[RUNTIME_SHUTDOWN] stop file observed: {STOP_FILE}")
+                # The stop file is deliberately left in place: whoever asked
+                # owns it. What this process leaves behind is the reason it
+                # exited, so the supervisor does not mistake an operator stop
+                # for a crash and restart the runtime that was just stopped.
+                record_operator_stop("OPERATOR_STOP_FILE")
+                quiesce(reason="OPERATOR_STOP_FILE")
+                try:
+                    _signal.raise_signal(_signal.SIGINT)
+                except Exception:
+                    # No signal available: the graceful work is already done,
+                    # so a hard exit now loses nothing.
+                    _os._exit(0)
+                return
+            except Exception as exc:
+                print(f"[RUNTIME_SHUTDOWN_WARNING] stop_file_watch={exc}")
+
+    _asyncio.create_task(_watch())
+
+
+@app.on_event("startup")
 async def _startup_run_manager():
     # create a run record in DB
     info = run_manager.start()
@@ -432,6 +527,17 @@ async def _shutdown_run_manager():
     """Fast shutdown - target ~1 second."""
     import signal
     import os
+
+    # Release ownership and close the runtime session BEFORE anything is
+    # cancelled. Skipping this is what left leases with released_at NULL
+    # against dead PIDs; cancelling the task first would remove the handle
+    # quiesce needs to release through.
+    try:
+        from app.ops.runtime_shutdown import quiesce
+
+        quiesce(reason="APPLICATION_SHUTDOWN")
+    except Exception as _quiesce_exc:
+        print(f"[RUNTIME_SHUTDOWN_WARNING] quiesce_failed={_quiesce_exc}")
 
     # ✅ Signal loop to stop IMMEDIATELY
     runner_service.running = False
@@ -617,7 +723,71 @@ async def _shutdown_notifications():
 _signal_scheduler = None
 
 
+def _may_run_background_jobs() -> tuple[bool, str]:
+    """Background jobs belong to the lease holder, not merely to a process.
+
+    Preflight refuses a duplicate at import, but that is not the whole story:
+    a process can pass preflight against a stale lease and still lose the
+    acquisition race inside the runner. Such a process is allowed to serve
+    read-only and admin APIs. It must not also be generating signals,
+    building the nightly dataset, retraining, or writing monitor rows into a
+    database whose scheduler belongs to someone else.
+    """
+    from app.ops.runtime_preflight import should_skip
+
+    if should_skip():
+        # Tests and diagnostic tooling import the app without serving; they
+        # call the registration coroutine directly and are not competing for
+        # anything.
+        return True, "PREFLIGHT_SKIPPED"
+
+    multi = getattr(runner_service, "multi_runner", None)
+    if multi is None:
+        return False, "RUNNER_NOT_STARTED"
+    if getattr(multi, "owns_runtime", False):
+        return True, "RUNTIME_OWNER"
+    if getattr(multi, "ownership_decided", False):
+        return False, f"NOT_RUNTIME_OWNER:{getattr(multi, 'ownership_reason', 'UNKNOWN')}"
+    return False, "OWNERSHIP_PENDING"
+
+
+async def _await_runtime_ownership(timeout_s: float = 90.0) -> tuple[bool, str]:
+    """Wait for the lease question to be answered, either way.
+
+    The runner acquires the lease inside its own task, so at startup-hook time
+    the answer is genuinely not known yet. Waiting is done off the startup
+    path so a slow acquisition never delays the API coming up.
+    """
+    import time as _time
+
+    deadline = _time.monotonic() + timeout_s
+    while _time.monotonic() < deadline:
+        allowed, reason = _may_run_background_jobs()
+        if allowed or reason.startswith("NOT_RUNTIME_OWNER"):
+            return allowed, reason
+        await asyncio.sleep(0.5)
+    return False, "OWNERSHIP_UNDECIDED_TIMEOUT"
+
+
 @app.on_event("startup")
+async def _startup_background_jobs():
+    """Register background jobs only in the process that owns the runtime."""
+
+    async def _when_owner() -> None:
+        allowed, reason = await _await_runtime_ownership()
+        if not allowed:
+            print(
+                f"[BACKGROUND_JOBS] BACKGROUND_JOBS_REFUSED reason={reason} — "
+                "no signal scheduler, no nightly dataset build, no ML retrain "
+                "and no daily paper monitor will run in this process"
+            )
+            return
+        print(f"[BACKGROUND_JOBS] BACKGROUND_JOBS_OWNER reason={reason}")
+        await _startup_signal_scheduler()
+
+    asyncio.create_task(_when_owner())
+
+
 async def _startup_signal_scheduler():
     global _signal_scheduler
     try:

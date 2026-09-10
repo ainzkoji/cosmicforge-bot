@@ -101,6 +101,21 @@ class MultiBotRunner:
             logger.error("[RUNTIME_OWNERSHIP] acquire failed: %s", exc)
             return False
 
+    @property
+    def owns_runtime(self) -> bool:
+        """True only while this process actually holds the trading lease.
+
+        Read by the background-job startup: passing preflight is not the same
+        as owning the runtime, because a process may start against a stale
+        lease and still lose the acquisition race here.
+        """
+        return bool(self._ownership is not None and self._ownership.is_owner)
+
+    @property
+    def ownership_decided(self) -> bool:
+        """True once acquisition has been attempted, win or lose."""
+        return self.ownership_reason != "NOT_ACQUIRED"
+
     def release_runtime_ownership(self, *, reason: str = "SHUTDOWN") -> None:
         if self._ownership is not None:
             self._ownership.release(reason=reason)

@@ -99,6 +99,50 @@ def close_runtime_session(db: Any, session_id: str, *, reason: str = "SHUTDOWN")
         )
 
 
+def reap_abandoned_sessions(db: Any, *, exclude_session_id: str | None = None) -> int:
+    """Mark sessions whose process is gone as ABANDONED. Returns the count.
+
+    Force-killing the runtime skipped the shutdown path entirely, so a session
+    row stayed RUNNING forever. The database reached 48 sessions marked RUNNING
+    against a single live process, which makes "is the runtime up?" unanswerable
+    from the evidence chain.
+
+    ``stopped_at`` is deliberately left NULL. We know the process is gone; we do
+    not know when it went, and stamping "now" would invent a stop time that
+    never happened. ABANDONED and STOPPED are different facts and are recorded
+    as different facts.
+
+    A PID that has been reused by an unrelated process reads as alive, so such a
+    row is left RUNNING rather than being wrongly closed. This under-reports;
+    it never fabricates.
+    """
+    from app.ops.runtime_ownership import pid_is_alive
+
+    reaped = 0
+    with db.connect() as conn:
+        rows = conn.execute(
+            "SELECT runtime_session_id, pid FROM runtime_sessions WHERE status='RUNNING'"
+        ).fetchall()
+        for row in rows:
+            session_id = row["runtime_session_id"]
+            if exclude_session_id and session_id == exclude_session_id:
+                continue
+            if pid_is_alive(row["pid"]):
+                continue
+            conn.execute(
+                "UPDATE runtime_sessions SET status='ABANDONED', shutdown_reason=? "
+                "WHERE runtime_session_id=? AND status='RUNNING'",
+                ("PROCESS_GONE_NO_CLEAN_SHUTDOWN", session_id),
+            )
+            reaped += 1
+    if reaped:
+        logger.warning(
+            "[RUNTIME_SESSION] marked %d session(s) ABANDONED: their process is gone "
+            "and no clean shutdown was recorded", reaped,
+        )
+    return reaped
+
+
 def open_bot_run(
     db: Any,
     *,
