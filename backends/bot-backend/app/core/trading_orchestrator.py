@@ -464,6 +464,10 @@ class TradingOrchestrator:
             broker_health=broker_health,
             user_kyc_approved=bool(kwargs.get("user_kyc_approved", False)),
             live_readiness_approved=bool(kwargs.get("live_readiness_approved", False)),
+            # The explicit states behind the booleans (NOT_REQUIRED,
+            # UNAVAILABLE, NOT_MET, ...), so a block says which one it was.
+            kyc_status=kwargs.get("kyc_status"),
+            live_readiness_status=kwargs.get("live_readiness_status"),
             is_live_mode=not self.validated_config.paper_mode,
             is_fallback_mode=is_fallback_mode,
             strategy_name=self.strategy_id,

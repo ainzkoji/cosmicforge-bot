@@ -72,6 +72,8 @@ class BlockReason(Enum):
     BROKER_UNHEALTHY = "broker_health_check_failed"
     LOW_CONFIDENCE = "strategy_confidence_below_threshold"
     KYC_REQUIRED = "kyc_requirements_not_met"
+    #: The KYC source could not be read. Distinct from "not approved"; still blocks.
+    KYC_UNAVAILABLE = "kyc_source_unavailable"
     LIVE_READINESS_REQUIRED = "live_readiness_requirements_not_met"
     
     # Layer B
@@ -401,20 +403,33 @@ class SafetyEngine:
             )
         
         # Gate 6: KYC requirements (live mode only)
+        # The booleans are decided upstream from the CONNECTED ACCOUNT (see
+        # app.product_safety.execution_safety): a demo/test account records
+        # NOT_REQUIRED for both, a live account keeps both gates. The explicit
+        # state travels with them so a block says which state caused it.
         if is_live_mode and self.config.require_kyc_for_live and not user_kyc_approved:
+            kyc_status = str(kwargs.get("kyc_status") or "")
+            unavailable = kyc_status == "UNAVAILABLE"
             return SafetyDecision(
                 allowed=False,
-                block_reason=BlockReason.KYC_REQUIRED,
-                message="KYC approval required for live trading",
-                layer="A"
+                block_reason=BlockReason.KYC_UNAVAILABLE if unavailable else BlockReason.KYC_REQUIRED,
+                message=(
+                    "KYC source unavailable; live trading fails closed"
+                    if unavailable else "KYC approval required for live trading"
+                ) + (f" (kyc_status={kyc_status})" if kyc_status else ""),
+                layer="A",
+                details={"kyc_status": kyc_status or None},
             )
 
         if is_live_mode and not live_readiness_approved:
+            readiness_status = str(kwargs.get("live_readiness_status") or "")
             return SafetyDecision(
                 allowed=False,
                 block_reason=BlockReason.LIVE_READINESS_REQUIRED,
-                message="Controlled live-trading readiness requirements are not met",
+                message="Controlled live-trading readiness requirements are not met"
+                + (f" (readiness_status={readiness_status})" if readiness_status else ""),
                 layer="A",
+                details={"live_readiness_status": readiness_status or None},
             )
         
         # Gate 7: Check for circuit breaker on this symbol

@@ -52,26 +52,52 @@ HIGH_RISK_COUNTRIES = {"US", "GB", "DE", "FR", "AU", "CA", "JP", "SG"}
 EXEMPT_COUNTRIES = set()  # Empty for now, can add countries that don't require KYC
 
 
+class KYCGateStatus(str, Enum):
+    """The explicit outcome of a KYC gate.
+
+    UNAVAILABLE is its own state: a KYC source that cannot be read is an
+    infrastructure failure, never evidence that the user was rejected. Where
+    KYC applies it still fails closed.
+    """
+    APPROVED = "APPROVED"
+    NOT_REQUIRED = "NOT_REQUIRED"
+    REQUIRED_NOT_APPROVED = "REQUIRED_NOT_APPROVED"
+    UNAVAILABLE = "UNAVAILABLE"
+
+
+class KYCSourceUnavailable(RuntimeError):
+    """The KYC tables could not be read (missing schema, locked or broken DB)."""
+
+
+@dataclass(frozen=True)
+class KYCGateResult:
+    status: KYCGateStatus
+    allowed: bool
+    reason: str
+
+
+def _kyc_query(sql: str, params: tuple) -> Optional[Dict[str, Any]]:
+    import sqlite3
+
+    try:
+        db = DB()
+        with db.connect() as conn:
+            row = conn.execute(sql, params).fetchone()
+            return dict(row) if row else None
+    except sqlite3.Error as exc:
+        raise KYCSourceUnavailable(f"KYC source unavailable: {exc}") from exc
+
+
 def get_user_kyc_status(user_id: str) -> Optional[Dict[str, Any]]:
     """Get user's current KYC case status"""
-    db = DB()
-    with db.connect() as conn:
-        row = conn.execute(
-            "SELECT * FROM kyc_cases WHERE user_id = ?",
-            (user_id,)
-        ).fetchone()
-        return dict(row) if row else None
+    return _kyc_query("SELECT * FROM kyc_cases WHERE user_id = ?", (user_id,))
 
 
 def get_kyc_requirements_config(action: str) -> Optional[Dict[str, Any]]:
     """Get KYC requirements config for an action"""
-    db = DB()
-    with db.connect() as conn:
-        row = conn.execute(
-            "SELECT * FROM kyc_requirements_config WHERE action_name = ?",
-            (action,)
-        ).fetchone()
-        return dict(row) if row else None
+    return _kyc_query(
+        "SELECT * FROM kyc_requirements_config WHERE action_name = ?", (action,)
+    )
 
 
 def is_kyc_required(
@@ -153,15 +179,22 @@ def is_kyc_required(
     blocked_actions = []
     allowed_actions = []
     
-    db = DB()
-    with db.connect() as conn:
-        all_configs = conn.execute("SELECT action_name, requires_kyc FROM kyc_requirements_config").fetchall()
-        for row in all_configs:
-            action_name = row["action_name"]
-            if row["requires_kyc"] and not is_satisfied:
-                blocked_actions.append(action_name)
-            else:
-                allowed_actions.append(action_name)
+    import sqlite3
+
+    try:
+        db = DB()
+        with db.connect() as conn:
+            all_configs = conn.execute(
+                "SELECT action_name, requires_kyc FROM kyc_requirements_config"
+            ).fetchall()
+    except sqlite3.Error as exc:
+        raise KYCSourceUnavailable(f"KYC source unavailable: {exc}") from exc
+    for row in all_configs:
+        action_name = row["action_name"]
+        if row["requires_kyc"] and not is_satisfied:
+            blocked_actions.append(action_name)
+        else:
+            allowed_actions.append(action_name)
     
     reason = "KYC approved" if is_satisfied else (
         f"KYC required for {action}" if requires_kyc else "KYC not required"
@@ -281,17 +314,42 @@ def get_full_kyc_status(user_id: str) -> Dict[str, Any]:
         }
 
 
+def evaluate_kyc_gate(user_id: str, action: str) -> KYCGateResult:
+    """The explicit KYC outcome for an action.
+
+    APPROVED and NOT_REQUIRED allow; REQUIRED_NOT_APPROVED and UNAVAILABLE
+    block. An unreadable KYC source is UNAVAILABLE -- previously it raised, and
+    callers reported the exception as "KYC not approved".
+    """
+    try:
+        req = is_kyc_required(user_id, action)
+    except KYCSourceUnavailable as exc:
+        return KYCGateResult(KYCGateStatus.UNAVAILABLE, False, str(exc))
+
+    if not req.is_required:
+        return KYCGateResult(KYCGateStatus.NOT_REQUIRED, True, req.reason)
+    if req.is_satisfied:
+        return KYCGateResult(KYCGateStatus.APPROVED, True, req.reason)
+    current = req.current_status.value if req.current_status else "not started"
+    return KYCGateResult(
+        KYCGateStatus.REQUIRED_NOT_APPROVED,
+        False,
+        f"KYC verification required. Current status: {current}",
+    )
+
+
 def check_kyc_gate(user_id: str, action: str) -> Tuple[bool, str]:
     """
     Gate function to check if action is allowed.
     Use this as a guard before sensitive operations.
-    
+
     Returns:
-        Tuple of (allowed: bool, reason: str)
+        Tuple of (allowed: bool, reason: str). An unavailable KYC source
+        blocks, and says so ("KYC_UNAVAILABLE: ..."), rather than raising.
     """
-    req = is_kyc_required(user_id, action)
-    
-    if req.is_required and not req.is_satisfied:
-        return False, f"KYC verification required. Current status: {req.current_status.value if req.current_status else 'not started'}"
-    
+    result = evaluate_kyc_gate(user_id, action)
+    if result.status == KYCGateStatus.UNAVAILABLE:
+        return False, f"KYC_UNAVAILABLE: {result.reason}"
+    if not result.allowed:
+        return False, result.reason
     return True, "OK"

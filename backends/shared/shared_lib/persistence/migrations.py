@@ -2724,6 +2724,14 @@ def migrate(db_path: str | DB = None):
     # against a table that does not exist yet fails silently.
     _ensure_position_capital_columns(db)
 
+    # 48b) KYC schema. Defined by backend/migrate_kyc.py before the 2026-05-02
+    # repository cleanup, which moved that script into a backup folder without
+    # porting it -- while the KYC policy and the user-backend KYC API kept
+    # querying tables no migration created. Ported verbatim: additive, and it
+    # seeds requirement policy only, never a KYC approval.
+    from shared_lib.persistence.kyc_schema import ensure_kyc_schema
+    ensure_kyc_schema(db)
+
     # 47) Event/News automatic runtime mode controller.
     # Keep this after the main migration connection closes so the helper can
     # self-heal temporary test databases through the normal DB context manager.

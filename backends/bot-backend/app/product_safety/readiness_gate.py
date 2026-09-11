@@ -16,6 +16,10 @@ class ReadinessStatus(str, Enum):
     READY_FOR_CONTROLLED_BETA_REVIEW = "READY_FOR_CONTROLLED_BETA_REVIEW"
     APPROVED_FOR_CONTROLLED_BETA = "APPROVED_FOR_CONTROLLED_BETA"
     REJECTED = "REJECTED"
+    #: Broker execution through a demo/test connected account. This gate
+    #: protects real-capital deployment, so it does not apply there; it is
+    #: never produced for a live (real-funds) account.
+    NOT_REQUIRED_FOR_DEMO_EXECUTION = "NOT_REQUIRED_FOR_DEMO_EXECUTION"
 
 
 class RejectionReason(str, Enum):

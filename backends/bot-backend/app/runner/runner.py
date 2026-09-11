@@ -2321,39 +2321,80 @@ class PaperRunner:
             )
         return result
 
-    def _runtime_kyc_allowed(self) -> bool:
-        """Resolve the real live-trading KYC gate; paper execution is explicitly exempt."""
+    def _execution_safety(self) -> Dict[str, Any]:
+        """KYC and real-capital readiness, decided from the CONNECTED ACCOUNT.
+
+        ``execution_mode=broker`` means "execute through the connected broker
+        account"; whether real money is at stake is a property of that account
+        (``broker_accounts.environment``, resolved into
+        ``context.broker_environment``), never of the bot and never of a global
+        setting. A live account keeps both gates, fail closed; a demo/test
+        account records NOT_REQUIRED for both. Re-evaluated on every call, so
+        each trade attempt is judged on the current account context.
+        """
         if self._effective_execution_mode() != "broker":
-            return True
-        if not self.context or not self.context.user_id:
-            return False
-        try:
-            from shared_lib.core.policy.kyc_policy import check_kyc_gate, KYCAction
-            allowed, _reason = check_kyc_gate(
-                self.context.user_id,
-                KYCAction.START_LIVE_TRADING,
+            snapshot = {
+                "scope": "PAPER",
+                "kyc": {"gate": "KYC", "state": "NOT_REQUIRED", "allowed": True,
+                        "reason": "paper execution: no broker order is placed"},
+                "readiness": {"gate": "REAL_CAPITAL_READINESS",
+                              "state": "NOT_REQUIRED_FOR_PAPER_EXECUTION", "allowed": True,
+                              "reason": "paper execution: no broker order is placed"},
+            }
+            self._execution_safety_snapshot = snapshot
+            return snapshot
+
+        from app.product_safety.execution_safety import (
+            evaluate_execution_kyc,
+            evaluate_execution_readiness,
+        )
+
+        environment = getattr(self.context, "broker_environment", None) if self.context else None
+        kyc = evaluate_execution_kyc(
+            user_id=self.context.user_id if self.context else None,
+            broker_environment=environment,
+        )
+        readiness = evaluate_execution_readiness(
+            db=getattr(self, "db", None),
+            bot_instance_id=self.context.bot_instance_id if self.context else None,
+            broker_environment=environment,
+        )
+        snapshot = {
+            "scope": "BROKER",
+            "broker_account_id": self.context.broker_account_id if self.context else None,
+            "account_environment": kyc.account_environment,
+            "real_capital": kyc.real_capital,
+            "kyc": kyc.to_dict(),
+            "readiness": readiness.to_dict(),
+        }
+        self._execution_safety_snapshot = snapshot
+
+        # Logged when the verdict changes, not on every heartbeat.
+        key = (kyc.state, readiness.state, kyc.account_environment)
+        if key != getattr(self, "_execution_safety_logged", None):
+            self._execution_safety_logged = key
+            bot = self.context.bot_instance_id if self.context else "default"
+            if not kyc.allowed:
+                logger.error("[KYC GATE] bot=%s blocked: state=%s account_environment=%s reason=%s",
+                             bot, kyc.state, kyc.account_environment, kyc.reason)
+            if not readiness.allowed:
+                logger.error("[LIVE READINESS] bot=%s blocked: state=%s account_environment=%s reason=%s",
+                             bot, readiness.state, readiness.account_environment, readiness.reason)
+            logger.warning(
+                "[EXECUTION_SAFETY] bot=%s broker_account=%s account_environment=%s "
+                "real_capital=%s kyc=%s readiness=%s",
+                bot, snapshot["broker_account_id"], kyc.account_environment,
+                kyc.real_capital, kyc.state, readiness.state,
             )
-            return bool(allowed)
-        except Exception as exc:
-            logger.error("[KYC GATE] Runtime KYC check failed closed: %s", exc)
-            return False
+        return snapshot
+
+    def _runtime_kyc_allowed(self) -> bool:
+        """The KYC gate for this trade attempt; see _execution_safety."""
+        return bool(self._execution_safety()["kyc"]["allowed"])
 
     def _runtime_live_readiness_allowed(self) -> bool:
-        """Re-evaluate the controlled-beta gate for every live trade attempt."""
-        if self._effective_execution_mode() != "broker":
-            return True
-        if not self.context or not self.context.bot_instance_id:
-            return False
-        try:
-            from app.product_safety.readiness_gate import assert_user_capital_activation_allowed
-            assert_user_capital_activation_allowed(
-                db=self.db,
-                bot_instance_id=self.context.bot_instance_id,
-            )
-            return True
-        except Exception as exc:
-            logger.error("[LIVE READINESS] Runtime readiness check failed closed: %s", exc)
-            return False
+        """The real-capital readiness gate for this trade attempt; see _execution_safety."""
+        return bool(self._execution_safety()["readiness"]["allowed"])
 
     def process_external_signal_candidate(self, candidate: Dict[str, Any]) -> Dict[str, Any]:
         """Evaluate a queued external BUY/SELL candidate through runner safety.
@@ -3925,8 +3966,13 @@ class PaperRunner:
                 enforce_session=(self.context.strategy_params.get("enforce_session") if self.context else None),
                 crypto_session_enabled=(self.context.strategy_params.get("crypto_session_enabled", False) if self.context else False),
                 execution_mode=self._effective_execution_mode(),
-                user_kyc_approved=self._runtime_kyc_allowed(),
-                live_readiness_approved=self._runtime_live_readiness_allowed(),
+                # One execution-safety verdict per evaluation, decided from the
+                # connected account (arguments evaluate left to right, so the
+                # snapshot below is the one this call just produced).
+                user_kyc_approved=bool(self._execution_safety()["kyc"]["allowed"]),
+                live_readiness_approved=bool(self._execution_safety_snapshot["readiness"]["allowed"]),
+                kyc_status=self._execution_safety_snapshot["kyc"]["state"],
+                live_readiness_status=self._execution_safety_snapshot["readiness"]["state"],
                 daily_realized_pnl=float(getattr(self.daily, "realized_pnl", 0.0)),
                 daily_trade_count=int(getattr(self.daily, "trade_count", 0)),
                 kill_switch=bool(getattr(self.daily, "kill", False)),
@@ -4133,6 +4179,9 @@ class PaperRunner:
                     "strategy_id": eval_strat,
                     "signal_source": "internal_strategy",
                     "session_status": _strat_meta_s1.get("session_reason_code"),
+                    # KYC / real-capital readiness verdicts and the connected
+                    # account context they were decided in.
+                    "execution_safety": getattr(self, "_execution_safety_snapshot", None),
                     "risk_evaluated": _vis_sig not in ("HOLD", "NONE", "SIGNAL.HOLD"),
                     "risk_allowed": (decision == "execute") if _vis_sig not in ("HOLD", "NONE", "SIGNAL.HOLD") else None,
                     "sizing_evaluated": decision == "execute",
