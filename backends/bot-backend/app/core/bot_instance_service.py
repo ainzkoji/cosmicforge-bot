@@ -41,7 +41,6 @@ class BotInstanceService:
                 "stop_loss_multiplier": 2.0,
                 "take_profit_multiplier": 6.0,
                 "additional_params": {
-                    "min_confidence_score": 0.70,
                     "volatility_filter_enabled": True
                 }
             },
@@ -58,7 +57,6 @@ class BotInstanceService:
                 "stop_loss_multiplier": 2.0,
                 "take_profit_multiplier": 4.0,
                 "additional_params": {
-                    "min_confidence_score": 0.70,
                     "volatility_filter_enabled": True
                 }
             },
@@ -75,7 +73,6 @@ class BotInstanceService:
                 "stop_loss_multiplier": 1.5,
                 "take_profit_multiplier": 3.0,
                 "additional_params": {
-                    "min_confidence_score": 0.70,
                     "volatility_filter_enabled": False,
                     "strict_circuit_breakers": True
                 }

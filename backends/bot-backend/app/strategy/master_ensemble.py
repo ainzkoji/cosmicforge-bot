@@ -151,6 +151,15 @@ _REGIME_SPIKE_MULTIPLIERS: Dict[str, float] = {
     MarketRegime.LOW_VOLATILITY_CHOP.value: 2.0,
 }
 
+# =============================================================================
+# HTF STRENGTH NORMALISATION — a threshold-engine input, nothing else
+# =============================================================================
+
+#: |price - EMA200(HTF)| / EMA200 at which HTF strength reads 1.0: the upper
+#: quartile of that distance over 4,644 replayed opportunities (threshold
+#: policy 1.1.0; docs/adaptive_threshold_recalibration_report.md).
+HTF_STRENGTH_SATURATION = 0.13
+
 
 # =============================================================================
 # MASTER ENSEMBLE STRATEGY v2
@@ -171,9 +180,8 @@ _REGIME_SPIKE_MULTIPLIERS: Dict[str, float] = {
             # NOTE: the consensus gate is deleted, parameter and all. It was
             # advertised here as a tunable and was never compared against
             # anything. Expert agreement is one bounded input to the threshold.
-            "min_confidence": {
-                "type": "number", "minimum": 0.0, "maximum": 1.0, "default": 0.20,
-            },
+            # "min_confidence" went the same way with threshold policy 1.1.0:
+            # it fed only an opt-in second confidence gate nobody called.
             "interval": {"type": "string", "default": "15m"},
             "klines_limit": {"type": "integer", "default": 250},
         },
@@ -201,13 +209,11 @@ class MasterEnsembleStrategy(Strategy):
         self,
         client,
         interval: str = "15m",
-        min_confidence: float = 0.15,
         klines_limit: int = 250,
         htf_bias_enabled: bool = False,
     ) -> None:
         self.client = client
         self.interval = interval
-        self.min_confidence = float(min_confidence)
         self.klines_limit = int(klines_limit)
         self.htf_bias_enabled = bool(htf_bias_enabled)
 
@@ -301,24 +307,53 @@ class MasterEnsembleStrategy(Strategy):
         self.last_expert_evidence = ()
 
     @staticmethod
+    def _rolling_atr_percent(highs, lows, closes, period: int = 14) -> List[float]:
+        """ATR% at every candle, computed exactly as the regime classifier does.
+
+        Entry for candle ``t`` equals
+        ``regime.calculate_atr_percent(highs[:t+1], lows[:t+1], closes[:t+1], period)``:
+        the simple mean of the last ``period`` true ranges, over that close. The
+        true ranges are built once instead of re-running that function per
+        candle, and each mean sums the same slice in the same order, so the
+        last entry is bit-identical to the classifier's own ``atr_percent``.
+        """
+        trs = [
+            max(highs[i] - lows[i], abs(highs[i] - closes[i - 1]), abs(lows[i] - closes[i - 1]))
+            for i in range(1, len(closes))
+        ]
+        out: List[float] = []
+        for t in range(period, len(closes)):
+            atr = sum(trs[t - period:t]) / period
+            out.append((atr / closes[t]) * 100 if closes[t] > 0 else 0.0)
+        return out
+
+    @staticmethod
     def _volatility_context(regime_result, klines) -> VolatilityContext:
         """Normalised volatility for the threshold engine.
 
-        ATR is converted to a percentile against the recent distribution of the
-        same measure, so the value means the same thing on BTC as it would on
-        any other instrument. A raw ATR would not.
+        The current ATR% -- the regime classifier's own measure -- is ranked
+        against the same measure over the last 120 candles, so the value means
+        the same thing on BTC as it would on any other instrument. A raw ATR
+        would not.
+
+        Engine inputs before policy 1.1.0 ranked the 14-candle ATR% against
+        single-candle high-low ranges. An average of true ranges sits above
+        most individual ranges, so that "percentile" read high on almost every
+        candle (mean 0.64 over 4,644 replayed opportunities, where a rank of
+        like against like centres on 0.5) and the volatility term raised the
+        bar in markets that were not volatile. Like is now compared with like.
         """
         atr_pct = float(getattr(regime_result, "atr_percent", 0.0) or 0.0)
         percentile_value: float | None = None
         try:
-            ranges = []
-            for k in klines[-120:]:
-                high, low, close = float(k[2]), float(k[3]), float(k[4])
-                if close > 0:
-                    ranges.append((high - low) / close * 100.0)
-            if len(ranges) >= 20:
-                below = sum(1 for r in ranges if r <= atr_pct)
-                percentile_value = below / len(ranges)
+            series = MasterEnsembleStrategy._rolling_atr_percent(
+                [float(k[2]) for k in klines],
+                [float(k[3]) for k in klines],
+                [float(k[4]) for k in klines],
+            )[-120:]
+            if atr_pct > 0 and len(series) >= 20:
+                below = sum(1 for v in series if v <= atr_pct)
+                percentile_value = below / len(series)
         except (IndexError, TypeError, ValueError, ZeroDivisionError):
             percentile_value = None
 
@@ -407,8 +442,12 @@ class MasterEnsembleStrategy(Strategy):
         else:
             direction = "NEUTRAL"
 
+        # Saturates at the upper quartile of the observed distance (0.13 over
+        # 4,644 replayed opportunities). The 5% it replaced was below the
+        # median distance, so 60% of candles read as full strength and the term
+        # was a binary +/- bound rather than a graded one.
         distance = abs(price - ema200) / ema200
-        strength = max(0.0, min(1.0, distance / 0.05))
+        strength = max(0.0, min(1.0, distance / HTF_STRENGTH_SATURATION))
 
         return HTFContext(
             timeframe=str(timeframe),
@@ -1112,19 +1151,10 @@ class MasterEnsembleStrategy(Strategy):
                 f"→ {final_signal.value} ({final_confidence:.3f})"
             )
 
-        # Deprecated compatibility gate.  The orchestrated path performs exactly
-        # one entry-quality comparison above.  Legacy callers may opt in while
-        # they are migrated, but must do so explicitly.
-        if (
-            bool(kwargs.get("legacy_secondary_confidence_gate", False))
-            and final_confidence < self.min_confidence
-            and final_signal != Signal.HOLD
-        ):
-            logger.debug(
-                f"[ENSEMBLE] {symbol}: BLOCKED by hard min_confidence "
-                f"({final_confidence:.3f} < {self.min_confidence:.3f})"
-            )
-            final_signal = Signal.HOLD
+        # The opt-in "legacy_secondary_confidence_gate" that compared confidence
+        # with self.min_confidence here was deleted with threshold policy 1.1.0.
+        # No caller passed it; it was a second threshold authority waiting for
+        # one to. The comparison above is the only one.
 
         # HTF Bias check (Hard enforcement of 4h EMA200 trend)
         # None = the veto never ran (disabled, or nothing to veto). NOT_EVALUATED

@@ -32,7 +32,12 @@ from app.threshold.contracts import ThresholdMode
 
 #: Bumped whenever the *meaning* of a policy field changes, so a stored
 #: policy_hash cannot be silently reinterpreted.
-POLICY_VERSION = "1.0.0"
+#:
+#: 1.1.0 -- base, band and every magnitude recalibrated to the confidence scale
+#: the ensemble actually produces; agreement measured as breadth among the
+#: eligible experts. 1.0.0 decisions stay on record under their own version and
+#: hash, and a 1.0.0 adaptive state is never carried into a 1.1.0 epoch.
+POLICY_VERSION = "1.1.0"
 
 SCOPE_ORDER = ("GLOBAL", "ASSET_CLASS", "VENUE", "SYMBOL", "BOT")
 
@@ -59,16 +64,31 @@ DEFAULTS: dict[str, Any] = {
     # base, and resolution fails if configuration does not supply one.
     "base_threshold": None,
     "static_threshold": None,
-    "min_threshold": 0.50,
-    "max_threshold": 0.90,
+    # The single band, read off the empirical opportunity-confidence
+    # distribution (4,644 organic opportunities in production-parity replay;
+    # docs/adaptive_threshold_recalibration_report.md):
+    #   min 0.25 -- the top of the empty interval between the lone-sma_cross
+    #               cluster (0.195) and every other opportunity (>= 0.25). The
+    #               most permissive state still rejects the weakest expert alone.
+    #   max 0.60 -- the median of genuine multi-expert consensus (P50 0.593,
+    #               P60 0.602). The strictest state stays attainable by it.
+    "min_threshold": 0.25,
+    "max_threshold": 0.60,
     # Bounded contributions. Each is a maximum absolute magnitude.
-    "regime_bound": 0.06,
-    "volatility_bound": 0.05,
-    "agreement_bound": 0.08,
-    "htf_bound": 0.05,
-    "market_quality_bound": 0.04,
-    "performance_bound": 0.05,
-    "distribution_bound": 0.05,
+    #
+    # The 1.0.0 magnitudes were sized against a 0.70 base. Scaled together by
+    # k = (P90 confidence - base) / 0.28 = (0.40 - 0.30) / 0.28, every ordinary
+    # market penalty at once lifts the bar to the empirical P90 and no further,
+    # and with both calibration terms added it stays below P95 (0.484). Their
+    # proportions are unchanged: the replay gave no evidence that would justify
+    # re-weighting one term against another.
+    "regime_bound": 0.021,
+    "volatility_bound": 0.018,
+    "agreement_bound": 0.029,
+    "htf_bound": 0.018,
+    "market_quality_bound": 0.014,
+    "performance_bound": 0.018,
+    "distribution_bound": 0.018,
     # Slow calibration.
     "performance_min_samples": 30,
     "performance_lookback": 100,
@@ -79,8 +99,10 @@ DEFAULTS: dict[str, Any] = {
     # conservative asymmetry: the engine may become strict quickly and must
     # become permissive slowly.
     "smoothing_alpha": 0.35,
-    "max_step_up": 0.05,
-    "max_step_down": 0.03,
+    # Scaled by the same k: the same fraction of the adjustment range per
+    # evaluated candle as the 1.0.0 design.
+    "max_step_up": 0.018,
+    "max_step_down": 0.011,
     # Regimes the policy refuses to evaluate at all. These are hard gates and
     # are never expressed as an unreachable threshold.
     "hard_block_regimes": ("LOW_VOLATILITY_CHOP",),

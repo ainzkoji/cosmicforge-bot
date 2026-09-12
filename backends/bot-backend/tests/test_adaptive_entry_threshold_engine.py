@@ -641,31 +641,40 @@ class TestDistributionCalibration:
 
 
 class TestSmoothing:
-    def test_upward_movement_is_rate_limited(self):
-        policy = make_policy(max_step_up=0.01, base_threshold=0.60)
-        engine = AdaptiveEntryThresholdEngine()
-        key = make_request().state_key()
-        state = engine.state_store.get(key)
-        state.previous_threshold = 0.55
+    @staticmethod
+    def _seed(engine, policy, previous):
+        """A previous threshold owned by *this* calibration epoch.
+
+        A state written under another engine version or policy is discarded
+        rather than smoothed against (see test_threshold_policy_1_1_recalibration),
+        so a smoothing test has to seed a state the current epoch wrote.
+        """
+        state = engine.state_store.get(make_request().state_key())
+        state.previous_threshold = previous
+        state.engine_version = engine.version
+        state.policy_hash = policy.policy_hash
         engine.state_store.put(state)
+
+    def test_upward_movement_is_rate_limited(self):
+        policy = make_policy(max_step_up=0.01, base_threshold=0.30)
+        engine = AdaptiveEntryThresholdEngine()
+        self._seed(engine, policy, 0.28)
 
         decision = engine.evaluate(
             make_request(regime=RegimeContext(regime="STRONG_TREND", regime_confidence=1.0)),
             policy,
         )
-        assert decision.final_threshold <= 0.55 + 0.01 + 1e-9
+        assert decision.final_threshold <= 0.28 + 0.01 + 1e-9
         assert decision.rate_limit_applied
 
     def test_downward_movement_is_rate_limited(self):
-        policy = make_policy(max_step_down=0.005, base_threshold=0.60)
+        policy = make_policy(max_step_down=0.005, base_threshold=0.30)
         engine = AdaptiveEntryThresholdEngine()
-        key = make_request().state_key()
-        state = engine.state_store.get(key)
-        state.previous_threshold = 0.80
-        engine.state_store.put(state)
+        self._seed(engine, policy, 0.45)
 
         decision = engine.evaluate(make_request(), policy)
-        assert decision.final_threshold >= 0.80 - 0.005 - 1e-9
+        assert decision.final_threshold >= 0.45 - 0.005 - 1e-9
+        assert decision.rate_limit_applied
 
     def test_tightening_is_allowed_to_be_faster_than_loosening(self):
         policy = make_policy()
@@ -998,15 +1007,15 @@ class TestDeterminism:
 class TestModes:
     def test_static_mode_applies_no_adaptation(self):
         policy = resolve_threshold_policy(
-            scopes=[("GLOBAL", {"mode": ThresholdMode.STATIC, "static_threshold": 0.65})],
-            base_threshold=0.60,
+            scopes=[("GLOBAL", {"mode": ThresholdMode.STATIC, "static_threshold": 0.45})],
+            base_threshold=0.30,
         )
         engine = AdaptiveEntryThresholdEngine()
         decision = engine.evaluate(
             make_request(regime=RegimeContext(regime="STRONG_TREND", regime_confidence=1.0)),
             policy,
         )
-        assert decision.final_threshold == pytest.approx(0.65)
+        assert decision.final_threshold == pytest.approx(0.45)
         assert decision.regime_adjustment == 0.0
         assert decision.reconcile()
 
@@ -1058,8 +1067,8 @@ class TestPolicyPrecedence:
         assert a.policy_hash == b.policy_hash
 
     def test_different_values_hash_differently(self):
-        a = resolve_threshold_policy(base_threshold=0.60)
-        b = resolve_threshold_policy(base_threshold=0.61)
+        a = resolve_threshold_policy(base_threshold=0.30)
+        b = resolve_threshold_policy(base_threshold=0.31)
         assert a.policy_hash != b.policy_hash
 
     def test_unknown_scope_is_rejected(self):

@@ -213,24 +213,28 @@ class Settings(BaseSettings):
     #   debugging) | RESEARCH (replay and sensitivity work). MODEL is reserved
     #   for validated AI calibration and is rejected, not silently downgraded.
     THRESHOLD_ENGINE_MODE: str = "ADAPTIVE"
-    # The centre of the adaptive band. Required: the engine never invents one,
-    # and startup fails if it is unset. Which entry bar is correct remains a
-    # question for the sensitivity study, not for a default.
-    THRESHOLD_BASE: float = 0.70
+    # The centre of the adaptive band: policy 1.1.0 recalibrated the engine to
+    # the confidence scale the ensemble actually produces (median 0.325, P90
+    # 0.40, maximum 0.90 over 4,644 replayed opportunities). 0.30 is the
+    # production decision; the sensitivity study behind it and the band below
+    # is docs/adaptive_threshold_recalibration_report.md.
+    THRESHOLD_BASE: float = 0.30
     THRESHOLD_STATIC: float = 0.0       # required when mode is STATIC
     # The single band. There is no other floor, cap or clamp in the system.
-    THRESHOLD_MIN: float = 0.50
-    THRESHOLD_MAX: float = 0.90
+    # Derived from the same distribution -- see app/threshold/policy.py.
+    THRESHOLD_MIN: float = 0.25
+    THRESHOLD_MAX: float = 0.60
 
     # Bounded contributions. Each is a maximum absolute magnitude in threshold
-    # units, so the worst case is knowable by reading this block.
-    THRESHOLD_REGIME_ADJUSTMENT_MAX: float = 0.06
-    THRESHOLD_VOLATILITY_ADJUSTMENT_MAX: float = 0.05
-    THRESHOLD_AGREEMENT_ADJUSTMENT_MAX: float = 0.08
-    THRESHOLD_HTF_ADJUSTMENT_MAX: float = 0.05
-    THRESHOLD_MARKET_QUALITY_ADJUSTMENT_MAX: float = 0.04
-    THRESHOLD_PERFORMANCE_ADJUSTMENT_MAX: float = 0.05
-    THRESHOLD_DISTRIBUTION_ADJUSTMENT_MAX: float = 0.05
+    # units, so the worst case is knowable by reading this block. Every
+    # ordinary market penalty at once reaches the empirical P90 (0.40).
+    THRESHOLD_REGIME_ADJUSTMENT_MAX: float = 0.021
+    THRESHOLD_VOLATILITY_ADJUSTMENT_MAX: float = 0.018
+    THRESHOLD_AGREEMENT_ADJUSTMENT_MAX: float = 0.029
+    THRESHOLD_HTF_ADJUSTMENT_MAX: float = 0.018
+    THRESHOLD_MARKET_QUALITY_ADJUSTMENT_MAX: float = 0.014
+    THRESHOLD_PERFORMANCE_ADJUSTMENT_MAX: float = 0.018
+    THRESHOLD_DISTRIBUTION_ADJUSTMENT_MAX: float = 0.018
 
     # Slow calibration. Below the minimum sample the adjustment is exactly 0.0
     # and the status is INSUFFICIENT_SAMPLE -- a handful of trades must never
@@ -242,10 +246,13 @@ class Settings(BaseSettings):
     THRESHOLD_DISTRIBUTION_PERCENTILE: float = 0.60
 
     # Smoothing and hysteresis. Tightening faster than loosening is deliberate:
-    # the bar may rise quickly and must fall slowly.
+    # the bar may rise quickly and must fall slowly. The steps are the same
+    # fraction of the (recalibrated) adjustment range per evaluated candle as
+    # before; a policy change starts a clean epoch rather than stepping down
+    # from an obsolete anchor.
     THRESHOLD_SMOOTHING_ALPHA: float = 0.35
-    THRESHOLD_MAX_STEP_UP: float = 0.05
-    THRESHOLD_MAX_STEP_DOWN: float = 0.03
+    THRESHOLD_MAX_STEP_UP: float = 0.018
+    THRESHOLD_MAX_STEP_DOWN: float = 0.011
 
     # Optional per-scope overrides, JSON:
     #   {"SYMBOL": {"ETHUSDT": {"max_threshold": 0.85}}}
@@ -668,11 +675,11 @@ class Settings(BaseSettings):
             failures.append(f"Threshold policy could not be resolved: {exc}")
             threshold_policy = None
 
-        if threshold_policy is not None and threshold_policy.base_threshold < 0.50:
-            warnings_list.append(
-                f"THRESHOLD_BASE={threshold_policy.base_threshold} is a permissive entry bar; "
-                "it has not been justified by an out-of-sample sensitivity study."
-            )
+        # No "permissive base" warning any more. It fired below 0.50, a number
+        # above the P95 of the confidence scale the ensemble produces, so it
+        # would have flagged every workable policy. The band is validated by
+        # validate_policy above; the sensitivity study behind 0.30 is
+        # docs/adaptive_threshold_recalibration_report.md.
 
         if not self.KILL_SWITCH_CLOSE_POSITIONS:
             failures.append(

@@ -55,7 +55,10 @@ from app.threshold.state import ThresholdState, ThresholdStateStore
 
 logger = logging.getLogger(__name__)
 
-ENGINE_VERSION = "1.0.0"
+#: 1.1.0 -- agreement is breadth among eligible experts (no second weighting by
+#: confidence), and a stored state from another engine version or policy opens
+#: a clean calibration epoch instead of anchoring smoothing and rate limiting.
+ENGINE_VERSION = "1.1.0"
 
 #: Reason codes emitted by the engine itself. Hard gates owned by other layers
 #: (kill switch, daily loss, capital, execution feasibility) never appear here.
@@ -167,15 +170,29 @@ def volatility_component(ctx: Any, bound: float) -> tuple[float | None, float]:
 
 
 def agreement_component(
-    experts: Sequence[ExpertEvidence], bound: float
+    experts: Sequence[ExpertEvidence], bound: float, side: str | None = None
 ) -> tuple[float | None, float, dict[str, Any]]:
     """``(agreement_score, adjustment, breakdown)``.
 
-    ``agreement_score`` is weighted net support as a fraction of the weight that
-    *could* have supported the side. An eligible expert that failed to run
-    counts in the denominator and not the numerator, so missing evidence raises
-    the bar. An expert the regime deactivated counts in neither -- it was never
-    asked, and treating its silence as a HOLD would be a fabricated vote.
+    ``agreement_score`` is the *breadth* of consensus: the share of eligible
+    expert weight voting for the opportunity's side, net of the weight voting
+    against it. Only eligible experts are in the denominator -- an expert the
+    regime deactivated was never asked, so a regime that runs four experts is
+    judged against four, not seven. An eligible expert that failed to run
+    counts in the denominator and not the numerator, so missing evidence
+    raises the bar.
+
+    Expert *confidence* is deliberately not in the score. It already is the
+    opportunity's confidence -- the very number this threshold is compared
+    with. Engine 1.0.0 weighted agreement by it a second time, so a lukewarm
+    opportunity paid twice (once in its confidence, again in a higher bar),
+    and because a lone expert can never supply half the eligible weight times
+    its confidence, the term raised the bar on 4,643 of 4,644 replayed
+    opportunities.
+
+    Neutral is a simple majority of the eligible weight: more than half
+    agreeing lowers the bar, less raises it, unanimity lowers it by the full
+    bound.
     """
     if not experts:
         return (None, 0.0, {})
@@ -189,29 +206,32 @@ def agreement_component(
         return (None, 0.0, {"eligible": len(eligible), "eligible_weight": 0.0})
 
     directional = [e for e in eligible if e.is_directional]
-    buy_weight = sum(
-        abs(float(e.weight)) * float(e.confidence) for e in directional if e.signal == "BUY"
+    buy_weight = sum(abs(float(e.weight)) for e in directional if e.signal == "BUY")
+    sell_weight = sum(abs(float(e.weight)) for e in directional if e.signal == "SELL")
+    leading = str(side or "").upper()
+    if leading not in {"BUY", "SELL"}:
+        # No side supplied: judge the side with the most eligible weight behind it.
+        leading = "BUY" if buy_weight >= sell_weight else "SELL"
+    trailing = "SELL" if leading == "BUY" else "BUY"
+    support, oppose = (
+        (buy_weight, sell_weight) if leading == "BUY" else (sell_weight, buy_weight)
     )
-    sell_weight = sum(
-        abs(float(e.weight)) * float(e.confidence) for e in directional if e.signal == "SELL"
-    )
-    support = max(buy_weight, sell_weight)
-    oppose = min(buy_weight, sell_weight)
 
     score = _clamp((support - oppose) / eligible_weight, 0.0, 1.0)
 
     # Dispersion among the agreeing experts: unanimous-but-lukewarm is weaker
-    # evidence than unanimous-and-convinced.
-    confidences = [float(e.confidence) for e in directional if e.confidence > 0]
+    # evidence than unanimous-and-convinced. Opposing experts are already in
+    # the score and are not counted a second time here.
+    confidences = [float(e.confidence) for e in directional if e.signal == leading]
     dispersion = 0.0
     if len(confidences) > 1:
         mean = sum(confidences) / len(confidences)
         dispersion = (sum((c - mean) ** 2 for c in confidences) / len(confidences)) ** 0.5
 
     factor = 1.0 - 2.0 * score + _clamp(dispersion, 0.0, 0.5)
-    leading = "BUY" if buy_weight >= sell_weight else "SELL"
-    trailing = "SELL" if leading == "BUY" else "BUY"
     breakdown = {
+        "measure": "eligible_weight_breadth",
+        "side": leading,
         "eligible": len(eligible),
         "executed": sum(1 for e in eligible if e.executed),
         "not_run": sum(1 for e in eligible if not e.executed),
@@ -386,8 +406,10 @@ class AdaptiveEntryThresholdEngine:
                 **identity,
             )
 
-        state = self.state_store.get(request.state_key())
-        decision = self._compute(request, policy, state, identity)
+        state, epoch_reset = self._calibration_epoch(
+            self.state_store.get(request.state_key()), policy
+        )
+        decision = self._compute(request, policy, state, identity, epoch_reset=epoch_reset)
         self._persist(request, policy, state, decision)
         return decision
 
@@ -461,6 +483,8 @@ class AdaptiveEntryThresholdEngine:
         policy: EffectiveThresholdPolicy,
         state: ThresholdState,
         identity: dict[str, Any],
+        *,
+        epoch_reset: str | None = None,
     ) -> AdaptiveThresholdDecision:
         confidence = float(request.opportunity_confidence)
 
@@ -472,7 +496,7 @@ class AdaptiveEntryThresholdEngine:
         regime_score, regime_adj = regime_component(request.regime, policy.regime_bound)
         vol_score, vol_adj = volatility_component(request.volatility, policy.volatility_bound)
         agree_score, agree_adj, agree_breakdown = agreement_component(
-            request.experts, policy.agreement_bound
+            request.experts, policy.agreement_bound, request.side
         )
         htf_score, htf_adj = htf_component(request.htf, request.side, policy.htf_bound)
         mq_score, mq_adj = market_quality_component(
@@ -547,10 +571,61 @@ class AdaptiveEntryThresholdEngine:
             clamp_applied=clamp_applied,
             passed=passed,
             reason=REASON_APPROVED if passed else REASON_BELOW,
-            detail=str(agree_breakdown) if agree_breakdown else "",
+            detail="; ".join(
+                part
+                for part in (epoch_reset, str(agree_breakdown) if agree_breakdown else "")
+                if part
+            ),
+            state_reset_reason=epoch_reset,
             expert_evidence=tuple(request.experts),
             decided_at=request.evaluated_at,
             **identity,
+        )
+
+    def _calibration_epoch(
+        self, state: ThresholdState, policy: EffectiveThresholdPolicy
+    ) -> tuple[ThresholdState, str | None]:
+        """Open a clean calibration epoch when the engine or the policy changed.
+
+        Smoothing and rate limiting are anchored on the previous threshold, and
+        the distribution term on samples gathered under the stored policy. Both
+        mean something only under the policy that produced them. Carried across
+        a policy change, a 0.78 anchor from the 0.70-era policy would hold a
+        0.30-based policy up for hours -- smoothing pulls toward it and the step
+        limit only lets the bar fall a little per evaluated candle -- and the
+        samples would include evidence the new epoch never saw.
+
+        So a state written by another engine version or policy hash is not
+        migrated: it is discarded, the new epoch starts from nothing (no
+        anchor, an empty distribution, which is neutral), and the first
+        decision says so. Earlier decisions are untouched and keep their own
+        version and hash in ``threshold_decisions``.
+        """
+        carried = (
+            state.previous_threshold is not None
+            or bool(state.distribution_samples)
+            or state.last_candle_time is not None
+        )
+        if not carried or (
+            state.engine_version == self.version and state.policy_hash == policy.policy_hash
+        ):
+            return state, None
+        reason = (
+            "CALIBRATION_EPOCH_RESET "
+            f"engine={state.engine_version or 'unrecorded'}->{self.version} "
+            f"policy={(state.policy_hash or 'unrecorded')[:12]}->{policy.policy_hash[:12]} "
+            f"discarded_previous_threshold={state.previous_threshold} "
+            f"discarded_samples={len(state.distribution_samples)}"
+        )
+        logger.warning("[THRESHOLD_STATE] %s key=%s", reason, state.key)
+        return (
+            ThresholdState(
+                bot_instance_id=state.bot_instance_id,
+                symbol=state.symbol,
+                timeframe=state.timeframe,
+                strategy_version=state.strategy_version,
+            ),
+            reason,
         )
 
     def _static_decision(

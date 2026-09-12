@@ -54,7 +54,8 @@ def classifier(regime=MarketRegime.WEAK_TREND):
     ))
 
 
-def policy(base: float = 0.70, low: float = 0.50):
+def policy(base: float = 0.30, low: float = 0.25):
+    """Production scale by default (threshold policy 1.1.0)."""
     return lambda **_: resolve_threshold_policy(
         scopes=[("GLOBAL", {"min_threshold": low})], base_threshold=base,
     )
@@ -67,8 +68,8 @@ def db():
     return database
 
 
-def evaluate(db, *, confidence=0.40, regime=MarketRegime.WEAK_TREND, bars=120,
-             base=0.70, low=0.50, persist=None):
+def evaluate(db, *, confidence=0.20, regime=MarketRegime.WEAK_TREND, bars=120,
+             base=0.30, low=0.25, persist=None):
     return evaluate_external_candidate(
         db=db, symbol=SYMBOL, side="BUY", confidence=confidence, klines=klines(bars),
         timeframe="15m", source="TRADINGVIEW", bot_instance_id=BOT,
@@ -87,7 +88,8 @@ def threshold_rows(db):
 
 
 def test_a_weak_external_candidate_is_rejected_by_the_threshold_authority(db):
-    result = evaluate(db, confidence=0.40)
+    # Weak on the ensemble's scale: below the band's floor, so no context can admit it.
+    result = evaluate(db, confidence=0.20)
     assert result.passed is False
     assert result.reason == "ENTRY_CONFIDENCE_BELOW_THRESHOLD"
     assert result.threshold_status == ThresholdStatus.EVALUATED

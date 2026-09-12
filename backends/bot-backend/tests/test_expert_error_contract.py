@@ -172,7 +172,7 @@ def test_the_threshold_engine_fails_an_errored_candle_closed():
         ExpertEvidence("sma_cross", True, True, "ERROR", 0.0, weight=0.9, reason="data_error:x"),
     ]
     decision = AdaptiveEntryThresholdEngine().evaluate(
-        _request(experts), resolve_threshold_policy(base_threshold=0.70),
+        _request(experts), resolve_threshold_policy(base_threshold=0.30),
     )
     assert decision.status == ThresholdStatus.ERROR
     assert decision.reason == REASON_EXPERT_ERROR
@@ -188,7 +188,7 @@ def test_an_ineligible_expert_in_error_does_not_block():
         ExpertEvidence("vwap_reversion", False, False, "ERROR", 0.0, weight=1.2),
     ]
     decision = AdaptiveEntryThresholdEngine().evaluate(
-        _request(experts), resolve_threshold_policy(base_threshold=0.70),
+        _request(experts), resolve_threshold_policy(base_threshold=0.30),
     )
     assert decision.status == ThresholdStatus.EVALUATED
 

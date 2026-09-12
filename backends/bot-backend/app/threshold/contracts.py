@@ -320,6 +320,10 @@ class AdaptiveThresholdDecision:
     passed: bool | None = None
     reason: str = ""
     detail: str = ""
+    #: Set on the first decision of a new calibration epoch: the stored adaptive
+    #: state came from another engine version or policy and was discarded, not
+    #: carried into this one.
+    state_reset_reason: str | None = None
     expert_evidence: tuple[ExpertEvidence, ...] = ()
     decided_at: str = field(default_factory=_now)
 
@@ -421,6 +425,7 @@ class AdaptiveThresholdDecision:
             "clamp_applied": self.clamp_applied,
             "passed": self.passed,
             "reason": self.reason,
+            "state_reset_reason": self.state_reset_reason,
             "reconciles": self.reconcile(),
         }
 
