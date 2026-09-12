@@ -415,7 +415,60 @@ The expert-internal `min_confidence` gates are strategy formulas and are unchang
 
 ## Phases 18–19 — Commit, deploy, forward acceptance
 
-Recorded after the graceful restart onto this commit, in the follow-up commit to this report.
+### Phase 18 — Commit and deploy
+
+- **Commits.** `51f9f901` holds the code and tests. `5f297f22` holds this report. This follow-up adds the acceptance record.
+- **Configuration.** `.env` and the local `.env.example` now read THRESHOLD_BASE / MIN / MAX = 0.30 / 0.25 / 0.60, and the stale "migrated from 0.70" comment was rewritten. The backup is `.env.backup_before_threshold_policy_1_1`.
+  - `.env` was edited only once the committed code was 1.1.0. Before that, any restart would have refused to start, because 0.30 lies outside the 1.0.0 band.
+- **Incident: a restart onto uncommitted work.**
+  - At 21:38:45Z the runtime was restarted by hand from the VS Code terminal while the 1.1.0 changes were still uncommitted. Session `rts_f2ba53f66c19488c8425` ran `2884d9b7` plus the dirty working tree, with the old `.env` values 0.70 / 0.50 / 0.90.
+  - The result was a policy nobody studied: engine 1.1.0, hash `dfd80f56...`, thresholds around 0.73.
+  - It only blocked. It evaluated 11 opportunities and passed none, so no money was at risk.
+  - Its evidence comes from a dirty tree and is excluded.
+  - It did confirm the Task 4 fix live: KYC `NOT_REQUIRED`, readiness `NOT_REQUIRED_FOR_DEMO_EXECUTION`.
+- **Graceful restart.** At 2026-09-12T01:26:44Z, via `scripts/trading_runtime.ps1 restart`.
+  - The pre-restart gate passed first: 0 positions, 0 non-flat symbol state, 0 in-flight attempts, 0 pending entries.
+  - The lease was released, port 9000 was freed, and the runtime started supervised.
+
+### Phase 19 — Clean forward acceptance
+
+| Field | Value |
+|---|---|
+| runtime_session_id | `rts_32fdec27c9344e419abd` (pid 37064), started 2026-09-12T01:26:55Z |
+| run_id | `b148edd736024ff79222175508b53f1a` (broker / demo / TESTNET) |
+| commit | `5f297f22`, working tree clean |
+| engine / policy | 1.1.0 / 1.1.0, hash `7f6b14ca8d09ed09ab78caf8c78781b1ac1ffa628ff40802de6dc291ec79d590`. Resolved from the live `.env` and identical to the replayed policy |
+| bot | `bot_a8117dc719fc`, mode `live`, broker `brk_c729454e6c98`, environment demo |
+| execution safety | account_environment demo, real_capital False, KYC NOT_REQUIRED, readiness NOT_REQUIRED_FOR_DEMO_EXECUTION |
+| runtime log | 0 tracebacks |
+
+**First organic evaluated opportunity** (2026-09-12T01:30:05Z, BTCUSDT, WEAK_TREND):
+
+| Term | Value |
+|---|---|
+| opportunity_confidence | 0.3250 |
+| base | 0.30 |
+| regime | +0.0063 |
+| volatility | +0.0117 |
+| agreement | +0.0130 (one eligible expert of four) |
+| HTF | +0.0070 (opposed, graded) |
+| market quality | +0.0114 (low volume) |
+| performance | 0.0000 (no closed trades) |
+| distribution | 0.0000 (cold start, new epoch) |
+| raw / smoothed / rate-limited / final | 0.3494 / 0.3494 / 0.3494 / **0.3494** |
+| previous_threshold | none. `CALIBRATION_EPOCH_RESET` policy `dfd80f56 -> 7f6b14ca`, discarded previous_threshold 0.735 |
+| passed | no (gap 0.024) |
+| reconciles | yes |
+
+**What this shows.**
+- The final threshold now sits inside the confidence scale. The same kind of candidate faced 0.735 on the previous candle's policy.
+- A lone supertrend vote, against the 4h trend and on low volume, was held just below the bar. That is the adaptive terms deciding, not an anchor.
+- A 0.50-0.60 candidate would pass. The epoch reset stopped the stale 0.735 anchor from dragging the bar.
+- The ETHUSDT state still holds the hybrid epoch and resets the same way on its first evaluated candle.
+
+**Canonical database.** Across the whole task (the full pytest run, every capture and all ten replays) there were 0 foreign rows. The two new legacy `runs` rows are the runtime starts at 21:38:58Z and 01:26:55Z.
+
+First organic threshold pass and first broker order: not yet observed when this was recorded.
 
 ---
 
@@ -426,4 +479,49 @@ Recorded after the graceful restart onto this commit, in the follow-up commit to
 - **External confidence is capped at 0.75, above the new maximum of 0.60.** An external candidate therefore clears the band in almost every context. It still goes through the one engine, but the cap no longer means "must still pass the bar". This is a product decision.
 - **Confidence has no monotone edge.** In the forward proxy, raising the bar does not select better entries. The recalibration makes the engine functional; it does not create an edge.
 
-The final verdict block is recorded after forward acceptance, in the follow-up commit to this report.
+## Final verdict
+
+```
+CURRENT_OLD_BASE:                     0.70
+NEW_BASE:                             0.30
+OLD_MIN:                              0.50
+NEW_MIN:                              0.25  (top of the empty gap above the lone-sma_cross cluster at 0.195 (9.2%); zero mass in [0.20, 0.25))
+OLD_MAX:                              0.90
+NEW_MAX:                              0.60  (median of multi-expert consensus P50 0.593 / P60 0.602; between P95 0.484 and P99 0.643; attainable)
+EMPIRICAL_CONFIDENCE_COUNT:           4644 (production-parity capture; 30 clean live rows consistent)
+CONFIDENCE_P25:                       0.3090
+CONFIDENCE_P50:                       0.3250
+CONFIDENCE_P75:                       0.3482
+CONFIDENCE_P90:                       0.4000
+CONFIDENCE_MAX:                       0.8965
+OLD_AVG_THRESHOLD:                    0.7187 (replay; clean live 0.769)
+NEW_REPLAY_AVG_THRESHOLD:             0.3392
+OLD_THRESHOLD_PASS_RATE:              0.52% (24 / 4644)
+NEW_REPLAY_THRESHOLD_PASS_RATE:       35.06% (1628 / 4644)
+ADJUSTMENT_MAGNITUDES_RECALIBRATED:   YES
+AGREEMENT_DENOMINATOR_CORRECT:        YES (eligible experts only; the confidence double count is removed)
+DISTRIBUTION_CALIBRATION:             PASS
+PERFORMANCE_CALIBRATION:              PASS
+COLD_START_BASE:                      0.30
+OLD_ADAPTIVE_STATE_RESET:             PASS (observed live, BTCUSDT 01:30:05Z; ETHUSDT on its first evaluated candle)
+NEW_THRESHOLD_ENGINE_VERSION:         1.1.0
+NEW_POLICY_HASH:                      7f6b14ca8d09ed09ab78caf8c78781b1ac1ffa628ff40802de6dc291ec79d590
+ACTIVE_FINAL_THRESHOLD_AUTHORITY_COUNT: 1
+OLD_THRESHOLD_AUTHORITY_FOUND:        dormant ensemble legacy_secondary_confidence_gate (deleted); dead 0.70 min_confidence_score preset (removed); none active
+FOCUSED_TESTS:                        356 passed
+FULL_SUITE:                           2656 passed, 1 skipped, 27 warnings, 4 subtests passed in 2150.48 s
+TEST_DB_ISOLATION:                    PASS
+REPLAY_TRADES:                        2 (one per symbol; the replay stuck-state defect caps every run at one trade)
+REPLAY_PROFIT_FACTOR:                 NOT_COMPUTABLE (n=1 per symbol)
+REPLAY_EXPECTANCY:                    NOT_COMPUTABLE (n=1: -3.31 / -11.40 USDT)
+REPLAY_MAX_DRAWDOWN:                  NOT_COMPUTABLE (n=1: 3.31 / 11.40 USDT)
+WORKING_TREE_CLEAN:                   YES
+FINAL_COMMIT:                         this commit (code 51f9f901, report 5f297f22)
+LIVE_RUNTIME_RESTARTED:               YES (rts_32fdec27c9344e419abd)
+LIVE_BOT_MODE:                        live
+LIVE_BROKER_ACCOUNT:                  brk_c729454e6c98
+LIVE_POLICY_HASH:                     7f6b14ca8d09ed09ab78caf8c78781b1ac1ffa628ff40802de6dc291ec79d590
+FIRST_ORGANIC_THRESHOLD_PASS:         NOT_YET_OBSERVED
+FIRST_ORGANIC_BROKER_ORDER:           NOT_YET_OBSERVED
+AI_DECISION_AUTHORITY:                DISABLED (ML_ENABLED=False)
+```
