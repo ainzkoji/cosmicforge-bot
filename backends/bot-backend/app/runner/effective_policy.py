@@ -42,7 +42,17 @@ def normalize_execution_mode(value: str | None) -> str:
     raise EffectivePolicyError("INVALID_EXECUTION_MODE", f"Unsupported execution mode: {value!r}")
 
 
-def _symbols(value: Any) -> Tuple[str, ...]:
+def _universe_mode(value: Any) -> str:
+    """``BROKER`` or ``ALLOWLIST``. Unset (a pre-universe row) is ``ALLOWLIST``."""
+    from app.universe.contracts import UniverseMode
+
+    try:
+        return UniverseMode.normalize(value) or UniverseMode.ALLOWLIST
+    except ValueError as exc:
+        raise EffectivePolicyError("INVALID_UNIVERSE_MODE", str(exc)) from exc
+
+
+def _symbols(value: Any, *, allow_empty: bool = False) -> Tuple[str, ...]:
     if isinstance(value, str):
         try:
             parsed = json.loads(value)
@@ -50,7 +60,7 @@ def _symbols(value: Any) -> Tuple[str, ...]:
         except Exception:
             value = value.split(",")
     result = tuple(dict.fromkeys(str(v).strip().upper() for v in (value or []) if str(v).strip()))
-    if not result:
+    if not result and not allow_empty:
         raise EffectivePolicyError("MISSING_SYMBOLS", "At least one configured symbol is required")
     return result
 
@@ -144,6 +154,10 @@ class EffectiveBotPolicy:
     news_mode: str
     external_signal_mode: str
 
+    #: Where markets come from: BROKER (connected account) or ALLOWLIST
+    #: (``symbols``). The dynamic broker list is deliberately NOT in the
+    #: policy -- it changes every refresh and must not change the hash.
+    universe_mode: str = "ALLOWLIST"
     policy_version: str = POLICY_VERSION
     policy_hash: str = ""
     resolved_at: str = ""
@@ -235,8 +249,16 @@ def resolve_effective_bot_policy(
         )
 
     requested_leverage = float(risk_params.get("max_leverage", 10.0))
-    symbol_values = _symbols(getattr(instance, "symbols", None))
-    asset_ceiling = limits.max_leverage_major if all(s in {"BTCUSDT", "ETHUSDT"} for s in symbol_values) else limits.max_leverage_alt
+    universe_mode = _universe_mode(getattr(instance, "universe_mode", None))
+    symbol_values = _symbols(getattr(instance, "symbols", None), allow_empty=universe_mode == "BROKER")
+    if universe_mode == "BROKER":
+        # The universe changes between refreshes, so the per-symbol ceiling
+        # (major / alt / meme / stable) is enforced per order by SystemLimits
+        # through the orchestrator. The bot-level value is the highest class
+        # ceiling -- never looser than any symbol's own.
+        asset_ceiling = limits.max_leverage_major
+    else:
+        asset_ceiling = limits.max_leverage_major if all(s in {"BTCUSDT", "ETHUSDT"} for s in symbol_values) else limits.max_leverage_alt
     effective_leverage = _clamp(
         "max_leverage", requested_leverage, asset_ceiling, warnings, clamps, reason="ASSET_CLASS_LEVERAGE_CEILING"
     )
@@ -282,7 +304,7 @@ def resolve_effective_bot_policy(
         execution_mode=execution_mode,
         broker_environment=str(broker_environment or "unknown").lower(),
         strategy_id=str(instance.strategy_id), strategy_version=str(instance.strategy_version),
-        symbols=symbol_values, timeframe=timeframe, higher_timeframe="4h",
+        symbols=symbol_values, universe_mode=universe_mode, timeframe=timeframe, higher_timeframe="4h",
         execution_monitor_interval=int(monitor_interval_seconds), capital_budget=capital_budget,
         capital_allocation_type=str(getattr(instance, "capital_allocation_type", "fixed_amount") or "fixed_amount"),
         position_allocation_type=allocation_type, position_allocation_value=allocation_value,

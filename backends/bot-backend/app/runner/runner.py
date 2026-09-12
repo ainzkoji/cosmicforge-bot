@@ -44,6 +44,15 @@ from app.symbols.dynamic_universe import (
     DynamicUniverseShadowRecorder,
 )
 from app.symbols.symbol_selector import DynamicSymbolSelector
+from app.universe.contracts import UniverseMode
+
+#: Strategy-candle length per interval, for the no-new-candle pre-gate.
+_INTERVAL_MS = {
+    "1m": 60_000, "3m": 180_000, "5m": 300_000, "15m": 900_000, "30m": 1_800_000,
+    "1h": 3_600_000, "2h": 7_200_000, "4h": 14_400_000, "1d": 86_400_000,
+}
+#: A closed candle is requested this long after its close, so the venue has it.
+_CANDLE_DUE_GRACE_MS = 2_000
 from app.symbols.symbol_promotion import SymbolPromotionEvaluator
 from app.events.event_news_influence_engine import EventNewsInfluenceEngine
 from app.events.event_news_mode_controller import EventNewsModeController
@@ -370,7 +379,12 @@ class PaperRunner:
             _symbols_str = effective_symbols
         else:
             _symbols_str = ",".join(effective_symbols)
-        self.symbols = parse_symbols(_symbols_str, settings.MAX_SYMBOLS)
+        # The environment's MAX_SYMBOLS caps only the legacy contextless
+        # runner (development). A bot's markets come from its own policy --
+        # an explicit allowlist or its connected broker's universe.
+        self.symbols = parse_symbols(
+            _symbols_str, settings.MAX_SYMBOLS if not self.context else 100_000
+        )
         # Validate no single-character symbols leaked through
         _bad = [s for s in self.symbols if len(s) <= 2]
         if _bad:
@@ -504,7 +518,22 @@ class PaperRunner:
         self.circuit = self.circuit_registry.get_breaker(broker_id=self._circuit_id)
 
         # ---- Universes (trade vs live) ----
-        # If context is used, trade_symbols are the context symbols
+        # A broker-universe bot starts from the symbols it already holds; the
+        # first cycle's universe refresh adds ranked new-entry candidates. An
+        # allowlist bot keeps its explicit list.
+        self._universe_runtime = None
+        self._universe_open_symbols: set[str] = set()
+        self._next_candle_due_ms: dict[str, int] = {}
+        self._last_closed_candle_ms: dict[str, int] = {}
+        self._universe_deferred = 0
+        self._last_quiet_feed_check = 0.0
+        self.universe_mode = self._resolve_universe_mode()
+        if self.context and self.universe_mode == UniverseMode.BROKER:
+            self._universe_runtime = self._build_universe_runtime()
+            _held = self._held_symbols_from_store(bot_id)
+            self.context.symbols = list(_held)
+            self.symbols = list(_held)
+            self._universe_open_symbols = set(_held)
         if self.context:
             self.trade_symbols = list(self.context.symbols)
             # Live symbols treated same as trade symbols for context-based run
@@ -2081,8 +2110,27 @@ class PaperRunner:
             if _daily_closes:
                 results["_daily_close"] = {"decision": "CLOSE", "reason": "DAILY_CLOSE", "fills": _daily_closes}
 
-            # 2. Iterate Symbols
-            for symbol in self.trade_symbols:
+            # 2. Iterate Symbols -- held positions first, then new-entry
+            # candidates. For a broker-universe bot the candidate part is
+            # bounded by a time and request budget; a deferred candidate keeps
+            # its unclaimed candle and is evaluated on a following cycle.
+            self._apply_universe()
+            # Held-position management has priority and does not consume the
+            # new-entry scan budget. Start that clock at the first candidate.
+            _candidate_started: float | None = None
+            _budget_s = float(getattr(settings, "UNIVERSE_CYCLE_EVAL_BUDGET_SECONDS", 20.0) or 20.0)
+            _deferred: list[str] = []
+            for symbol in list(self.trade_symbols):
+                _is_candidate = (
+                    getattr(self, "_universe_runtime", None) is not None
+                    and str(symbol).upper() not in getattr(self, "_universe_open_symbols", set())
+                )
+                if _is_candidate:
+                    if _candidate_started is None:
+                        _candidate_started = time.monotonic()
+                    if self._candidate_budget_exhausted(_candidate_started, _budget_s):
+                        _deferred.append(symbol)
+                        continue
                 try:
                     res = self.step_symbol(symbol)
                     results[symbol] = res
@@ -2119,6 +2167,9 @@ class PaperRunner:
                     except:
                         pass
             
+            if getattr(self, "_universe_runtime", None) is not None:
+                self._after_universe_cycle(_deferred)
+
             # 3. Post-cycle cleanup (e.g. realized PnL sync if needed)
             # (Logic handled inside step_symbol usually for PnL recording)
             try:
@@ -5247,6 +5298,246 @@ class PaperRunner:
             "details": details,
         }
 
+    # ── Broker-derived market universe ─────────────────────────────────────
+
+    def _resolve_universe_mode(self) -> str:
+        if not self.context:
+            return UniverseMode.ALLOWLIST
+        raw = getattr(self.context, "universe_mode", None)
+        try:
+            return UniverseMode.normalize(raw) or UniverseMode.ALLOWLIST
+        except ValueError:
+            logger.error("[UNIVERSE] unknown universe_mode %r; treating as ALLOWLIST", raw)
+            return UniverseMode.ALLOWLIST
+
+    def _build_universe_runtime(self):
+        """The connected account's universe: its own client, never an env list."""
+        from app.universe.adapters import UniverseAdapterUnavailable, adapter_for
+        from app.universe.engine import UniverseConfig, UniverseEngine
+        from app.universe.runtime import UniverseRuntime
+
+        try:
+            adapter = adapter_for(getattr(self.context, "broker_type", ""), self.client)
+        except UniverseAdapterUnavailable as exc:
+            logger.error("[UNIVERSE] %s -- no new-entry candidates; held positions stay managed", exc)
+            return None
+        capital = float(getattr(self.context, "capital_budget", 0.0) or 0.0)
+        leverage = float(getattr(self.context, "max_leverage", 0.0) or 0.0)
+        cap = capital * leverage if capital > 0 and leverage > 0 else None
+        engine = UniverseEngine(adapter, UniverseConfig.from_settings(settings, max_position_notional=cap))
+        return UniverseRuntime(
+            engine=engine,
+            broker_account_id=self.context.broker_account_id,
+            bot_instance_id=self.context.bot_instance_id,
+            mode=UniverseMode.BROKER,
+            refresh_seconds=float(getattr(settings, "UNIVERSE_REFRESH_SECONDS", 900) or 900),
+            db=self.db,
+        )
+
+    @staticmethod
+    def _ordered_unique(symbols) -> list[str]:
+        seen: set[str] = set()
+        out: list[str] = []
+        for s in symbols:
+            u = str(s or "").strip().upper()
+            if u and u not in seen:
+                seen.add(u)
+                out.append(u)
+        return out
+
+    def _ledger_held_symbols(self, bot_id: str) -> list[str]:
+        """Symbols with an OPEN ledger position or an in-flight entry for this bot."""
+        out: list[str] = []
+        try:
+            with self.db.connect() as conn:
+                out += [
+                    r[0] for r in conn.execute(
+                        "SELECT DISTINCT symbol FROM positions WHERE bot_instance_id=? AND status='OPEN'",
+                        (bot_id,),
+                    ).fetchall()
+                ]
+        except Exception as exc:
+            logger.warning("[UNIVERSE] open-position lookup failed: %s", exc)
+        ep = getattr(getattr(self, "executor", None), "_entry_prot", None)
+        if ep is not None:
+            try:
+                out += [str(r.get("symbol") or "") for r in ep.list_entries(bot_id)]
+            except Exception as exc:
+                logger.warning("[UNIVERSE] entry-protection lookup failed: %s", exc)
+        return out
+
+    def _held_symbols_from_store(self, bot_id: str) -> list[str]:
+        held: list[str] = []
+        try:
+            for sym, row in (self.store.load_symbols() or {}).items():
+                if getattr(row, "position", "NONE") in ("LONG", "SHORT") or str(
+                    getattr(row, "pending_open", "NONE") or "NONE"
+                ) != "NONE":
+                    held.append(sym)
+        except Exception as exc:
+            logger.warning("[UNIVERSE] symbol-state lookup failed: %s", exc)
+        return self._ordered_unique(held + self._ledger_held_symbols(bot_id))
+
+    def _held_symbols(self) -> list[str]:
+        """Every symbol that must be managed this cycle, whatever the ranking says."""
+        bot_id = self.context.bot_instance_id if self.context else "default"
+        held = [
+            s for s, st in self.state.items()
+            if st.position in ("LONG", "SHORT") or str(st.pending_open or "NONE") != "NONE"
+        ]
+        return self._ordered_unique(held + self._ledger_held_symbols(bot_id))
+
+    def _restore_symbol_states(self, symbols) -> None:
+        try:
+            saved = self.store.load_symbols() or {}
+        except Exception:
+            saved = {}
+        for sym in symbols:
+            st = SymbolState()
+            row = saved.get(sym)
+            if row is not None:
+                for name in (
+                    "position", "entry_price", "last_signal", "last_action", "last_checked_ms",
+                    "adds", "last_trade_ms", "pending_open", "entry_qty", "last_user_trade_id",
+                    "reentry_confirm_signal", "reentry_confirm_count", "position_id",
+                ):
+                    if hasattr(row, name):
+                        setattr(st, name, getattr(row, name))
+            self.state[sym] = st
+
+    def _apply_universe(self) -> None:
+        """Refresh (on its cadence) and install this cycle's managed symbols."""
+        if not getattr(self, "context", None) or getattr(self, "universe_mode", None) != UniverseMode.BROKER:
+            return
+        held = self._held_symbols()
+        managed, open_set = list(held), set(held)
+        if getattr(self, "_universe_runtime", None) is not None:
+            try:
+                res = self._universe_runtime.resolve(
+                    open_symbols=held,
+                    run_id=self.run_id,
+                    runtime_session_id=getattr(self, "runtime_session_id", None),
+                )
+                managed, open_set = list(res.managed), set(res.open_symbols)
+            except Exception as exc:
+                logger.error("[UNIVERSE] resolve failed; managing held positions only: %s", exc)
+        self._universe_open_symbols = open_set
+        new = [s for s in managed if s not in self.state]
+        if new:
+            self._restore_symbol_states(new)
+        self.trade_symbols = list(managed)
+        self.live_symbols = list(managed)
+        self.symbols = list(managed)
+        self.universe_symbols = list(managed)
+        orchestrator = getattr(self, "orchestrator", None)
+        if orchestrator is not None and hasattr(orchestrator, "update_allowed_symbols"):
+            try:
+                orchestrator.update_allowed_symbols(
+                    managed, leverage=float(getattr(self.context, "max_leverage", 10.0) or 10.0),
+                )
+            except Exception as exc:
+                logger.error("[UNIVERSE] orchestrator symbol refresh failed: %s", exc)
+        try:
+            from app.ops.runtime_watchdog import get_watchdog
+
+            get_watchdog().retain_symbols(self.context.bot_instance_id, managed)
+        except Exception:
+            pass
+
+    def _candidate_budget_exhausted(self, started: float, budget_s: float) -> bool:
+        if time.monotonic() - started > budget_s:
+            return True
+        runtime = getattr(self, "_universe_runtime", None)
+        try:
+            used = runtime.engine.adapter.request_budget().fraction_used if runtime else None
+        except Exception:
+            used = None
+        limit = float(getattr(settings, "UNIVERSE_REQUEST_WEIGHT_BUDGET_FRACTION", 0.5) or 0.5)
+        return used is not None and used > limit
+
+    def _candle_pregate(self, symbol: str):
+        """NO_NEW_CANDLE without a fetch or a trace, for a flat candidate between closes.
+
+        Only for broker-universe bots, only for symbols with no position, no
+        pending entry and a known next close still in the future. Anything
+        held -- or unknown -- takes the full path, so position management is
+        never skipped.
+        """
+        if getattr(self, "_universe_runtime", None) is None:
+            return None
+        sym = str(symbol).upper()
+        if sym in getattr(self, "_universe_open_symbols", set()):
+            return None
+        st = self.state.get(symbol)
+        if st is None or st.position in ("LONG", "SHORT") or str(st.pending_open or "NONE") != "NONE":
+            return None
+        due = getattr(self, "_next_candle_due_ms", {}).get(sym)
+        if due is None or int(time.time() * 1000) >= due:
+            return None
+        return {
+            "symbol": symbol,
+            "decision": CycleReason.NO_NEW_CANDLE,
+            "evaluated": False,
+            "reason": CycleReason.NO_NEW_CANDLE,
+            "reason_code": CycleReason.NO_NEW_CANDLE,
+            "timeframe": self.interval,
+            "pregate": "CANDLE_NOT_DUE",
+        }
+
+    def _note_candle_close(self, symbol: str, close_ms) -> None:
+        interval_ms = _INTERVAL_MS.get(str(self.interval))
+        try:
+            close_ms = int(close_ms)
+        except (TypeError, ValueError):
+            return
+        if not interval_ms:
+            return
+        sym = str(symbol).upper()
+        if not hasattr(self, "_last_closed_candle_ms"):
+            self._last_closed_candle_ms = {}
+        if not hasattr(self, "_next_candle_due_ms"):
+            self._next_candle_due_ms = {}
+        self._last_closed_candle_ms[sym] = close_ms
+        self._next_candle_due_ms[sym] = close_ms + interval_ms + _CANDLE_DUE_GRACE_MS
+
+    def _after_universe_cycle(self, deferred) -> None:
+        """Record deferrals; prove the feed alive for symbols not fetched this cycle.
+
+        One batched price read (not a candle fetch per symbol) keeps the
+        watchdog's market-data clocks honest for pre-gated candidates. Their
+        latest closed candle is the one already evaluated -- the next one has
+        not closed yet -- so no clock is made to look behind or ahead.
+        """
+        self._universe_deferred = len(deferred)
+        if deferred:
+            logger.info(
+                "[UNIVERSE] %d candidate evaluation(s) deferred to a later cycle (budget)", len(deferred)
+            )
+        now = time.time()
+        if now - self._last_quiet_feed_check < 60:
+            return
+        quiet = [
+            s for s in self.trade_symbols
+            if str(s).upper() not in self._universe_open_symbols and str(s).upper() in self._last_closed_candle_ms
+        ]
+        if not quiet:
+            return
+        self._last_quiet_feed_check = now
+        from app.ops.runtime_watchdog import get_watchdog
+
+        bot = self.context.bot_instance_id
+        try:
+            prices = self.client.get_prices(quiet) or {}
+        except Exception as exc:
+            for s in quiet:
+                get_watchdog().market_data(bot, s, self.interval, error=f"{type(exc).__name__}: {exc}")
+            return
+        for s in quiet:
+            if prices.get(s):
+                get_watchdog().market_data(
+                    bot, s, self.interval, latest_closed_candle=self._last_closed_candle_ms.get(str(s).upper()),
+                )
+
     def step_symbol(self, symbol: str) -> Dict[str, Any]:
         """Evaluate one symbol and finalize exactly one canonical decision.
 
@@ -5262,6 +5553,11 @@ class PaperRunner:
         )
 
     def _step_symbol_evaluate(self, symbol: str) -> Dict[str, Any]:
+        # A flat broker-universe candidate with no new closed candle costs
+        # nothing: no fetch, no trace. See _candle_pregate.
+        _pregated = self._candle_pregate(symbol)
+        if _pregated is not None:
+            return _pregated
         # âœ… START TRACE
         recorder = get_trace_recorder()
         trace_id = recorder.start_trace(
@@ -5424,6 +5720,7 @@ class PaperRunner:
                 timeframe=self.interval,
                 close_time=_primary_snapshot.latest_closed_candle_time,
             )
+            self._note_candle_close(symbol, _primary_snapshot.latest_closed_candle_time)
             _snapshot = _primary_snapshot
             if _evaluate_entry:
                 _htf = self.context.higher_timeframe if self.context else "4h"
@@ -7459,5 +7756,4 @@ class PaperRunner:
             except Exception:
                 # don't crash startup because one symbol failed
                 continue
-
 

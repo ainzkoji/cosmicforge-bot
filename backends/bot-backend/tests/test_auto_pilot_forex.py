@@ -30,12 +30,13 @@ class TestAutoPilotForexSupport:
         """Create BotInstanceService with mocked DB."""
         return BotInstanceService(db=mock_db)
     
-    def test_crypto_deployment_unchanged(self, service, mock_db):
+    def test_crypto_deployment_uses_the_connected_broker_universe(self, service, mock_db):
         """
-        Test that CRYPTO deployment still uses TRADE_SYMBOLS from env.
-        This ensures backward compatibility - crypto behavior must not change.
+        A CRYPTO Auto Pilot deploy takes its markets from the connected broker
+        account (universe_mode BROKER, no symbol list). The environment's
+        TRADE_SYMBOLS is a development list and must not be copied into the bot:
+        that copy is how Auto Pilot bots ended up restricted to BTC/ETH.
         """
-        # Mock settings.TRADE_SYMBOLS at config module level
         with patch('app.core.config.settings.TRADE_SYMBOLS', "BTCUSDT,ETHUSDT,XRPUSDT"):
             
             # Mock the create_bot_instance to avoid DB interaction
@@ -74,10 +75,12 @@ class TestAutoPilotForexSupport:
                 assert len(instances) == 1
                 assert instances[0].market_type == "crypto"
                 
-                # Verify create_bot_instance was called with TRADE_SYMBOLS
+                # The environment list was NOT copied: the bot takes the
+                # connected broker's universe.
                 assert mock_create.called
                 call_args = mock_create.call_args[0][0]  # Get CreateBotInstanceRequest
-                assert call_args.symbols == ["BTCUSDT", "ETHUSDT", "XRPUSDT"]
+                assert call_args.symbols == []
+                assert call_args.universe_mode == "BROKER"
                 assert call_args.market_type == "crypto"
     
     def test_forex_deployment_with_allowlist(self, service, mock_db):
@@ -195,10 +198,12 @@ class TestAutoPilotForexSupport:
             # Verify error message is clear
             assert "No forex allowlist provided" in str(exc_info.value)
     
-    def test_crypto_deployment_validation_error(self, service):
+    def test_empty_env_trade_symbols_is_irrelevant_to_a_crypto_deploy(self, service):
         """
-        Test that CRYPTO deployment raises ValueError when TRADE_SYMBOLS is empty.
-        This ensures we removed the hardcoded fallback.
+        An empty TRADE_SYMBOLS must never be why a crypto deploy fails: the
+        environment is not the crypto universe authority any more. (This
+        request still fails -- lowercase market_type, no capital -- on its
+        own validation, which is what the error must be about.)
         """
         with patch('app.core.config.settings.TRADE_SYMBOLS', ""):  # Empty env
             
@@ -213,7 +218,8 @@ class TestAutoPilotForexSupport:
                     market_type="crypto"
                 )
             
-            assert "No crypto symbols configured" in str(exc_info.value)
+            assert "TRADE_SYMBOLS" not in str(exc_info.value)
+            assert "No crypto symbols configured" not in str(exc_info.value)
     
     def test_runner_reads_symbols_json_unchanged(self, mock_db):
         """

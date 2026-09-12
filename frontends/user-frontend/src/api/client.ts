@@ -642,7 +642,8 @@ export interface DeployAutoPilotRequest {
         allocation_type: "fixed_amount" | "percent_balance";
     };
     execution_mode: "paper" | "live";
-    symbol_universe_mode: "auto";
+    symbol_universe_mode: "auto" | "custom";
+    symbols?: string[];
     market_type?: "crypto" | "forex";
     forex_config?: {
         allowlist: string[];

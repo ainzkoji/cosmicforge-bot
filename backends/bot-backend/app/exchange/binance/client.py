@@ -40,6 +40,8 @@ class BinanceFuturesClient:
         self._exchange_info_cache: dict | None = None
         self._exchange_info_cache_ts: float = 0.0
         self._time_offset_ms: int = 0
+        #: X-MBX-USED-WEIGHT-1M from the latest response, when the venue sends it.
+        self.last_used_weight_1m: int | None = None
 
         try:
             set_exchange_info(self.exchange_info())
@@ -54,6 +56,14 @@ class BinanceFuturesClient:
     # ------------------------------------------------------------------
     # robust request helper
     # ------------------------------------------------------------------
+    def _note_weight(self, response) -> None:
+        try:
+            value = response.headers.get("X-MBX-USED-WEIGHT-1M")
+            if value is not None:
+                self.last_used_weight_1m = int(value)
+        except Exception:
+            pass
+
     def _request(
         self, method: str, path: str, params=None, headers=None, max_retries: int = 6
     ):
@@ -69,8 +79,15 @@ class BinanceFuturesClient:
                 r = self.session.request(
                     method, url, params=params, headers=headers, timeout=5
                 )
+                self._note_weight(r)
 
                 if r.status_code in (418, 429):
+                    # Preserve the terminal status for callers such as the
+                    # universe engine. Without this, exhausted retries raised
+                    # ``(None)`` and rate-limit deferral/backoff could not be
+                    # distinguished from an ordinary transport failure.
+                    body = " ".join(str(getattr(r, "text", "") or "").split())[:200]
+                    last_err = RuntimeError(f"HTTP {r.status_code}: {body}".rstrip())
                     ra = r.headers.get("Retry-After")
                     sleep_s = float(ra) if ra else (0.4 * (2**attempt))
                     sleep_s += random.uniform(0, 0.2)
@@ -182,6 +199,7 @@ class BinanceFuturesClient:
                 elif method == "DELETE":
                     r = self.session.delete(url, headers=headers, timeout=20)
 
+        self._note_weight(r)
         if r.status_code >= 400:
             try:
                 err_data = r.json()

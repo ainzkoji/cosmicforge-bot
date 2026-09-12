@@ -31,7 +31,9 @@ class DeployAutoPilotRequest(BaseModel):
     risk_mode: Literal["conservative", "medium", "aggressive"]
     allocation: AllocationParams
     execution_mode: Literal["paper", "live"] = Field(default="paper")
-    symbol_universe_mode: Literal["auto"] = Field(default="auto")
+    # auto: the connected broker's market universe. custom: ``symbols`` only.
+    symbol_universe_mode: Literal["auto", "custom"] = Field(default="auto")
+    symbols: Optional[List[str]] = None
     market_type: Literal["crypto", "forex"] = Field(default="crypto")
     forex_config: Optional[dict] = None # Or use specific schema if shared
 

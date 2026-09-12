@@ -52,8 +52,36 @@ class Settings(BaseSettings):
     
     # Trading Configuration
     EXECUTION_MODE: str = "paper"
+    # TRADE_SYMBOLS / MAX_SYMBOLS: development, tests, replay and the legacy
+    # contextless runner ONLY. They are not a production market universe: a
+    # user bot's markets come from its connected broker account (universe_mode
+    # BROKER) or its own explicit allowlist (ALLOWLIST).
     TRADE_SYMBOLS: str = "BTCUSDT,ETHUSDT"
     MAX_SYMBOLS: int = 2
+
+    # ── Broker-derived market universe (app/universe) ──────────────────────
+    UNIVERSE_DEFAULT_MODE: str = "BROKER"
+    #: New-entry candidates run through the full strategy each candle. Chosen
+    #: from the cycle-cost benchmark; see docs/broker_market_universe_report.md.
+    UNIVERSE_ACTIVE_LIMIT: int = 100
+    UNIVERSE_MIN_QUOTE_VOLUME_USDT: float = 50_000_000.0
+    UNIVERSE_MAX_SPREAD_BPS: float = 10.0
+    #: 200 closed 4h candles (the HTF EMA200) need 33.3 days of history.
+    UNIVERSE_MIN_LISTING_DAYS: float = 35.0
+    UNIVERSE_MAX_STATS_AGE_SECONDS: int = 900
+    UNIVERSE_METADATA_TTL_SECONDS: int = 3600
+    UNIVERSE_STATS_TTL_SECONDS: int = 900
+    UNIVERSE_REFRESH_SECONDS: int = 900
+    UNIVERSE_BACKOFF_INITIAL_SECONDS: int = 30
+    UNIVERSE_BACKOFF_MAX_SECONDS: int = 900
+    UNIVERSE_SETTLEMENT_ASSETS: str = "USDT"
+    UNIVERSE_UNDERLYING_TYPES: str = "COIN"
+    #: Wall time per cycle for candidate evaluations; held positions are
+    #: managed first and never count against it.
+    UNIVERSE_CYCLE_EVAL_BUDGET_SECONDS: float = 20.0
+    #: Stop candidate evaluations this cycle above this share of the venue's
+    #: per-minute request weight.
+    UNIVERSE_REQUEST_WEIGHT_BUDGET_FRACTION: float = 0.5
     DEFAULT_LEVERAGE: int = 3
     MIN_LEVERAGE: int = 1
     # SAFETY: minimum 50 USDT to avoid exchange min-notional failures at 3x leverage.

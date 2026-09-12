@@ -114,6 +114,7 @@ class BotInstanceService:
             risk_profile_id=request.risk_profile_id,
             symbols=request.symbols,
             timeframes=request.timeframes,
+            universe_mode=request.universe_mode,
             allocation_type=request.allocation_type,
             allocation_value=request.allocation_value,
             mode=request.mode,
@@ -143,8 +144,8 @@ class BotInstanceService:
                     symbols_json, timeframes_json, allocation_type, allocation_value, 
                     mode, status, created_at, updated_at, started_at, stopped_at,
                     capital_allocation, capital_allocation_type,
-                    last_run_at, last_error, total_trades, active_positions
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    last_run_at, last_error, total_trades, active_positions, universe_mode
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     instance.id, instance.user_id, instance.broker_account_id, instance.market_type, 
@@ -155,7 +156,8 @@ class BotInstanceService:
                     instance.mode, instance.status, instance.created_at, instance.updated_at,
                     instance.started_at, instance.stopped_at,
                     instance.capital_allocation, instance.capital_allocation_type,
-                    instance.last_run_at, instance.last_error, instance.total_trades, instance.active_positions
+                    instance.last_run_at, instance.last_error, instance.total_trades, instance.active_positions,
+                    instance.universe_mode,
                 )
             )
             
@@ -714,7 +716,9 @@ class BotInstanceService:
         capital_allocation: Optional[float] = None,
         capital_allocation_type: str = "fixed_amount",
         market_type: str = "CRYPTO",
-        forex_config: Optional[dict] = None
+        forex_config: Optional[dict] = None,
+        symbol_universe_mode: str = "auto",
+        symbols: Optional[List[str]] = None,
     ) -> List[BotInstance]:
         """
         Deploy the Auto Pilot (Master Ensemble) strategy to selected broker accounts.
@@ -734,6 +738,7 @@ class BotInstanceService:
             raise ValueError("Allocation percentage must be between 0 and 100")
 
         # 2. Determine Symbols based on market type
+        universe_mode = "ALLOWLIST"
         if market_type == "FOREX":
             # FOREX: Use user-provided allowlist or fallback to env config
             if forex_config and forex_config.get("allowlist"):
@@ -748,13 +753,20 @@ class BotInstanceService:
                     )
                 logger.info(f"Using Forex symbols from FOREX_SYMBOLS env: {target_symbols}")
         else:
-            # CRYPTO: Use system default trade universe
-            target_symbols = parse_symbols(settings.TRADE_SYMBOLS)
-            if not target_symbols:
-                raise ValueError(
-                    "No crypto symbols configured. Please set TRADE_SYMBOLS in .env"
-                )
-            logger.info(f"Using Crypto symbols from TRADE_SYMBOLS: {target_symbols}")
+            # CRYPTO: the connected broker account is the universe authority.
+            # The environment's TRADE_SYMBOLS is a development list and is not
+            # read here -- copying it into every bot is how Auto Pilot bots
+            # ended up permanently restricted to BTCUSDT and ETHUSDT.
+            if str(symbol_universe_mode or "auto").strip().lower() == "custom":
+                target_symbols = parse_symbols(list(symbols or []))
+                if not target_symbols:
+                    raise ValueError("symbol_universe_mode=custom requires a non-empty symbols list")
+                universe_mode = "ALLOWLIST"
+                logger.info(f"Using user-selected crypto allowlist: {target_symbols}")
+            else:
+                target_symbols = []
+                universe_mode = "BROKER"
+                logger.info("Using the connected broker's market universe (AUTO)")
         
         created_instances = []
 
@@ -773,6 +785,7 @@ class BotInstanceService:
                     risk_profile_id=None,  # No external risk profile
                     risk_level=risk_level,  # Store risk level directly
                     symbols=target_symbols,
+                    universe_mode=universe_mode,
                     timeframes=["15m"], # Master Ensemble typically runs on specific timeframes, defaulting to 15m
                     allocation_type=allocation_type,
                     allocation_value=allocation_value,
@@ -903,7 +916,8 @@ class BotInstanceService:
 
         valid_fields = {
             "risk_profile_id", "allocation_type", "allocation_value", 
-            "capital_allocation", "capital_allocation_type", "mode", "symbols", "timeframes", "status"
+            "capital_allocation", "capital_allocation_type", "mode", "symbols", "timeframes", "status",
+            "universe_mode",
         }
         
         filtered_updates = {k: v for k, v in updates.items() if k in valid_fields}

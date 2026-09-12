@@ -130,6 +130,23 @@ class TradingOrchestrator:
         """Validate and clamp user configuration to system limits."""
         validated, warnings = self.config_validator.validate_and_clamp(self.user_config)
         return validated, warnings
+
+    def update_allowed_symbols(self, symbols, *, leverage: float | None = None) -> None:
+        """Re-validate for a changed market universe, with the same per-asset clamps.
+
+        Every managed symbol gets the bot's requested leverage, clamped by
+        SystemLimits to its own asset class (major / alt / meme / stable) --
+        a broad universe never inherits the majors' ceiling.
+        """
+        wanted = [str(s).strip().upper() for s in symbols if str(s).strip()]
+        if wanted == [str(s).upper() for s in (self.user_config.allowed_symbols or [])]:
+            return
+        base = float(leverage) if leverage else max(
+            [float(v) for v in (self.user_config.requested_leverage or {}).values()] or [10.0]
+        )
+        self.user_config.requested_leverage = {s: int(base) for s in wanted}
+        self.user_config.allowed_symbols = list(wanted)
+        self.validated_config, self.config_warnings = self._validate_config()
     
 
 
@@ -759,7 +776,12 @@ class TradingOrchestrator:
             result["details"]["layer_b"]["reason_code"] = ReasonCode.SIZE_ZERO
         else:
             result["decision"] = "execute"
-            result["reason"]   = protection_decision.message
+            # Protective-order validation is the final safety detail, not the
+            # canonical reason for an approved entry. Keeping its free-form
+            # message here caused APPROVED records to carry "Protective orders
+            # validated" as their primary reason and broke replay/production
+            # reason parity.
+            result["reason"] = "APPROVED_FOR_EXECUTION"
         result["details"]["observability"].update(
             risk_evaluated=True,
             risk_allowed=True,

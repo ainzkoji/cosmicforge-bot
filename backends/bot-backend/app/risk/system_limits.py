@@ -227,9 +227,14 @@ class ConfigValidator:
         s = symbol.upper()
         if "USDT" in s and ("USD" in s.replace("USDT","") or "DAI" in s or "USDC" in s):
             return AssetClass.STABLE_PAIRS
-        if s in ["BTCUSDT", "ETHUSDT"]:
+        # Classify by underlying, not by venue spelling: a broad universe lists
+        # 1000PEPEUSDT and 1000SHIBUSDT, which are PEPE and SHIB exposure.
+        from app.universe.identity import underlying_from_symbol
+
+        underlying = underlying_from_symbol(s)
+        if underlying in {"BTC", "ETH"}:
             return AssetClass.MAJOR_CRYPTO
-        if s in ["DOGEUSDT", "SHIBUSDT", "PEPEUSDT"]:
+        if underlying in {"DOGE", "SHIB", "PEPE"}:
             return AssetClass.MEME_CRYPTO
         return AssetClass.ALT_CRYPTO
 

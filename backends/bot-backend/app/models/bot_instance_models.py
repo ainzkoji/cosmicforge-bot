@@ -66,6 +66,8 @@ class BotInstance:
     # Execution context (stored as JSON in DB)
     symbols: List[str] = field(default_factory=list)
     timeframes: List[str] = field(default_factory=list)
+    #: BROKER (connected account's markets) | ALLOWLIST (``symbols``) | None (pre-universe row)
+    universe_mode: Optional[str] = None
     allocation_type: str = "fixed_amount"  # percent_balance, fixed_amount
     allocation_value: float = 0.0
     
@@ -125,6 +127,7 @@ class BotInstance:
             config_id=d.get("config_id"),
             risk_profile_id=d.get("risk_profile_id"),
             symbols=json.loads(d.get("symbols_json") or "[]"),
+            universe_mode=d.get("universe_mode"),
             timeframes=json.loads(d.get("timeframes_json") or "[]"),
             allocation_type=d["allocation_type"],
             allocation_value=d["allocation_value"],
@@ -171,6 +174,7 @@ class BotInstance:
             "config_id": self.config_id,
             "risk_profile_id": self.risk_profile_id,
             "symbols_json": json.dumps(self.symbols),
+            "universe_mode": self.universe_mode,
             "timeframes_json": json.dumps(self.timeframes),
             "allocation_type": self.allocation_type,
             "allocation_value": self.allocation_value,
@@ -228,6 +232,7 @@ class BotInstance:
             "risk_level": self.risk_level,
             "config_id": self.config_id,
             "symbols": self.symbols,
+            "universe_mode": self.universe_mode,
             "timeframes": self.timeframes,
             "allocation_type": self.allocation_type,
             "allocation_value": self.allocation_value,
@@ -279,6 +284,7 @@ class CreateBotInstanceRequest:
     risk_profile_id: Optional[str] = None
     capital_allocation: Optional[float] = None
     capital_allocation_type: str = "fixed_amount"
+    universe_mode: Optional[str] = None
     
     def validate(self) -> List[str]:
         """Validate the request data."""
@@ -296,7 +302,10 @@ class CreateBotInstanceRequest:
         if not self.strategy_id:
             errors.append("strategy_id is required")
         
-        if not self.symbols or len(self.symbols) == 0:
+        _mode = str(self.universe_mode or "").strip().upper()
+        if _mode not in {"", "BROKER", "ALLOWLIST"}:
+            errors.append("universe_mode must be BROKER or ALLOWLIST")
+        if _mode != "BROKER" and (not self.symbols or len(self.symbols) == 0):
             errors.append("At least one symbol is required")
         
         if not self.timeframes or len(self.timeframes) == 0:

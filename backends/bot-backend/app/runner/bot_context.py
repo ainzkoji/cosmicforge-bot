@@ -71,6 +71,9 @@ class BotRunContext:
     max_weekly_drawdown_pct: float = 0.0
     max_monthly_drawdown_pct: float = 0.0
     higher_timeframe: str = "4h"
+    #: BROKER: markets come from the connected account's universe and
+    #: ``symbols`` may be empty. ALLOWLIST: ``symbols`` is the explicit list.
+    universe_mode: str = "ALLOWLIST"
     effective_policy_hash: str = ""
     effective_policy: Any = None
     
@@ -80,7 +83,7 @@ class BotRunContext:
             raise ValueError("user_id is required")
         if not self.bot_instance_id:
             raise ValueError("bot_instance_id is required")
-        if not self.symbols:
+        if not self.symbols and str(self.universe_mode or "").upper() != "BROKER":
             raise ValueError("symbols list cannot be empty")
         if not self.strategy_id:
             raise ValueError("strategy_id is required")
@@ -194,6 +197,7 @@ class BotRunContext:
             bot_instance_id=instance.id,
             broker_account_id=instance.broker_account_id,
             symbols=symbols,
+            universe_mode=str(getattr(instance, "universe_mode", None) or "ALLOWLIST").upper(),
             strategy_id=instance.strategy_id,
             execution_mode=instance.mode or "paper",
             interval=interval,
@@ -266,6 +270,7 @@ class BotRunContext:
             max_weekly_drawdown_pct=policy.max_weekly_drawdown,
             max_monthly_drawdown_pct=policy.max_monthly_drawdown,
             higher_timeframe=policy.higher_timeframe,
+            universe_mode=getattr(policy, "universe_mode", "ALLOWLIST"),
             effective_policy_hash=policy.policy_hash,
             effective_policy=policy,
         )

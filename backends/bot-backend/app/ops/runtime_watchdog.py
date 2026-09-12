@@ -290,6 +290,21 @@ class RuntimeWatchdog:
                 clock.last_evaluated_closed_candle = int(closed_candle)
             clock.behind_iterations = 0
 
+    def retain_symbols(self, bot_id: str, symbols) -> None:
+        """Forget clocks for symbols a bot no longer manages.
+
+        A universe refresh drops candidates; their clocks would otherwise age
+        past MARKET_DATA_STALE and report a healthy bot as degraded.
+        """
+        keep = {str(s).upper() for s in symbols}
+        with self._lock:
+            bot = self._bots.get(bot_id)
+            if not bot:
+                return
+            clocks = bot.get("clocks") or {}
+            for key in [k for k, c in clocks.items() if str(getattr(c, "symbol", "")).upper() not in keep]:
+                del clocks[key]
+
     def observe_clock(self, bot_id: str, symbol: str, timeframe: str) -> None:
         """Called once per iteration to age the stall counter."""
         with self._lock:

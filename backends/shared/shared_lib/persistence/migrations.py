@@ -2732,6 +2732,12 @@ def migrate(db_path: str | DB = None):
     from shared_lib.persistence.kyc_schema import ensure_kyc_schema
     ensure_kyc_schema(db)
 
+    # 48c) Broker-derived market universe: snapshot evidence tables, the
+    # bot_instances.universe_mode column, and the one-time resolution of
+    # existing rows (crypto Auto Pilot bots -> BROKER; see universe_schema).
+    from shared_lib.persistence.universe_schema import ensure_universe_schema
+    ensure_universe_schema(db)
+
     # 47) Event/News automatic runtime mode controller.
     # Keep this after the main migration connection closes so the helper can
     # self-heal temporary test databases through the normal DB context manager.

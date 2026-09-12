@@ -42,7 +42,9 @@ class DeployAutoPilotRequest(BaseModel):
     risk_mode: Optional[Literal["conservative", "medium", "aggressive"]] = None
     allocation: Optional[AutoPilotAllocation] = None
     execution_mode: Optional[Literal["paper", "live"]] = Field(default=None)
-    symbol_universe_mode: Literal["auto"] = Field(default="auto")
+    # auto: the connected broker's market universe. custom: ``symbols`` only.
+    symbol_universe_mode: Literal["auto", "custom"] = Field(default="auto")
+    symbols: Optional[List[str]] = Field(default=None)
     market_type: Optional[Literal["crypto", "forex"]] = Field(default="crypto")
     forex_config: Optional[Dict[str, Any]] = Field(default=None)
 
@@ -191,7 +193,9 @@ def deploy_auto_pilot(
             capital_allocation=request.allocation.total_capital_budget,
             capital_allocation_type="fixed_amount",
             market_type=internal_market,
-            forex_config=request.forex_config
+            forex_config=request.forex_config,
+            symbol_universe_mode=request.symbol_universe_mode,
+            symbols=request.symbols,
         )
         
         # Generate Risk Warning based on selection
