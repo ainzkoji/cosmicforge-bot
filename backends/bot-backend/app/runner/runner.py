@@ -2811,9 +2811,7 @@ class PaperRunner:
             equity=self.get_account_balance(),
             daily_realized_pnl=self.daily.realized_pnl,
             daily_trade_count=self.daily.trade_count,
-            open_positions_count=sum(
-                1 for state in self.state.values() if state.position in ("LONG", "SHORT")
-            ),
+            open_positions_count=len(self._economic_open_symbols()),
             leverage=symbol_leverage,
             stop_loss_pct=float(getattr(settings, "STOP_LOSS_PCT", 0.02)),
             take_profit_pct=float(getattr(settings, "TAKE_PROFIT_PCT", 0.03)),
@@ -4036,12 +4034,13 @@ class PaperRunner:
                 margin_used = 0.0
                 margin_avail = equity
 
-            open_pos_count = 0
             total_exposure = 0.0
             for s in self.state.values():
                 if s.position in ("LONG", "SHORT"):
-                    open_pos_count += 1
                     total_exposure += (s.entry_price or 0.0) * (s.entry_qty or 0.0)
+            # Slots are taken by what exists, including positions adopted by
+            # reconciliation and entries whose fill this process never recorded.
+            open_pos_count = len(self._economic_open_symbols())
             
             # --- FETCH ADAPTIVE STATE ---
             _hint_dd = abs(getattr(self.daily, "realized_pnl", 0.0)) / max(equity or 1.0, 1.0)
@@ -5426,6 +5425,25 @@ class PaperRunner:
                 out.append(u)
         return out
 
+    def _economic_open_symbols(self) -> set[str]:
+        """Symbols this bot holds a position in, or has an entry in flight for.
+
+        The max_open_positions gate must count what exists at the broker, not
+        what this process remembers. In-memory SymbolState alone misses an entry
+        whose fill quantity was absent from the order response (the runner
+        raises before recording it) and every position reconciliation adopted
+        from the broker -- on 2026-09-13 that let one cycle open five 120-USDT
+        entries against two slots. So: in-memory state, OPEN ledger rows and
+        active entry-protection intents, one slot per symbol.
+        """
+        held = {
+            str(sym).upper() for sym, st in self.state.items()
+            if st.position in ("LONG", "SHORT")
+        }
+        bot_id = self.context.bot_instance_id if self.context else "default"
+        held.update(str(s).upper() for s in self._ledger_held_symbols(bot_id) if s)
+        return held
+
     def _ledger_held_symbols(self, bot_id: str) -> list[str]:
         """Symbols with an OPEN ledger position or an in-flight entry for this bot."""
         out: list[str] = []
@@ -6505,7 +6523,7 @@ class PaperRunner:
                 equity=self.get_account_balance(),
                 daily_realized_pnl=self.daily.realized_pnl,
                 daily_trade_count=self.daily.trade_count,
-                open_positions_count=sum(1 for s in self.state.values() if s.position in ("LONG", "SHORT")),
+                open_positions_count=len(self._economic_open_symbols()),
 
                 # D-2/D-3: pass actual SL/TP prices from symbol state
                 stop_loss_price=float(st.current_stop_loss or 0.0),
