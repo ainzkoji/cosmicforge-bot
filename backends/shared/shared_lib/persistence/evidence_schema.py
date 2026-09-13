@@ -347,6 +347,13 @@ def _execution_and_positions(conn: Any) -> None:
         )
         """
     )
+    # Broker execution lineage.  Requested sizing remains immutable evidence;
+    # the executed fields are populated from the venue response/reconciliation.
+    for column, decl in (
+        ("executed_qty", "REAL"),
+        ("avg_fill_price", "REAL"),
+    ):
+        _add_column_if_missing(conn, "execution_attempts", column, decl)
     conn.execute(
         """
         CREATE TABLE IF NOT EXISTS positions (
@@ -376,6 +383,16 @@ def _execution_and_positions(conn: Any) -> None:
         )
         """
     )
+    for column, decl in (
+        ("leverage", "REAL NOT NULL DEFAULT 1"),
+        ("committed_margin", "REAL NOT NULL DEFAULT 0"),
+        ("requested_qty", "REAL"),
+        ("broker_executed_qty", "REAL"),
+        ("broker_position_mode", "TEXT"),
+        ("reconciliation_reason", "TEXT"),
+        ("last_reconciled_at", "TEXT"),
+    ):
+        _add_column_if_missing(conn, "positions", column, decl)
     # Append-only. Never UPDATE or DELETE a row here.
     conn.execute(
         """

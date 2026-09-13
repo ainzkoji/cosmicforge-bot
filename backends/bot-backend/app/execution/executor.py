@@ -597,17 +597,35 @@ class BinanceExecutor:
         c_name = self.client.__class__.__name__
         broker = "bybit" if "Bybit" in c_name else "binance"
         
+        # Raw venue responses use camelCase; UnifiedOrder.model_dump() uses
+        # snake_case.  Supporting both prevents a successfully rounded broker
+        # fill from falling back to the pre-rounding requested quantity.
+        executed_qty = order_res.get("executedQty")
+        if executed_qty is None:
+            executed_qty = order_res.get("qty_filled")
+        avg_fill_price = order_res.get("avgPrice")
+        if avg_fill_price is None:
+            avg_fill_price = order_res.get("avg_fill_price")
+        broker_order_id = order_res.get("orderId")
+        if broker_order_id is None:
+            broker_order_id = order_res.get("broker_order_id")
+        client_order_id = order_res.get("clientOrderId")
+        if client_order_id is None:
+            client_order_id = order_res.get("client_order_id")
+        status = order_res.get("status", "NEW")
+        status = getattr(status, "value", status)
         return {
             "broker": broker,
-            "order_id": str(order_res.get("orderId", "")),
+            "order_id": str(broker_order_id or ""),
+            "client_order_id": str(client_order_id or ""),
             "symbol": symbol,
             "side": side.upper(),
             "type": type_.upper(),
             "quantity": float(qty),
-            "executed_qty": float(order_res.get("executedQty", 0.0) or 0.0),
-            "avg_price": float(order_res.get("avgPrice", 0.0) or price or 0.0),
-            "status": order_res.get("status", "NEW").upper(),
-            "timestamp": int(float(order_res.get("updateTime", 0) or 0)) 
+            "executed_qty": float(executed_qty or 0.0),
+            "avg_price": float(avg_fill_price or price or 0.0),
+            "status": str(status).upper(),
+            "timestamp": int(float(order_res.get("updateTime", order_res.get("timestamp", 0)) or 0))
         }
 
     # ---------------- INTERNAL HELPERS ----------------
@@ -1722,6 +1740,10 @@ class BinanceExecutor:
                 "side": signal,
                 "ep_side": _ep_side,
                 "qty": qty,
+                "requested_qty": qty,
+                "filled_qty": float(normalized.get("executed_qty", 0.0)),
+                "avg_price": float(normalized.get("avg_price", 0.0)),
+                "client_order_id": normalized.get("client_order_id"),
                 "entry_order": entry_order.model_dump(),
                 "protection": prot_res.model_dump(),
                 "normalized": normalized,

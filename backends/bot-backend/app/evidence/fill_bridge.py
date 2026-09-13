@@ -149,26 +149,48 @@ def execution_attempt(runner: Any, symbol: str, requested_action: str):
             runner, attempt_id,
             result=recorder.result or "UNKNOWN",
             broker_order_id=recorder.broker_order_id,
+            client_order_id=recorder.client_order_id,
+            requested_qty=recorder.requested_qty,
+            executed_qty=recorder.executed_qty,
+            avg_fill_price=recorder.avg_fill_price,
             position_id=recorder.position_id,
             primary_reason=recorder.primary_reason,
         )
 
 
 class _AttemptRecorder:
-    __slots__ = ("attempt_id", "result", "broker_order_id", "position_id", "primary_reason")
+    __slots__ = (
+        "attempt_id", "result", "broker_order_id", "client_order_id",
+        "requested_qty", "executed_qty", "avg_fill_price", "position_id", "primary_reason",
+    )
 
     def __init__(self, attempt_id: str | None) -> None:
         self.attempt_id = attempt_id
         self.result: str | None = None
         self.broker_order_id: str | None = None
+        self.client_order_id: str | None = None
+        self.requested_qty: float | None = None
+        self.executed_qty: float | None = None
+        self.avg_fill_price: float | None = None
         self.position_id: str | None = None
         self.primary_reason: str | None = None
 
     def completed(self, result: str, *, broker_order_id: Any = None,
-                  position_id: str | None = None, primary_reason: str | None = None) -> None:
+                  client_order_id: Any = None, requested_qty: Any = None,
+                  executed_qty: Any = None,
+                  avg_fill_price: Any = None, position_id: str | None = None,
+                  primary_reason: str | None = None) -> None:
         self.result = str(result)
         if broker_order_id:
             self.broker_order_id = str(broker_order_id)
+        if client_order_id:
+            self.client_order_id = str(client_order_id)
+        if requested_qty is not None:
+            self.requested_qty = float(requested_qty)
+        if executed_qty is not None:
+            self.executed_qty = float(executed_qty)
+        if avg_fill_price is not None:
+            self.avg_fill_price = float(avg_fill_price)
         if position_id:
             self.position_id = position_id
         if primary_reason:
@@ -205,7 +227,12 @@ def record_fill_with_evidence(runner: Any, db: Any, **kw: Any) -> Any:
         if identity:
             kw["provenance"] = identity["provenance"]
 
-    result = record_fill(db, **kw)
+    # ``requested_qty`` is lineage for the execution attempt/position.  The
+    # trade_fills contract records exchange truth (``qty``), so do not forward
+    # the pre-rounding request into that legacy persistence API.
+    fill_kw = dict(kw)
+    fill_kw.pop("requested_qty", None)
+    result = record_fill(db, **fill_kw)
     try:
         project_fill(runner, db, kw)
     except Exception as exc:
@@ -300,6 +327,9 @@ def project_fill(runner: Any, db: Any, kw: dict[str, Any]) -> None:
             # restart: the ledger sums committed_margin over OPEN positions
             # rather than trusting anything held in memory.
             leverage = _entry_leverage(runner, db, symbol, decision_id, kw)
+            attempt_id = (
+                (getattr(runner, "_last_execution_attempt_by_symbol", None) or {}).get(symbol)
+            )
             record_position_opened(
                 db,
                 position_id=position_id,
@@ -317,7 +347,23 @@ def project_fill(runner: Any, db: Any, kw: dict[str, Any]) -> None:
                 broker_environment=identity["broker_environment"],
                 leverage=leverage,
                 committed_margin=margin_for(qty, price, leverage),
+                requested_qty=float(kw.get("requested_qty") or qty),
+                broker_executed_qty=qty,
+                execution_attempt_id=attempt_id,
             )
+            if attempt_id:
+                with db.connect() as conn:
+                    conn.execute(
+                        "UPDATE execution_attempts SET position_id=? WHERE execution_attempt_id=?",
+                        (position_id, attempt_id),
+                    )
+            evidence = getattr(runner, "_symbol_evidence", None)
+            if isinstance(evidence, dict):
+                evidence.setdefault(symbol, {}).update({
+                    "execution_attempt_id": attempt_id,
+                    "position_id": position_id,
+                    "order_id": kw.get("order_id"),
+                })
         else:
             # A second OPEN on a live position is an ADD, not a new position.
             original = float(row["original_qty"]) + qty
@@ -355,7 +401,18 @@ def project_fill(runner: Any, db: Any, kw: dict[str, Any]) -> None:
 
     remaining = max(0.0, float(row["remaining_qty"]) - qty)
     realized = float(row["realized_qty"]) + qty
-    is_final = remaining <= QTY_TOLERANCE
+    instrument_reason = None
+    try:
+        from app.execution.position_reconciliation import quantity_close_reason
+        from app.exchange.registry import get_instrument_registry
+
+        spec = get_instrument_registry().get_spec("binance", symbol)
+        instrument_reason = quantity_close_reason(remaining, spec)
+    except Exception:
+        instrument_reason = None
+    is_final = remaining <= QTY_TOLERANCE or instrument_reason is not None
+    if is_final:
+        remaining = 0.0
     # The runner labels a TP1 partial through several fields depending on which
     # site recorded it; any of them identifies the leg.
     exit_reason = " ".join(
@@ -384,7 +441,7 @@ def project_fill(runner: Any, db: Any, kw: dict[str, Any]) -> None:
         realized_pnl=total_pnl,
         fees=total_fees,
         status="CLOSED" if is_final else None,
-        close_reason=(kw.get("exit_reason") or None) if is_final else None,
+        close_reason=(instrument_reason or kw.get("exit_reason") or None) if is_final else None,
     )
 
     # Release capital in proportion to what was closed. A final close leaves
@@ -406,7 +463,7 @@ def project_fill(runner: Any, db: Any, kw: dict[str, Any]) -> None:
         db, position_id=position_id, bot_instance_id=identity["bot_instance_id"],
         symbol=symbol, event_type=event_type, quantity=qty, remaining_qty=remaining,
         price=price, fee=fee, realized_pnl=realized_pnl,
-        reason=kw.get("exit_reason"), provenance=identity["provenance"],
+        reason=(instrument_reason or kw.get("exit_reason")), provenance=identity["provenance"],
         run_id=identity["run_id"], cycle_id=identity["cycle_id"], decision_id=decision_id,
     )
 

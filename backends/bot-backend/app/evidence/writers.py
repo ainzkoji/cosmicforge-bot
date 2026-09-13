@@ -265,6 +265,9 @@ def complete_execution_attempt(
     result: str,
     broker_order_id: str | None = None,
     client_order_id: str | None = None,
+    requested_qty: float | None = None,
+    executed_qty: float | None = None,
+    avg_fill_price: float | None = None,
     position_id: str | None = None,
     primary_reason: str | None = None,
     error_class: str | None = None,
@@ -274,10 +277,13 @@ def complete_execution_attempt(
         conn.execute(
             """UPDATE execution_attempts
                SET completed_at=?, result=?, broker_order_id=?, client_order_id=?,
-                   position_id=?, primary_reason=?, error_class=?, error_detail=?
+                   requested_qty=COALESCE(?, requested_qty), executed_qty=?,
+                   avg_fill_price=?, position_id=?, primary_reason=?,
+                   error_class=?, error_detail=?
                WHERE execution_attempt_id=?""",
-            (_now(), result, broker_order_id, client_order_id, position_id,
-             primary_reason, error_class, error_detail, attempt_id),
+            (_now(), result, broker_order_id, client_order_id, requested_qty,
+             executed_qty, avg_fill_price, position_id, primary_reason, error_class,
+             error_detail, attempt_id),
         )
 
 

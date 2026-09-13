@@ -1238,6 +1238,26 @@ class PaperRunner:
             if not isinstance(risks, list):
                 return
 
+            # Canonical broker execution truth.  This runs before the in-memory
+            # SymbolState projection below, so one-way accounts cannot retain a
+            # stale opposite-side local row or reserve capital for venue dust.
+            try:
+                from app.execution.position_reconciliation import reconcile_runner_positions
+
+                _broker_reconcile = reconcile_runner_positions(self, risks)
+                if _broker_reconcile.get("changed"):
+                    logger.warning(
+                        "[BROKER_POSITION_RECONCILIATION] bot=%s mode=%s changes=%s",
+                        self.context.bot_instance_id if self.context else self.run_id,
+                        _broker_reconcile.get("position_mode"),
+                        _broker_reconcile.get("changes"),
+                    )
+            except Exception as _canonical_reconcile_err:
+                logger.exception(
+                    "[BROKER_POSITION_RECONCILIATION] canonical projection failed: %s",
+                    _canonical_reconcile_err,
+                )
+
             updated = 0
             for row in risks:
                 sym = (row.get("symbol") or "").upper()
@@ -2034,6 +2054,12 @@ class PaperRunner:
             _cycle_started_at = datetime.now(timezone.utc).isoformat()
             self._cycle_stats = _CycleStats()  # â”€â”€ Visibility: per-cycle aggregator
             
+            # Broker mode is reconciled periodically; the helper has a 30s
+            # throttle, so management heartbeats stay cheap.  The first call
+            # also performs the startup restore below.
+            if getattr(self, "_reconciliation_done", False):
+                self.reconcile_positions_on_startup()
+
             # âœ… RECONCILE ON FIRST RUN (Exchange truth wins over DB)
             if not getattr(self, "_reconciliation_done", False):
                 logger.info(f"[STARTUP] Bot {self.run_id}: Performing initial position reconciliation from exchange...")
@@ -2279,11 +2305,39 @@ class PaperRunner:
 
         with execution_attempt(self, symbol, action) as attempt:
             result = self.executor.execute_signal(symbol, action, *args, **kwargs)
+            details = result.details if isinstance(getattr(result, "details", None), dict) else {}
+            normalized = details.get("normalized") if isinstance(details.get("normalized"), dict) else {}
+            entry_order = details.get("entry_order") if isinstance(details.get("entry_order"), dict) else {}
+            client_order_id = (
+                details.get("client_order_id") or normalized.get("client_order_id")
+                or entry_order.get("client_order_id") or entry_order.get("clientOrderId")
+            )
+            requested_qty = details.get("requested_qty")
+            if requested_qty is None:
+                requested_qty = details.get("qty") or normalized.get("quantity")
+            executed_qty = details.get("filled_qty")
+            if executed_qty is None:
+                executed_qty = normalized.get("executed_qty") or entry_order.get("qty_filled")
+            avg_fill_price = details.get("avg_price")
+            if avg_fill_price is None:
+                avg_fill_price = normalized.get("avg_price") or entry_order.get("avg_fill_price")
             attempt.completed(
                 str(getattr(result, "status", "") or "UNKNOWN"),
                 broker_order_id=getattr(result, "order_id", None),
+                client_order_id=client_order_id,
+                requested_qty=requested_qty,
+                executed_qty=executed_qty,
+                avg_fill_price=avg_fill_price,
                 primary_reason=getattr(result, "error", None),
             )
+            self._last_execution_attempt_by_symbol = getattr(
+                self, "_last_execution_attempt_by_symbol", {}
+            )
+            self._last_execution_attempt_by_symbol[str(symbol).upper()] = attempt.attempt_id
+            self._symbol_evidence = getattr(self, "_symbol_evidence", {})
+            self._symbol_evidence.setdefault(str(symbol).upper(), {})[
+                "execution_attempt_id"
+            ] = attempt.attempt_id
             return result
 
     def _record_fill(self, db, *args, **kwargs):
@@ -3377,7 +3431,9 @@ class PaperRunner:
                             strategy="orchestrated",
                             broker_id=getattr(_s_ec, "BROKER_ID", "binance_futures"),
                             account_id=getattr(_s_ec, "ACCOUNT_ID", "default"),
-                            bot_instance_id=getattr(self, "run_id", None),
+                            bot_instance_id=self.context.bot_instance_id if self.context else None,
+                            user_id=self.context.user_id if self.context else None,
+                            broker_account_id=self.context.broker_account_id if self.context else None,
                             timeframe=getattr(_s_ec, "DEFAULT_INTERVAL", "15m"),
                             initiator_type="EXCHANGE",
                             trigger_source="EXCHANGE_SL_TP_ORDER",
@@ -4546,10 +4602,29 @@ class PaperRunner:
                     current_equity=equity,
                     leverage_override=p.get("leverage")
                 )
-                _executed_qty = float(
-                    ((res.details or {}).get("filled_qty") if isinstance(res.details, dict) else 0.0)
-                    or p.get("quantity", 0.0)
+                _execution_details = res.details if isinstance(res.details, dict) else {}
+                _normalized_order = (
+                    _execution_details.get("normalized")
+                    if isinstance(_execution_details.get("normalized"), dict) else {}
                 )
+                _entry_order_evidence = (
+                    _execution_details.get("entry_order")
+                    if isinstance(_execution_details.get("entry_order"), dict) else {}
+                )
+                _broker_filled_qty = (
+                    _execution_details.get("filled_qty")
+                    or _normalized_order.get("executed_qty")
+                    or _entry_order_evidence.get("qty_filled")
+                    or 0.0
+                )
+                _executed_qty = float(
+                    _broker_filled_qty
+                    or (p.get("quantity", 0.0) if self._effective_execution_mode() == "paper" else 0.0)
+                )
+                if res.success and self._effective_execution_mode() == "broker" and _executed_qty <= 0:
+                    raise RuntimeError(
+                        f"BROKER_FILL_QUANTITY_UNAVAILABLE: {symbol} order={res.order_id}"
+                    )
 
                 # Approved sizing onto the canonical decision (apply_evidence ->
                 # TradingDecision.set_risk). Nothing wrote these fields before,
@@ -4698,6 +4773,7 @@ class PaperRunner:
                             side=_fill_side,
                             action="OPEN",
                             qty=_executed_qty,
+                            requested_qty=float(p.get("quantity", _executed_qty)),
                             price=_fill_actual,
                             # The entry fee is part of the trade's net result.
                             # It was recorded as None here, which left every
@@ -7112,6 +7188,7 @@ class PaperRunner:
                             side=side,
                             action="OPEN",
                             qty=float(filled_qty),
+                            requested_qty=float(_d.get("requested_qty") or _d.get("qty") or filled_qty),
                             price=float(avg_price),
                             fee=float(fee) if fee is not None else None,
                             realized_pnl=None,
@@ -7756,4 +7833,3 @@ class PaperRunner:
             except Exception:
                 # don't crash startup because one symbol failed
                 continue
-
