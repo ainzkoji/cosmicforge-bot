@@ -83,6 +83,15 @@ class RiskReason:
     #: The capital ledger could not be read or evaluated. Infrastructure failure
     #: is never authorisation: the entry is rejected in paper and live alike.
     CAPITAL_LEDGER_UNAVAILABLE: Final = "RISK_CAPITAL_LEDGER_UNAVAILABLE"
+    #: The configured per-trade allocation capped the risk-derived size. A
+    #: reduction label, not a rejection: the allocation belongs to one trade.
+    PER_TRADE_ALLOCATION_LIMIT: Final = "RISK_PER_TRADE_ALLOCATION_LIMIT"
+    #: An explicitly configured aggregate margin limit bound the trade. Never
+    #: derived from the per-trade allocation.
+    PORTFOLIO_EXPOSURE_LIMIT: Final = "RISK_PORTFOLIO_EXPOSURE_LIMIT"
+    #: The connected account's available balance, net of margin reserved by
+    #: in-flight entries, cannot fund the trade.
+    ACCOUNT_AVAILABLE_BALANCE_INSUFFICIENT: Final = "RISK_ACCOUNT_AVAILABLE_BALANCE_INSUFFICIENT"
 
 
 class ExecutionReason:

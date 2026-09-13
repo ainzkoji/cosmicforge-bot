@@ -488,12 +488,18 @@ class PaperRunner:
         self.executor._allocation_type = _allocation_type
         self.executor._allocation_value = _allocation_value
         self.executor._max_notional_per_symbol = _max_notional_per_symbol
-        # Per-trade margin capacity for the executor's allocation gate. Fixed
-        # position allocation remains per trade; open positions are not
-        # subtracted from the next trade's allocation here.
+        # BotInstance.capital_allocation: the base for percent allocations and a
+        # required configuration. NOT an aggregate cap -- the executor sizes
+        # each trade against its own per-trade allocation, and open positions
+        # never shrink the next trade's allocation.
         self.executor._capital_budget = float(
             getattr(self.context, "capital_budget", 0.0) or 0.0
         ) if self.context else 0.0
+        # Account margin reservations are keyed by the broker account, so two
+        # bots on one account cannot both spend the same free margin.
+        self.executor._broker_account_id = (
+            getattr(self.context, "broker_account_id", None) if self.context else None
+        )
         self.executor._allow_scale_in = False
         self.executor._allow_hedge_mode = False
         # â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€

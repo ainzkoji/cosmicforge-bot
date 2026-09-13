@@ -401,8 +401,10 @@ def test_e2e_a_connected_demo_account_reaches_the_broker_adapter(migrated_db):
         )
     assert result.status == "ORDER_PLACED", result.error
     client.place_order.assert_called_once()
-    # The capital ledger still governed the entry: the 120 per-trade capacity was applied.
-    assert executor._authorize_capital("BTCUSDT", 1.0, 1, 5.0).capital_budget == 120.0
+    # The capital ledger still governed the entry, with the per-trade allocation.
+    verdict = executor._authorize_capital("BTCUSDT", 1.0, 1, 5.0)
+    assert verdict.allocation_scope == "PER_TRADE"
+    assert verdict.per_trade_allocation == 100.0
 
 
 def test_e2e_a_real_money_account_without_approval_never_reaches_the_broker(migrated_db):

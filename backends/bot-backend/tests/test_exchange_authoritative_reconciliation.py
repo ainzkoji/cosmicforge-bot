@@ -182,9 +182,11 @@ def test_capital_ledger_ignores_reconciled_closed_position(db, spec):
     _open(db, "dust", "LONG", 0.000013978094262930355, margin=0.10812)
     _open(db, "short", "SHORT", 0.0155, margin=120)
     _reconcile(db, spec, [_broker()])
-    ledger = CapitalLedger(db, bot_instance_id=BOT, capital_budget=120)
+    ledger = CapitalLedger(db, bot_instance_id=BOT, per_trade_allocation=120)
     assert ledger.open_positions() == 1
-    assert ledger.committed_margin() <= 120
+    # Only the open short counts, at its broker-reconciled margin: evidence
+    # about one position, not an aggregate allocation check.
+    assert ledger.committed_margin() == pytest.approx(0.0155 * 77178 / 10)
 
 
 def test_reconciliation_is_idempotent_and_does_not_create_fills(db, spec):

@@ -364,10 +364,15 @@ class BinanceExecutor:
         self._allocation_type = "fixed_usdt"
         self._allocation_value = 0.0
         self._max_notional_per_symbol = 0.0
-        #: The bot's configured per-trade margin capacity. Distinct from the
-        #: broker's available balance, which is what the pre-trade margin check
-        #: looks at.
+        #: BotInstance.capital_allocation: the base for percent allocations and
+        #: a required configuration, but NOT an aggregate cap. A fixed
+        #: allocation is per trade and open positions never shrink it.
         self._capital_budget = 0.0
+        #: An explicit aggregate margin limit; 0 = none. No bot field configures
+        #: one today, and one is never derived from the allocation.
+        self._portfolio_margin_limit = 0.0
+        #: Key for account margin reservations: the connected broker account.
+        self._broker_account_id = None
         self._allow_scale_in = False
         self._allow_hedge_mode = False
         self.paper_executor = PaperExecutor(
@@ -427,60 +432,62 @@ class BinanceExecutor:
 
     def _authorize_capital(self, symbol: str, notional: float, leverage: int,
                            min_notional: float):
-        """Apply the capital-budget chain. Fails closed.
+        """Apply the per-trade allocation chain. Fails closed.
 
-        One capital policy governs paper and live: ``_execute_impl`` calls this
-        before the paper/live split. (Previously the paper branch returned
-        before this was ever reached, so paper trading ignored the budget.)
-        The live broker-balance preflight answers "can the account afford
-        this?"; this answers the question the account cannot: "has this bot
-        already committed its budget to other open positions?".
+        One allocation policy governs paper and live: ``_execute_impl`` calls
+        this before the paper/live split. (Previously the paper branch returned
+        before this was ever reached, so paper trading ignored it.) It answers
+        "how much may THIS trade use?": its configured per-trade allocation,
+        never reduced by the bot's other open positions. "Can the account
+        afford it?" is the live preflight's question, answered against the
+        connected account net of in-flight reservations; "how many positions
+        may be open?" is the policy engine's.
 
         Returns ``None`` only for an unmanaged executor -- no bot identity and
-        no budget (the legacy global runner, backtests) -- where there is no bot
-        budget to protect. Everything else gets a verdict, and an
-        infrastructure failure is a rejection, never an authorisation.
+        no capital configured (the legacy global runner, backtests). Everything
+        else gets a verdict, and an infrastructure failure is a rejection, never
+        an authorisation.
         """
         from app.decision.reasons import RiskReason
-        from app.risk.capital_ledger import capital_rejection
+        from app.risk.capital_ledger import capital_rejection, per_trade_allocation_margin
 
-        budget = float(getattr(self, "_capital_budget", 0.0) or 0.0)
+        capital = float(getattr(self, "_capital_budget", 0.0) or 0.0)
+        per_trade = per_trade_allocation_margin(
+            getattr(self, "_allocation_type", ""),
+            getattr(self, "_allocation_value", 0.0),
+            capital,
+        )
         bot_id = getattr(self, "bot_instance_id", None)
         managed_bot = bool(bot_id) and str(bot_id) != "default"
         db = getattr(self, "_db", None)
-        if budget <= 0 and not managed_bot:
+        if capital <= 0 and not managed_bot:
             return None
-        if budget <= 0:
+        if capital <= 0 or per_trade <= 0:
             return capital_rejection(
                 RiskReason.CAPITAL_BUDGET_REQUIRED,
-                f"bot {bot_id} has no capital budget; its entries are rejected "
-                f"until one is configured",
-                requested_notional=notional, leverage=leverage,
+                f"bot {bot_id} has no capital allocation or per-trade allocation "
+                f"configured; its entries are rejected until one is",
+                per_trade_allocation=per_trade, requested_notional=notional, leverage=leverage,
             )
         if not managed_bot or db is None:
             missing = "a bot identity" if not managed_bot else "a database"
             return capital_rejection(
                 RiskReason.CAPITAL_LEDGER_UNAVAILABLE,
-                f"the capital ledger has no {missing}, so the budget cannot be checked",
-                capital_budget=budget, requested_notional=notional, leverage=leverage,
+                f"the capital ledger has no {missing}, so the allocation cannot be checked",
+                per_trade_allocation=per_trade, requested_notional=notional, leverage=leverage,
             )
         try:
             from app.risk.capital_ledger import CapitalLedger
 
-            ledger = CapitalLedger(db, bot_instance_id=bot_id, capital_budget=budget)
-            allocation = float(getattr(self, "_allocation_value", 0.0) or 0.0)
-            allocation_type = str(getattr(self, "_allocation_type", "") or "").lower()
-            # A fixed allocation is expressed as MARGIN; the chain works in
-            # notional, so convert with the same leverage the order will use.
-            per_position_cap = (
-                allocation * leverage
-                if allocation_type in {"fixed_amount", "fixed_usdt"} and allocation > 0
-                else 0.0
+            ledger = CapitalLedger(
+                db, bot_instance_id=bot_id, per_trade_allocation=per_trade,
+                portfolio_margin_limit=float(
+                    getattr(self, "_portfolio_margin_limit", 0.0) or 0.0
+                ),
             )
             return ledger.authorize(
                 risk_notional=float(notional),
                 leverage=float(leverage),
-                per_position_cap=per_position_cap,
                 min_notional=float(min_notional or 0.0),
                 max_exposure_notional=float(
                     getattr(self, "_max_notional_per_symbol", 0.0) or 0.0
@@ -495,7 +502,7 @@ class BinanceExecutor:
             return capital_rejection(
                 RiskReason.CAPITAL_LEDGER_UNAVAILABLE,
                 f"capital authorisation failed: {type(exc).__name__}: {exc}",
-                capital_budget=budget, requested_notional=notional, leverage=leverage,
+                per_trade_allocation=per_trade, requested_notional=notional, leverage=leverage,
             )
 
     def _resolve_effective_leverage(self, symbol: str, leverage_mult: float,
@@ -556,9 +563,10 @@ class BinanceExecutor:
             import logging
 
             logging.getLogger(__name__).info(
-                "[CAPITAL] %s: notional reduced %.8g -> %.8g (committed=%.8g of budget=%.8g)",
+                "[CAPITAL] %s: notional reduced %.8g -> %.8g (per-trade allocation "
+                "%.8g margin; %.8g committed in open positions is evidence only)",
                 symbol, authorization.requested_notional, authorization.approved_notional,
-                authorization.committed_margin, authorization.capital_budget,
+                authorization.per_trade_allocation, authorization.committed_margin,
             )
         return CapitalGate(None, authorization, authorization.approved_notional, leverage)
 
@@ -1024,7 +1032,49 @@ class BinanceExecutor:
             remaining_quantity=remaining_quantity, fallback_price=fallback_price,
         )
 
-    def _execute_impl(
+    def _execute_impl(self, *args, **kwargs) -> ExecResult:
+        """Run one execution and always end the account reservation it made.
+
+        The live preflight in the body may reserve account margin
+        (AccountMarginReservations). Whatever path the body leaves by, the
+        reservation is ended here:
+
+          ORDER_PLACED      settled to the broker-executed margin (a partial
+                            fill frees the rest), held until the broker's
+                            balance can reflect it
+          SUBMIT_UNCERTAIN  settled whole: the order may exist at the broker
+          anything else     released at once -- rejected, failed, rolled back,
+                            or an exception before the order was sent
+        """
+        import threading
+
+        from app.risk.capital_ledger import ACCOUNT_RESERVATIONS
+
+        tls = self.__dict__.get("_reservation_tls")
+        if tls is None:
+            tls = self.__dict__.setdefault("_reservation_tls", threading.local())
+        outer = getattr(tls, "token", None)
+        tls.token = None
+        result = None
+        try:
+            result = self._execute_impl_body(*args, **kwargs)
+            return result
+        finally:
+            token = getattr(tls, "token", None)
+            tls.token = outer
+            if token is not None:
+                status = getattr(result, "status", None)
+                if status == "ORDER_PLACED":
+                    ACCOUNT_RESERVATIONS.settle(
+                        token,
+                        executed_margin=(getattr(result, "details", None) or {}).get("executed_margin"),
+                    )
+                elif status == "SUBMIT_UNCERTAIN":
+                    ACCOUNT_RESERVATIONS.settle(token)
+                else:
+                    ACCOUNT_RESERVATIONS.release(token)
+
+    def _execute_impl_body(
         self,
         symbol: str,
         signal: str,
@@ -1424,38 +1474,99 @@ class BinanceExecutor:
                 f"pct_of_avail={margin_required / max(avail, 0.01) * 100:.1f}%"
             )
 
-            # ── Hard block: account balance too low ──
-            if avail < MIN_NOTIONAL:
-                return ExecResult(
-                    status="INSUFFICIENT_MARGIN",
-                    details={
-                        "symbol": symbol, "signal": signal,
-                        "available_balance": avail, "budget_notional": budget_usdt,
-                        "margin_required": margin_required,
-                        "hint": "Add funds to your Binance account.",
-                    },
-                    success=False,
-                    error=f"[PREFLIGHT] {symbol}: account balance too low ({avail:.2f} USDT). Add funds."
-                )
-
-            # ── Affordability check: cap notional with 5% safety buffer ──
-            max_safe_margin = avail * MARGIN_SAFETY_BUFFER
-            if margin_required > max_safe_margin:
-                capped_notional = max_safe_margin * effective_lev
-                _exec_logger.warning(
-                    f"[MARGIN_AUDIT] {symbol}: margin_required={margin_required:.2f} > "
-                    f"max_safe_margin={max_safe_margin:.2f} "
-                    f"(avail={avail:.2f} x {MARGIN_SAFETY_BUFFER:.0%}). "
-                    f"Capping notional from {budget_usdt:.2f} to {capped_notional:.2f} USDT."
-                )
-                budget_usdt = capped_notional
-                margin_required = max_safe_margin
-
         except Exception as bal_err:
-            _exec_logger.warning(f"[MARGIN_AUDIT] {symbol}: Could not check balance: {bal_err}. Proceeding cautiously.")
+            # Fail closed: an account that cannot be read is not affordable.
+            from app.decision.reasons import ExecutionReason
+
+            _exec_logger.error(
+                "[MARGIN_AUDIT] %s: account snapshot unavailable, entry blocked: %s",
+                symbol, bal_err,
+            )
+            if _ep is not None and _ep_lock_acquired:
+                _ep.mark_failed(self.bot_instance_id, symbol, _ep_side,
+                                reason="account_snapshot_unavailable")
+                _ep_lock_acquired = False
+            return ExecResult(
+                status="INSUFFICIENT_MARGIN",
+                details={
+                    "symbol": symbol, "signal": signal,
+                    "reason_code": ExecutionReason.MARGIN_PREFLIGHT_FAILED,
+                    "error": str(bal_err),
+                },
+                success=False,
+                error=(
+                    f"[PREFLIGHT] {symbol}: account affordability could not be "
+                    f"verified ({bal_err}); entry blocked."
+                ),
+            )
+
+        # ── Account affordability, net of in-flight entries ─────────────────
+        # availableBalance does not yet show an order that has not landed, so
+        # the check and the reservation are one atomic step against every other
+        # entry in flight on this broker account. The 5% buffer still applies,
+        # and a shortfall still reduces the trade (or blocks it below minimum).
+        # This is the account's constraint; the per-trade allocation above is
+        # the bot's, and neither is derived from the other.
+        from app.risk.capital_ledger import ACCOUNT_RESERVATIONS
+
+        _account_key = str(
+            getattr(self, "_broker_account_id", None)
+            or f"bot:{getattr(self, 'bot_instance_id', None) or 'default'}"
+        )
+        _reservation = ACCOUNT_RESERVATIONS.reserve(
+            _account_key,
+            available_balance=avail,
+            requested_margin=margin_required,
+            safety_buffer=MARGIN_SAFETY_BUFFER,
+            min_available=MIN_NOTIONAL,
+        )
+        _account_obs = _reservation.observability()
+        if not _reservation.approved:
+            if _ep is not None and _ep_lock_acquired:
+                _ep.mark_failed(self.bot_instance_id, symbol, _ep_side,
+                                reason="account_available_balance_insufficient")
+                _ep_lock_acquired = False
+            return ExecResult(
+                status="INSUFFICIENT_MARGIN",
+                details={
+                    "symbol": symbol, "signal": signal,
+                    "reason_code": _reservation.reason,
+                    "available_balance": avail, "budget_notional": budget_usdt,
+                    "margin_required": margin_required,
+                    "account_affordability": _account_obs,
+                    "hint": "Add funds to your Binance account.",
+                },
+                success=False,
+                error=(
+                    f"[PREFLIGHT] {symbol}: available balance "
+                    f"{_reservation.effective_available:.2f} USDT (after "
+                    f"{_reservation.pending_margin:.2f} reserved by in-flight entries) "
+                    f"is too low. Add funds."
+                ),
+            )
+        _reservation_tls = self.__dict__.get("_reservation_tls")
+        if _reservation_tls is not None:
+            _reservation_tls.token = _reservation.token  # ended by _execute_impl
+        else:
+            # Not entered through _execute_impl, so nothing would end it.
+            ACCOUNT_RESERVATIONS.release(_reservation.token)
+        if _reservation.reduced:
+            capped_notional = _reservation.reserved_margin * effective_lev
+            _exec_logger.warning(
+                f"[MARGIN_AUDIT] {symbol}: margin_required={margin_required:.2f} > "
+                f"affordable={_reservation.reserved_margin:.2f} "
+                f"(avail={avail:.2f} - in-flight {_reservation.pending_margin:.2f}, "
+                f"x {MARGIN_SAFETY_BUFFER:.0%}). "
+                f"Capping notional from {budget_usdt:.2f} to {capped_notional:.2f} USDT "
+                f"({_reservation.reason})."
+            )
+            budget_usdt = capped_notional
+            margin_required = _reservation.reserved_margin
 
         # Internal sizing call — budget_usdt is NOTIONAL, _size_qty handles leverage internally
         qty, details = self._size_qty(symbol, budget_usdt, leverage_mult, sl_price=sl_price, leverage_override=leverage_override)
+        if isinstance(details, dict):
+            details["account_affordability"] = _account_obs
 
         if qty <= 0:
              return ExecResult(
@@ -1955,6 +2066,39 @@ class BinanceExecutor:
 
         normalized = self._normalize_order(entry_order.model_dump(), symbol, signal, "MARKET", qty)
 
+        # Broker truth for THIS trade's margin, compared with its own allocation
+        # (never with the bot's aggregate). Evidence only: a failure here must
+        # not turn a placed order into an error.
+        _executed_margin = None
+        _capital_obs = None
+        _variance = None
+        try:
+            from app.risk.capital_ledger import allocation_variance, margin_for
+
+            _lev_used = float(
+                details.get("leverage") or (capital_gate.leverage if capital_gate else 1) or 1
+            )
+            _exec_qty = float(normalized.get("executed_qty", 0.0) or 0.0) or float(
+                getattr(entry_order, "qty_filled", 0.0) or 0.0
+            )
+            _exec_px = float(normalized.get("avg_price", 0.0) or 0.0) or float(
+                getattr(entry_order, "avg_fill_price", 0.0) or 0.0
+            )
+            if _exec_qty > 0 and _exec_px > 0:
+                _executed_margin = margin_for(_exec_qty, _exec_px, _lev_used)
+            if capital_gate is not None and capital_gate.authorization is not None:
+                _capital_obs = capital_gate.authorization.observability()
+                if _executed_margin is not None:
+                    _variance = allocation_variance(
+                        configured_trade_allocation=capital_gate.authorization.per_trade_allocation,
+                        pre_trade_target_margin=float(qty) * float(trade_price or 0.0) / _lev_used,
+                        actual_committed_margin=_executed_margin,
+                    )
+        except Exception as _cap_ev_err:
+            _log.getLogger(__name__).warning(
+                "[CAPITAL] %s: fill capital evidence not computed: %s", symbol, _cap_ev_err,
+            )
+
         return ExecResult(
             status="ORDER_PLACED",
             details={
@@ -1970,7 +2114,11 @@ class BinanceExecutor:
                 "entry_order": entry_order.model_dump(),
                 "protection": prot_res.model_dump(),
                 "normalized": normalized,
-                "flip_close": locals().get("close_order", None) # If we did a flip
+                "flip_close": locals().get("close_order", None), # If we did a flip
+                "executed_margin": _executed_margin,
+                "capital": _capital_obs,
+                "account_affordability": details.get("account_affordability"),
+                "allocation_variance": _variance,
             },
             order_id=entry_order.broker_order_id,
             success=True,

@@ -33,7 +33,10 @@ class TestExecutorExceptionHandling:
         mock_client = Mock()
         mock_client.get_position_info = Mock(return_value={"positionAmt": "0.0"})
         mock_client.get_prices = Mock(return_value={"ETHUSDT": 5000.0})
-        
+        # A readable account: affordability fails closed when it cannot be read,
+        # and this test is about what happens after the order is submitted.
+        mock_client.account = Mock(return_value={"availableBalance": "1000.0"})
+
         # Mock place_order to fail with an unexpected error
         mock_client.place_order = Mock(side_effect=Exception("API Timeout"))
         

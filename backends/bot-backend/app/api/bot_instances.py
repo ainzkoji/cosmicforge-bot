@@ -124,6 +124,22 @@ def get_effective_policy(
             "effective": policy.max_daily_trades,
         },
     }
+    # The allocation is per trade; keep it apart from capital_allocation, the
+    # position count, committed margin and account affordability.
+    try:
+        from app.risk.capital_ledger import capital_diagnostics
+
+        payload["capital"] = capital_diagnostics(
+            db,
+            bot_instance_id=instance_id,
+            allocation_type=policy.position_allocation_type,
+            allocation_value=policy.position_allocation_value,
+            capital_allocation=policy.capital_budget,
+            max_open_positions=policy.max_open_positions,
+            account_key=str(instance.broker_account_id or "") or None,
+        )
+    except Exception as exc:
+        payload["capital"] = {"error": f"{type(exc).__name__}: {exc}"}
     return payload
 
 

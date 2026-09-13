@@ -5,11 +5,11 @@ The audited defect: ``BinanceExecutor._execute_impl`` handed paper entries to
 ignored allocation sizing. And when authorisation raised, it
 returned None, which the caller read as "no opinion -- proceed".
 
-The worked example is the live bot's configuration, unchanged here: budget 120
-USDT, fixed allocation 120 USDT per position, two slots. After one 120-USDT
-commitment the second still has its own 120-USDT allocation; independent gates
-such as broker balance, position count, and explicit portfolio limits decide
-whether it can proceed.
+The worked example is the live bot's configuration: capital_allocation 120 (not
+an aggregate cap), fixed allocation 120 USDT per trade, two slots. After one
+120-USDT commitment the second trade still has its own 120-USDT allocation;
+independent gates -- broker affordability, position count, an explicit
+portfolio limit if one is configured -- decide whether it can proceed.
 """
 from __future__ import annotations
 
@@ -143,7 +143,7 @@ def test_paper_permits_a_second_120_commitment_when_independent_gates_allow(db):
 
 
 def test_paper_does_not_shrink_second_trade_to_remaining_aggregate_budget(db):
-    commit(db, qty=1.0)  # 100 committed, 20 left
+    commit(db, qty=1.0)  # 100 committed; the next trade still has its own 120
     ex = executor(db, mode="paper")
     result = ex.execute_signal("ETHUSDT", "BUY", 120.0, leverage_override=1)
     assert result.success
