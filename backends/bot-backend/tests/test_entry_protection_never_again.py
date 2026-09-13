@@ -355,6 +355,7 @@ def test_exact_exposure_uses_final_sized_notional_not_requested_budget(temp_db):
             sl_price=49_000.0,
             tp_price=53_000.0,
             current_equity=1_000.0,
+            leverage_override=1,
         )
 
     entry = executor._entry_prot.get_entry("bot-never-again", "BTCUSDT", "LONG")
@@ -363,7 +364,7 @@ def test_exact_exposure_uses_final_sized_notional_not_requested_budget(temp_db):
     assert entry["filled_notional"] == pytest.approx(100.0)
 
 
-def test_exact_exposure_blocks_after_sizing_when_final_notional_exceeds_max(temp_db):
+def test_exact_exposure_is_capped_before_submit_when_final_notional_exceeds_max(temp_db):
     _, db = temp_db
     frozen_now = 1_700_000_000.0
 
@@ -385,16 +386,16 @@ def test_exact_exposure_blocks_after_sizing_when_final_notional_exceeds_max(temp
         result = executor.execute_signal(
             "BTCUSDT",
             "BUY",
-            90.0,
+            120.0,
             sl_price=49_000.0,
             tp_price=53_000.0,
             current_equity=1_000.0,
+            leverage_override=1,
         )
 
-    assert result.status == "EXPOSURE_LIMIT_EXCEEDED"
-    client.place_order.assert_not_called()
-    events = executor._entry_prot.list_events(bot_id="bot-never-again", symbol="BTCUSDT", limit=20)
-    assert any(e["event_type"] == "EXPOSURE_BLOCKED" for e in events)
+    entry = executor._entry_prot.get_entry("bot-never-again", "BTCUSDT", "LONG")
+    assert result.status in {"ORDER_PLACED", "SUBMIT_UNCERTAIN"}
+    assert entry["sized_notional"] <= 100.0 + 1e-9
 
 
 def test_confirmed_exposure_uses_filled_notional_after_entry_confirm(temp_db):

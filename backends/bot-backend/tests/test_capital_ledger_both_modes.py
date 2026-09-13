@@ -1,13 +1,15 @@
-"""One capital policy governs paper and live, and it fails closed.
+"""One per-trade allocation policy governs paper and live, and it fails closed.
 
 The audited defect: ``BinanceExecutor._execute_impl`` handed paper entries to
 ``PaperExecutor`` before ``_authorize_capital`` was ever reached, so paper trading
-ignored ``committed + proposed <= budget``. And when authorisation raised, it
+ignored allocation sizing. And when authorisation raised, it
 returned None, which the caller read as "no opinion -- proceed".
 
 The worked example is the live bot's configuration, unchanged here: budget 120
 USDT, fixed allocation 120 USDT per position, two slots. After one 120-USDT
-commitment the second must be rejected -- in paper and in live alike.
+commitment the second still has its own 120-USDT allocation; independent gates
+such as broker balance, position count, and explicit portfolio limits decide
+whether it can proceed.
 """
 from __future__ import annotations
 
@@ -128,36 +130,34 @@ def test_paper_permits_the_first_120_commitment(db):
     assert result.details["leverage"] == 1
 
 
-def test_paper_rejects_a_second_120_commitment(db):
+def test_paper_permits_a_second_120_commitment_when_independent_gates_allow(db):
     commit(db)  # 1.2 BTC at 100, 1x: 120 margin committed
     assert committed(db) == pytest.approx(120.0)
     ex = executor(db, mode="paper")
 
     result = ex.execute_signal("ETHUSDT", "BUY", 120.0, leverage_override=1)
 
-    assert not result.success
-    assert result.status == "INSUFFICIENT_MARGIN"
-    assert result.details["reason_code"] == RiskReason.INSUFFICIENT_CAPITAL
-    assert ex.paper_executor.get_position("ETHUSDT") is None, "no paper position may open"
+    assert result.success, result.error
+    assert result.details["capital"]["approved_margin"] == pytest.approx(120.0)
+    assert ex.paper_executor.get_position("ETHUSDT") is not None
 
 
-def test_paper_shrinks_to_what_remains_never_above_it(db):
+def test_paper_does_not_shrink_second_trade_to_remaining_aggregate_budget(db):
     commit(db, qty=1.0)  # 100 committed, 20 left
     ex = executor(db, mode="paper")
     result = ex.execute_signal("ETHUSDT", "BUY", 120.0, leverage_override=1)
     assert result.success
-    assert result.details["capital"]["approved_margin"] == pytest.approx(20.0)
+    assert result.details["capital"]["approved_margin"] == pytest.approx(120.0)
 
 
 # ── Live uses the same single authorisation ─────────────────────────────────
 
 
-def test_live_rejects_a_second_120_commitment_before_touching_the_broker(db):
+def test_live_does_not_reject_a_second_120_commitment_before_broker_affordability(db):
     commit(db)
     ex = executor(db, mode="live", client=NoBrokerCalls())
-    result = ex.execute_signal("ETHUSDT", "BUY", 120.0, leverage_override=1)
-    assert result.status == "INSUFFICIENT_MARGIN"
-    assert result.details["reason_code"] == RiskReason.INSUFFICIENT_CAPITAL
+    with pytest.raises(ExchangeError, match="get_position_info"):
+        ex.execute_signal("ETHUSDT", "BUY", 120.0, leverage_override=1)
 
 
 @pytest.mark.parametrize("mode", ["paper", "live"])

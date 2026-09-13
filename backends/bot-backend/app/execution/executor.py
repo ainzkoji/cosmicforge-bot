@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 import time
 from decimal import Decimal, ROUND_DOWN, ROUND_UP
+from types import SimpleNamespace
 
 from app.core.config import settings
 # from app.exchange.binance.client import BinanceFuturesClient # REMOVED
@@ -250,6 +251,14 @@ class ExecResult:
 #: Exchange minimum notional the capital chain enforces (Binance futures).
 _CAPITAL_MIN_NOTIONAL = 5.0
 
+# Pre-entry capital reserve. This is not a trading/risk-policy threshold: it is
+# per-trade execution headroom so a market fill that lands a few bps away from
+# the sizing reference cannot knowingly consume more margin than that trade was
+# allocated.
+_PREFILL_PRICE_MOVE_BPS = 10.0
+_PREFILL_TAKER_FEE_BPS = 4.0
+_PREFILL_MIN_BUFFER_BPS = 15.0
+
 
 @dataclass(frozen=True)
 class CapitalGate:
@@ -265,6 +274,55 @@ class CapitalGate:
     authorization: object
     approved_notional: float
     leverage: int
+
+
+@dataclass(frozen=True)
+class PreEntryCapitalReserve:
+    """Executable quantity after reserving capital headroom before submission."""
+
+    approved: bool
+    qty: float
+    estimated_margin: float
+    max_margin: float
+    reference_price: float
+    protected_price: float
+    buffer_rate: float
+    reason: str
+    detail: str
+
+    def to_dict(self) -> dict:
+        return {
+            "approved": self.approved,
+            "qty": round(float(self.qty or 0.0), 12),
+            "estimated_margin": round(float(self.estimated_margin or 0.0), 8),
+            "max_margin": round(float(self.max_margin or 0.0), 8),
+            "reference_price": round(float(self.reference_price or 0.0), 8),
+            "protected_price": round(float(self.protected_price or 0.0), 8),
+            "buffer_rate": round(float(self.buffer_rate or 0.0), 8),
+            "reason": self.reason,
+            "detail": self.detail,
+        }
+
+
+def _decimal_attr(obj, *names: str, default: str = "0") -> Decimal:
+    for name in names:
+        if isinstance(obj, dict) and name in obj:
+            value = obj.get(name)
+        else:
+            value = getattr(obj, name, None)
+        if value is not None:
+            try:
+                return Decimal(str(value))
+            except Exception:
+                continue
+    return Decimal(default)
+
+
+def _floor_qty_to_step(qty: float, step: Decimal) -> Decimal:
+    qty_d = Decimal(str(max(0.0, float(qty or 0.0))))
+    if step <= 0:
+        return qty_d
+    return (qty_d / step).to_integral_value(rounding=ROUND_DOWN) * step
 
 
 # =========================
@@ -306,10 +364,9 @@ class BinanceExecutor:
         self._allocation_type = "fixed_usdt"
         self._allocation_value = 0.0
         self._max_notional_per_symbol = 0.0
-        #: The bot's own capital budget. Distinct from the broker's available
-        #: balance, which is what the pre-trade margin check looks at and which
-        #: says nothing about how much of *this bot's* budget is already
-        #: committed to other open positions.
+        #: The bot's configured per-trade margin capacity. Distinct from the
+        #: broker's available balance, which is what the pre-trade margin check
+        #: looks at.
         self._capital_budget = 0.0
         self._allow_scale_in = False
         self._allow_hedge_mode = False
@@ -588,6 +645,103 @@ class BinanceExecutor:
         else:
             return 0.00250  # 25 bps
 
+    def _pre_entry_capital_reserve(
+        self,
+        *,
+        symbol: str,
+        qty: float,
+        reference_price: float,
+        leverage: float,
+        capital_gate: CapitalGate | None,
+        spec,
+        submitted_notional: float,
+    ) -> PreEntryCapitalReserve:
+        """Shrink executable qty so estimated margin fits per-trade allocation.
+
+        Open committed margin is evidence, not a claim against the next fixed
+        allocation. This guard therefore uses the authorization's approved
+        margin for the current trade, applies a protected price and broker step
+        size, and never rewrites post-fill margin; broker fill truth still owns
+        the final position row.
+        """
+        lev = max(1.0, float(leverage or 1.0))
+        ref = float(reference_price or 0.0)
+        if qty <= 0 or ref <= 0:
+            return PreEntryCapitalReserve(
+                False, 0.0, 0.0, 0.0, ref, ref, 0.0,
+                "invalid_input", "quantity or reference price is not positive",
+            )
+
+        authorization = capital_gate.authorization if capital_gate is not None else None
+        if authorization is None:
+            return PreEntryCapitalReserve(
+                True, float(qty), abs(float(qty) * ref) / lev, float("inf"),
+                ref, ref, 0.0, "unmanaged", "no capital ledger verdict available",
+            )
+
+        step = _decimal_attr(spec, "step_size", "stepSize", default="0")
+        min_qty = _decimal_attr(spec, "min_qty", "minQty", default="0")
+        min_notional = max(
+            _decimal_attr(spec, "min_notional", "minNotional", default="0"),
+            Decimal(str(_CAPITAL_MIN_NOTIONAL)),
+        )
+        contract_size = _decimal_attr(spec, "contract_size", "contractSize", default="1")
+        if contract_size <= 0:
+            contract_size = Decimal("1")
+
+        current_margin = (Decimal(str(qty)) * Decimal(str(ref)) * contract_size) / Decimal(str(lev))
+        approved_margin = Decimal(str(max(0.0, float(authorization.approved_margin or 0.0))))
+        submitted_margin = (
+            Decimal(str(max(0.0, float(submitted_notional or 0.0)))) / Decimal(str(lev))
+            if submitted_notional and submitted_notional > 0 else current_margin
+        )
+        max_margin = min(approved_margin, submitted_margin)
+
+        if max_margin <= 0:
+            return PreEntryCapitalReserve(
+                False, 0.0, float(current_margin), 0.0, ref, ref, 0.0,
+                "no_trade_allocation", "the current trade has no approved margin allocation",
+            )
+
+        slippage_rate = max(0.0, float(self.estimate_slippage(float(submitted_notional or 0.0)) or 0.0))
+        configured_rate = max(
+            _PREFILL_MIN_BUFFER_BPS,
+            _PREFILL_PRICE_MOVE_BPS + _PREFILL_TAKER_FEE_BPS,
+        ) / 10_000.0
+        buffer_rate = max(configured_rate, slippage_rate + (_PREFILL_TAKER_FEE_BPS / 10_000.0))
+        protected_price = Decimal(str(ref)) * (Decimal("1") + Decimal(str(buffer_rate)))
+
+        safe_qty_raw = (max_margin * Decimal(str(lev))) / (protected_price * contract_size)
+        safe_qty = _floor_qty_to_step(float(safe_qty_raw), step)
+        requested_qty = _floor_qty_to_step(qty, step)
+        final_qty = min(requested_qty, safe_qty)
+        estimated_margin = (final_qty * protected_price * contract_size) / Decimal(str(lev))
+
+        if final_qty <= 0 or (min_qty > 0 and final_qty < min_qty):
+            return PreEntryCapitalReserve(
+                False, float(final_qty), float(estimated_margin), float(max_margin),
+                ref, float(protected_price), buffer_rate, "qty_below_min_qty",
+                "capital headroom leaves no executable quantity at the instrument step",
+            )
+
+        estimated_notional = final_qty * Decimal(str(ref)) * contract_size
+        if min_notional > 0 and estimated_notional < min_notional:
+            return PreEntryCapitalReserve(
+                False, float(final_qty), float(estimated_margin), float(max_margin),
+                ref, float(protected_price), buffer_rate, "below_min_notional",
+                "capital headroom leaves the executable notional below the exchange minimum",
+            )
+
+        reason = "capital_headroom_applied" if final_qty < requested_qty else "capital_headroom_ok"
+        detail = (
+            f"qty {float(requested_qty):.12g} -> {float(final_qty):.12g}; "
+            f"estimated protected margin {float(estimated_margin):.8g} <= "
+            f"per-trade cap {float(max_margin):.8g}"
+        )
+        return PreEntryCapitalReserve(
+            True, float(final_qty), float(estimated_margin), float(max_margin),
+            ref, float(protected_price), buffer_rate, reason, detail,
+        )
 
     def _normalize_order(self, order_res: dict, symbol: str, side: str, type_: str, qty: float, price: float = 0.0) -> dict:
         """
@@ -732,6 +886,12 @@ class BinanceExecutor:
         
         # 6. Return Result
         res.details["leverage"] = lev
+        res.details["price"] = price
+        res.details["reference_price"] = price
+        res.details["step_size"] = float(spec.step_size)
+        res.details["min_qty"] = float(spec.min_qty)
+        res.details["min_notional"] = float(spec.min_notional or 0.0)
+        res.details["contract_size"] = float(spec.contract_size)
         return float(res.qty), res.details
 
     def _ensure_leverage(self, symbol: str) -> dict:
@@ -899,10 +1059,10 @@ class BinanceExecutor:
             )
 
         # ── One capital policy for paper and live ──────────────────────────
-        #     committed margin + proposed margin <= bot capital budget
+        #     proposed margin <= configured per-trade allocation
         # decided HERE, before the paper/live split. The paper branch below used
         # to return before the ledger was ever consulted, so paper trading
-        # ignored the budget entirely. A rejection (including an unreadable
+        # ignored the allocation entirely. A rejection (including an unreadable
         # ledger) stops the entry in both modes.
         capital_gate = None
         if signal in {"BUY", "SELL"}:
@@ -1239,9 +1399,10 @@ class BinanceExecutor:
             total_maint   = float(acc.get("totalMaintMargin",    0.0))
             total_initial = float(acc.get("totalInitialMargin",  0.0))
 
-            # ── The bot's own capital budget, before anything else ─────
-            # committed margin + proposed margin <= capital budget. This is the
-            # bot's constraint; the broker-balance check below is the account's.
+            # ── The bot's own per-trade allocation, before anything else ────
+            # proposed margin <= configured per-trade allocation. This is the
+            # bot's trade-allocation constraint; the broker-balance check below
+            # is the account's.
             # Authorised ONCE, before the paper/live split (capital_gate at the
             # top of _execute_impl); a rejection already returned there. The
             # live path uses that verdict rather than asking the ledger a second
@@ -1326,6 +1487,68 @@ class BinanceExecutor:
              qty = effective_qty
              import logging as _log
              _log.getLogger(__name__).info(f"[COST REALISM] {symbol}: High expected slippage ({expected_slippage_pct*100:.3f}%). Reduced entry qty to {qty} to absorb cost.")
+
+        if all(k in details for k in ("step_size", "min_qty", "min_notional", "contract_size")):
+            spec = SimpleNamespace(
+                step_size=Decimal(str(details.get("step_size") or "0")),
+                min_qty=Decimal(str(details.get("min_qty") or "0")),
+                min_notional=Decimal(str(details.get("min_notional") or "0")),
+                contract_size=Decimal(str(details.get("contract_size") or "1")),
+            )
+        else:
+            try:
+                spec = get_instrument_registry().get_spec("binance", symbol)
+            except Exception:
+                spec = None
+            if spec is None:
+                spec = SimpleNamespace(
+                    step_size=Decimal("0"),
+                    min_qty=Decimal("0"),
+                    min_notional=Decimal(str(_CAPITAL_MIN_NOTIONAL)),
+                    contract_size=Decimal("1"),
+                )
+                details["pre_entry_capital_reserve_spec_fallback"] = "size_details_missing"
+
+        reserve = self._pre_entry_capital_reserve(
+            symbol=symbol,
+            qty=float(qty),
+            reference_price=float(trade_price),
+            leverage=float(details.get("leverage", capital_gate.leverage if capital_gate else 1)),
+            capital_gate=capital_gate,
+            spec=spec,
+            submitted_notional=float(budget_usdt),
+        )
+        details["pre_entry_capital_reserve"] = reserve.to_dict()
+        if not reserve.approved:
+            if _ep is not None and _ep_lock_acquired:
+                _ep.mark_failed(self.bot_instance_id, symbol, _ep_side,
+                                reason=f"capital_headroom_{reserve.reason}")
+                _ep_lock_acquired = False
+            return ExecResult(
+                status="INSUFFICIENT_MARGIN",
+                details={
+                    "symbol": symbol,
+                    "signal": signal,
+                    "reason": "PREFILL_CAPITAL_HEADROOM",
+                    "capital_headroom": reserve.to_dict(),
+                    "capital": (
+                        capital_gate.authorization.observability()
+                        if capital_gate is not None and capital_gate.authorization is not None
+                        else None
+                    ),
+                },
+                success=False,
+                error=f"[CAPITAL] {symbol}: {reserve.detail}",
+            )
+        if reserve.qty < float(qty) - 1e-12:
+            _exec_logger.info(
+                "[CAPITAL_HEADROOM] %s: qty reduced %.12g -> %.12g (%s)",
+                symbol, float(qty), reserve.qty, reserve.detail,
+            )
+            qty = reserve.qty
+            notional = float(qty) * trade_price
+            expected_slippage_pct = self.estimate_slippage(notional)
+            expected_slippage_usdt = notional * expected_slippage_pct
 
         import logging as _log
         _log.getLogger(__name__).info(

@@ -401,7 +401,7 @@ def test_e2e_a_connected_demo_account_reaches_the_broker_adapter(migrated_db):
         )
     assert result.status == "ORDER_PLACED", result.error
     client.place_order.assert_called_once()
-    # The capital ledger still governed the entry: the 120 budget was applied.
+    # The capital ledger still governed the entry: the 120 per-trade capacity was applied.
     assert executor._authorize_capital("BTCUSDT", 1.0, 1, 5.0).capital_budget == 120.0
 
 
@@ -415,8 +415,8 @@ def test_e2e_a_real_money_account_without_approval_never_reaches_the_broker(migr
     assert decision.block_reason.name in {"KYC_REQUIRED", "LIVE_READINESS_REQUIRED"}
 
 
-def test_e2e_capital_still_bounds_a_demo_account(migrated_db):
-    """The broker balance never replaces the bot budget."""
+def test_e2e_open_committed_margin_does_not_exhaust_next_fixed_allocation(migrated_db):
+    """Open committed margin does not replace per-trade allocation semantics."""
     with migrated_db.connect() as conn:
         conn.execute(
             "INSERT INTO positions (position_id, bot_instance_id, symbol, side, original_qty, "
@@ -426,6 +426,8 @@ def test_e2e_capital_still_bounds_a_demo_account(migrated_db):
         )
     client = _connected_demo_adapter()
     executor = _live_executor(migrated_db, client)
-    result = executor.execute_signal("BTCUSDT", "BUY", 120.0, leverage_override=1)
-    assert result.status == "INSUFFICIENT_MARGIN"
-    client.place_order.assert_not_called()
+    executor._size_qty = MagicMock(return_value=(0.0018, {"price": 50_000.0, "leverage": 1}))
+    with patch("app.execution.executor.time.time", return_value=1_700_000_000.0):
+        result = executor.execute_signal("BTCUSDT", "BUY", 120.0, leverage_override=1)
+    assert result.status == "ORDER_PLACED", result.error
+    client.place_order.assert_called_once()

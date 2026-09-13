@@ -1,31 +1,24 @@
-"""The capital budget invariant, and the sizing chain that enforces it.
+"""Per-trade allocation sizing and persisted committed-margin evidence.
 
-    committed margin  +  proposed margin  <=  capital budget
+For ``allocation_type=fixed_amount``, ``allocation_value`` is a per-trade
+margin ceiling. It is not a total bot budget, is not divided by position slots,
+and is not reduced by already-open positions. Position count, broker account
+affordability, risk sizing, and explicit portfolio limits are separate gates.
 
-This has to hold whatever the operator configured. `bot_a8117dc719fc` is the
-worked example: `capital_budget=120`, `allocation_value=120` fixed, and
-`max_open_positions=2`. Nothing rejected that. `resolve_effective_bot_policy`
-checks a *single* allocation against the budget but never multiplies by the
-slot count, and the executor's pre-trade check is against the **broker's**
-available balance, which has nothing to do with the bot's own budget. Two
-concurrent positions would have deployed 240 against a 120 budget.
-
-So the budget needs a ledger, and the ledger needs to survive a restart. Both
-follow from taking committed margin from **persisted positions** rather than
-from anything held in memory:
+The ledger still needs to survive a restart, so committed margin is read from
+**persisted positions** rather than from anything held in memory:
 
     committed = SUM(committed_margin) over OPEN positions of this bot
 
 A partial close reduces that row's `committed_margin` in proportion to the
 quantity closed; a final close takes the row out of the sum entirely. Capital
-is therefore released by the same event stream that releases the position, and
-a process that restarts mid-position rebuilds the same number it had before.
+is therefore released by the same event stream that releases the position.
 
 THE ORDER OF THE CHAIN MATTERS
 
     risk-derived safe size          <- authoritative; nothing may exceed it
       -> per-position allocation cap
-      -> remaining total capital
+      -> configured per-trade margin cap
       -> leverage / exposure limits
       -> execution minimums and precision
 
@@ -173,7 +166,13 @@ class CapitalLedger:
             return self.capital_budget
 
     def available_capital(self) -> float:
-        return max(0.0, self.capital_budget - self.committed_margin())
+        """Configured per-trade margin capacity.
+
+        This intentionally does not subtract open committed margin. For fixed
+        allocations, already-open positions are evidence, not a claim against
+        the next trade's per-trade allocation.
+        """
+        return max(0.0, self.capital_budget)
 
     def open_positions(self) -> int:
         with self.db.connect() as conn:
@@ -198,6 +197,9 @@ class CapitalLedger:
         ``risk_notional`` is the size the risk layer derived and is the ceiling
         for everything that follows. ``per_position_cap`` and
         ``max_exposure_notional`` of 0 mean "no cap", not "cap of zero".
+        ``capital_budget`` is the configured per-trade margin capacity used as
+        a final margin ceiling when no narrower per-position cap binds. It is
+        not reduced by persisted open committed margin.
         """
         leverage = max(1.0, float(leverage or 1.0))
         requested_notional = float(risk_notional or 0.0)
@@ -217,7 +219,7 @@ class CapitalLedger:
                 capital_budget=self.capital_budget,
                 requested_notional=requested_notional, leverage=leverage,
             )
-        available = max(0.0, self.capital_budget - committed)
+        available = max(0.0, self.capital_budget)
         stages: list[dict[str, Any]] = []
 
         def record(name: str, notional: float, note: str) -> None:
@@ -255,28 +257,24 @@ class CapitalLedger:
         else:
             record("allocation_cap", notional, "allocation not binding")
 
-        # ── 3. Remaining total capital — the invariant ──────────────────────
+        # ── 3. Configured per-trade margin capacity ─────────────────────────
         if self.capital_budget <= EPSILON:
             return reject(
                 RiskReason.CAPITAL_BUDGET_REQUIRED,
                 "no capital budget is configured for this bot",
             )
-        if available <= EPSILON:
-            return reject(
-                RiskReason.INSUFFICIENT_CAPITAL,
-                f"capital budget {self.capital_budget:g} is fully committed "
-                f"({committed:g} in open positions); nothing left to allocate",
-            )
         margin = notional / leverage
         if margin > available + EPSILON:
             notional = available * leverage
             record(
-                "capital_remaining", notional,
-                f"capped to remaining capital {available:g} "
-                f"(budget {self.capital_budget:g} - committed {committed:g})",
+                "per_trade_capital", notional,
+                f"capped to configured per-trade margin {available:g}",
             )
         else:
-            record("capital_remaining", notional, f"fits in remaining {available:g}")
+            record(
+                "per_trade_capital", notional,
+                f"fits configured per-trade margin {available:g}",
+            )
 
         # ── 4. Leverage / exposure ceiling ──────────────────────────────────
         if max_exposure_notional > EPSILON and notional > max_exposure_notional:
@@ -314,7 +312,7 @@ class CapitalLedger:
         return CapitalAuthorization(
             approved=True, reason=RiskReason.APPROVED,
             detail=f"{notional:.8g} notional / {notional / leverage:.8g} margin "
-                   f"against {available:g} available",
+                   f"against {available:g} per-trade capacity",
             capital_budget=self.capital_budget, committed_margin=committed,
             available_capital=available, requested_notional=requested_notional,
             approved_notional=notional, requested_margin=requested_margin,
