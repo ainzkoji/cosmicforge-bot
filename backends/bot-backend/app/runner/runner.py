@@ -77,6 +77,12 @@ from app.policy.policy_engine import (
 from app.risk.drawdown import DrawdownMonitor
 from app.risk.circuit import get_circuit_registry
 from app.risk.risk_budget import get_risk_budget_engine
+from app.risk.adaptive_daily_budget import (
+    AdaptiveDailyRiskBudgetEngine,
+    AdaptiveDailyRiskInputs,
+    AdaptiveDailyRiskPolicy,
+    planned_initial_risk_usdt,
+)
 from app.risk.invariant_checker import get_invariant_checker
 from app.metrics.health import StrategyHealthMonitor
 
@@ -661,6 +667,25 @@ class PaperRunner:
 
         # Risk Budget Engine â€” per-bot so Bot A's positions never exhaust Bot B's budget
         self.budget_engine = get_risk_budget_engine(bot_id=bot_id)
+        self.daily_budget_engine = AdaptiveDailyRiskBudgetEngine(
+            AdaptiveDailyRiskPolicy(
+                max_daily_loss_pct=float(getattr(settings, "ADAPTIVE_DAILY_RISK_MAX_DAILY_LOSS_PCT", 0.025)),
+                daily_r_budget=float(getattr(settings, "ADAPTIVE_DAILY_RISK_R_BUDGET", 1.5)),
+                minimum_history_trades=int(getattr(settings, "ADAPTIVE_DAILY_RISK_MIN_HISTORY_TRADES", 30)),
+                risk_lookback_trades=int(getattr(settings, "ADAPTIVE_DAILY_RISK_LOOKBACK_TRADES", 100)),
+                risk_lookback_days=int(getattr(settings, "ADAPTIVE_DAILY_RISK_LOOKBACK_DAYS", 45)),
+                minimum_budget_usdt=float(getattr(settings, "ADAPTIVE_DAILY_RISK_MIN_BUDGET_USDT", 6.0)),
+                maximum_budget_usdt=float(getattr(settings, "ADAPTIVE_DAILY_RISK_MAX_BUDGET_USDT", 24.0)),
+                caution_consumption_pct=float(getattr(settings, "ADAPTIVE_DAILY_RISK_CAUTION_PCT", 0.50)),
+                defensive_consumption_pct=float(getattr(settings, "ADAPTIVE_DAILY_RISK_DEFENSIVE_PCT", 0.80)),
+                performance_factor_min=float(getattr(settings, "ADAPTIVE_DAILY_RISK_PERFORMANCE_FACTOR_MIN", 0.50)),
+                performance_factor_max=float(getattr(settings, "ADAPTIVE_DAILY_RISK_PERFORMANCE_FACTOR_MAX", 1.0)),
+                volatility_factor_min=float(getattr(settings, "ADAPTIVE_DAILY_RISK_VOLATILITY_FACTOR_MIN", 0.60)),
+                drawdown_factor_min=float(getattr(settings, "ADAPTIVE_DAILY_RISK_DRAWDOWN_FACTOR_MIN", 0.40)),
+                timezone_name=str(getattr(settings, "ADAPTIVE_DAILY_RISK_TIMEZONE", "Europe/Rome")),
+            ),
+            db=self.db,
+        )
 
         # Policy Engine â€” per-bot so each bot uses its own budget engine.
         # Reset cache first so the engine is always created with the current config's
@@ -2399,6 +2424,119 @@ class PaperRunner:
             pass
         return self.cached_balance
 
+    def _initial_risk_history(self) -> tuple[float, ...]:
+        bot = self.context.bot_instance_id if self.context else "default"
+        try:
+            with self.db.connect() as conn:
+                rows = conn.execute(
+                    """
+                    SELECT risk_amount
+                    FROM trading_decisions
+                    WHERE bot_instance_id = ?
+                      AND risk_amount IS NOT NULL
+                      AND risk_amount > 0
+                    ORDER BY evaluated_at DESC
+                    LIMIT ?
+                    """,
+                    (bot, int(getattr(settings, "ADAPTIVE_DAILY_RISK_LOOKBACK_TRADES", 100))),
+                ).fetchall()
+            return tuple(float(r["risk_amount"]) for r in reversed(rows))
+        except Exception:
+            return ()
+
+    def _recent_r_history(self) -> tuple[float, ...]:
+        bot = self.context.bot_instance_id if self.context else "default"
+        values: list[float] = []
+        try:
+            with self.db.connect() as conn:
+                rows = conn.execute(
+                    """
+                    SELECT r_multiple
+                    FROM trade_fills
+                    WHERE bot_instance_id = ?
+                      AND r_multiple IS NOT NULL
+                    ORDER BY timestamp_utc DESC
+                    LIMIT 100
+                    """,
+                    (bot,),
+                ).fetchall()
+            values = [float(r["r_multiple"]) for r in reversed(rows)]
+        except Exception:
+            pass
+        return tuple(values)
+
+    def _day_open_equity(self) -> float:
+        bot = self.context.bot_instance_id if self.context else "default"
+        risk_date = self.daily_budget_engine.risk_date_for()
+        try:
+            with self.db.connect() as conn:
+                rows = conn.execute(
+                    """
+                    SELECT equity, timestamp_utc
+                    FROM equity_snapshots
+                    WHERE bot_instance_id = ?
+                    ORDER BY timestamp_utc DESC
+                    LIMIT 500
+                    """,
+                    (bot,),
+                ).fetchall()
+            same_day: list[tuple[datetime, float]] = []
+            for row in rows:
+                ts = datetime.fromisoformat(str(row["timestamp_utc"]).replace("Z", "+00:00"))
+                if ts.tzinfo is None:
+                    ts = ts.replace(tzinfo=timezone.utc)
+                if ts.astimezone(self.daily_budget_engine.timezone).date() == risk_date:
+                    same_day.append((ts, float(row["equity"] or 0.0)))
+            if same_day:
+                same_day.sort(key=lambda item: item[0])
+                if same_day[0][1] > 0:
+                    return same_day[0][1]
+        except Exception:
+            pass
+        return float(self.get_account_balance() or 0.0)
+
+    def _adaptive_daily_risk_context(
+        self,
+        *,
+        symbol: str | None = None,
+        quantity: float = 0.0,
+        entry_price: float = 0.0,
+        stop_price: float = 0.0,
+        side: str = "LONG",
+        regime: str | None = None,
+    ) -> dict:
+        if not bool(getattr(settings, "ADAPTIVE_DAILY_RISK_ENABLED", True)):
+            return {}
+        legacy_breached = (
+            float(getattr(self, "daily_max_loss", 0.0) or 0.0) > 0
+            and float(getattr(self.daily, "realized_pnl", 0.0) or 0.0) <= -abs(float(self.daily_max_loss))
+        )
+        dd = self._get_drawdown_context()
+        decision = self.daily_budget_engine.evaluate(
+            AdaptiveDailyRiskInputs(
+                bot_instance_id=self.context.bot_instance_id if self.context else "default",
+                risk_date=self.daily_budget_engine.risk_date_for(),
+                day_open_equity=self._day_open_equity(),
+                current_equity=float(self.get_account_balance() or 0.0),
+                realized_pnl_today=float(getattr(self.daily, "realized_pnl", 0.0) or 0.0),
+                initial_risk_history_usdt=self._initial_risk_history(),
+                recent_r_history=self._recent_r_history(),
+                account_drawdown_pct=float(dd.get("monthly_drawdown_pct", 0.0) or 0.0),
+                market_regime=regime,
+                policy_effective=not legacy_breached,
+            )
+        )
+        payload = decision.as_policy_context()
+        payload["symbol"] = symbol
+        payload["planned_initial_risk_usdt"] = planned_initial_risk_usdt(
+            quantity=quantity,
+            entry_price=entry_price,
+            stop_price=stop_price,
+            side=side,
+            fee_slippage_buffer_pct=self.daily_budget_engine.policy.fee_slippage_buffer_pct,
+        )
+        return payload
+
     def _get_drawdown_context(self) -> dict:
         """Compute current weekly/monthly drawdown percentages and consecutive losses.
 
@@ -2840,6 +2978,11 @@ class PaperRunner:
             max_daily_loss=self.daily_max_loss,
             max_daily_trades=self.max_trades_daily,
             max_open_positions=self.max_open_positions,
+            adaptive_daily_risk=self._adaptive_daily_risk_context(
+                symbol=symbol,
+                entry_price=price,
+                side="LONG" if str(action).upper() == "BUY" else "SHORT",
+            ),
             kill_switch=self.daily.kill,
             execution_mode=self.context.execution_mode if self.context else settings.EXECUTION_MODE,
             trade_amount_mode=t_mode,
@@ -4106,6 +4249,10 @@ class PaperRunner:
                 max_daily_loss=float(self.daily_max_loss),
                 max_daily_trades=int(self.max_trades_daily),
                 max_open_positions=int(self.max_open_positions),
+                adaptive_daily_risk=self._adaptive_daily_risk_context(
+                    symbol=symbol,
+                    entry_price=float(price or 0.0),
+                ),
                 **self._get_drawdown_context(),
                 # --- Adaptive Parameters Passed Down ---
                 # NOTE: no min_confidence_gate is passed any more. This call site
@@ -7088,6 +7235,55 @@ class PaperRunner:
                 if not _exec_blocked:
                     _lev_mult = _compression.leverage_multiplier if '_compression' in locals() and _compression else 1.0
 
+                    _daily_reservation_key = None
+                    if exec_signal in {"BUY", "SELL"} and bool(getattr(settings, "ADAPTIVE_DAILY_RISK_ENABLED", True)):
+                        _risk_date = self.daily_budget_engine.risk_date_for()
+                        _daily_reservation_key = trace_id or f"{self.cycle_id}:{symbol}:{exec_signal}"
+                        _planned_risk = planned_initial_risk_usdt(
+                            quantity=float(getattr(policy, "quantity", 0.0) or 0.0),
+                            entry_price=float(price or 0.0),
+                            stop_price=float(getattr(policy, "sl_plan", 0.0) or 0.0),
+                            side="LONG" if exec_signal == "BUY" else "SHORT",
+                            fee_slippage_buffer_pct=self.daily_budget_engine.policy.fee_slippage_buffer_pct,
+                        )
+                        _daily_decision = self.daily_budget_engine.evaluate(
+                            AdaptiveDailyRiskInputs(
+                                bot_instance_id=self.context.bot_instance_id if self.context else "default",
+                                risk_date=_risk_date,
+                                day_open_equity=self._day_open_equity(),
+                                current_equity=float(self.get_account_balance() or 0.0),
+                                realized_pnl_today=float(getattr(self.daily, "realized_pnl", 0.0) or 0.0),
+                                initial_risk_history_usdt=self._initial_risk_history(),
+                                recent_r_history=self._recent_r_history(),
+                                account_drawdown_pct=float(self._get_drawdown_context().get("monthly_drawdown_pct", 0.0) or 0.0),
+                                policy_effective=not (
+                                    float(getattr(self, "daily_max_loss", 0.0) or 0.0) > 0
+                                    and float(getattr(self.daily, "realized_pnl", 0.0) or 0.0) <= -abs(float(self.daily_max_loss))
+                                ),
+                            )
+                        )
+                        if not self.daily_budget_engine.reserve(
+                            self.context.bot_instance_id if self.context else "default",
+                            _risk_date,
+                            _daily_reservation_key,
+                            _planned_risk,
+                            _daily_decision,
+                        ):
+                            logger.info(
+                                "[DAILY_RISK] %s: BLOCKED planned_risk=%.4f remaining=%.4f",
+                                symbol, _planned_risk, _daily_decision.remaining_daily_risk_usdt,
+                            )
+                            exec_result = ExecResult(
+                                "DAILY_RISK_RESERVATION_BLOCKED",
+                                {
+                                    "reason": "DAILY_RISK_RESERVATION_CONFLICT",
+                                    "planned_initial_risk_usdt": _planned_risk,
+                                    "remaining_daily_risk_usdt": _daily_decision.remaining_daily_risk_usdt,
+                                },
+                            )
+                            _exec_blocked = True
+
+                if not _exec_blocked:
                     # FIX: Optimistic state lock â€” mark trade BEFORE calling execute_signal.
                     # This ensures st.last_trade_ms is set even if execute_signal raises an
                     # exception (e.g. exchange timeout), which arms the cooldown and prevents
@@ -7099,6 +7295,36 @@ class PaperRunner:
                     exec_result = self._execute_signal_with_evidence(
                         symbol, exec_signal, trade_usdt, leverage_mult=_lev_mult
                     )
+                    if _daily_reservation_key:
+                        _status = str(getattr(exec_result, "status", "") or "").upper()
+                        _payload = getattr(exec_result, "details", {}) or {}
+                        _executed_qty = float(
+                            _payload.get("executedQty")
+                            or _payload.get("executed_qty")
+                            or _payload.get("filled_qty")
+                            or 0.0
+                        )
+                        _avg_price = float(_payload.get("avgPrice") or _payload.get("avg_fill_price") or price or 0.0)
+                        _actual_risk = planned_initial_risk_usdt(
+                            quantity=_executed_qty,
+                            entry_price=_avg_price,
+                            stop_price=float(getattr(policy, "sl_plan", 0.0) or 0.0),
+                            side="LONG" if exec_signal == "BUY" else "SHORT",
+                            fee_slippage_buffer_pct=self.daily_budget_engine.policy.fee_slippage_buffer_pct,
+                        )
+                        if _status in {"FILLED", "PARTIALLY_FILLED"} and _actual_risk > 0:
+                            self.daily_budget_engine.settle_partial(
+                                self.context.bot_instance_id if self.context else "default",
+                                self.daily_budget_engine.risk_date_for(),
+                                _daily_reservation_key,
+                                _actual_risk,
+                            )
+                        elif _status not in {"ORDER_PLACED", "SUBMITTED", "PENDING"}:
+                            self.daily_budget_engine.release(
+                                self.context.bot_instance_id if self.context else "default",
+                                self.daily_budget_engine.risk_date_for(),
+                                _daily_reservation_key,
+                            )
 
             # D) Audit execution result right after we get it
             # âœ… PHASE 3: Entry spread logging

@@ -219,6 +219,27 @@ class Settings(BaseSettings):
     # SAFETY: true = close all open positions when daily loss kill switch fires.
     KILL_SWITCH_CLOSE_POSITIONS: bool = True
 
+    # ── Adaptive Daily Risk Budget Engine ───────────────────────────────────
+    # Authoritative daily-risk policy.  The fixed 120 USDT allocation remains a
+    # per-trade ceiling; this engine budgets actual planned loss at stop, not
+    # margin.  Runtime adoption preserves an already-breached daily window and
+    # lets the adaptive policy become authoritative at the next risk date.
+    ADAPTIVE_DAILY_RISK_ENABLED: bool = True
+    ADAPTIVE_DAILY_RISK_TIMEZONE: str = "Europe/Rome"
+    ADAPTIVE_DAILY_RISK_MAX_DAILY_LOSS_PCT: float = 0.025
+    ADAPTIVE_DAILY_RISK_R_BUDGET: float = 1.5
+    ADAPTIVE_DAILY_RISK_MIN_HISTORY_TRADES: int = 30
+    ADAPTIVE_DAILY_RISK_LOOKBACK_TRADES: int = 100
+    ADAPTIVE_DAILY_RISK_LOOKBACK_DAYS: int = 45
+    ADAPTIVE_DAILY_RISK_MIN_BUDGET_USDT: float = 6.0
+    ADAPTIVE_DAILY_RISK_MAX_BUDGET_USDT: float = 24.0
+    ADAPTIVE_DAILY_RISK_CAUTION_PCT: float = 0.50
+    ADAPTIVE_DAILY_RISK_DEFENSIVE_PCT: float = 0.80
+    ADAPTIVE_DAILY_RISK_PERFORMANCE_FACTOR_MIN: float = 0.50
+    ADAPTIVE_DAILY_RISK_PERFORMANCE_FACTOR_MAX: float = 1.00
+    ADAPTIVE_DAILY_RISK_VOLATILITY_FACTOR_MIN: float = 0.60
+    ADAPTIVE_DAILY_RISK_DRAWDOWN_FACTOR_MIN: float = 0.40
+
     # MIN_CONFIDENCE_THRESHOLD is DELETED.
     #
     # It was applied as an absolute floor AFTER the dynamic threshold was

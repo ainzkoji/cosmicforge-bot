@@ -105,6 +105,9 @@ class ReasonCode(str, Enum):
     PORTFOLIO_RISK_BUDGET = "PORTFOLIO_RISK_BUDGET"
     MARGIN_USAGE_LIMIT = "MARGIN_USAGE_LIMIT"
     SYMBOL_CONCENTRATION = "SYMBOL_CONCENTRATION"
+    DAILY_RISK_BUDGET_EXHAUSTED = "DAILY_RISK_BUDGET_EXHAUSTED"
+    DAILY_HARD_EQUITY_CAP_REACHED = "DAILY_HARD_EQUITY_CAP_REACHED"
+    DAILY_RISK_RESERVATION_CONFLICT = "DAILY_RISK_RESERVATION_CONFLICT"
 
     # D-1: Consecutive loss pauses
     CONSECUTIVE_LOSS_COOLDOWN = "CONSECUTIVE_LOSS_COOLDOWN"
@@ -200,6 +203,8 @@ class PolicyContext:
     total_exposure: float = 0.0
     daily_realized_pnl: float = 0.0
     daily_trade_count: int = 0
+    adaptive_daily_risk: Optional[Dict[str, Any]] = None
+    planned_initial_risk_usdt: float = 0.0
     
     # Config (resolved from user/strategy settings)
     leverage: float = 1.0
@@ -539,10 +544,38 @@ class PolicyEngine:
         # -----------------------------------------------------------------
         # 3. Capital safety
         # -----------------------------------------------------------------
-        if ctx.max_daily_loss > 0 and ctx.daily_realized_pnl <= -abs(ctx.max_daily_loss):
+        adaptive_daily = ctx.adaptive_daily_risk or {}
+        adaptive_effective = bool(adaptive_daily.get("policy_effective")) if adaptive_daily else False
+        if (not adaptive_effective) and ctx.max_daily_loss > 0 and ctx.daily_realized_pnl <= -abs(ctx.max_daily_loss):
             return PolicyDecision.blocked(
                 ReasonCode.DAILY_LOSS_LIMIT,
                 f"Daily loss limit reached: {ctx.daily_realized_pnl:.2f} <= -{ctx.max_daily_loss:.2f}",
+                pending_open=pending_open,
+                reentry_confirm_signal=reentry_sig,
+                reentry_confirm_count=reentry_cnt,
+            )
+
+        adaptive_state = str(adaptive_daily.get("daily_risk_state") or "").upper()
+        adaptive_reason = str(adaptive_daily.get("decision_reason") or "")
+        if adaptive_state == "HARD_STOP":
+            reason = (
+                ReasonCode.DAILY_HARD_EQUITY_CAP_REACHED
+                if adaptive_reason == "DAILY_HARD_EQUITY_CAP_REACHED"
+                else ReasonCode.DAILY_RISK_BUDGET_EXHAUSTED
+            )
+            return PolicyDecision.blocked(
+                reason,
+                adaptive_reason or "Adaptive daily risk budget exhausted",
+                pending_open=pending_open,
+                reentry_confirm_signal=reentry_sig,
+                reentry_confirm_count=reentry_cnt,
+            )
+        remaining_risk = float(adaptive_daily.get("remaining_daily_risk_usdt") or 0.0)
+        planned_risk = float(getattr(ctx, "planned_initial_risk_usdt", 0.0) or 0.0)
+        if planned_risk > 0 and remaining_risk > 0 and planned_risk > remaining_risk:
+            return PolicyDecision.blocked(
+                ReasonCode.DAILY_RISK_RESERVATION_CONFLICT,
+                f"Planned initial risk {planned_risk:.2f} exceeds remaining daily risk {remaining_risk:.2f}",
                 pending_open=pending_open,
                 reentry_confirm_signal=reentry_sig,
                 reentry_confirm_count=reentry_cnt,

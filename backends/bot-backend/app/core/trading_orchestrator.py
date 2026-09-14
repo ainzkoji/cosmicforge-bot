@@ -570,6 +570,7 @@ class TradingOrchestrator:
             # Set un-tracked gates to infinity (SafetyEngine Layer A handled these)
             daily_realized_pnl=float(kwargs.get("daily_realized_pnl", 0.0)),
             daily_trade_count=int(kwargs.get("daily_trade_count", 0)),
+            adaptive_daily_risk=kwargs.get("adaptive_daily_risk"),
             kill_switch=bool(kwargs.get("kill_switch", False)),
             max_daily_loss=float(kwargs.get("max_daily_loss", effective_equity)),
             max_daily_trades=int(kwargs.get("max_daily_trades", self.validated_config.max_trades_per_day)),
