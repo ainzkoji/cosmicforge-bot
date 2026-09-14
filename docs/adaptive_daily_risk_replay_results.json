@@ -1,0 +1,2381 @@
+{
+  "best_policy_by_replay_score": "R_1_75_CAP_2_5",
+  "candidate_policy": {
+    "approved_decision_ids": [
+      "dec_902b27921cb746919eec",
+      "dec_58562b1ad78f4d248707",
+      "dec_e97adf6efa4c4a5dacff",
+      "dec_f00ad4514e84469d9383",
+      "dec_39b1cb0ecd254ee6acfd"
+    ],
+    "approved_trades": 5,
+    "average_loser_usdt": -1.278455241275,
+    "average_winner_usdt": 1.459327665694,
+    "avg_daily_budget_used_pct": 0.10118519168427942,
+    "avg_trades_per_day": 1.6666666666666667,
+    "blocked_decision_ids": [
+      "dec_b66098a89933436a87df",
+      "dec_785b17805478460d9afd"
+    ],
+    "blocked_flat": 1,
+    "blocked_losers": 1,
+    "blocked_negative_r": 1,
+    "blocked_net_pnl_usdt": -19.1709,
+    "blocked_positive_r": 0,
+    "blocked_trades": 2,
+    "blocked_winners": 0,
+    "by_regime": {
+      "WEAK_TREND": {
+        "net_pnl_usdt": -0.916710392436,
+        "trades": 5,
+        "win_rate": 0.4
+      }
+    },
+    "caution_events": 1,
+    "daily_budget_used_pct": {
+      "2026-09-12": 0.226152620637,
+      "2026-09-13": 0.077402954416,
+      "2026-09-14": 0.0
+    },
+    "daily_pnl": {
+      "2026-09-12": -1.356915723824,
+      "2026-09-13": -1.213028668612,
+      "2026-09-14": 1.653234
+    },
+    "day_open_equity": {
+      "2026-09-12": 761.30525668,
+      "2026-09-13": 759.948340956176,
+      "2026-09-14": 758.735312287564
+    },
+    "defensive_events": 0,
+    "expectancy_usdt": -0.183342078487,
+    "fees_usdt": 0.33549627,
+    "flat_days": 0,
+    "funding_usdt": 0.0,
+    "hard_stop_days": 2,
+    "hard_stop_events": 0,
+    "longest_losing_streak": 2,
+    "losing_days": 2,
+    "max_daily_drawdown_pct": 0.337570819311,
+    "max_daily_loss_usdt": -1.356915723824,
+    "max_drawdown_pct": 0.337570819311,
+    "max_weekly_drawdown_pct": 0.337570819311,
+    "median_daily_budget_used_pct": 0.07740295441550804,
+    "median_loser_usdt": -1.356915723824,
+    "median_trades_per_day": 2.5,
+    "median_winner_usdt": 1.459327665694,
+    "net_pnl_usdt": -0.916710392436,
+    "opportunities_seen": 7,
+    "p95_daily_budget_used_pct": 0.21127765401514798,
+    "policy": {
+      "daily_r_budget": 1.5,
+      "fixed_daily_loss_usdt": null,
+      "hard_daily_equity_cap_pct": 0.025,
+      "kind": "adaptive",
+      "name": "R_1_5_CAP_2_5",
+      "policy_hash": "7fa803d6bb015a6b7563240568f3b2172f8b0c81458e9f78c241b72d4011346d"
+    },
+    "policy_name": "R_1_5_CAP_2_5",
+    "profit_factor": 0.76098488163939,
+    "profitable_days": 1,
+    "recovery_duration_days": null,
+    "return_pct": -0.120412986038,
+    "slippage_cost_usdt": 0.0,
+    "state_trace": [
+      {
+        "action": "APPROVED",
+        "at": "2026-09-12T04:30:12.805080+00:00",
+        "decision_id": "dec_902b27921cb746919eec",
+        "effective_budget_usdt": 6.0,
+        "planned_risk_usdt": 2.1708423430464054,
+        "reason": "DAILY_RISK_DATA_INSUFFICIENT",
+        "remaining_before_entry_usdt": 6.0,
+        "risk_date": "2026-09-12",
+        "state": "NORMAL"
+      },
+      {
+        "action": "APPROVED",
+        "at": "2026-09-12T16:30:16.147279+00:00",
+        "decision_id": "dec_58562b1ad78f4d248707",
+        "effective_budget_usdt": 6.0,
+        "planned_risk_usdt": 0.9976790195752372,
+        "reason": "DAILY_RISK_DATA_INSUFFICIENT",
+        "remaining_before_entry_usdt": 4.643084276176019,
+        "risk_date": "2026-09-12",
+        "state": "NORMAL"
+      },
+      {
+        "action": "APPROVED",
+        "at": "2026-09-12T21:30:18.121022+00:00",
+        "decision_id": "dec_e97adf6efa4c4a5dacff",
+        "effective_budget_usdt": 6.0,
+        "planned_risk_usdt": 3.2822803149588053,
+        "reason": "DAILY_RISK_DATA_INSUFFICIENT",
+        "remaining_before_entry_usdt": 3.6454052566007817,
+        "risk_date": "2026-09-12",
+        "state": "NORMAL"
+      },
+      {
+        "action": "APPROVED",
+        "at": "2026-09-12T22:45:14.723033+00:00",
+        "decision_id": "dec_f00ad4514e84469d9383",
+        "effective_budget_usdt": 6.0,
+        "planned_risk_usdt": 1.4007559203672433,
+        "reason": "DAILY_RISK_DATA_INSUFFICIENT",
+        "remaining_before_entry_usdt": 6.0,
+        "risk_date": "2026-09-13",
+        "state": "NORMAL"
+      },
+      {
+        "action": "APPROVED",
+        "at": "2026-09-13T21:49:55.870598+00:00",
+        "decision_id": "dec_39b1cb0ecd254ee6acfd",
+        "effective_budget_usdt": 15.67160682395104,
+        "planned_risk_usdt": 9.895401428296099,
+        "reason": "DAILY_RISK_NORMAL",
+        "remaining_before_entry_usdt": 14.458578155338992,
+        "risk_date": "2026-09-13",
+        "state": "NORMAL"
+      },
+      {
+        "action": "BLOCKED",
+        "at": "2026-09-13T21:51:42.320085+00:00",
+        "decision_id": "dec_b66098a89933436a87df",
+        "effective_budget_usdt": 15.66666305770279,
+        "planned_risk_usdt": 7.06920976096905,
+        "reason": "PLANNED_RISK_EXCEEDS_REMAINING_DAILY_BUDGET",
+        "remaining_before_entry_usdt": 4.558232960794644,
+        "risk_date": "2026-09-13",
+        "state": "CAUTION"
+      },
+      {
+        "action": "BLOCKED",
+        "at": "2026-09-13T22:01:57.963805+00:00",
+        "decision_id": "dec_785b17805478460d9afd",
+        "effective_budget_usdt": 15.66171929145454,
+        "planned_risk_usdt": 18.86924024999996,
+        "reason": "PLANNED_RISK_EXCEEDS_REMAINING_DAILY_BUDGET",
+        "remaining_before_entry_usdt": 15.66171929145454,
+        "risk_date": "2026-09-14",
+        "state": "NORMAL"
+      }
+    ],
+    "win_rate": 0.4
+  },
+  "canonical_db_access": "sqlite-uri-mode-ro",
+  "canonical_db_path": "C:\\Users\\favou\\OneDrive\\Desktop\\cosmicforge-bot\\backends\\shared\\shared_lib\\persistence\\cosmicforge.db",
+  "code_revision": "b27d8f9af2b4af926098a0f0aef37ec5e4ed3213",
+  "cost_model": {
+    "fees": "canonical trade_fills fee sums when present",
+    "funding": "canonical funding evidence when present; zero when absent",
+    "slippage": "not separately reconstructable from current closed-position evidence"
+  },
+  "dataset": {
+    "dataset_hash": "c6d087522db3bd35a1c087b89885a0ca570deca1e8bf40939bf2dc3c4866f64e",
+    "first_opportunity_at": "2026-09-12T04:30:12.805080+00:00",
+    "last_opportunity_at": "2026-09-13T22:01:57.963805+00:00",
+    "old_daily_loss_blocked_decisions": 2514,
+    "old_daily_loss_unique_risk_days": 1,
+    "opportunity_count": 7,
+    "risk_observation_count": 100,
+    "stream_contract": "positions joined to originating trading_decisions with closed broker-authoritative outcomes"
+  },
+  "fill_model": {
+    "partial_final_lifecycle": "position close timestamps and realized PnL are replayed; missing intratrade management events are not fabricated",
+    "source": "broker-authoritative closed positions and fills already recorded by runtime"
+  },
+  "holdout": {
+    "holdout_opportunities": 2,
+    "policy_results": {
+      "OLD_6_USDT": {
+        "approved_holdout_trades": 0,
+        "blocked_holdout_trades": 2
+      },
+      "R_1_0_CAP_2_5": {
+        "approved_holdout_trades": 1,
+        "blocked_holdout_trades": 1
+      },
+      "R_1_25_CAP_2_5": {
+        "approved_holdout_trades": 0,
+        "blocked_holdout_trades": 2
+      },
+      "R_1_5_CAP_015": {
+        "approved_holdout_trades": 0,
+        "blocked_holdout_trades": 2
+      },
+      "R_1_5_CAP_020": {
+        "approved_holdout_trades": 0,
+        "blocked_holdout_trades": 2
+      },
+      "R_1_5_CAP_030": {
+        "approved_holdout_trades": 0,
+        "blocked_holdout_trades": 2
+      },
+      "R_1_5_CAP_035": {
+        "approved_holdout_trades": 0,
+        "blocked_holdout_trades": 2
+      },
+      "R_1_5_CAP_2_5": {
+        "approved_holdout_trades": 0,
+        "blocked_holdout_trades": 2
+      },
+      "R_1_75_CAP_2_5": {
+        "approved_holdout_trades": 1,
+        "blocked_holdout_trades": 1
+      },
+      "R_2_0_CAP_2_5": {
+        "approved_holdout_trades": 2,
+        "blocked_holdout_trades": 0
+      },
+      "R_2_5_CAP_2_5": {
+        "approved_holdout_trades": 2,
+        "blocked_holdout_trades": 0
+      }
+    },
+    "split": "chronological final 20%",
+    "tuning_note": "Ranking is reported after the fixed grid replay; no threshold, strategy, regime, slot, leverage, or affordability parameter is optimized on the holdout."
+  },
+  "limitations": [
+    "The canonical broker-outcome stream currently has only the closed positions linked to originating decisions; it is suitable for deterministic policy comparison but not statistically decisive.",
+    "Costs are whatever the broker-fill evidence recorded on positions/trade_fills; missing funding remains zero rather than fabricated.",
+    "This harness does not place orders, does not mutate canonical storage, and does not repair the older wall-clock production replay defect documented separately."
+  ],
+  "old_policy": {
+    "approved_decision_ids": [
+      "dec_902b27921cb746919eec",
+      "dec_58562b1ad78f4d248707",
+      "dec_e97adf6efa4c4a5dacff",
+      "dec_f00ad4514e84469d9383"
+    ],
+    "approved_trades": 4,
+    "average_loser_usdt": -1.278455241275,
+    "average_winner_usdt": 1.265421331388,
+    "avg_daily_budget_used_pct": 0.14277468846866828,
+    "avg_trades_per_day": 1.3333333333333333,
+    "blocked_decision_ids": [
+      "dec_39b1cb0ecd254ee6acfd",
+      "dec_b66098a89933436a87df",
+      "dec_785b17805478460d9afd"
+    ],
+    "blocked_flat": 1,
+    "blocked_losers": 1,
+    "blocked_negative_r": 1,
+    "blocked_net_pnl_usdt": -17.517666,
+    "blocked_positive_r": 1,
+    "blocked_trades": 3,
+    "blocked_winners": 1,
+    "by_regime": {
+      "WEAK_TREND": {
+        "net_pnl_usdt": -2.569944392436,
+        "trades": 4,
+        "win_rate": 0.25
+      }
+    },
+    "caution_events": 0,
+    "daily_budget_used_pct": {
+      "2026-09-12": 0.226152620637,
+      "2026-09-13": 0.202171444769,
+      "2026-09-14": 0.0
+    },
+    "daily_pnl": {
+      "2026-09-12": -1.356915723824,
+      "2026-09-13": -1.213028668612,
+      "2026-09-14": 0.0
+    },
+    "day_open_equity": {
+      "2026-09-12": 761.30525668,
+      "2026-09-13": 759.948340956176,
+      "2026-09-14": 758.735312287564
+    },
+    "defensive_events": 0,
+    "expectancy_usdt": -0.642486098109,
+    "fees_usdt": 0.0,
+    "flat_days": 1,
+    "funding_usdt": 0.0,
+    "hard_stop_days": 2,
+    "hard_stop_events": 0,
+    "longest_losing_streak": 2,
+    "losing_days": 2,
+    "max_daily_drawdown_pct": 0.337570819311,
+    "max_daily_loss_usdt": -1.356915723824,
+    "max_drawdown_pct": 0.337570819311,
+    "max_weekly_drawdown_pct": 0.337570819311,
+    "median_daily_budget_used_pct": 0.20217144476867452,
+    "median_loser_usdt": -1.356915723824,
+    "median_trades_per_day": 2.0,
+    "median_winner_usdt": 1.265421331388,
+    "net_pnl_usdt": -2.569944392436,
+    "opportunities_seen": 7,
+    "p95_daily_budget_used_pct": 0.22375450305046474,
+    "policy": {
+      "daily_r_budget": null,
+      "fixed_daily_loss_usdt": 6.0,
+      "hard_daily_equity_cap_pct": null,
+      "kind": "fixed",
+      "name": "OLD_6_USDT",
+      "policy_hash": "f251b6bcc145b430113f2ca39e0f26d663a0aa1d1b28d4316fe8464ff5ac2616"
+    },
+    "policy_name": "OLD_6_USDT",
+    "profit_factor": 0.3299349846945961,
+    "profitable_days": 0,
+    "recovery_duration_days": null,
+    "return_pct": -0.337570819311,
+    "slippage_cost_usdt": 0.0,
+    "state_trace": [
+      {
+        "action": "APPROVED",
+        "at": "2026-09-12T04:30:12.805080+00:00",
+        "decision_id": "dec_902b27921cb746919eec",
+        "effective_budget_usdt": 6.0,
+        "planned_risk_usdt": 2.1708423430464054,
+        "reason": "OLD_DAILY_LOSS_OK",
+        "remaining_before_entry_usdt": 6.0,
+        "risk_date": "2026-09-12",
+        "state": "NORMAL"
+      },
+      {
+        "action": "APPROVED",
+        "at": "2026-09-12T16:30:16.147279+00:00",
+        "decision_id": "dec_58562b1ad78f4d248707",
+        "effective_budget_usdt": 6.0,
+        "planned_risk_usdt": 0.9976790195752372,
+        "reason": "OLD_DAILY_LOSS_OK",
+        "remaining_before_entry_usdt": 4.643084276176019,
+        "risk_date": "2026-09-12",
+        "state": "NORMAL"
+      },
+      {
+        "action": "APPROVED",
+        "at": "2026-09-12T21:30:18.121022+00:00",
+        "decision_id": "dec_e97adf6efa4c4a5dacff",
+        "effective_budget_usdt": 6.0,
+        "planned_risk_usdt": 3.2822803149588053,
+        "reason": "OLD_DAILY_LOSS_OK",
+        "remaining_before_entry_usdt": 3.6454052566007817,
+        "risk_date": "2026-09-12",
+        "state": "NORMAL"
+      },
+      {
+        "action": "APPROVED",
+        "at": "2026-09-12T22:45:14.723033+00:00",
+        "decision_id": "dec_f00ad4514e84469d9383",
+        "effective_budget_usdt": 6.0,
+        "planned_risk_usdt": 1.4007559203672433,
+        "reason": "OLD_DAILY_LOSS_OK",
+        "remaining_before_entry_usdt": 6.0,
+        "risk_date": "2026-09-13",
+        "state": "NORMAL"
+      },
+      {
+        "action": "BLOCKED",
+        "at": "2026-09-13T21:49:55.870598+00:00",
+        "decision_id": "dec_39b1cb0ecd254ee6acfd",
+        "effective_budget_usdt": 6.0,
+        "planned_risk_usdt": 9.895401428296099,
+        "reason": "PLANNED_RISK_EXCEEDS_REMAINING_DAILY_BUDGET",
+        "remaining_before_entry_usdt": 4.786971331387953,
+        "risk_date": "2026-09-13",
+        "state": "NORMAL"
+      },
+      {
+        "action": "BLOCKED",
+        "at": "2026-09-13T21:51:42.320085+00:00",
+        "decision_id": "dec_b66098a89933436a87df",
+        "effective_budget_usdt": 6.0,
+        "planned_risk_usdt": 7.06920976096905,
+        "reason": "PLANNED_RISK_EXCEEDS_REMAINING_DAILY_BUDGET",
+        "remaining_before_entry_usdt": 4.786971331387953,
+        "risk_date": "2026-09-13",
+        "state": "HARD_STOP"
+      },
+      {
+        "action": "BLOCKED",
+        "at": "2026-09-13T22:01:57.963805+00:00",
+        "decision_id": "dec_785b17805478460d9afd",
+        "effective_budget_usdt": 6.0,
+        "planned_risk_usdt": 18.86924024999996,
+        "reason": "PLANNED_RISK_EXCEEDS_REMAINING_DAILY_BUDGET",
+        "remaining_before_entry_usdt": 6.0,
+        "risk_date": "2026-09-14",
+        "state": "NORMAL"
+      }
+    ],
+    "win_rate": 0.25
+  },
+  "policy_grid": [
+    {
+      "daily_r_budget": null,
+      "fixed_daily_loss_usdt": 6.0,
+      "hard_daily_equity_cap_pct": null,
+      "kind": "fixed",
+      "name": "OLD_6_USDT",
+      "policy_hash": "f251b6bcc145b430113f2ca39e0f26d663a0aa1d1b28d4316fe8464ff5ac2616"
+    },
+    {
+      "daily_r_budget": 1.0,
+      "fixed_daily_loss_usdt": null,
+      "hard_daily_equity_cap_pct": 0.025,
+      "kind": "adaptive",
+      "name": "R_1_0_CAP_2_5",
+      "policy_hash": "64773152abef979be7aeb69c76d26139a5cea0360c596b9fd6127c785fabb275"
+    },
+    {
+      "daily_r_budget": 1.25,
+      "fixed_daily_loss_usdt": null,
+      "hard_daily_equity_cap_pct": 0.025,
+      "kind": "adaptive",
+      "name": "R_1_25_CAP_2_5",
+      "policy_hash": "e493b8058cdbecf3dd8ab64e2a12911c91be9a0adea3ddc03e8ff6a612764760"
+    },
+    {
+      "daily_r_budget": 1.5,
+      "fixed_daily_loss_usdt": null,
+      "hard_daily_equity_cap_pct": 0.025,
+      "kind": "adaptive",
+      "name": "R_1_5_CAP_2_5",
+      "policy_hash": "7fa803d6bb015a6b7563240568f3b2172f8b0c81458e9f78c241b72d4011346d"
+    },
+    {
+      "daily_r_budget": 1.75,
+      "fixed_daily_loss_usdt": null,
+      "hard_daily_equity_cap_pct": 0.025,
+      "kind": "adaptive",
+      "name": "R_1_75_CAP_2_5",
+      "policy_hash": "2dfd1ef8eb1729ad62baa6e633ad8be8d1deaebd3f6c751130e59351fe526759"
+    },
+    {
+      "daily_r_budget": 2.0,
+      "fixed_daily_loss_usdt": null,
+      "hard_daily_equity_cap_pct": 0.025,
+      "kind": "adaptive",
+      "name": "R_2_0_CAP_2_5",
+      "policy_hash": "a20686ba4aa9ddc230d784b9d764714fe6e8e31f799d11734bd6a53e86871612"
+    },
+    {
+      "daily_r_budget": 2.5,
+      "fixed_daily_loss_usdt": null,
+      "hard_daily_equity_cap_pct": 0.025,
+      "kind": "adaptive",
+      "name": "R_2_5_CAP_2_5",
+      "policy_hash": "71092bb4507c5083dc36a6994177d153264b6400546d9c5bf1f2d87e342c1e7a"
+    },
+    {
+      "daily_r_budget": 1.5,
+      "fixed_daily_loss_usdt": null,
+      "hard_daily_equity_cap_pct": 0.015,
+      "kind": "adaptive",
+      "name": "R_1_5_CAP_015",
+      "policy_hash": "d861614144672b0a5713fbf13c441ae75fca12a9a071f2d4d4c8f924c2c0b387"
+    },
+    {
+      "daily_r_budget": 1.5,
+      "fixed_daily_loss_usdt": null,
+      "hard_daily_equity_cap_pct": 0.02,
+      "kind": "adaptive",
+      "name": "R_1_5_CAP_020",
+      "policy_hash": "2a13884c9bbf35dd4bb31e958d6da76bf31989fc66def7770500562b139c5599"
+    },
+    {
+      "daily_r_budget": 1.5,
+      "fixed_daily_loss_usdt": null,
+      "hard_daily_equity_cap_pct": 0.03,
+      "kind": "adaptive",
+      "name": "R_1_5_CAP_030",
+      "policy_hash": "7ccfab0dca23e071cbe0dc43c5fe743058b854359ba34ac7c4cbee74c156a328"
+    },
+    {
+      "daily_r_budget": 1.5,
+      "fixed_daily_loss_usdt": null,
+      "hard_daily_equity_cap_pct": 0.035,
+      "kind": "adaptive",
+      "name": "R_1_5_CAP_035",
+      "policy_hash": "feeb2e385dd535d29149559b0e0e9e0fc9fcf5391c806861fd893fdf49bf286e"
+    }
+  ],
+  "ranking": [
+    {
+      "policy": "R_1_75_CAP_2_5",
+      "score": [
+        -0.916710392436,
+        -0.152785065406,
+        0.76098488163939,
+        0.8537671489497471
+      ]
+    },
+    {
+      "policy": "R_1_25_CAP_2_5",
+      "score": [
+        -0.916710392436,
+        -0.183342078487,
+        0.76098488163939,
+        0.7109100060926044
+      ]
+    },
+    {
+      "policy": "R_1_5_CAP_2_5",
+      "score": [
+        -0.916710392436,
+        -0.183342078487,
+        0.76098488163939,
+        0.7109100060926044
+      ]
+    },
+    {
+      "policy": "R_1_5_CAP_015",
+      "score": [
+        -0.916710392436,
+        -0.183342078487,
+        0.76098488163939,
+        0.7109100060926044
+      ]
+    },
+    {
+      "policy": "R_1_5_CAP_020",
+      "score": [
+        -0.916710392436,
+        -0.183342078487,
+        0.76098488163939,
+        0.7109100060926044
+      ]
+    },
+    {
+      "policy": "R_1_5_CAP_030",
+      "score": [
+        -0.916710392436,
+        -0.183342078487,
+        0.76098488163939,
+        0.7109100060926044
+      ]
+    },
+    {
+      "policy": "R_1_5_CAP_035",
+      "score": [
+        -0.916710392436,
+        -0.183342078487,
+        0.76098488163939,
+        0.7109100060926044
+      ]
+    },
+    {
+      "policy": "R_1_0_CAP_2_5",
+      "score": [
+        -2.569944392436,
+        -0.513988878487,
+        0.3299349846945961,
+        0.7109100060926044
+      ]
+    },
+    {
+      "policy": "OLD_6_USDT",
+      "score": [
+        -2.569944392436,
+        -0.642486098109,
+        0.3299349846945961,
+        0.5680528632354614
+      ]
+    },
+    {
+      "policy": "R_2_0_CAP_2_5",
+      "score": [
+        -20.087610392436,
+        -2.869658627491,
+        0.1268634973804402,
+        0.97361424971629
+      ]
+    },
+    {
+      "policy": "R_2_5_CAP_2_5",
+      "score": [
+        -20.087610392436,
+        -2.869658627491,
+        0.1268634973804402,
+        0.97361424971629
+      ]
+    }
+  ],
+  "replay_type": "adaptive_daily_risk_policy_calibration",
+  "results": {
+    "OLD_6_USDT": {
+      "approved_decision_ids": [
+        "dec_902b27921cb746919eec",
+        "dec_58562b1ad78f4d248707",
+        "dec_e97adf6efa4c4a5dacff",
+        "dec_f00ad4514e84469d9383"
+      ],
+      "approved_trades": 4,
+      "average_loser_usdt": -1.278455241275,
+      "average_winner_usdt": 1.265421331388,
+      "avg_daily_budget_used_pct": 0.14277468846866828,
+      "avg_trades_per_day": 1.3333333333333333,
+      "blocked_decision_ids": [
+        "dec_39b1cb0ecd254ee6acfd",
+        "dec_b66098a89933436a87df",
+        "dec_785b17805478460d9afd"
+      ],
+      "blocked_flat": 1,
+      "blocked_losers": 1,
+      "blocked_negative_r": 1,
+      "blocked_net_pnl_usdt": -17.517666,
+      "blocked_positive_r": 1,
+      "blocked_trades": 3,
+      "blocked_winners": 1,
+      "by_regime": {
+        "WEAK_TREND": {
+          "net_pnl_usdt": -2.569944392436,
+          "trades": 4,
+          "win_rate": 0.25
+        }
+      },
+      "caution_events": 0,
+      "daily_budget_used_pct": {
+        "2026-09-12": 0.226152620637,
+        "2026-09-13": 0.202171444769,
+        "2026-09-14": 0.0
+      },
+      "daily_pnl": {
+        "2026-09-12": -1.356915723824,
+        "2026-09-13": -1.213028668612,
+        "2026-09-14": 0.0
+      },
+      "day_open_equity": {
+        "2026-09-12": 761.30525668,
+        "2026-09-13": 759.948340956176,
+        "2026-09-14": 758.735312287564
+      },
+      "defensive_events": 0,
+      "expectancy_usdt": -0.642486098109,
+      "fees_usdt": 0.0,
+      "flat_days": 1,
+      "funding_usdt": 0.0,
+      "hard_stop_days": 2,
+      "hard_stop_events": 0,
+      "longest_losing_streak": 2,
+      "losing_days": 2,
+      "max_daily_drawdown_pct": 0.337570819311,
+      "max_daily_loss_usdt": -1.356915723824,
+      "max_drawdown_pct": 0.337570819311,
+      "max_weekly_drawdown_pct": 0.337570819311,
+      "median_daily_budget_used_pct": 0.20217144476867452,
+      "median_loser_usdt": -1.356915723824,
+      "median_trades_per_day": 2.0,
+      "median_winner_usdt": 1.265421331388,
+      "net_pnl_usdt": -2.569944392436,
+      "opportunities_seen": 7,
+      "p95_daily_budget_used_pct": 0.22375450305046474,
+      "policy": {
+        "daily_r_budget": null,
+        "fixed_daily_loss_usdt": 6.0,
+        "hard_daily_equity_cap_pct": null,
+        "kind": "fixed",
+        "name": "OLD_6_USDT",
+        "policy_hash": "f251b6bcc145b430113f2ca39e0f26d663a0aa1d1b28d4316fe8464ff5ac2616"
+      },
+      "policy_name": "OLD_6_USDT",
+      "profit_factor": 0.3299349846945961,
+      "profitable_days": 0,
+      "recovery_duration_days": null,
+      "return_pct": -0.337570819311,
+      "slippage_cost_usdt": 0.0,
+      "state_trace": [
+        {
+          "action": "APPROVED",
+          "at": "2026-09-12T04:30:12.805080+00:00",
+          "decision_id": "dec_902b27921cb746919eec",
+          "effective_budget_usdt": 6.0,
+          "planned_risk_usdt": 2.1708423430464054,
+          "reason": "OLD_DAILY_LOSS_OK",
+          "remaining_before_entry_usdt": 6.0,
+          "risk_date": "2026-09-12",
+          "state": "NORMAL"
+        },
+        {
+          "action": "APPROVED",
+          "at": "2026-09-12T16:30:16.147279+00:00",
+          "decision_id": "dec_58562b1ad78f4d248707",
+          "effective_budget_usdt": 6.0,
+          "planned_risk_usdt": 0.9976790195752372,
+          "reason": "OLD_DAILY_LOSS_OK",
+          "remaining_before_entry_usdt": 4.643084276176019,
+          "risk_date": "2026-09-12",
+          "state": "NORMAL"
+        },
+        {
+          "action": "APPROVED",
+          "at": "2026-09-12T21:30:18.121022+00:00",
+          "decision_id": "dec_e97adf6efa4c4a5dacff",
+          "effective_budget_usdt": 6.0,
+          "planned_risk_usdt": 3.2822803149588053,
+          "reason": "OLD_DAILY_LOSS_OK",
+          "remaining_before_entry_usdt": 3.6454052566007817,
+          "risk_date": "2026-09-12",
+          "state": "NORMAL"
+        },
+        {
+          "action": "APPROVED",
+          "at": "2026-09-12T22:45:14.723033+00:00",
+          "decision_id": "dec_f00ad4514e84469d9383",
+          "effective_budget_usdt": 6.0,
+          "planned_risk_usdt": 1.4007559203672433,
+          "reason": "OLD_DAILY_LOSS_OK",
+          "remaining_before_entry_usdt": 6.0,
+          "risk_date": "2026-09-13",
+          "state": "NORMAL"
+        },
+        {
+          "action": "BLOCKED",
+          "at": "2026-09-13T21:49:55.870598+00:00",
+          "decision_id": "dec_39b1cb0ecd254ee6acfd",
+          "effective_budget_usdt": 6.0,
+          "planned_risk_usdt": 9.895401428296099,
+          "reason": "PLANNED_RISK_EXCEEDS_REMAINING_DAILY_BUDGET",
+          "remaining_before_entry_usdt": 4.786971331387953,
+          "risk_date": "2026-09-13",
+          "state": "NORMAL"
+        },
+        {
+          "action": "BLOCKED",
+          "at": "2026-09-13T21:51:42.320085+00:00",
+          "decision_id": "dec_b66098a89933436a87df",
+          "effective_budget_usdt": 6.0,
+          "planned_risk_usdt": 7.06920976096905,
+          "reason": "PLANNED_RISK_EXCEEDS_REMAINING_DAILY_BUDGET",
+          "remaining_before_entry_usdt": 4.786971331387953,
+          "risk_date": "2026-09-13",
+          "state": "HARD_STOP"
+        },
+        {
+          "action": "BLOCKED",
+          "at": "2026-09-13T22:01:57.963805+00:00",
+          "decision_id": "dec_785b17805478460d9afd",
+          "effective_budget_usdt": 6.0,
+          "planned_risk_usdt": 18.86924024999996,
+          "reason": "PLANNED_RISK_EXCEEDS_REMAINING_DAILY_BUDGET",
+          "remaining_before_entry_usdt": 6.0,
+          "risk_date": "2026-09-14",
+          "state": "NORMAL"
+        }
+      ],
+      "win_rate": 0.25
+    },
+    "R_1_0_CAP_2_5": {
+      "approved_decision_ids": [
+        "dec_902b27921cb746919eec",
+        "dec_58562b1ad78f4d248707",
+        "dec_e97adf6efa4c4a5dacff",
+        "dec_f00ad4514e84469d9383",
+        "dec_b66098a89933436a87df"
+      ],
+      "approved_trades": 5,
+      "average_loser_usdt": -1.278455241275,
+      "average_winner_usdt": 1.265421331388,
+      "avg_daily_budget_used_pct": 0.11408568408686409,
+      "avg_trades_per_day": 1.6666666666666667,
+      "blocked_decision_ids": [
+        "dec_39b1cb0ecd254ee6acfd",
+        "dec_785b17805478460d9afd"
+      ],
+      "blocked_flat": 0,
+      "blocked_losers": 1,
+      "blocked_negative_r": 1,
+      "blocked_net_pnl_usdt": -17.517666,
+      "blocked_positive_r": 1,
+      "blocked_trades": 2,
+      "blocked_winners": 1,
+      "by_regime": {
+        "WEAK_TREND": {
+          "net_pnl_usdt": -2.569944392436,
+          "trades": 5,
+          "win_rate": 0.2
+        }
+      },
+      "caution_events": 0,
+      "daily_budget_used_pct": {
+        "2026-09-12": 0.226152620637,
+        "2026-09-13": 0.116104431623,
+        "2026-09-14": 0.0
+      },
+      "daily_pnl": {
+        "2026-09-12": -1.356915723824,
+        "2026-09-13": -1.213028668612,
+        "2026-09-14": 0.0
+      },
+      "day_open_equity": {
+        "2026-09-12": 761.30525668,
+        "2026-09-13": 759.948340956176,
+        "2026-09-14": 758.735312287564
+      },
+      "defensive_events": 0,
+      "expectancy_usdt": -0.513988878487,
+      "fees_usdt": 0.33572686,
+      "flat_days": 1,
+      "funding_usdt": 0.0,
+      "hard_stop_days": 2,
+      "hard_stop_events": 0,
+      "longest_losing_streak": 2,
+      "losing_days": 2,
+      "max_daily_drawdown_pct": 0.337570819311,
+      "max_daily_loss_usdt": -1.356915723824,
+      "max_drawdown_pct": 0.337570819311,
+      "max_weekly_drawdown_pct": 0.337570819311,
+      "median_daily_budget_used_pct": 0.11610443162326206,
+      "median_loser_usdt": -1.356915723824,
+      "median_trades_per_day": 2.5,
+      "median_winner_usdt": 1.265421331388,
+      "net_pnl_usdt": -2.569944392436,
+      "opportunities_seen": 7,
+      "p95_daily_budget_used_pct": 0.21514780173592338,
+      "policy": {
+        "daily_r_budget": 1.0,
+        "fixed_daily_loss_usdt": null,
+        "hard_daily_equity_cap_pct": 0.025,
+        "kind": "adaptive",
+        "name": "R_1_0_CAP_2_5",
+        "policy_hash": "64773152abef979be7aeb69c76d26139a5cea0360c596b9fd6127c785fabb275"
+      },
+      "policy_name": "R_1_0_CAP_2_5",
+      "profit_factor": 0.3299349846945961,
+      "profitable_days": 0,
+      "recovery_duration_days": null,
+      "return_pct": -0.337570819311,
+      "slippage_cost_usdt": 0.0,
+      "state_trace": [
+        {
+          "action": "APPROVED",
+          "at": "2026-09-12T04:30:12.805080+00:00",
+          "decision_id": "dec_902b27921cb746919eec",
+          "effective_budget_usdt": 6.0,
+          "planned_risk_usdt": 2.1708423430464054,
+          "reason": "DAILY_RISK_DATA_INSUFFICIENT",
+          "remaining_before_entry_usdt": 6.0,
+          "risk_date": "2026-09-12",
+          "state": "NORMAL"
+        },
+        {
+          "action": "APPROVED",
+          "at": "2026-09-12T16:30:16.147279+00:00",
+          "decision_id": "dec_58562b1ad78f4d248707",
+          "effective_budget_usdt": 6.0,
+          "planned_risk_usdt": 0.9976790195752372,
+          "reason": "DAILY_RISK_DATA_INSUFFICIENT",
+          "remaining_before_entry_usdt": 4.643084276176019,
+          "risk_date": "2026-09-12",
+          "state": "NORMAL"
+        },
+        {
+          "action": "APPROVED",
+          "at": "2026-09-12T21:30:18.121022+00:00",
+          "decision_id": "dec_e97adf6efa4c4a5dacff",
+          "effective_budget_usdt": 6.0,
+          "planned_risk_usdt": 3.2822803149588053,
+          "reason": "DAILY_RISK_DATA_INSUFFICIENT",
+          "remaining_before_entry_usdt": 3.6454052566007817,
+          "risk_date": "2026-09-12",
+          "state": "NORMAL"
+        },
+        {
+          "action": "APPROVED",
+          "at": "2026-09-12T22:45:14.723033+00:00",
+          "decision_id": "dec_f00ad4514e84469d9383",
+          "effective_budget_usdt": 6.0,
+          "planned_risk_usdt": 1.4007559203672433,
+          "reason": "DAILY_RISK_DATA_INSUFFICIENT",
+          "remaining_before_entry_usdt": 6.0,
+          "risk_date": "2026-09-13",
+          "state": "NORMAL"
+        },
+        {
+          "action": "BLOCKED",
+          "at": "2026-09-13T21:49:55.870598+00:00",
+          "decision_id": "dec_39b1cb0ecd254ee6acfd",
+          "effective_budget_usdt": 10.447737882634026,
+          "planned_risk_usdt": 9.895401428296099,
+          "reason": "PLANNED_RISK_EXCEEDS_REMAINING_DAILY_BUDGET",
+          "remaining_before_entry_usdt": 9.23470921402198,
+          "risk_date": "2026-09-13",
+          "state": "NORMAL"
+        },
+        {
+          "action": "APPROVED",
+          "at": "2026-09-13T21:51:42.320085+00:00",
+          "decision_id": "dec_b66098a89933436a87df",
+          "effective_budget_usdt": 10.444442038468527,
+          "planned_risk_usdt": 7.06920976096905,
+          "reason": "DAILY_RISK_NORMAL",
+          "remaining_before_entry_usdt": 9.23141336985648,
+          "risk_date": "2026-09-13",
+          "state": "NORMAL"
+        },
+        {
+          "action": "BLOCKED",
+          "at": "2026-09-13T22:01:57.963805+00:00",
+          "decision_id": "dec_785b17805478460d9afd",
+          "effective_budget_usdt": 10.441146194303027,
+          "planned_risk_usdt": 18.86924024999996,
+          "reason": "PLANNED_RISK_EXCEEDS_REMAINING_DAILY_BUDGET",
+          "remaining_before_entry_usdt": 10.441146194303027,
+          "risk_date": "2026-09-14",
+          "state": "NORMAL"
+        }
+      ],
+      "win_rate": 0.2
+    },
+    "R_1_25_CAP_2_5": {
+      "approved_decision_ids": [
+        "dec_902b27921cb746919eec",
+        "dec_58562b1ad78f4d248707",
+        "dec_e97adf6efa4c4a5dacff",
+        "dec_f00ad4514e84469d9383",
+        "dec_39b1cb0ecd254ee6acfd"
+      ],
+      "approved_trades": 5,
+      "average_loser_usdt": -1.278455241275,
+      "average_winner_usdt": 1.459327665694,
+      "avg_daily_budget_used_pct": 0.10634538864531329,
+      "avg_trades_per_day": 1.6666666666666667,
+      "blocked_decision_ids": [
+        "dec_b66098a89933436a87df",
+        "dec_785b17805478460d9afd"
+      ],
+      "blocked_flat": 1,
+      "blocked_losers": 1,
+      "blocked_negative_r": 1,
+      "blocked_net_pnl_usdt": -19.1709,
+      "blocked_positive_r": 0,
+      "blocked_trades": 2,
+      "blocked_winners": 0,
+      "by_regime": {
+        "WEAK_TREND": {
+          "net_pnl_usdt": -0.916710392436,
+          "trades": 5,
+          "win_rate": 0.4
+        }
+      },
+      "caution_events": 0,
+      "daily_budget_used_pct": {
+        "2026-09-12": 0.226152620637,
+        "2026-09-13": 0.092883545299,
+        "2026-09-14": 0.0
+      },
+      "daily_pnl": {
+        "2026-09-12": -1.356915723824,
+        "2026-09-13": -1.213028668612,
+        "2026-09-14": 1.653234
+      },
+      "day_open_equity": {
+        "2026-09-12": 761.30525668,
+        "2026-09-13": 759.948340956176,
+        "2026-09-14": 758.735312287564
+      },
+      "defensive_events": 1,
+      "expectancy_usdt": -0.183342078487,
+      "fees_usdt": 0.33549627,
+      "flat_days": 0,
+      "funding_usdt": 0.0,
+      "hard_stop_days": 2,
+      "hard_stop_events": 0,
+      "longest_losing_streak": 2,
+      "losing_days": 2,
+      "max_daily_drawdown_pct": 0.337570819311,
+      "max_daily_loss_usdt": -1.356915723824,
+      "max_drawdown_pct": 0.337570819311,
+      "max_weekly_drawdown_pct": 0.337570819311,
+      "median_daily_budget_used_pct": 0.09288354529860965,
+      "median_loser_usdt": -1.356915723824,
+      "median_trades_per_day": 2.5,
+      "median_winner_usdt": 1.459327665694,
+      "net_pnl_usdt": -0.916710392436,
+      "opportunities_seen": 7,
+      "p95_daily_budget_used_pct": 0.21282571310345816,
+      "policy": {
+        "daily_r_budget": 1.25,
+        "fixed_daily_loss_usdt": null,
+        "hard_daily_equity_cap_pct": 0.025,
+        "kind": "adaptive",
+        "name": "R_1_25_CAP_2_5",
+        "policy_hash": "e493b8058cdbecf3dd8ab64e2a12911c91be9a0adea3ddc03e8ff6a612764760"
+      },
+      "policy_name": "R_1_25_CAP_2_5",
+      "profit_factor": 0.76098488163939,
+      "profitable_days": 1,
+      "recovery_duration_days": null,
+      "return_pct": -0.120412986038,
+      "slippage_cost_usdt": 0.0,
+      "state_trace": [
+        {
+          "action": "APPROVED",
+          "at": "2026-09-12T04:30:12.805080+00:00",
+          "decision_id": "dec_902b27921cb746919eec",
+          "effective_budget_usdt": 6.0,
+          "planned_risk_usdt": 2.1708423430464054,
+          "reason": "DAILY_RISK_DATA_INSUFFICIENT",
+          "remaining_before_entry_usdt": 6.0,
+          "risk_date": "2026-09-12",
+          "state": "NORMAL"
+        },
+        {
+          "action": "APPROVED",
+          "at": "2026-09-12T16:30:16.147279+00:00",
+          "decision_id": "dec_58562b1ad78f4d248707",
+          "effective_budget_usdt": 6.0,
+          "planned_risk_usdt": 0.9976790195752372,
+          "reason": "DAILY_RISK_DATA_INSUFFICIENT",
+          "remaining_before_entry_usdt": 4.643084276176019,
+          "risk_date": "2026-09-12",
+          "state": "NORMAL"
+        },
+        {
+          "action": "APPROVED",
+          "at": "2026-09-12T21:30:18.121022+00:00",
+          "decision_id": "dec_e97adf6efa4c4a5dacff",
+          "effective_budget_usdt": 6.0,
+          "planned_risk_usdt": 3.2822803149588053,
+          "reason": "DAILY_RISK_DATA_INSUFFICIENT",
+          "remaining_before_entry_usdt": 3.6454052566007817,
+          "risk_date": "2026-09-12",
+          "state": "NORMAL"
+        },
+        {
+          "action": "APPROVED",
+          "at": "2026-09-12T22:45:14.723033+00:00",
+          "decision_id": "dec_f00ad4514e84469d9383",
+          "effective_budget_usdt": 6.0,
+          "planned_risk_usdt": 1.4007559203672433,
+          "reason": "DAILY_RISK_DATA_INSUFFICIENT",
+          "remaining_before_entry_usdt": 6.0,
+          "risk_date": "2026-09-13",
+          "state": "NORMAL"
+        },
+        {
+          "action": "APPROVED",
+          "at": "2026-09-13T21:49:55.870598+00:00",
+          "decision_id": "dec_39b1cb0ecd254ee6acfd",
+          "effective_budget_usdt": 13.059672353292534,
+          "planned_risk_usdt": 9.895401428296099,
+          "reason": "DAILY_RISK_NORMAL",
+          "remaining_before_entry_usdt": 11.846643684680487,
+          "risk_date": "2026-09-13",
+          "state": "NORMAL"
+        },
+        {
+          "action": "BLOCKED",
+          "at": "2026-09-13T21:51:42.320085+00:00",
+          "decision_id": "dec_b66098a89933436a87df",
+          "effective_budget_usdt": 13.055552548085657,
+          "planned_risk_usdt": 7.06920976096905,
+          "reason": "PLANNED_RISK_EXCEEDS_REMAINING_DAILY_BUDGET",
+          "remaining_before_entry_usdt": 1.9471224511775116,
+          "risk_date": "2026-09-13",
+          "state": "DEFENSIVE"
+        },
+        {
+          "action": "BLOCKED",
+          "at": "2026-09-13T22:01:57.963805+00:00",
+          "decision_id": "dec_785b17805478460d9afd",
+          "effective_budget_usdt": 13.051432742878784,
+          "planned_risk_usdt": 18.86924024999996,
+          "reason": "PLANNED_RISK_EXCEEDS_REMAINING_DAILY_BUDGET",
+          "remaining_before_entry_usdt": 13.051432742878784,
+          "risk_date": "2026-09-14",
+          "state": "NORMAL"
+        }
+      ],
+      "win_rate": 0.4
+    },
+    "R_1_5_CAP_015": {
+      "approved_decision_ids": [
+        "dec_902b27921cb746919eec",
+        "dec_58562b1ad78f4d248707",
+        "dec_e97adf6efa4c4a5dacff",
+        "dec_f00ad4514e84469d9383",
+        "dec_39b1cb0ecd254ee6acfd"
+      ],
+      "approved_trades": 5,
+      "average_loser_usdt": -1.278455241275,
+      "average_winner_usdt": 1.459327665694,
+      "avg_daily_budget_used_pct": 0.11085529245567265,
+      "avg_trades_per_day": 1.6666666666666667,
+      "blocked_decision_ids": [
+        "dec_b66098a89933436a87df",
+        "dec_785b17805478460d9afd"
+      ],
+      "blocked_flat": 1,
+      "blocked_losers": 1,
+      "blocked_negative_r": 1,
+      "blocked_net_pnl_usdt": -19.1709,
+      "blocked_positive_r": 0,
+      "blocked_trades": 2,
+      "blocked_winners": 0,
+      "by_regime": {
+        "WEAK_TREND": {
+          "net_pnl_usdt": -0.916710392436,
+          "trades": 5,
+          "win_rate": 0.4
+        }
+      },
+      "caution_events": 0,
+      "daily_budget_used_pct": {
+        "2026-09-12": 0.226152620637,
+        "2026-09-13": 0.10641325673,
+        "2026-09-14": 0.0
+      },
+      "daily_pnl": {
+        "2026-09-12": -1.356915723824,
+        "2026-09-13": -1.213028668612,
+        "2026-09-14": 1.653234
+      },
+      "day_open_equity": {
+        "2026-09-12": 761.30525668,
+        "2026-09-13": 759.948340956176,
+        "2026-09-14": 758.735312287564
+      },
+      "defensive_events": 1,
+      "expectancy_usdt": -0.183342078487,
+      "fees_usdt": 0.33549627,
+      "flat_days": 0,
+      "funding_usdt": 0.0,
+      "hard_stop_days": 2,
+      "hard_stop_events": 0,
+      "longest_losing_streak": 2,
+      "losing_days": 2,
+      "max_daily_drawdown_pct": 0.337570819311,
+      "max_daily_loss_usdt": -1.356915723824,
+      "max_drawdown_pct": 0.337570819311,
+      "max_weekly_drawdown_pct": 0.337570819311,
+      "median_daily_budget_used_pct": 0.10641325672968771,
+      "median_loser_usdt": -1.356915723824,
+      "median_trades_per_day": 2.5,
+      "median_winner_usdt": 1.459327665694,
+      "net_pnl_usdt": -0.916710392436,
+      "opportunities_seen": 7,
+      "p95_daily_budget_used_pct": 0.21417868424656594,
+      "policy": {
+        "daily_r_budget": 1.5,
+        "fixed_daily_loss_usdt": null,
+        "hard_daily_equity_cap_pct": 0.015,
+        "kind": "adaptive",
+        "name": "R_1_5_CAP_015",
+        "policy_hash": "d861614144672b0a5713fbf13c441ae75fca12a9a071f2d4d4c8f924c2c0b387"
+      },
+      "policy_name": "R_1_5_CAP_015",
+      "profit_factor": 0.76098488163939,
+      "profitable_days": 1,
+      "recovery_duration_days": null,
+      "return_pct": -0.120412986038,
+      "slippage_cost_usdt": 0.0,
+      "state_trace": [
+        {
+          "action": "APPROVED",
+          "at": "2026-09-12T04:30:12.805080+00:00",
+          "decision_id": "dec_902b27921cb746919eec",
+          "effective_budget_usdt": 6.0,
+          "planned_risk_usdt": 2.1708423430464054,
+          "reason": "DAILY_RISK_DATA_INSUFFICIENT",
+          "remaining_before_entry_usdt": 6.0,
+          "risk_date": "2026-09-12",
+          "state": "NORMAL"
+        },
+        {
+          "action": "APPROVED",
+          "at": "2026-09-12T16:30:16.147279+00:00",
+          "decision_id": "dec_58562b1ad78f4d248707",
+          "effective_budget_usdt": 6.0,
+          "planned_risk_usdt": 0.9976790195752372,
+          "reason": "DAILY_RISK_DATA_INSUFFICIENT",
+          "remaining_before_entry_usdt": 4.643084276176019,
+          "risk_date": "2026-09-12",
+          "state": "NORMAL"
+        },
+        {
+          "action": "APPROVED",
+          "at": "2026-09-12T21:30:18.121022+00:00",
+          "decision_id": "dec_e97adf6efa4c4a5dacff",
+          "effective_budget_usdt": 6.0,
+          "planned_risk_usdt": 3.2822803149588053,
+          "reason": "DAILY_RISK_DATA_INSUFFICIENT",
+          "remaining_before_entry_usdt": 3.6454052566007817,
+          "risk_date": "2026-09-12",
+          "state": "NORMAL"
+        },
+        {
+          "action": "APPROVED",
+          "at": "2026-09-12T22:45:14.723033+00:00",
+          "decision_id": "dec_f00ad4514e84469d9383",
+          "effective_budget_usdt": 6.0,
+          "planned_risk_usdt": 1.4007559203672433,
+          "reason": "DAILY_RISK_DATA_INSUFFICIENT",
+          "remaining_before_entry_usdt": 6.0,
+          "risk_date": "2026-09-13",
+          "state": "NORMAL"
+        },
+        {
+          "action": "APPROVED",
+          "at": "2026-09-13T21:49:55.870598+00:00",
+          "decision_id": "dec_39b1cb0ecd254ee6acfd",
+          "effective_budget_usdt": 11.39922511434264,
+          "planned_risk_usdt": 9.895401428296099,
+          "reason": "DAILY_RISK_NORMAL",
+          "remaining_before_entry_usdt": 10.186196445730593,
+          "risk_date": "2026-09-13",
+          "state": "NORMAL"
+        },
+        {
+          "action": "BLOCKED",
+          "at": "2026-09-13T21:51:42.320085+00:00",
+          "decision_id": "dec_b66098a89933436a87df",
+          "effective_budget_usdt": 11.39922511434264,
+          "planned_risk_usdt": 7.06920976096905,
+          "reason": "PLANNED_RISK_EXCEEDS_REMAINING_DAILY_BUDGET",
+          "remaining_before_entry_usdt": 0.290795017434494,
+          "risk_date": "2026-09-13",
+          "state": "DEFENSIVE"
+        },
+        {
+          "action": "BLOCKED",
+          "at": "2026-09-13T22:01:57.963805+00:00",
+          "decision_id": "dec_785b17805478460d9afd",
+          "effective_budget_usdt": 11.381029684313459,
+          "planned_risk_usdt": 18.86924024999996,
+          "reason": "PLANNED_RISK_EXCEEDS_REMAINING_DAILY_BUDGET",
+          "remaining_before_entry_usdt": 11.381029684313459,
+          "risk_date": "2026-09-14",
+          "state": "NORMAL"
+        }
+      ],
+      "win_rate": 0.4
+    },
+    "R_1_5_CAP_020": {
+      "approved_decision_ids": [
+        "dec_902b27921cb746919eec",
+        "dec_58562b1ad78f4d248707",
+        "dec_e97adf6efa4c4a5dacff",
+        "dec_f00ad4514e84469d9383",
+        "dec_39b1cb0ecd254ee6acfd"
+      ],
+      "approved_trades": 5,
+      "average_loser_usdt": -1.278455241275,
+      "average_winner_usdt": 1.459327665694,
+      "avg_daily_budget_used_pct": 0.10198752106153199,
+      "avg_trades_per_day": 1.6666666666666667,
+      "blocked_decision_ids": [
+        "dec_b66098a89933436a87df",
+        "dec_785b17805478460d9afd"
+      ],
+      "blocked_flat": 1,
+      "blocked_losers": 1,
+      "blocked_negative_r": 1,
+      "blocked_net_pnl_usdt": -19.1709,
+      "blocked_positive_r": 0,
+      "blocked_trades": 2,
+      "blocked_winners": 0,
+      "by_regime": {
+        "WEAK_TREND": {
+          "net_pnl_usdt": -0.916710392436,
+          "trades": 5,
+          "win_rate": 0.4
+        }
+      },
+      "caution_events": 1,
+      "daily_budget_used_pct": {
+        "2026-09-12": 0.226152620637,
+        "2026-09-13": 0.079809942547,
+        "2026-09-14": 0.0
+      },
+      "daily_pnl": {
+        "2026-09-12": -1.356915723824,
+        "2026-09-13": -1.213028668612,
+        "2026-09-14": 1.653234
+      },
+      "day_open_equity": {
+        "2026-09-12": 761.30525668,
+        "2026-09-13": 759.948340956176,
+        "2026-09-14": 758.735312287564
+      },
+      "defensive_events": 0,
+      "expectancy_usdt": -0.183342078487,
+      "fees_usdt": 0.33549627,
+      "flat_days": 0,
+      "funding_usdt": 0.0,
+      "hard_stop_days": 2,
+      "hard_stop_events": 0,
+      "longest_losing_streak": 2,
+      "losing_days": 2,
+      "max_daily_drawdown_pct": 0.337570819311,
+      "max_daily_loss_usdt": -1.356915723824,
+      "max_drawdown_pct": 0.337570819311,
+      "max_weekly_drawdown_pct": 0.337570819311,
+      "median_daily_budget_used_pct": 0.07980994254726577,
+      "median_loser_usdt": -1.356915723824,
+      "median_trades_per_day": 2.5,
+      "median_winner_usdt": 1.459327665694,
+      "net_pnl_usdt": -0.916710392436,
+      "opportunities_seen": 7,
+      "p95_daily_budget_used_pct": 0.21151835282832376,
+      "policy": {
+        "daily_r_budget": 1.5,
+        "fixed_daily_loss_usdt": null,
+        "hard_daily_equity_cap_pct": 0.02,
+        "kind": "adaptive",
+        "name": "R_1_5_CAP_020",
+        "policy_hash": "2a13884c9bbf35dd4bb31e958d6da76bf31989fc66def7770500562b139c5599"
+      },
+      "policy_name": "R_1_5_CAP_020",
+      "profit_factor": 0.76098488163939,
+      "profitable_days": 1,
+      "recovery_duration_days": null,
+      "return_pct": -0.120412986038,
+      "slippage_cost_usdt": 0.0,
+      "state_trace": [
+        {
+          "action": "APPROVED",
+          "at": "2026-09-12T04:30:12.805080+00:00",
+          "decision_id": "dec_902b27921cb746919eec",
+          "effective_budget_usdt": 6.0,
+          "planned_risk_usdt": 2.1708423430464054,
+          "reason": "DAILY_RISK_DATA_INSUFFICIENT",
+          "remaining_before_entry_usdt": 6.0,
+          "risk_date": "2026-09-12",
+          "state": "NORMAL"
+        },
+        {
+          "action": "APPROVED",
+          "at": "2026-09-12T16:30:16.147279+00:00",
+          "decision_id": "dec_58562b1ad78f4d248707",
+          "effective_budget_usdt": 6.0,
+          "planned_risk_usdt": 0.9976790195752372,
+          "reason": "DAILY_RISK_DATA_INSUFFICIENT",
+          "remaining_before_entry_usdt": 4.643084276176019,
+          "risk_date": "2026-09-12",
+          "state": "NORMAL"
+        },
+        {
+          "action": "APPROVED",
+          "at": "2026-09-12T21:30:18.121022+00:00",
+          "decision_id": "dec_e97adf6efa4c4a5dacff",
+          "effective_budget_usdt": 6.0,
+          "planned_risk_usdt": 3.2822803149588053,
+          "reason": "DAILY_RISK_DATA_INSUFFICIENT",
+          "remaining_before_entry_usdt": 3.6454052566007817,
+          "risk_date": "2026-09-12",
+          "state": "NORMAL"
+        },
+        {
+          "action": "APPROVED",
+          "at": "2026-09-12T22:45:14.723033+00:00",
+          "decision_id": "dec_f00ad4514e84469d9383",
+          "effective_budget_usdt": 6.0,
+          "planned_risk_usdt": 1.4007559203672433,
+          "reason": "DAILY_RISK_DATA_INSUFFICIENT",
+          "remaining_before_entry_usdt": 6.0,
+          "risk_date": "2026-09-13",
+          "state": "NORMAL"
+        },
+        {
+          "action": "APPROVED",
+          "at": "2026-09-13T21:49:55.870598+00:00",
+          "decision_id": "dec_39b1cb0ecd254ee6acfd",
+          "effective_budget_usdt": 15.198966819123521,
+          "planned_risk_usdt": 9.895401428296099,
+          "reason": "DAILY_RISK_NORMAL",
+          "remaining_before_entry_usdt": 13.985938150511474,
+          "risk_date": "2026-09-13",
+          "state": "NORMAL"
+        },
+        {
+          "action": "BLOCKED",
+          "at": "2026-09-13T21:51:42.320085+00:00",
+          "decision_id": "dec_b66098a89933436a87df",
+          "effective_budget_usdt": 15.198966819123521,
+          "planned_risk_usdt": 7.06920976096905,
+          "reason": "PLANNED_RISK_EXCEEDS_REMAINING_DAILY_BUDGET",
+          "remaining_before_entry_usdt": 4.090536722215376,
+          "risk_date": "2026-09-13",
+          "state": "CAUTION"
+        },
+        {
+          "action": "BLOCKED",
+          "at": "2026-09-13T22:01:57.963805+00:00",
+          "decision_id": "dec_785b17805478460d9afd",
+          "effective_budget_usdt": 15.17470624575128,
+          "planned_risk_usdt": 18.86924024999996,
+          "reason": "PLANNED_RISK_EXCEEDS_REMAINING_DAILY_BUDGET",
+          "remaining_before_entry_usdt": 15.17470624575128,
+          "risk_date": "2026-09-14",
+          "state": "NORMAL"
+        }
+      ],
+      "win_rate": 0.4
+    },
+    "R_1_5_CAP_030": {
+      "approved_decision_ids": [
+        "dec_902b27921cb746919eec",
+        "dec_58562b1ad78f4d248707",
+        "dec_e97adf6efa4c4a5dacff",
+        "dec_f00ad4514e84469d9383",
+        "dec_39b1cb0ecd254ee6acfd"
+      ],
+      "approved_trades": 5,
+      "average_loser_usdt": -1.278455241275,
+      "average_winner_usdt": 1.459327665694,
+      "avg_daily_budget_used_pct": 0.10118519168427942,
+      "avg_trades_per_day": 1.6666666666666667,
+      "blocked_decision_ids": [
+        "dec_b66098a89933436a87df",
+        "dec_785b17805478460d9afd"
+      ],
+      "blocked_flat": 1,
+      "blocked_losers": 1,
+      "blocked_negative_r": 1,
+      "blocked_net_pnl_usdt": -19.1709,
+      "blocked_positive_r": 0,
+      "blocked_trades": 2,
+      "blocked_winners": 0,
+      "by_regime": {
+        "WEAK_TREND": {
+          "net_pnl_usdt": -0.916710392436,
+          "trades": 5,
+          "win_rate": 0.4
+        }
+      },
+      "caution_events": 1,
+      "daily_budget_used_pct": {
+        "2026-09-12": 0.226152620637,
+        "2026-09-13": 0.077402954416,
+        "2026-09-14": 0.0
+      },
+      "daily_pnl": {
+        "2026-09-12": -1.356915723824,
+        "2026-09-13": -1.213028668612,
+        "2026-09-14": 1.653234
+      },
+      "day_open_equity": {
+        "2026-09-12": 761.30525668,
+        "2026-09-13": 759.948340956176,
+        "2026-09-14": 758.735312287564
+      },
+      "defensive_events": 0,
+      "expectancy_usdt": -0.183342078487,
+      "fees_usdt": 0.33549627,
+      "flat_days": 0,
+      "funding_usdt": 0.0,
+      "hard_stop_days": 2,
+      "hard_stop_events": 0,
+      "longest_losing_streak": 2,
+      "losing_days": 2,
+      "max_daily_drawdown_pct": 0.337570819311,
+      "max_daily_loss_usdt": -1.356915723824,
+      "max_drawdown_pct": 0.337570819311,
+      "max_weekly_drawdown_pct": 0.337570819311,
+      "median_daily_budget_used_pct": 0.07740295441550804,
+      "median_loser_usdt": -1.356915723824,
+      "median_trades_per_day": 2.5,
+      "median_winner_usdt": 1.459327665694,
+      "net_pnl_usdt": -0.916710392436,
+      "opportunities_seen": 7,
+      "p95_daily_budget_used_pct": 0.21127765401514798,
+      "policy": {
+        "daily_r_budget": 1.5,
+        "fixed_daily_loss_usdt": null,
+        "hard_daily_equity_cap_pct": 0.03,
+        "kind": "adaptive",
+        "name": "R_1_5_CAP_030",
+        "policy_hash": "7ccfab0dca23e071cbe0dc43c5fe743058b854359ba34ac7c4cbee74c156a328"
+      },
+      "policy_name": "R_1_5_CAP_030",
+      "profit_factor": 0.76098488163939,
+      "profitable_days": 1,
+      "recovery_duration_days": null,
+      "return_pct": -0.120412986038,
+      "slippage_cost_usdt": 0.0,
+      "state_trace": [
+        {
+          "action": "APPROVED",
+          "at": "2026-09-12T04:30:12.805080+00:00",
+          "decision_id": "dec_902b27921cb746919eec",
+          "effective_budget_usdt": 6.0,
+          "planned_risk_usdt": 2.1708423430464054,
+          "reason": "DAILY_RISK_DATA_INSUFFICIENT",
+          "remaining_before_entry_usdt": 6.0,
+          "risk_date": "2026-09-12",
+          "state": "NORMAL"
+        },
+        {
+          "action": "APPROVED",
+          "at": "2026-09-12T16:30:16.147279+00:00",
+          "decision_id": "dec_58562b1ad78f4d248707",
+          "effective_budget_usdt": 6.0,
+          "planned_risk_usdt": 0.9976790195752372,
+          "reason": "DAILY_RISK_DATA_INSUFFICIENT",
+          "remaining_before_entry_usdt": 4.643084276176019,
+          "risk_date": "2026-09-12",
+          "state": "NORMAL"
+        },
+        {
+          "action": "APPROVED",
+          "at": "2026-09-12T21:30:18.121022+00:00",
+          "decision_id": "dec_e97adf6efa4c4a5dacff",
+          "effective_budget_usdt": 6.0,
+          "planned_risk_usdt": 3.2822803149588053,
+          "reason": "DAILY_RISK_DATA_INSUFFICIENT",
+          "remaining_before_entry_usdt": 3.6454052566007817,
+          "risk_date": "2026-09-12",
+          "state": "NORMAL"
+        },
+        {
+          "action": "APPROVED",
+          "at": "2026-09-12T22:45:14.723033+00:00",
+          "decision_id": "dec_f00ad4514e84469d9383",
+          "effective_budget_usdt": 6.0,
+          "planned_risk_usdt": 1.4007559203672433,
+          "reason": "DAILY_RISK_DATA_INSUFFICIENT",
+          "remaining_before_entry_usdt": 6.0,
+          "risk_date": "2026-09-13",
+          "state": "NORMAL"
+        },
+        {
+          "action": "APPROVED",
+          "at": "2026-09-13T21:49:55.870598+00:00",
+          "decision_id": "dec_39b1cb0ecd254ee6acfd",
+          "effective_budget_usdt": 15.67160682395104,
+          "planned_risk_usdt": 9.895401428296099,
+          "reason": "DAILY_RISK_NORMAL",
+          "remaining_before_entry_usdt": 14.458578155338992,
+          "risk_date": "2026-09-13",
+          "state": "NORMAL"
+        },
+        {
+          "action": "BLOCKED",
+          "at": "2026-09-13T21:51:42.320085+00:00",
+          "decision_id": "dec_b66098a89933436a87df",
+          "effective_budget_usdt": 15.66666305770279,
+          "planned_risk_usdt": 7.06920976096905,
+          "reason": "PLANNED_RISK_EXCEEDS_REMAINING_DAILY_BUDGET",
+          "remaining_before_entry_usdt": 4.558232960794644,
+          "risk_date": "2026-09-13",
+          "state": "CAUTION"
+        },
+        {
+          "action": "BLOCKED",
+          "at": "2026-09-13T22:01:57.963805+00:00",
+          "decision_id": "dec_785b17805478460d9afd",
+          "effective_budget_usdt": 15.66171929145454,
+          "planned_risk_usdt": 18.86924024999996,
+          "reason": "PLANNED_RISK_EXCEEDS_REMAINING_DAILY_BUDGET",
+          "remaining_before_entry_usdt": 15.66171929145454,
+          "risk_date": "2026-09-14",
+          "state": "NORMAL"
+        }
+      ],
+      "win_rate": 0.4
+    },
+    "R_1_5_CAP_035": {
+      "approved_decision_ids": [
+        "dec_902b27921cb746919eec",
+        "dec_58562b1ad78f4d248707",
+        "dec_e97adf6efa4c4a5dacff",
+        "dec_f00ad4514e84469d9383",
+        "dec_39b1cb0ecd254ee6acfd"
+      ],
+      "approved_trades": 5,
+      "average_loser_usdt": -1.278455241275,
+      "average_winner_usdt": 1.459327665694,
+      "avg_daily_budget_used_pct": 0.10118519168427942,
+      "avg_trades_per_day": 1.6666666666666667,
+      "blocked_decision_ids": [
+        "dec_b66098a89933436a87df",
+        "dec_785b17805478460d9afd"
+      ],
+      "blocked_flat": 1,
+      "blocked_losers": 1,
+      "blocked_negative_r": 1,
+      "blocked_net_pnl_usdt": -19.1709,
+      "blocked_positive_r": 0,
+      "blocked_trades": 2,
+      "blocked_winners": 0,
+      "by_regime": {
+        "WEAK_TREND": {
+          "net_pnl_usdt": -0.916710392436,
+          "trades": 5,
+          "win_rate": 0.4
+        }
+      },
+      "caution_events": 1,
+      "daily_budget_used_pct": {
+        "2026-09-12": 0.226152620637,
+        "2026-09-13": 0.077402954416,
+        "2026-09-14": 0.0
+      },
+      "daily_pnl": {
+        "2026-09-12": -1.356915723824,
+        "2026-09-13": -1.213028668612,
+        "2026-09-14": 1.653234
+      },
+      "day_open_equity": {
+        "2026-09-12": 761.30525668,
+        "2026-09-13": 759.948340956176,
+        "2026-09-14": 758.735312287564
+      },
+      "defensive_events": 0,
+      "expectancy_usdt": -0.183342078487,
+      "fees_usdt": 0.33549627,
+      "flat_days": 0,
+      "funding_usdt": 0.0,
+      "hard_stop_days": 2,
+      "hard_stop_events": 0,
+      "longest_losing_streak": 2,
+      "losing_days": 2,
+      "max_daily_drawdown_pct": 0.337570819311,
+      "max_daily_loss_usdt": -1.356915723824,
+      "max_drawdown_pct": 0.337570819311,
+      "max_weekly_drawdown_pct": 0.337570819311,
+      "median_daily_budget_used_pct": 0.07740295441550804,
+      "median_loser_usdt": -1.356915723824,
+      "median_trades_per_day": 2.5,
+      "median_winner_usdt": 1.459327665694,
+      "net_pnl_usdt": -0.916710392436,
+      "opportunities_seen": 7,
+      "p95_daily_budget_used_pct": 0.21127765401514798,
+      "policy": {
+        "daily_r_budget": 1.5,
+        "fixed_daily_loss_usdt": null,
+        "hard_daily_equity_cap_pct": 0.035,
+        "kind": "adaptive",
+        "name": "R_1_5_CAP_035",
+        "policy_hash": "feeb2e385dd535d29149559b0e0e9e0fc9fcf5391c806861fd893fdf49bf286e"
+      },
+      "policy_name": "R_1_5_CAP_035",
+      "profit_factor": 0.76098488163939,
+      "profitable_days": 1,
+      "recovery_duration_days": null,
+      "return_pct": -0.120412986038,
+      "slippage_cost_usdt": 0.0,
+      "state_trace": [
+        {
+          "action": "APPROVED",
+          "at": "2026-09-12T04:30:12.805080+00:00",
+          "decision_id": "dec_902b27921cb746919eec",
+          "effective_budget_usdt": 6.0,
+          "planned_risk_usdt": 2.1708423430464054,
+          "reason": "DAILY_RISK_DATA_INSUFFICIENT",
+          "remaining_before_entry_usdt": 6.0,
+          "risk_date": "2026-09-12",
+          "state": "NORMAL"
+        },
+        {
+          "action": "APPROVED",
+          "at": "2026-09-12T16:30:16.147279+00:00",
+          "decision_id": "dec_58562b1ad78f4d248707",
+          "effective_budget_usdt": 6.0,
+          "planned_risk_usdt": 0.9976790195752372,
+          "reason": "DAILY_RISK_DATA_INSUFFICIENT",
+          "remaining_before_entry_usdt": 4.643084276176019,
+          "risk_date": "2026-09-12",
+          "state": "NORMAL"
+        },
+        {
+          "action": "APPROVED",
+          "at": "2026-09-12T21:30:18.121022+00:00",
+          "decision_id": "dec_e97adf6efa4c4a5dacff",
+          "effective_budget_usdt": 6.0,
+          "planned_risk_usdt": 3.2822803149588053,
+          "reason": "DAILY_RISK_DATA_INSUFFICIENT",
+          "remaining_before_entry_usdt": 3.6454052566007817,
+          "risk_date": "2026-09-12",
+          "state": "NORMAL"
+        },
+        {
+          "action": "APPROVED",
+          "at": "2026-09-12T22:45:14.723033+00:00",
+          "decision_id": "dec_f00ad4514e84469d9383",
+          "effective_budget_usdt": 6.0,
+          "planned_risk_usdt": 1.4007559203672433,
+          "reason": "DAILY_RISK_DATA_INSUFFICIENT",
+          "remaining_before_entry_usdt": 6.0,
+          "risk_date": "2026-09-13",
+          "state": "NORMAL"
+        },
+        {
+          "action": "APPROVED",
+          "at": "2026-09-13T21:49:55.870598+00:00",
+          "decision_id": "dec_39b1cb0ecd254ee6acfd",
+          "effective_budget_usdt": 15.67160682395104,
+          "planned_risk_usdt": 9.895401428296099,
+          "reason": "DAILY_RISK_NORMAL",
+          "remaining_before_entry_usdt": 14.458578155338992,
+          "risk_date": "2026-09-13",
+          "state": "NORMAL"
+        },
+        {
+          "action": "BLOCKED",
+          "at": "2026-09-13T21:51:42.320085+00:00",
+          "decision_id": "dec_b66098a89933436a87df",
+          "effective_budget_usdt": 15.66666305770279,
+          "planned_risk_usdt": 7.06920976096905,
+          "reason": "PLANNED_RISK_EXCEEDS_REMAINING_DAILY_BUDGET",
+          "remaining_before_entry_usdt": 4.558232960794644,
+          "risk_date": "2026-09-13",
+          "state": "CAUTION"
+        },
+        {
+          "action": "BLOCKED",
+          "at": "2026-09-13T22:01:57.963805+00:00",
+          "decision_id": "dec_785b17805478460d9afd",
+          "effective_budget_usdt": 15.66171929145454,
+          "planned_risk_usdt": 18.86924024999996,
+          "reason": "PLANNED_RISK_EXCEEDS_REMAINING_DAILY_BUDGET",
+          "remaining_before_entry_usdt": 15.66171929145454,
+          "risk_date": "2026-09-14",
+          "state": "NORMAL"
+        }
+      ],
+      "win_rate": 0.4
+    },
+    "R_1_5_CAP_2_5": {
+      "approved_decision_ids": [
+        "dec_902b27921cb746919eec",
+        "dec_58562b1ad78f4d248707",
+        "dec_e97adf6efa4c4a5dacff",
+        "dec_f00ad4514e84469d9383",
+        "dec_39b1cb0ecd254ee6acfd"
+      ],
+      "approved_trades": 5,
+      "average_loser_usdt": -1.278455241275,
+      "average_winner_usdt": 1.459327665694,
+      "avg_daily_budget_used_pct": 0.10118519168427942,
+      "avg_trades_per_day": 1.6666666666666667,
+      "blocked_decision_ids": [
+        "dec_b66098a89933436a87df",
+        "dec_785b17805478460d9afd"
+      ],
+      "blocked_flat": 1,
+      "blocked_losers": 1,
+      "blocked_negative_r": 1,
+      "blocked_net_pnl_usdt": -19.1709,
+      "blocked_positive_r": 0,
+      "blocked_trades": 2,
+      "blocked_winners": 0,
+      "by_regime": {
+        "WEAK_TREND": {
+          "net_pnl_usdt": -0.916710392436,
+          "trades": 5,
+          "win_rate": 0.4
+        }
+      },
+      "caution_events": 1,
+      "daily_budget_used_pct": {
+        "2026-09-12": 0.226152620637,
+        "2026-09-13": 0.077402954416,
+        "2026-09-14": 0.0
+      },
+      "daily_pnl": {
+        "2026-09-12": -1.356915723824,
+        "2026-09-13": -1.213028668612,
+        "2026-09-14": 1.653234
+      },
+      "day_open_equity": {
+        "2026-09-12": 761.30525668,
+        "2026-09-13": 759.948340956176,
+        "2026-09-14": 758.735312287564
+      },
+      "defensive_events": 0,
+      "expectancy_usdt": -0.183342078487,
+      "fees_usdt": 0.33549627,
+      "flat_days": 0,
+      "funding_usdt": 0.0,
+      "hard_stop_days": 2,
+      "hard_stop_events": 0,
+      "longest_losing_streak": 2,
+      "losing_days": 2,
+      "max_daily_drawdown_pct": 0.337570819311,
+      "max_daily_loss_usdt": -1.356915723824,
+      "max_drawdown_pct": 0.337570819311,
+      "max_weekly_drawdown_pct": 0.337570819311,
+      "median_daily_budget_used_pct": 0.07740295441550804,
+      "median_loser_usdt": -1.356915723824,
+      "median_trades_per_day": 2.5,
+      "median_winner_usdt": 1.459327665694,
+      "net_pnl_usdt": -0.916710392436,
+      "opportunities_seen": 7,
+      "p95_daily_budget_used_pct": 0.21127765401514798,
+      "policy": {
+        "daily_r_budget": 1.5,
+        "fixed_daily_loss_usdt": null,
+        "hard_daily_equity_cap_pct": 0.025,
+        "kind": "adaptive",
+        "name": "R_1_5_CAP_2_5",
+        "policy_hash": "7fa803d6bb015a6b7563240568f3b2172f8b0c81458e9f78c241b72d4011346d"
+      },
+      "policy_name": "R_1_5_CAP_2_5",
+      "profit_factor": 0.76098488163939,
+      "profitable_days": 1,
+      "recovery_duration_days": null,
+      "return_pct": -0.120412986038,
+      "slippage_cost_usdt": 0.0,
+      "state_trace": [
+        {
+          "action": "APPROVED",
+          "at": "2026-09-12T04:30:12.805080+00:00",
+          "decision_id": "dec_902b27921cb746919eec",
+          "effective_budget_usdt": 6.0,
+          "planned_risk_usdt": 2.1708423430464054,
+          "reason": "DAILY_RISK_DATA_INSUFFICIENT",
+          "remaining_before_entry_usdt": 6.0,
+          "risk_date": "2026-09-12",
+          "state": "NORMAL"
+        },
+        {
+          "action": "APPROVED",
+          "at": "2026-09-12T16:30:16.147279+00:00",
+          "decision_id": "dec_58562b1ad78f4d248707",
+          "effective_budget_usdt": 6.0,
+          "planned_risk_usdt": 0.9976790195752372,
+          "reason": "DAILY_RISK_DATA_INSUFFICIENT",
+          "remaining_before_entry_usdt": 4.643084276176019,
+          "risk_date": "2026-09-12",
+          "state": "NORMAL"
+        },
+        {
+          "action": "APPROVED",
+          "at": "2026-09-12T21:30:18.121022+00:00",
+          "decision_id": "dec_e97adf6efa4c4a5dacff",
+          "effective_budget_usdt": 6.0,
+          "planned_risk_usdt": 3.2822803149588053,
+          "reason": "DAILY_RISK_DATA_INSUFFICIENT",
+          "remaining_before_entry_usdt": 3.6454052566007817,
+          "risk_date": "2026-09-12",
+          "state": "NORMAL"
+        },
+        {
+          "action": "APPROVED",
+          "at": "2026-09-12T22:45:14.723033+00:00",
+          "decision_id": "dec_f00ad4514e84469d9383",
+          "effective_budget_usdt": 6.0,
+          "planned_risk_usdt": 1.4007559203672433,
+          "reason": "DAILY_RISK_DATA_INSUFFICIENT",
+          "remaining_before_entry_usdt": 6.0,
+          "risk_date": "2026-09-13",
+          "state": "NORMAL"
+        },
+        {
+          "action": "APPROVED",
+          "at": "2026-09-13T21:49:55.870598+00:00",
+          "decision_id": "dec_39b1cb0ecd254ee6acfd",
+          "effective_budget_usdt": 15.67160682395104,
+          "planned_risk_usdt": 9.895401428296099,
+          "reason": "DAILY_RISK_NORMAL",
+          "remaining_before_entry_usdt": 14.458578155338992,
+          "risk_date": "2026-09-13",
+          "state": "NORMAL"
+        },
+        {
+          "action": "BLOCKED",
+          "at": "2026-09-13T21:51:42.320085+00:00",
+          "decision_id": "dec_b66098a89933436a87df",
+          "effective_budget_usdt": 15.66666305770279,
+          "planned_risk_usdt": 7.06920976096905,
+          "reason": "PLANNED_RISK_EXCEEDS_REMAINING_DAILY_BUDGET",
+          "remaining_before_entry_usdt": 4.558232960794644,
+          "risk_date": "2026-09-13",
+          "state": "CAUTION"
+        },
+        {
+          "action": "BLOCKED",
+          "at": "2026-09-13T22:01:57.963805+00:00",
+          "decision_id": "dec_785b17805478460d9afd",
+          "effective_budget_usdt": 15.66171929145454,
+          "planned_risk_usdt": 18.86924024999996,
+          "reason": "PLANNED_RISK_EXCEEDS_REMAINING_DAILY_BUDGET",
+          "remaining_before_entry_usdt": 15.66171929145454,
+          "risk_date": "2026-09-14",
+          "state": "NORMAL"
+        }
+      ],
+      "win_rate": 0.4
+    },
+    "R_1_75_CAP_2_5": {
+      "approved_decision_ids": [
+        "dec_902b27921cb746919eec",
+        "dec_58562b1ad78f4d248707",
+        "dec_e97adf6efa4c4a5dacff",
+        "dec_f00ad4514e84469d9383",
+        "dec_39b1cb0ecd254ee6acfd",
+        "dec_b66098a89933436a87df"
+      ],
+      "approved_trades": 6,
+      "average_loser_usdt": -1.278455241275,
+      "average_winner_usdt": 1.459327665694,
+      "avg_daily_budget_used_pct": 0.09749933671211237,
+      "avg_trades_per_day": 2.0,
+      "blocked_decision_ids": [
+        "dec_785b17805478460d9afd"
+      ],
+      "blocked_flat": 0,
+      "blocked_losers": 1,
+      "blocked_negative_r": 1,
+      "blocked_net_pnl_usdt": -19.1709,
+      "blocked_positive_r": 0,
+      "blocked_trades": 1,
+      "blocked_winners": 0,
+      "by_regime": {
+        "WEAK_TREND": {
+          "net_pnl_usdt": -0.916710392436,
+          "trades": 6,
+          "win_rate": 0.3333333333333333
+        }
+      },
+      "caution_events": 1,
+      "daily_budget_used_pct": {
+        "2026-09-12": 0.226152620637,
+        "2026-09-13": 0.066345389499,
+        "2026-09-14": 0.0
+      },
+      "daily_pnl": {
+        "2026-09-12": -1.356915723824,
+        "2026-09-13": -1.213028668612,
+        "2026-09-14": 1.653234
+      },
+      "day_open_equity": {
+        "2026-09-12": 761.30525668,
+        "2026-09-13": 759.948340956176,
+        "2026-09-14": 758.735312287564
+      },
+      "defensive_events": 0,
+      "expectancy_usdt": -0.152785065406,
+      "fees_usdt": 0.67122313,
+      "flat_days": 0,
+      "funding_usdt": 0.0,
+      "hard_stop_days": 1,
+      "hard_stop_events": 0,
+      "longest_losing_streak": 2,
+      "losing_days": 2,
+      "max_daily_drawdown_pct": 0.337570819311,
+      "max_daily_loss_usdt": -1.356915723824,
+      "max_drawdown_pct": 0.337570819311,
+      "max_weekly_drawdown_pct": 0.337570819311,
+      "median_daily_budget_used_pct": 0.0663453894990069,
+      "median_loser_usdt": -1.356915723824,
+      "median_trades_per_day": 3.0,
+      "median_winner_usdt": 1.459327665694,
+      "net_pnl_usdt": -0.916710392436,
+      "opportunities_seen": 7,
+      "p95_daily_budget_used_pct": 0.21017189752349785,
+      "policy": {
+        "daily_r_budget": 1.75,
+        "fixed_daily_loss_usdt": null,
+        "hard_daily_equity_cap_pct": 0.025,
+        "kind": "adaptive",
+        "name": "R_1_75_CAP_2_5",
+        "policy_hash": "2dfd1ef8eb1729ad62baa6e633ad8be8d1deaebd3f6c751130e59351fe526759"
+      },
+      "policy_name": "R_1_75_CAP_2_5",
+      "profit_factor": 0.76098488163939,
+      "profitable_days": 1,
+      "recovery_duration_days": null,
+      "return_pct": -0.120412986038,
+      "slippage_cost_usdt": 0.0,
+      "state_trace": [
+        {
+          "action": "APPROVED",
+          "at": "2026-09-12T04:30:12.805080+00:00",
+          "decision_id": "dec_902b27921cb746919eec",
+          "effective_budget_usdt": 6.0,
+          "planned_risk_usdt": 2.1708423430464054,
+          "reason": "DAILY_RISK_DATA_INSUFFICIENT",
+          "remaining_before_entry_usdt": 6.0,
+          "risk_date": "2026-09-12",
+          "state": "NORMAL"
+        },
+        {
+          "action": "APPROVED",
+          "at": "2026-09-12T16:30:16.147279+00:00",
+          "decision_id": "dec_58562b1ad78f4d248707",
+          "effective_budget_usdt": 6.0,
+          "planned_risk_usdt": 0.9976790195752372,
+          "reason": "DAILY_RISK_DATA_INSUFFICIENT",
+          "remaining_before_entry_usdt": 4.643084276176019,
+          "risk_date": "2026-09-12",
+          "state": "NORMAL"
+        },
+        {
+          "action": "APPROVED",
+          "at": "2026-09-12T21:30:18.121022+00:00",
+          "decision_id": "dec_e97adf6efa4c4a5dacff",
+          "effective_budget_usdt": 6.0,
+          "planned_risk_usdt": 3.2822803149588053,
+          "reason": "DAILY_RISK_DATA_INSUFFICIENT",
+          "remaining_before_entry_usdt": 3.6454052566007817,
+          "risk_date": "2026-09-12",
+          "state": "NORMAL"
+        },
+        {
+          "action": "APPROVED",
+          "at": "2026-09-12T22:45:14.723033+00:00",
+          "decision_id": "dec_f00ad4514e84469d9383",
+          "effective_budget_usdt": 6.0,
+          "planned_risk_usdt": 1.4007559203672433,
+          "reason": "DAILY_RISK_DATA_INSUFFICIENT",
+          "remaining_before_entry_usdt": 6.0,
+          "risk_date": "2026-09-13",
+          "state": "NORMAL"
+        },
+        {
+          "action": "APPROVED",
+          "at": "2026-09-13T21:49:55.870598+00:00",
+          "decision_id": "dec_39b1cb0ecd254ee6acfd",
+          "effective_budget_usdt": 18.283541294609545,
+          "planned_risk_usdt": 9.895401428296099,
+          "reason": "DAILY_RISK_NORMAL",
+          "remaining_before_entry_usdt": 17.070512625997498,
+          "risk_date": "2026-09-13",
+          "state": "NORMAL"
+        },
+        {
+          "action": "APPROVED",
+          "at": "2026-09-13T21:51:42.320085+00:00",
+          "decision_id": "dec_b66098a89933436a87df",
+          "effective_budget_usdt": 18.277773567319922,
+          "planned_risk_usdt": 7.06920976096905,
+          "reason": "DAILY_RISK_CAUTION",
+          "remaining_before_entry_usdt": 7.169343470411777,
+          "risk_date": "2026-09-13",
+          "state": "CAUTION"
+        },
+        {
+          "action": "BLOCKED",
+          "at": "2026-09-13T22:01:57.963805+00:00",
+          "decision_id": "dec_785b17805478460d9afd",
+          "effective_budget_usdt": 18.272005840030296,
+          "planned_risk_usdt": 18.86924024999996,
+          "reason": "PLANNED_RISK_EXCEEDS_REMAINING_DAILY_BUDGET",
+          "remaining_before_entry_usdt": 18.272005840030296,
+          "risk_date": "2026-09-14",
+          "state": "NORMAL"
+        }
+      ],
+      "win_rate": 0.3333333333333333
+    },
+    "R_2_0_CAP_2_5": {
+      "approved_decision_ids": [
+        "dec_902b27921cb746919eec",
+        "dec_58562b1ad78f4d248707",
+        "dec_e97adf6efa4c4a5dacff",
+        "dec_f00ad4514e84469d9383",
+        "dec_39b1cb0ecd254ee6acfd",
+        "dec_b66098a89933436a87df",
+        "dec_785b17805478460d9afd"
+      ],
+      "approved_trades": 7,
+      "average_loser_usdt": -5.751566430956,
+      "average_winner_usdt": 1.459327665694,
+      "avg_daily_budget_used_pct": 0.4045065965598786,
+      "avg_trades_per_day": 2.3333333333333335,
+      "blocked_decision_ids": [],
+      "blocked_flat": 0,
+      "blocked_losers": 0,
+      "blocked_negative_r": 0,
+      "blocked_net_pnl_usdt": 0,
+      "blocked_positive_r": 0,
+      "blocked_trades": 0,
+      "blocked_winners": 0,
+      "by_regime": {
+        "WEAK_TREND": {
+          "net_pnl_usdt": -20.087610392436,
+          "trades": 7,
+          "win_rate": 0.2857142857142857
+        }
+      },
+      "caution_events": 1,
+      "daily_budget_used_pct": {
+        "2026-09-12": 0.226152620637,
+        "2026-09-13": 0.063847954038,
+        "2026-09-14": 0.923519215004
+      },
+      "daily_pnl": {
+        "2026-09-12": -1.356915723824,
+        "2026-09-13": -1.213028668612,
+        "2026-09-14": -17.517666
+      },
+      "day_open_equity": {
+        "2026-09-12": 761.30525668,
+        "2026-09-13": 759.948340956176,
+        "2026-09-14": 758.735312287564
+      },
+      "defensive_events": 0,
+      "expectancy_usdt": -2.869658627491,
+      "fees_usdt": 1.09053958,
+      "flat_days": 0,
+      "funding_usdt": 0.0,
+      "hard_stop_days": 0,
+      "hard_stop_events": 0,
+      "longest_losing_streak": 2,
+      "losing_days": 3,
+      "max_daily_drawdown_pct": 2.638575028371,
+      "max_daily_loss_usdt": -17.517666,
+      "max_drawdown_pct": 2.638575028371,
+      "max_weekly_drawdown_pct": 2.638575028371,
+      "median_daily_budget_used_pct": 0.22615262063733022,
+      "median_loser_usdt": -1.409282861912,
+      "median_trades_per_day": 3,
+      "median_winner_usdt": 1.459327665694,
+      "net_pnl_usdt": -20.087610392436,
+      "opportunities_seen": 7,
+      "p95_daily_budget_used_pct": 0.8537825555677765,
+      "policy": {
+        "daily_r_budget": 2.0,
+        "fixed_daily_loss_usdt": null,
+        "hard_daily_equity_cap_pct": 0.025,
+        "kind": "adaptive",
+        "name": "R_2_0_CAP_2_5",
+        "policy_hash": "a20686ba4aa9ddc230d784b9d764714fe6e8e31f799d11734bd6a53e86871612"
+      },
+      "policy_name": "R_2_0_CAP_2_5",
+      "profit_factor": 0.1268634973804402,
+      "profitable_days": 0,
+      "recovery_duration_days": null,
+      "return_pct": -2.638575028371,
+      "slippage_cost_usdt": 0.0,
+      "state_trace": [
+        {
+          "action": "APPROVED",
+          "at": "2026-09-12T04:30:12.805080+00:00",
+          "decision_id": "dec_902b27921cb746919eec",
+          "effective_budget_usdt": 6.0,
+          "planned_risk_usdt": 2.1708423430464054,
+          "reason": "DAILY_RISK_DATA_INSUFFICIENT",
+          "remaining_before_entry_usdt": 6.0,
+          "risk_date": "2026-09-12",
+          "state": "NORMAL"
+        },
+        {
+          "action": "APPROVED",
+          "at": "2026-09-12T16:30:16.147279+00:00",
+          "decision_id": "dec_58562b1ad78f4d248707",
+          "effective_budget_usdt": 6.0,
+          "planned_risk_usdt": 0.9976790195752372,
+          "reason": "DAILY_RISK_DATA_INSUFFICIENT",
+          "remaining_before_entry_usdt": 4.643084276176019,
+          "risk_date": "2026-09-12",
+          "state": "NORMAL"
+        },
+        {
+          "action": "APPROVED",
+          "at": "2026-09-12T21:30:18.121022+00:00",
+          "decision_id": "dec_e97adf6efa4c4a5dacff",
+          "effective_budget_usdt": 6.0,
+          "planned_risk_usdt": 3.2822803149588053,
+          "reason": "DAILY_RISK_DATA_INSUFFICIENT",
+          "remaining_before_entry_usdt": 3.6454052566007817,
+          "risk_date": "2026-09-12",
+          "state": "NORMAL"
+        },
+        {
+          "action": "APPROVED",
+          "at": "2026-09-12T22:45:14.723033+00:00",
+          "decision_id": "dec_f00ad4514e84469d9383",
+          "effective_budget_usdt": 6.0,
+          "planned_risk_usdt": 1.4007559203672433,
+          "reason": "DAILY_RISK_DATA_INSUFFICIENT",
+          "remaining_before_entry_usdt": 6.0,
+          "risk_date": "2026-09-13",
+          "state": "NORMAL"
+        },
+        {
+          "action": "APPROVED",
+          "at": "2026-09-13T21:49:55.870598+00:00",
+          "decision_id": "dec_39b1cb0ecd254ee6acfd",
+          "effective_budget_usdt": 18.9987085239044,
+          "planned_risk_usdt": 9.895401428296099,
+          "reason": "DAILY_RISK_NORMAL",
+          "remaining_before_entry_usdt": 17.785679855292354,
+          "risk_date": "2026-09-13",
+          "state": "NORMAL"
+        },
+        {
+          "action": "APPROVED",
+          "at": "2026-09-13T21:51:42.320085+00:00",
+          "decision_id": "dec_b66098a89933436a87df",
+          "effective_budget_usdt": 18.9987085239044,
+          "planned_risk_usdt": 7.06920976096905,
+          "reason": "DAILY_RISK_CAUTION",
+          "remaining_before_entry_usdt": 7.890278426996256,
+          "risk_date": "2026-09-13",
+          "state": "CAUTION"
+        },
+        {
+          "action": "APPROVED",
+          "at": "2026-09-13T22:01:57.963805+00:00",
+          "decision_id": "dec_785b17805478460d9afd",
+          "effective_budget_usdt": 18.968382807189098,
+          "planned_risk_usdt": 18.86924024999996,
+          "reason": "DAILY_RISK_NORMAL",
+          "remaining_before_entry_usdt": 18.968382807189098,
+          "risk_date": "2026-09-14",
+          "state": "NORMAL"
+        }
+      ],
+      "win_rate": 0.2857142857142857
+    },
+    "R_2_5_CAP_2_5": {
+      "approved_decision_ids": [
+        "dec_902b27921cb746919eec",
+        "dec_58562b1ad78f4d248707",
+        "dec_e97adf6efa4c4a5dacff",
+        "dec_f00ad4514e84469d9383",
+        "dec_39b1cb0ecd254ee6acfd",
+        "dec_b66098a89933436a87df",
+        "dec_785b17805478460d9afd"
+      ],
+      "approved_trades": 7,
+      "average_loser_usdt": -5.751566430956,
+      "average_winner_usdt": 1.459327665694,
+      "avg_daily_budget_used_pct": 0.4045065965598786,
+      "avg_trades_per_day": 2.3333333333333335,
+      "blocked_decision_ids": [],
+      "blocked_flat": 0,
+      "blocked_losers": 0,
+      "blocked_negative_r": 0,
+      "blocked_net_pnl_usdt": 0,
+      "blocked_positive_r": 0,
+      "blocked_trades": 0,
+      "blocked_winners": 0,
+      "by_regime": {
+        "WEAK_TREND": {
+          "net_pnl_usdt": -20.087610392436,
+          "trades": 7,
+          "win_rate": 0.2857142857142857
+        }
+      },
+      "caution_events": 1,
+      "daily_budget_used_pct": {
+        "2026-09-12": 0.226152620637,
+        "2026-09-13": 0.063847954038,
+        "2026-09-14": 0.923519215004
+      },
+      "daily_pnl": {
+        "2026-09-12": -1.356915723824,
+        "2026-09-13": -1.213028668612,
+        "2026-09-14": -17.517666
+      },
+      "day_open_equity": {
+        "2026-09-12": 761.30525668,
+        "2026-09-13": 759.948340956176,
+        "2026-09-14": 758.735312287564
+      },
+      "defensive_events": 0,
+      "expectancy_usdt": -2.869658627491,
+      "fees_usdt": 1.09053958,
+      "flat_days": 0,
+      "funding_usdt": 0.0,
+      "hard_stop_days": 0,
+      "hard_stop_events": 0,
+      "longest_losing_streak": 2,
+      "losing_days": 3,
+      "max_daily_drawdown_pct": 2.638575028371,
+      "max_daily_loss_usdt": -17.517666,
+      "max_drawdown_pct": 2.638575028371,
+      "max_weekly_drawdown_pct": 2.638575028371,
+      "median_daily_budget_used_pct": 0.22615262063733022,
+      "median_loser_usdt": -1.409282861912,
+      "median_trades_per_day": 3,
+      "median_winner_usdt": 1.459327665694,
+      "net_pnl_usdt": -20.087610392436,
+      "opportunities_seen": 7,
+      "p95_daily_budget_used_pct": 0.8537825555677765,
+      "policy": {
+        "daily_r_budget": 2.5,
+        "fixed_daily_loss_usdt": null,
+        "hard_daily_equity_cap_pct": 0.025,
+        "kind": "adaptive",
+        "name": "R_2_5_CAP_2_5",
+        "policy_hash": "71092bb4507c5083dc36a6994177d153264b6400546d9c5bf1f2d87e342c1e7a"
+      },
+      "policy_name": "R_2_5_CAP_2_5",
+      "profit_factor": 0.1268634973804402,
+      "profitable_days": 0,
+      "recovery_duration_days": null,
+      "return_pct": -2.638575028371,
+      "slippage_cost_usdt": 0.0,
+      "state_trace": [
+        {
+          "action": "APPROVED",
+          "at": "2026-09-12T04:30:12.805080+00:00",
+          "decision_id": "dec_902b27921cb746919eec",
+          "effective_budget_usdt": 6.0,
+          "planned_risk_usdt": 2.1708423430464054,
+          "reason": "DAILY_RISK_DATA_INSUFFICIENT",
+          "remaining_before_entry_usdt": 6.0,
+          "risk_date": "2026-09-12",
+          "state": "NORMAL"
+        },
+        {
+          "action": "APPROVED",
+          "at": "2026-09-12T16:30:16.147279+00:00",
+          "decision_id": "dec_58562b1ad78f4d248707",
+          "effective_budget_usdt": 6.0,
+          "planned_risk_usdt": 0.9976790195752372,
+          "reason": "DAILY_RISK_DATA_INSUFFICIENT",
+          "remaining_before_entry_usdt": 4.643084276176019,
+          "risk_date": "2026-09-12",
+          "state": "NORMAL"
+        },
+        {
+          "action": "APPROVED",
+          "at": "2026-09-12T21:30:18.121022+00:00",
+          "decision_id": "dec_e97adf6efa4c4a5dacff",
+          "effective_budget_usdt": 6.0,
+          "planned_risk_usdt": 3.2822803149588053,
+          "reason": "DAILY_RISK_DATA_INSUFFICIENT",
+          "remaining_before_entry_usdt": 3.6454052566007817,
+          "risk_date": "2026-09-12",
+          "state": "NORMAL"
+        },
+        {
+          "action": "APPROVED",
+          "at": "2026-09-12T22:45:14.723033+00:00",
+          "decision_id": "dec_f00ad4514e84469d9383",
+          "effective_budget_usdt": 6.0,
+          "planned_risk_usdt": 1.4007559203672433,
+          "reason": "DAILY_RISK_DATA_INSUFFICIENT",
+          "remaining_before_entry_usdt": 6.0,
+          "risk_date": "2026-09-13",
+          "state": "NORMAL"
+        },
+        {
+          "action": "APPROVED",
+          "at": "2026-09-13T21:49:55.870598+00:00",
+          "decision_id": "dec_39b1cb0ecd254ee6acfd",
+          "effective_budget_usdt": 18.9987085239044,
+          "planned_risk_usdt": 9.895401428296099,
+          "reason": "DAILY_RISK_NORMAL",
+          "remaining_before_entry_usdt": 17.785679855292354,
+          "risk_date": "2026-09-13",
+          "state": "NORMAL"
+        },
+        {
+          "action": "APPROVED",
+          "at": "2026-09-13T21:51:42.320085+00:00",
+          "decision_id": "dec_b66098a89933436a87df",
+          "effective_budget_usdt": 18.9987085239044,
+          "planned_risk_usdt": 7.06920976096905,
+          "reason": "DAILY_RISK_CAUTION",
+          "remaining_before_entry_usdt": 7.890278426996256,
+          "risk_date": "2026-09-13",
+          "state": "CAUTION"
+        },
+        {
+          "action": "APPROVED",
+          "at": "2026-09-13T22:01:57.963805+00:00",
+          "decision_id": "dec_785b17805478460d9afd",
+          "effective_budget_usdt": 18.968382807189098,
+          "planned_risk_usdt": 18.86924024999996,
+          "reason": "DAILY_RISK_NORMAL",
+          "remaining_before_entry_usdt": 18.968382807189098,
+          "risk_date": "2026-09-14",
+          "state": "NORMAL"
+        }
+      ],
+      "win_rate": 0.2857142857142857
+    }
+  },
+  "risk_policy_version": "adaptive_daily_risk_budget/1.0.0",
+  "timezone": "Europe/Rome"
+}
