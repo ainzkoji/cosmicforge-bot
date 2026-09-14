@@ -352,6 +352,14 @@ def _execution_and_positions(conn: Any) -> None:
     for column, decl in (
         ("executed_qty", "REAL"),
         ("avg_fill_price", "REAL"),
+        # Fill resolution: what the create-order response said, what the
+        # broker proved, and which source proved it.
+        ("initial_response_executed_qty", "REAL"),
+        ("resolved_executed_qty", "REAL"),
+        ("fill_resolution_source", "TEXT"),
+        ("fill_resolution_status", "TEXT"),
+        ("fees", "REAL"),
+        ("fee_asset", "TEXT"),
     ):
         _add_column_if_missing(conn, "execution_attempts", column, decl)
     conn.execute(

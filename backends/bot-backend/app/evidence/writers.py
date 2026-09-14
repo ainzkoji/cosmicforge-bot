@@ -272,6 +272,12 @@ def complete_execution_attempt(
     primary_reason: str | None = None,
     error_class: str | None = None,
     error_detail: str | None = None,
+    initial_response_executed_qty: float | None = None,
+    resolved_executed_qty: float | None = None,
+    fill_resolution_source: str | None = None,
+    fill_resolution_status: str | None = None,
+    fees: float | None = None,
+    fee_asset: str | None = None,
 ) -> None:
     with db.connect() as conn:
         conn.execute(
@@ -285,6 +291,26 @@ def complete_execution_attempt(
              executed_qty, avg_fill_price, position_id, primary_reason, error_class,
              error_detail, attempt_id),
         )
+    resolution = {
+        key: value for key, value in (
+            ("initial_response_executed_qty", initial_response_executed_qty),
+            ("resolved_executed_qty", resolved_executed_qty),
+            ("fill_resolution_source", fill_resolution_source),
+            ("fill_resolution_status", fill_resolution_status),
+            ("fees", fees),
+            ("fee_asset", fee_asset),
+        ) if value is not None
+    }
+    if resolution:
+        # Separate statement: a database that predates these columns keeps
+        # the core attempt row rather than losing it with the extras.
+        with db.connect() as conn:
+            conn.execute(
+                "UPDATE execution_attempts SET "
+                + ", ".join(f"{key}=?" for key in resolution)
+                + " WHERE execution_attempt_id=?",
+                (*resolution.values(), attempt_id),
+            )
 
 
 # ── Positions and their append-only event stream (§31) ──────────────────────

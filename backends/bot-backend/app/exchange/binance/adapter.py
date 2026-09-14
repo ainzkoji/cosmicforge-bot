@@ -176,7 +176,7 @@ class BinanceAdapter(ExchangeClient):
 
     def get_fills(self, symbol: str, start_time: int, limit: int = 100) -> List[UnifiedFill]:
         # Binance "userTrades"
-        trades = self._client.account_trades(symbol=symbol, startTime=start_time, limit=limit)
+        trades = self._client.user_trades(symbol, start_time_ms=start_time, limit=limit)
         fills = []
         for t in trades:
             fills.append(UnifiedFill(

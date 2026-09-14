@@ -334,17 +334,29 @@ class BinanceFuturesClient:
             "side": req.side.value.upper(),
             "type": req.type.upper(),
             "quantity": float(req.qty),
+            # RESULT: the response carries the order's final status and
+            # executedQty. The default (ACK) answers a filled MARKET order with
+            # status NEW and executedQty 0.
+            "newOrderRespType": "RESULT",
         }
         if getattr(req, "client_order_id", None):
             params["newClientOrderId"] = str(req.client_order_id)
-        
+
         if req.reduce_only:
             params["reduceOnly"] = "true"
-        
+
         # Execute
         response = self._signed_post("/fapi/v1/order", params=params)
-        
+
         # Map to UnifiedOrder
+        _status_map = {
+            "FILLED": OrderStatus.FILLED,
+            "PARTIALLY_FILLED": OrderStatus.PARTIALLY_FILLED,
+            "CANCELED": OrderStatus.CANCELED,
+            "REJECTED": OrderStatus.REJECTED,
+            "EXPIRED": OrderStatus.EXPIRED,
+            "EXPIRED_IN_MATCH": OrderStatus.EXPIRED,
+        }
         return UnifiedOrder(
             client_order_id=str(response.get("clientOrderId", "")),
             broker_order_id=str(response.get("orderId", "")),
@@ -354,7 +366,7 @@ class BinanceFuturesClient:
             qty_ordered=req.qty,
             qty_filled=Decimal(response.get("executedQty", "0")),
             avg_fill_price=Decimal(response.get("avgPrice") or response.get("price", "0")),
-            status=OrderStatus.FILLED if response.get("status") == "FILLED" else OrderStatus.NEW,
+            status=_status_map.get(str(response.get("status", "")).upper(), OrderStatus.NEW),
             timestamp=int(response.get("updateTime", response.get("transactTime", 0))),
             reduce_only=req.reduce_only
         )
@@ -737,6 +749,8 @@ class BinanceFuturesClient:
             "side": side,
             "type": "MARKET",
             "quantity": quantity,
+            # Final status and executedQty in the response, not an ACK.
+            "newOrderRespType": "RESULT",
         }
         if reduce_only:
             params["reduceOnly"] = "true"

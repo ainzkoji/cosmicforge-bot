@@ -611,28 +611,30 @@ class PolicyEngine:
                 reentry_confirm_count=reentry_cnt,
             )
         
-        # Max positions (only for new opens, not adds or closes)
+        # Max positions (only for new opens, not adds or closes). A hard limit:
+        # open_positions_count is the economic count (ledger, reconciled and
+        # in-flight positions). The budget engine used to be able to lift this
+        # block, but its own position count only sees positions it registered,
+        # so on 2026-09-13 it waved through entries with every slot taken.
         is_new_open = ctx.position == "NONE" and ctx.signal in ("BUY", "SELL")
         if is_new_open and ctx.open_positions_count >= ctx.max_open_positions:
-            # Check budget engine if available
+            detail = f"Max positions: {ctx.open_positions_count} >= {ctx.max_open_positions}"
             if self.budget_engine:
-                budget_state = self.budget_engine.get_budget_state()
-                if budget_state.allowed_slots <= budget_state.position_count:
-                    return PolicyDecision.blocked(
-                        ReasonCode.MAX_POSITIONS_REACHED,
-                        f"Budget slots exhausted: {budget_state.position_count}/{budget_state.allowed_slots}",
-                        pending_open=pending_open,
-                        reentry_confirm_signal=reentry_sig,
-                        reentry_confirm_count=reentry_cnt,
+                try:
+                    budget_state = self.budget_engine.get_budget_state()
+                    detail += (
+                        f" (budget engine: {budget_state.position_count}/"
+                        f"{budget_state.allowed_slots} slots)"
                     )
-            else:
-                return PolicyDecision.blocked(
-                    ReasonCode.MAX_POSITIONS_REACHED,
-                    f"Max positions: {ctx.open_positions_count} >= {ctx.max_open_positions}",
-                    pending_open=pending_open,
-                    reentry_confirm_signal=reentry_sig,
-                    reentry_confirm_count=reentry_cnt,
-                )
+                except Exception:
+                    pass
+            return PolicyDecision.blocked(
+                ReasonCode.MAX_POSITIONS_REACHED,
+                detail,
+                pending_open=pending_open,
+                reentry_confirm_signal=reentry_sig,
+                reentry_confirm_count=reentry_cnt,
+            )
         
         # -----------------------------------------------------------------
         # 5. Cooldowns

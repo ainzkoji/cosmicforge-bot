@@ -155,6 +155,7 @@ def execution_attempt(runner: Any, symbol: str, requested_action: str):
             avg_fill_price=recorder.avg_fill_price,
             position_id=recorder.position_id,
             primary_reason=recorder.primary_reason,
+            **recorder.fill_resolution,
         )
 
 
@@ -162,6 +163,7 @@ class _AttemptRecorder:
     __slots__ = (
         "attempt_id", "result", "broker_order_id", "client_order_id",
         "requested_qty", "executed_qty", "avg_fill_price", "position_id", "primary_reason",
+        "fill_resolution",
     )
 
     def __init__(self, attempt_id: str | None) -> None:
@@ -174,12 +176,19 @@ class _AttemptRecorder:
         self.avg_fill_price: float | None = None
         self.position_id: str | None = None
         self.primary_reason: str | None = None
+        #: complete_execution_attempt's fill-resolution columns.
+        self.fill_resolution: dict[str, Any] = {}
 
     def completed(self, result: str, *, broker_order_id: Any = None,
                   client_order_id: Any = None, requested_qty: Any = None,
                   executed_qty: Any = None,
                   avg_fill_price: Any = None, position_id: str | None = None,
-                  primary_reason: str | None = None) -> None:
+                  primary_reason: str | None = None,
+                  fill_resolution: dict[str, Any] | None = None) -> None:
+        if fill_resolution:
+            self.fill_resolution = {
+                key: value for key, value in fill_resolution.items() if value is not None
+            }
         self.result = str(result)
         if broker_order_id:
             self.broker_order_id = str(broker_order_id)

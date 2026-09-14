@@ -140,6 +140,13 @@ def get_effective_policy(
         )
     except Exception as exc:
         payload["capital"] = {"error": f"{type(exc).__name__}: {exc}"}
+    # Position slots: economic positions and in-flight entries, never capital.
+    try:
+        from app.execution.position_slots import slot_diagnostics
+
+        payload["slots"] = slot_diagnostics(db, instance_id, policy.max_open_positions)
+    except Exception as exc:
+        payload["slots"] = {"error": f"{type(exc).__name__}: {exc}"}
     return payload
 
 

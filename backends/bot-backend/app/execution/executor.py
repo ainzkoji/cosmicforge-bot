@@ -373,6 +373,11 @@ class BinanceExecutor:
         self._portfolio_margin_limit = 0.0
         #: Key for account margin reservations: the connected broker account.
         self._broker_account_id = None
+        #: max_open_positions, re-checked and reserved atomically with the entry
+        #: intent right before submission. 0 = not managed here.
+        self._max_open_positions = 0
+        #: Pause between fill-resolution queries (injectable for tests).
+        self._fill_resolution_sleep = time.sleep
         self._allow_scale_in = False
         self._allow_hedge_mode = False
         self.paper_executor = PaperExecutor(
@@ -1363,16 +1368,50 @@ class BinanceExecutor:
                 tp_price=float(tp_price or 0.0),
             )
 
-            _ep_acquire = _ep.acquire_intent(
-                bot_id=self.bot_instance_id,
-                symbol=symbol,
-                side=_ep_side,
-                intended_notional=float(usdt),
-                client_order_id=_ep_cid,
-                intent_key=_ep_intent_key,
-                cycle_id=cycle_id,
-                allow_hedge=bool(getattr(self, "_allow_hedge_mode", False)),
-            )
+            def _acquire_intent():
+                return _ep.acquire_intent(
+                    bot_id=self.bot_instance_id,
+                    symbol=symbol,
+                    side=_ep_side,
+                    intended_notional=float(usdt),
+                    client_order_id=_ep_cid,
+                    intent_key=_ep_intent_key,
+                    cycle_id=cycle_id,
+                    allow_hedge=bool(getattr(self, "_allow_hedge_mode", False)),
+                )
+
+            _max_slots = int(getattr(self, "_max_open_positions", 0) or 0)
+            if _max_slots > 0 and getattr(self, "_db", None) is not None:
+                # Position slot: checked and reserved in one step with the entry
+                # intent (its pending_entries row is the reservation), so two
+                # symbols evaluated together cannot both take the last slot.
+                from app.decision.reasons import RiskReason as _SlotReason
+                from app.execution.position_slots import reserve_entry_slot
+
+                _slot, _ep_acquire = reserve_entry_slot(
+                    self._db, self.bot_instance_id, symbol, _ep_side, _max_slots,
+                    hedge_mode=bool(getattr(self, "_allow_hedge_mode", False)),
+                    acquire=_acquire_intent,
+                )
+                if not _slot.allowed:
+                    return ExecResult(
+                        status="MAX_OPEN_POSITIONS",
+                        details={
+                            "symbol": symbol,
+                            "signal": signal,
+                            "side": _ep_side,
+                            "reason_code": _SlotReason.MAX_OPEN_POSITIONS,
+                            "slots": _slot.to_dict(),
+                        },
+                        success=False,
+                        error=(
+                            f"[SLOTS] {symbol}: {len(_slot.occupied)} of {_max_slots} "
+                            f"position slots occupied ({', '.join(_slot.occupied)}); "
+                            f"entry blocked."
+                        ),
+                    )
+            else:
+                _ep_acquire = _acquire_intent()
             _ep_lock_acquired = _ep_acquire.status.value == "ACQUIRED"
             if _ep_acquire.status.value == "REUSED":
                 _existing = _ep_acquire.entry or {}
@@ -1924,10 +1963,76 @@ class BinanceExecutor:
                                 reason=f"{err_class.lower()}: {err_str[:120]}")
             raise exchange_err from order_err
         
+        # ✅ C2) What did the broker actually execute?
+        # The create-order response is not always final truth: an ACK reports a
+        # filled MARKET order as NEW / executedQty 0. A proven fill gets its
+        # lifecycle; an order that provably filled nothing releases its entry;
+        # an order of unknown outcome keeps its slot and is never read as flat.
+        from app.execution.fill_resolution import resolve_order_fill
+
+        fill_resolution = resolve_order_fill(
+            self.client,
+            symbol=symbol,
+            order_response=entry_order,
+            client_order_id=_client_order_id,
+            sleep=getattr(self, "_fill_resolution_sleep", time.sleep),
+        )
+        if fill_resolution.zero_fill_terminal:
+            if _ep is not None and _ep_lock_acquired:
+                _ep.mark_failed(self.bot_instance_id, symbol, _ep_side,
+                                reason=f"order_{fill_resolution.status.lower()}_zero_fill")
+                _ep_lock_acquired = False
+            return ExecResult(
+                status="ORDER_NOT_FILLED",
+                details={
+                    "symbol": symbol,
+                    "signal": signal,
+                    "side": _ep_side,
+                    "requested_qty": float(qty),
+                    "fill_resolution": fill_resolution.to_dict(),
+                },
+                order_id=fill_resolution.broker_order_id,
+                success=False,
+                error=(
+                    f"[FILL] {symbol}: order {fill_resolution.broker_order_id} ended "
+                    f"{fill_resolution.status} with no fill."
+                ),
+            )
+        if not fill_resolution.has_fill:
+            if _ep is not None and _ep_lock_acquired:
+                _ep.mark_submit_unknown(
+                    self.bot_instance_id, symbol, _ep_side,
+                    reason=f"fill_unresolved_{fill_resolution.status.lower()}",
+                    max_exposure_limit=self._configured_max_exposure(current_equity),
+                )
+            return ExecResult(
+                status="SUBMIT_UNCERTAIN",
+                details={
+                    "symbol": symbol,
+                    "signal": signal,
+                    "side": _ep_side,
+                    "requested_qty": float(qty),
+                    "fill_resolution": fill_resolution.to_dict(),
+                },
+                order_id=fill_resolution.broker_order_id,
+                success=False,
+                error=(
+                    f"[SUBMIT_UNCERTAIN] {symbol}: order {fill_resolution.broker_order_id} is "
+                    f"{fill_resolution.status}; its slot is held until the broker resolves it."
+                ),
+            )
+        requested_qty = float(qty)
+        executed_qty = float(fill_resolution.executed_qty)
+        executed_avg = float(fill_resolution.avg_price or 0.0)
+
         # ✅ D) Place Protection (Separate)
         try:
             # Calculate Prices
-            entry_px = float(entry_order.avg_fill_price or self.client.get_prices([symbol]).get(symbol, 0))
+            entry_px = float(
+                executed_avg
+                or entry_order.avg_fill_price
+                or self.client.get_prices([symbol]).get(symbol, 0)
+            )
             
             # Section 3: Slippage Log
             try:
@@ -1975,7 +2080,7 @@ class BinanceExecutor:
             prot_req = ProtectionRequest(
                 symbol=symbol,
                 position_side=side_enum, # Existing position side
-                qty=Decimal(str(qty)),
+                qty=Decimal(str(executed_qty)),  # what the broker executed, not the request
                 sl_price=final_sl,
                 tp_price=final_tp
             )
@@ -2052,8 +2157,8 @@ class BinanceExecutor:
 
         # ── Success: entry is live — transition to OPEN_CONFIRMED ──
         if _ep is not None and _ep_lock_acquired:
-            _filled_qty = float(getattr(entry_order, "qty_filled", 0.0) or 0.0)
-            _filled_px = float(getattr(entry_order, "avg_fill_price", 0.0) or 0.0)
+            _filled_qty = executed_qty
+            _filled_px = executed_avg
             _filled_notional = (_filled_qty * _filled_px) if (_filled_qty > 0 and _filled_px > 0) else None
             _ep.mark_confirmed(
                 self.bot_instance_id,
@@ -2065,6 +2170,10 @@ class BinanceExecutor:
             )
 
         normalized = self._normalize_order(entry_order.model_dump(), symbol, signal, "MARKET", qty)
+        # The resolved fill supersedes whatever the create-order response said.
+        normalized["executed_qty"] = executed_qty
+        if executed_avg > 0:
+            normalized["avg_price"] = executed_avg
 
         # Broker truth for THIS trade's margin, compared with its own allocation
         # (never with the bot's aggregate). Evidence only: a failure here must
@@ -2119,6 +2228,9 @@ class BinanceExecutor:
                 "capital": _capital_obs,
                 "account_affordability": details.get("account_affordability"),
                 "allocation_variance": _variance,
+                "executed_qty": executed_qty,
+                "fee": fill_resolution.fees,
+                "fill_resolution": fill_resolution.to_dict(),
             },
             order_id=entry_order.broker_order_id,
             success=True,

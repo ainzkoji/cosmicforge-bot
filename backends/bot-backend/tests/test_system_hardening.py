@@ -27,9 +27,13 @@ class TestSystemHardening:
         mock_client.get_position_info.return_value = {"positionAmt": "0"}
         del mock_client.get_klines
         del mock_client.klines
-        # Mock place order to succeed
+        # Mock place order to succeed: a filled order reports what it executed
+        # (an order with no executed quantity is not a fill and never reaches
+        # protection).
         mock_order = MagicMock()
         mock_order.avg_fill_price = 50000.0
+        mock_order.qty_filled = 0.01
+        mock_order.status = "FILLED"
         mock_order.broker_order_id = "12345"
         mock_client.place_order = Mock(return_value=mock_order)
         

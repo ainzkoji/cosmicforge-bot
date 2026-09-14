@@ -500,6 +500,9 @@ class PaperRunner:
         self.executor._broker_account_id = (
             getattr(self.context, "broker_account_id", None) if self.context else None
         )
+        # The executor re-checks and reserves the position slot atomically with
+        # the entry intent, right before submission.
+        self.executor._max_open_positions = int(getattr(self, "max_open_positions", 0) or 0)
         self.executor._allow_scale_in = False
         self.executor._allow_hedge_mode = False
         # â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -2326,14 +2329,26 @@ class PaperRunner:
             avg_fill_price = details.get("avg_price")
             if avg_fill_price is None:
                 avg_fill_price = normalized.get("avg_price") or entry_order.get("avg_fill_price")
+            resolution = (
+                details.get("fill_resolution")
+                if isinstance(details.get("fill_resolution"), dict) else {}
+            )
             attempt.completed(
                 str(getattr(result, "status", "") or "UNKNOWN"),
-                broker_order_id=getattr(result, "order_id", None),
-                client_order_id=client_order_id,
+                broker_order_id=getattr(result, "order_id", None) or resolution.get("broker_order_id"),
+                client_order_id=client_order_id or resolution.get("client_order_id"),
                 requested_qty=requested_qty,
                 executed_qty=executed_qty,
                 avg_fill_price=avg_fill_price,
                 primary_reason=getattr(result, "error", None),
+                fill_resolution={
+                    "initial_response_executed_qty": resolution.get("initial_executed_qty"),
+                    "resolved_executed_qty": resolution.get("executed_qty"),
+                    "fill_resolution_source": resolution.get("source"),
+                    "fill_resolution_status": resolution.get("status"),
+                    "fees": resolution.get("fees"),
+                    "fee_asset": resolution.get("fee_asset"),
+                } if resolution else None,
             )
             self._last_execution_attempt_by_symbol = getattr(
                 self, "_last_execution_attempt_by_symbol", {}
@@ -2994,7 +3009,8 @@ class PaperRunner:
         elif exec_status in ORDER_OPEN_STATUSES or exec_status == "PAPER_ONLY":
             final_status = "PROCESSED_EXECUTED"
             queue_status = "PROCESSED"
-        elif exec_status in {"INSUFFICIENT_MARGIN", "NO_TRADE_INVALID_QTY", "SKIPPED_NOT_LIVE_SYMBOL", "EXPOSURE_LIMIT_EXCEEDED"}:
+        elif exec_status in {"INSUFFICIENT_MARGIN", "NO_TRADE_INVALID_QTY", "SKIPPED_NOT_LIVE_SYMBOL",
+                             "EXPOSURE_LIMIT_EXCEEDED", "MAX_OPEN_POSITIONS", "ORDER_NOT_FILLED"}:
             final_status = "REJECTED_SIZING" if "QTY" in exec_status else "REJECTED_POLICY_RISK"
             queue_status = "REJECTED"
         else:
@@ -4826,7 +4842,8 @@ class PaperRunner:
                 # ========== EXPOSE EXECUTION FAILURES (CIRCUIT BREAKER ROOT CAUSE) ==========
                 # Only show urgent banner for unexpected failures â€” not business-logic rejections
                 _non_fatal_statuses = {"INSUFFICIENT_MARGIN", "NO_TRADE_INVALID_QTY", 
-                                        "SKIPPED_NOT_LIVE_SYMBOL", "PAPER_ONLY", "NO_TRADE"}
+                                        "SKIPPED_NOT_LIVE_SYMBOL", "PAPER_ONLY", "NO_TRADE",
+                                        "MAX_OPEN_POSITIONS", "ORDER_NOT_FILLED"}
                 if not res.success and res.status not in _non_fatal_statuses:
                     import sys
                     print("\n" + "="*80, file=sys.stderr)
