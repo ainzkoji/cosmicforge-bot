@@ -14,7 +14,7 @@ from contextlib import contextmanager
 
 import pytest
 
-from app.replay.engine import ReplaySession
+from app.replay.engine import ReplaySession, restore_position_state_from_replay_evidence
 from app.replay.historical_provider import TIMEFRAME_MS
 from shared_lib.persistence.db import DB
 from shared_lib.persistence.evidence_schema import ORGANIC_PROVENANCE, REPLAY
@@ -256,6 +256,24 @@ def test_break_even_and_trailing_act_on_the_post_tp1_remainder(lifecycle):
     for event_type in ("BREAK_EVEN_ACTIVATED", "TRAILING_ACTIVATED"):
         event = next(e for e in result.position_events if e["event_type"] == event_type)
         assert event["remaining_qty"] == pytest.approx(tp1["remaining_qty"])
+
+
+def test_replay_restart_after_tp1_restores_the_remainder_not_original_qty(lifecycle):
+    _, result = lifecycle
+    (position,) = result.positions
+    through_tp1 = []
+    for event in result.position_events:
+        through_tp1.append(event)
+        if event["event_type"] == "TP1":
+            break
+
+    restored = restore_position_state_from_replay_evidence(position, through_tp1)
+    tp1 = through_tp1[-1]
+
+    assert restored.phase == "TP1_TAKEN"
+    assert restored.remaining_qty == pytest.approx(tp1["remaining_qty"])
+    assert restored.remaining_qty < restored.original_qty
+    assert restored.realized_qty == pytest.approx(restored.original_qty - restored.remaining_qty)
 
 
 def test_the_trailing_stop_only_moves_in_one_direction(lifecycle):

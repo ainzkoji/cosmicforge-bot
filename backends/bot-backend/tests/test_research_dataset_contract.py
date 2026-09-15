@@ -14,15 +14,26 @@ import json
 import pytest
 
 from app.research.dataset import (
+    BROKER_DEMO,
     FINAL_HOLDOUT,
+    LEGACY_BACKFILL,
+    LIVE,
+    PAPER_FORWARD,
     REAL_HISTORICAL,
+    SYNTHETIC,
+    TESTNET,
+    TRAINING_EXAMPLE_SCHEMA_VERSION,
     TRAIN,
     DatasetError,
     FinalHoldoutViolation,
+    InstrumentIdentity,
     assess_quality,
     build_manifest,
+    build_training_example,
     derive,
+    filter_by_provenance,
     guard_final_holdout,
+    include_for_training,
     partition,
     series_checksum,
 )
@@ -278,3 +289,170 @@ def test_the_manifest_round_trips_to_disk(series, tmp_path):
 def test_a_manifest_needs_a_dataset():
     with pytest.raises(DatasetError, match="no series"):
         build_manifest({}, dataset_id="empty")
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# §14 training-example contract: features at t, labels after t
+# ══════════════════════════════════════════════════════════════════════════
+
+
+def instrument():
+    return InstrumentIdentity(
+        venue="binance_usdm",
+        venue_symbol="BTCUSDT",
+        canonical_symbol="BTC/USDT:PERP",
+        instrument_type="PERP",
+        asset_class="CRYPTO_PERP",
+        base_asset="BTC",
+        quote_asset="USDT",
+        settlement_asset="USDT",
+        contract_type="LINEAR_PERP",
+        contract_multiplier=1.0,
+        tick_size=0.1,
+        step_size=0.001,
+    )
+
+
+def test_training_example_id_is_deterministic_and_schema_versioned():
+    rows = minutes(20)
+    example = build_training_example(
+        dataset_id="ds",
+        dataset_hash="hash",
+        instrument=instrument(),
+        timeframe="1m",
+        decision_timestamp_ms=int(rows[9][6]),
+        rows=rows,
+        horizon_bars=5,
+        policy_version="policy",
+        strategy_version="strategy",
+    )
+    again = build_training_example(
+        dataset_id="ds",
+        dataset_hash="hash",
+        instrument=instrument(),
+        timeframe="1m",
+        decision_timestamp_ms=int(rows[9][6]),
+        rows=rows,
+        horizon_bars=5,
+        policy_version="policy",
+        strategy_version="strategy",
+    )
+
+    assert example.schema_version == TRAINING_EXAMPLE_SCHEMA_VERSION
+    assert example.example_id == again.example_id
+    assert example.example_id.startswith("tex_")
+
+
+def test_features_use_only_decision_time_data_and_labels_use_future_data():
+    rows = minutes(20, price=100)
+    example = build_training_example(
+        dataset_id="ds",
+        dataset_hash="hash",
+        instrument=instrument(),
+        timeframe="1m",
+        decision_timestamp_ms=int(rows[9][6]),
+        rows=rows,
+        htf_rows=derive(rows[:10], "5m"),
+        horizon_bars=3,
+        policy_version="policy",
+        strategy_version="strategy",
+        stop_price=105.0,
+        target_price=112.0,
+        fee_cost=0.1,
+        spread_cost=0.1,
+        slippage_cost=0.1,
+    )
+
+    assert example.features.raw_ohlcv["close_time_ms"] == int(rows[9][6])
+    assert example.features.htf_context["latest_close_time_ms"] <= int(rows[9][6])
+    assert example.labels.horizon_bars == 3
+    assert example.labels.net_return < example.labels.gross_return
+    assert example.labels.tp_sl_outcome in {"TP_FIRST", "SL_FIRST", "AMBIGUOUS", "NEITHER"}
+
+
+def test_missing_derivatives_context_is_explicit_not_zero_filled():
+    rows = minutes(12)
+    example = build_training_example(
+        dataset_id="ds",
+        dataset_hash="hash",
+        instrument=instrument(),
+        timeframe="1m",
+        decision_timestamp_ms=int(rows[5][6]),
+        rows=rows,
+        horizon_bars=2,
+        policy_version="policy",
+        strategy_version="strategy",
+    )
+
+    assert example.features.funding["available"] is False
+    assert example.features.open_interest["available"] is False
+    assert example.features.basis["available"] is False
+
+
+def test_observation_context_cannot_look_ahead():
+    rows = minutes(12)
+    decision_ts = int(rows[5][6])
+    example = build_training_example(
+        dataset_id="ds",
+        dataset_hash="hash",
+        instrument=instrument(),
+        timeframe="1m",
+        decision_timestamp_ms=decision_ts,
+        rows=rows,
+        horizon_bars=2,
+        policy_version="policy",
+        strategy_version="strategy",
+        funding_observations=[
+            {"timestamp_ms": decision_ts - 1, "rate": 0.01},
+            {"timestamp_ms": decision_ts + MINUTE, "rate": 0.99},
+        ],
+    )
+
+    assert example.features.funding["rate"] == 0.01
+
+
+def test_provenance_taxonomy_and_default_training_filter():
+    for provenance in (REAL_HISTORICAL, PAPER_FORWARD, TESTNET, BROKER_DEMO, SYNTHETIC, LEGACY_BACKFILL, LIVE):
+        include_for_training(provenance)
+
+    assert include_for_training(REAL_HISTORICAL)
+    assert include_for_training(BROKER_DEMO)
+    assert not include_for_training(SYNTHETIC)
+    assert not include_for_training(LEGACY_BACKFILL)
+
+
+def test_provenance_filter_excludes_synthetic_and_legacy_by_default():
+    rows = minutes(12)
+    kwargs = dict(
+        dataset_id="ds",
+        dataset_hash="hash",
+        instrument=instrument(),
+        timeframe="1m",
+        decision_timestamp_ms=int(rows[5][6]),
+        rows=rows,
+        horizon_bars=2,
+        policy_version="policy",
+        strategy_version="strategy",
+    )
+    real = build_training_example(**kwargs, provenance=REAL_HISTORICAL)
+    synthetic = build_training_example(**kwargs, provenance=SYNTHETIC)
+    legacy = build_training_example(**kwargs, provenance=LEGACY_BACKFILL)
+
+    assert filter_by_provenance([real, synthetic, legacy]) == (real,)
+
+
+def test_unknown_provenance_is_rejected():
+    rows = minutes(12)
+    with pytest.raises(DatasetError, match="unknown research provenance"):
+        build_training_example(
+            dataset_id="ds",
+            dataset_hash="hash",
+            instrument=instrument(),
+            timeframe="1m",
+            decision_timestamp_ms=int(rows[5][6]),
+            rows=rows,
+            horizon_bars=2,
+            policy_version="policy",
+            strategy_version="strategy",
+            provenance="BACKTEST_ALIAS",
+        )

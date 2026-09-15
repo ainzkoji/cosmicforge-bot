@@ -15,7 +15,7 @@ Phase 16 begins only when all of these hold. Updated 2026-09-09.
 | Always-on runtime hardening | **PASS** |
 | Phase 12 full lifecycle proof | **PASS** |
 | Phase 13 production-parity replay | **PASS** — §13.2 and §13.8 now proven by running it |
-| Phase 14 research data contract | **PARTIAL** — market-data contract done; training-example contract not started |
+| Phase 14 research data contract | **PARTIAL** — schema/builder/provenance contract done; multi-year BTC/ETH certification outstanding |
 | Phase 14 dataset | **PASS** for 120 days at 100% completeness; multi-year outstanding |
 | Provenance cleanup | **PASS** — applied, economics byte-identical |
 | Capital/risk invariant | **PASS** — enforced and tested |

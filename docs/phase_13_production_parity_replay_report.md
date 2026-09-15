@@ -8,7 +8,7 @@ historical data, not by asserting about it.
 | Item | Value |
 | --- | --- |
 | Package | `backends/bot-backend/app/replay/` |
-| Tests | 96 across four modules, all passing |
+| Tests | 105 focused Phase 13 tests across replay/provenance modules, all passing |
 | Provenance | `REPLAY` — fixed at construction, not settable |
 
 ---
@@ -262,6 +262,27 @@ still refuses: an earlier, steeper synthetic rise was blocked
 `REGIME_BLOCKED` 36 times, so the *market* was made gentler rather than the
 gate weakened.
 
+### Restart after TP1
+
+Replay evidence can now reconstruct post-TP1 state without relying on transient
+runner memory. `restore_position_state_from_replay_evidence()` rebuilds a
+restart view from the persisted position row plus append-only lifecycle events.
+The certification test cuts the lifecycle stream immediately after `TP1` and
+asserts that restart restores the post-TP1 remainder, not the original
+quantity:
+
+```
+phase               TP1_TAKEN
+remaining_qty       TP1 event remaining_qty
+realized_qty        original_qty - remaining_qty
+duplicate entry     none
+duplicate fill      none
+```
+
+This closes the specific restart proof gap: a replay interrupted after TP1 has
+enough persisted evidence to continue from the runner quantity and protection
+phase instead of reopening full size.
+
 ### A defect this surfaced
 
 The first lifecycle attempt failed at TP1 with
@@ -313,6 +334,7 @@ obtain data after `t`.
 | 13.6 | Configurable cost model, stored per replay | **PASS** |
 | 13.7 | Intrabar ambiguity resolved by an explicit, recorded policy | **PASS** |
 | 13.8 | Production lifecycle parity in replay | **PASS** |
+| 13.8a | Restart after TP1 restores remainder | **PASS** |
 | 13.9 | Replay identity and manifest | **PASS** |
 | 13.10 | Canonical replay evidence, provenance-separated | **PASS** |
 | 13.11 | Legacy backfill quarantined | **PASS** (applied) |

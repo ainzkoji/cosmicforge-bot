@@ -28,6 +28,7 @@ import json
 import logging
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
+from enum import Enum
 from typing import Any, Iterable, Mapping, Sequence
 
 logger = logging.getLogger(__name__)
@@ -35,9 +36,23 @@ logger = logging.getLogger(__name__)
 #: Exchange-sourced market data. Distinct from every synthetic or derived
 #: provenance in shared_lib.persistence.evidence_schema.
 REAL_HISTORICAL = "REAL_HISTORICAL"
+PAPER_FORWARD = "PAPER_FORWARD"
+TESTNET = "TESTNET"
+BROKER_DEMO = "BROKER_DEMO"
+SYNTHETIC = "SYNTHETIC"
+LEGACY_BACKFILL = "LEGACY_BACKFILL"
+LIVE = "LIVE"
+REPLAY = "REPLAY"
+
+RESEARCH_PROVENANCE = (
+    REAL_HISTORICAL, PAPER_FORWARD, TESTNET, BROKER_DEMO,
+    SYNTHETIC, LEGACY_BACKFILL, LIVE, REPLAY,
+)
+DEFAULT_TRAINING_PROVENANCE = frozenset({REAL_HISTORICAL, PAPER_FORWARD, TESTNET, BROKER_DEMO, LIVE})
 
 FEATURE_SCHEMA_VERSION = "1.0.0"
 LABEL_SCHEMA_VERSION = "1.0.0"
+TRAINING_EXAMPLE_SCHEMA_VERSION = "1.0.0"
 
 MINUTE_MS = 60_000
 
@@ -53,6 +68,133 @@ class DatasetError(RuntimeError):
     """The dataset cannot be trusted for research."""
 
 
+class IntrabarOutcome(str, Enum):
+    TP_FIRST = "TP_FIRST"
+    SL_FIRST = "SL_FIRST"
+    AMBIGUOUS = "AMBIGUOUS"
+    NEITHER = "NEITHER"
+
+
+@dataclass(frozen=True)
+class InstrumentIdentity:
+    venue: str
+    venue_symbol: str
+    canonical_symbol: str
+    instrument_type: str
+    asset_class: str
+    base_asset: str
+    quote_asset: str
+    settlement_asset: str
+    contract_type: str | None = None
+    contract_multiplier: float = 1.0
+    tick_size: float | None = None
+    step_size: float | None = None
+    expiry: str | None = None
+    strike: float | None = None
+    right: str | None = None
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+
+@dataclass(frozen=True)
+class ResearchFeatureContext:
+    """Everything the deterministic bot knew at decision time t."""
+
+    raw_ohlcv: Mapping[str, Any]
+    htf_context: Mapping[str, Any]
+    funding: Mapping[str, Any] = field(default_factory=dict)
+    open_interest: Mapping[str, Any] = field(default_factory=dict)
+    basis: Mapping[str, Any] = field(default_factory=dict)
+    regime: Mapping[str, Any] = field(default_factory=dict)
+    expert_outputs: Mapping[str, Any] = field(default_factory=dict)
+    ensemble: Mapping[str, Any] = field(default_factory=dict)
+    threshold: Mapping[str, Any] = field(default_factory=dict)
+    decision: Mapping[str, Any] = field(default_factory=dict)
+    risk: Mapping[str, Any] = field(default_factory=dict)
+    quality: Mapping[str, Any] = field(default_factory=dict)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {k: _plain(v) for k, v in asdict(self).items()}
+
+
+@dataclass(frozen=True)
+class FutureLabelSet:
+    """Future outcomes. These are labels, never features."""
+
+    horizon_bars: int
+    horizon_ms: int
+    mfe: float
+    mae: float
+    gross_return: float
+    net_return: float
+    r_multiple: float | None
+    tp_sl_outcome: str
+    cost_model_hash: str
+    fee_cost: float
+    spread_cost: float
+    slippage_cost: float
+    funding_cost: float
+    label_complete: bool = True
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+
+@dataclass(frozen=True)
+class TrainingExample:
+    dataset_id: str
+    dataset_hash: str
+    instrument: InstrumentIdentity
+    timeframe: str
+    decision_timestamp_ms: int
+    policy_version: str
+    strategy_version: str
+    feature_schema_version: str
+    label_schema_version: str
+    features: ResearchFeatureContext
+    labels: FutureLabelSet
+    provenance: str
+    market_data_provenance: str = REAL_HISTORICAL
+    schema_version: str = TRAINING_EXAMPLE_SCHEMA_VERSION
+
+    @property
+    def example_id(self) -> str:
+        payload = {
+            "dataset_id": self.dataset_id,
+            "dataset_hash": self.dataset_hash,
+            "venue": self.instrument.venue,
+            "venue_symbol": self.instrument.venue_symbol,
+            "canonical_symbol": self.instrument.canonical_symbol,
+            "timeframe": self.timeframe,
+            "decision_timestamp_ms": self.decision_timestamp_ms,
+            "policy_version": self.policy_version,
+            "strategy_version": self.strategy_version,
+            "schema_version": self.schema_version,
+        }
+        blob = json.dumps(payload, sort_keys=True, separators=(",", ":"))
+        return "tex_" + hashlib.sha256(blob.encode("utf-8")).hexdigest()[:32]
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "example_id": self.example_id,
+            "schema_version": self.schema_version,
+            "dataset_id": self.dataset_id,
+            "dataset_hash": self.dataset_hash,
+            "instrument": self.instrument.to_dict(),
+            "timeframe": self.timeframe,
+            "decision_timestamp_ms": self.decision_timestamp_ms,
+            "policy_version": self.policy_version,
+            "strategy_version": self.strategy_version,
+            "feature_schema_version": self.feature_schema_version,
+            "label_schema_version": self.label_schema_version,
+            "features": self.features.to_dict(),
+            "labels": self.labels.to_dict(),
+            "provenance": self.provenance,
+            "market_data_provenance": self.market_data_provenance,
+        }
+
+
 # ── Candle access ───────────────────────────────────────────────────────────
 
 
@@ -66,6 +208,249 @@ def close_time(row: Any) -> int:
 
 def ohlcv(row: Any) -> tuple[float, float, float, float, float]:
     return (float(row[1]), float(row[2]), float(row[3]), float(row[4]), float(row[5]))
+
+
+def _plain(value: Any) -> Any:
+    if isinstance(value, Mapping):
+        return {str(k): _plain(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_plain(v) for v in value]
+    return value
+
+
+def assert_known_provenance(provenance: str) -> str:
+    if provenance not in RESEARCH_PROVENANCE:
+        raise DatasetError(f"unknown research provenance: {provenance}")
+    return provenance
+
+
+def include_for_training(
+    provenance: str,
+    *,
+    allowed: Iterable[str] | None = None,
+) -> bool:
+    """Default future production training excludes synthetic and legacy rows."""
+
+    allowed_set = frozenset(allowed) if allowed is not None else DEFAULT_TRAINING_PROVENANCE
+    return assert_known_provenance(provenance) in allowed_set
+
+
+def filter_by_provenance(
+    examples: Iterable[TrainingExample],
+    *,
+    allowed: Iterable[str] | None = None,
+) -> tuple[TrainingExample, ...]:
+    return tuple(e for e in examples if include_for_training(e.provenance, allowed=allowed))
+
+
+def latest_at_or_before(observations: Sequence[Mapping[str, Any]], timestamp_ms: int) -> Mapping[str, Any]:
+    """Return the latest observation visible at t, or an explicit missing marker."""
+
+    visible = [
+        row for row in observations
+        if int(row.get("timestamp_ms", row.get("time_ms", row.get("open_time", 0)))) <= timestamp_ms
+    ]
+    if not visible:
+        return {"available": False, "timestamp_ms": None, "value": None}
+    latest = max(visible, key=lambda r: int(r.get("timestamp_ms", r.get("time_ms", r.get("open_time", 0)))))
+    return {**dict(latest), "available": True}
+
+
+def visible_rows(rows: Sequence[Any], timestamp_ms: int) -> tuple[Any, ...]:
+    return tuple(row for row in rows if close_time(row) <= timestamp_ms)
+
+
+def future_rows(rows: Sequence[Any], timestamp_ms: int, horizon_bars: int) -> tuple[Any, ...]:
+    future = [row for row in rows if open_time(row) > timestamp_ms]
+    return tuple(future[: max(0, int(horizon_bars))])
+
+
+def build_future_labels(
+    *,
+    entry_price: float,
+    future: Sequence[Any],
+    side: str = "LONG",
+    stop_price: float | None = None,
+    target_price: float | None = None,
+    risk_per_unit: float | None = None,
+    horizon_bars: int,
+    cost_model_hash: str = "zero",
+    fee_cost: float = 0.0,
+    spread_cost: float = 0.0,
+    slippage_cost: float = 0.0,
+    funding_cost: float = 0.0,
+) -> FutureLabelSet:
+    entry = float(entry_price)
+    if entry <= 0:
+        raise DatasetError("entry_price must be positive")
+    side_s = str(side or "LONG").upper()
+    direction = -1.0 if side_s in {"SHORT", "SELL"} else 1.0
+    highs = [ohlcv(row)[1] for row in future]
+    lows = [ohlcv(row)[2] for row in future]
+    closes = [ohlcv(row)[3] for row in future]
+    if not future:
+        return FutureLabelSet(
+            horizon_bars=int(horizon_bars), horizon_ms=0, mfe=0.0, mae=0.0,
+            gross_return=0.0, net_return=0.0, r_multiple=None,
+            tp_sl_outcome=IntrabarOutcome.NEITHER.value,
+            cost_model_hash=cost_model_hash, fee_cost=fee_cost,
+            spread_cost=spread_cost, slippage_cost=slippage_cost,
+            funding_cost=funding_cost, label_complete=False,
+        )
+
+    if direction > 0:
+        mfe = (max(highs) - entry) / entry
+        mae = (min(lows) - entry) / entry
+        gross_return = (closes[-1] - entry) / entry
+    else:
+        mfe = (entry - min(lows)) / entry
+        mae = (entry - max(highs)) / entry
+        gross_return = (entry - closes[-1]) / entry
+
+    costs = float(fee_cost) + float(spread_cost) + float(slippage_cost) + float(funding_cost)
+    net_return = gross_return - costs / entry
+    risk = abs(float(risk_per_unit)) if risk_per_unit else None
+    r_multiple = None if not risk else (gross_return * entry - costs) / risk
+    outcome = _tp_sl_outcome(future, side_s, stop_price=stop_price, target_price=target_price)
+    horizon_ms = close_time(future[-1]) - open_time(future[0]) + 1
+    return FutureLabelSet(
+        horizon_bars=int(horizon_bars), horizon_ms=int(horizon_ms),
+        mfe=float(mfe), mae=float(mae), gross_return=float(gross_return),
+        net_return=float(net_return), r_multiple=None if r_multiple is None else float(r_multiple),
+        tp_sl_outcome=outcome, cost_model_hash=cost_model_hash,
+        fee_cost=float(fee_cost), spread_cost=float(spread_cost),
+        slippage_cost=float(slippage_cost), funding_cost=float(funding_cost),
+        label_complete=len(future) >= int(horizon_bars),
+    )
+
+
+def _tp_sl_outcome(
+    future: Sequence[Any],
+    side: str,
+    *,
+    stop_price: float | None,
+    target_price: float | None,
+) -> str:
+    if stop_price is None or target_price is None:
+        return IntrabarOutcome.NEITHER.value
+    stop = float(stop_price)
+    target = float(target_price)
+    for row in future:
+        _, high, low, _, _ = ohlcv(row)
+        if side in {"SHORT", "SELL"}:
+            tp = low <= target
+            sl = high >= stop
+        else:
+            tp = high >= target
+            sl = low <= stop
+        if tp and sl:
+            return IntrabarOutcome.AMBIGUOUS.value
+        if tp:
+            return IntrabarOutcome.TP_FIRST.value
+        if sl:
+            return IntrabarOutcome.SL_FIRST.value
+    return IntrabarOutcome.NEITHER.value
+
+
+def build_training_example(
+    *,
+    dataset_id: str,
+    dataset_hash: str,
+    instrument: InstrumentIdentity,
+    timeframe: str,
+    decision_timestamp_ms: int,
+    rows: Sequence[Any],
+    htf_rows: Sequence[Any] = (),
+    horizon_bars: int = 12,
+    policy_version: str,
+    strategy_version: str,
+    provenance: str = REAL_HISTORICAL,
+    funding_observations: Sequence[Mapping[str, Any]] = (),
+    open_interest_observations: Sequence[Mapping[str, Any]] = (),
+    basis_observations: Sequence[Mapping[str, Any]] = (),
+    regime: Mapping[str, Any] | None = None,
+    expert_outputs: Mapping[str, Any] | None = None,
+    ensemble: Mapping[str, Any] | None = None,
+    threshold: Mapping[str, Any] | None = None,
+    decision: Mapping[str, Any] | None = None,
+    risk: Mapping[str, Any] | None = None,
+    quality: Mapping[str, Any] | None = None,
+    stop_price: float | None = None,
+    target_price: float | None = None,
+    side: str = "LONG",
+    cost_model_hash: str = "zero",
+    fee_cost: float = 0.0,
+    spread_cost: float = 0.0,
+    slippage_cost: float = 0.0,
+    funding_cost: float = 0.0,
+) -> TrainingExample:
+    assert_known_provenance(provenance)
+    visible = visible_rows(rows, decision_timestamp_ms)
+    if not visible:
+        raise DatasetError("no decision-time OHLCV rows are visible")
+    visible_htf = visible_rows(htf_rows, decision_timestamp_ms) if htf_rows else ()
+    if htf_rows and visible_htf and close_time(visible_htf[-1]) > decision_timestamp_ms:
+        raise DatasetError("HTF context leaks past decision timestamp")
+    current = visible[-1]
+    future = future_rows(rows, decision_timestamp_ms, horizon_bars)
+    entry = ohlcv(current)[3]
+    risk_per_unit = abs(entry - float(stop_price)) if stop_price is not None else None
+    features = ResearchFeatureContext(
+        raw_ohlcv={
+            "open_time_ms": open_time(current),
+            "close_time_ms": close_time(current),
+            "open": ohlcv(current)[0],
+            "high": ohlcv(current)[1],
+            "low": ohlcv(current)[2],
+            "close": ohlcv(current)[3],
+            "volume": ohlcv(current)[4],
+        },
+        htf_context={
+            "available": bool(visible_htf),
+            "latest_close_time_ms": close_time(visible_htf[-1]) if visible_htf else None,
+            "rows": len(visible_htf),
+        },
+        funding=latest_at_or_before(funding_observations, decision_timestamp_ms),
+        open_interest=latest_at_or_before(open_interest_observations, decision_timestamp_ms),
+        basis=latest_at_or_before(basis_observations, decision_timestamp_ms),
+        regime=regime or {},
+        expert_outputs=expert_outputs or {},
+        ensemble=ensemble or {},
+        threshold=threshold or {},
+        decision=decision or {},
+        risk=risk or {},
+        quality={
+            "feature_complete": True,
+            "label_complete": len(future) >= int(horizon_bars),
+            "htf_complete": bool(visible_htf) if htf_rows else None,
+            "funding_available": bool(funding_observations),
+            "open_interest_available": bool(open_interest_observations),
+            "basis_available": bool(basis_observations),
+            **dict(quality or {}),
+        },
+    )
+    labels = build_future_labels(
+        entry_price=entry, future=future, side=side, stop_price=stop_price,
+        target_price=target_price, risk_per_unit=risk_per_unit,
+        horizon_bars=horizon_bars, cost_model_hash=cost_model_hash,
+        fee_cost=fee_cost, spread_cost=spread_cost,
+        slippage_cost=slippage_cost, funding_cost=funding_cost,
+    )
+    return TrainingExample(
+        dataset_id=dataset_id,
+        dataset_hash=dataset_hash,
+        instrument=instrument,
+        timeframe=timeframe,
+        decision_timestamp_ms=int(decision_timestamp_ms),
+        policy_version=policy_version,
+        strategy_version=strategy_version,
+        feature_schema_version=FEATURE_SCHEMA_VERSION,
+        label_schema_version=LABEL_SCHEMA_VERSION,
+        features=features,
+        labels=labels,
+        provenance=provenance,
+        market_data_provenance=REAL_HISTORICAL,
+    )
 
 
 # ── §14.8 Data quality ──────────────────────────────────────────────────────

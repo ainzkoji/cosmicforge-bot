@@ -298,6 +298,90 @@ class ReplayResult:
         return residual
 
 
+@dataclass(frozen=True)
+class RestoredReplayPositionState:
+    """Replay restart state reconstructed only from persisted evidence.
+
+    A replay restart may not re-open the original quantity after TP1.  This
+    small value object is deliberately evidence-shaped rather than
+    PositionManager-shaped so tests can assert the restart contract without
+    manufacturing live manager internals.
+    """
+
+    position_id: str
+    symbol: str
+    side: str
+    original_qty: float
+    remaining_qty: float
+    realized_qty: float
+    phase: str
+    break_even_active: bool
+    trailing_active: bool
+    stop_price: float | None
+
+
+def restore_position_state_from_replay_evidence(
+    position: Mapping[str, Any],
+    events: Sequence[Mapping[str, Any]],
+) -> RestoredReplayPositionState:
+    """Reconstruct replay lifecycle state after a simulated process restart.
+
+    The source of truth is the evidence store: the position row and the append
+    only lifecycle events.  The function intentionally ignores transient runner
+    memory.  If TP1 is the latest economic event, the restored remaining
+    quantity is the post-TP1 remainder, not the original size.
+    """
+
+    position_id = str(position.get("position_id") or "")
+    relevant = [e for e in events if str(e.get("position_id") or "") == position_id]
+    if not position_id or not relevant:
+        raise ReplayDataError("cannot restore replay position without lifecycle evidence")
+
+    original = float(position.get("original_qty") or 0.0)
+    remaining = float(position.get("remaining_qty") or original)
+    realized = float(position.get("realized_qty") or 0.0)
+    stop_price = position.get("stop_price")
+    break_even = False
+    trailing = False
+    phase = "OPEN"
+
+    for event in relevant:
+        event_type = str(event.get("event_type") or "").upper()
+        if event.get("remaining_qty") is not None:
+            remaining = float(event.get("remaining_qty") or 0.0)
+            realized = max(0.0, original - remaining)
+        if event.get("stop_price") is not None:
+            stop_price = event.get("stop_price")
+        if event_type in {"TP1", "PARTIAL_CLOSE"}:
+            phase = "TP1_TAKEN"
+        elif event_type == "BREAK_EVEN_ACTIVATED":
+            break_even = True
+            phase = "BREAK_EVEN"
+        elif event_type == "TRAILING_ACTIVATED":
+            trailing = True
+            phase = "RUNNER_TRAILING"
+        elif event_type == "STOP_UPDATED":
+            if trailing:
+                phase = "RUNNER_TRAILING"
+        elif event_type in {"FINAL_CLOSE", "DAILY_CLOSE", "KILL_SWITCH_CLOSE"}:
+            remaining = 0.0
+            realized = original
+            phase = "FLAT"
+
+    return RestoredReplayPositionState(
+        position_id=position_id,
+        symbol=str(position.get("symbol") or ""),
+        side=str(position.get("side") or ""),
+        original_qty=original,
+        remaining_qty=remaining,
+        realized_qty=realized,
+        phase=phase,
+        break_even_active=break_even,
+        trailing_active=trailing,
+        stop_price=float(stop_price) if stop_price is not None else None,
+    )
+
+
 class ReplaySession:
     """One replay: an identity, a clock, and the production runner."""
 
