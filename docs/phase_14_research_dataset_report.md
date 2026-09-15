@@ -10,11 +10,11 @@ there is a way to check it is a dataset nobody can trust afterwards.
 | Venue | Binance spot, public klines API |
 | Symbols | BTCUSDT, ETHUSDT |
 | Base resolution | 1m |
-| Window | 2026-05-12 → 2026-09-08 (120 days) |
-| Rows | 172,800 × 2 at 1m, plus derived 5m/15m/1h/4h |
+| Window | 2024-09-15 → 2026-09-14 (730 days) |
+| Rows | 1,051,200 × 2 at 1m, plus derived 5m/15m/1h/4h |
 | Provenance | `REAL_HISTORICAL` — fixed at construction, not settable |
-| `dataset_hash` | `f059310fba212fe4d7f6a45d9cc9e6c1` |
-| Tests | 36 focused Phase 14 tests in `test_research_dataset_contract.py` |
+| `dataset_hash` | `ee07204498be499166bba78d90bded00` |
+| Tests | 39 focused Phase 14 tests in `test_research_dataset_contract.py` |
 
 ---
 
@@ -75,36 +75,36 @@ than discovering afterwards that a number was contaminated.
 
 ## The dataset
 
-Acquired 2026-09-09 from Binance's public klines API. 1m base, 120 days, both
+Acquired 2026-09-15 from Binance's public klines API. 1m base, 730 days, both
 symbols, day-sharded and resumable.
 
 ### Quality
 
 | symbol | timeframe | rows | missing | dup | out-of-order | bad OHLC | completeness |
 | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| BTCUSDT | 1m | 172,800 | 0 | 0 | 0 | 0 | 100.0000% |
-| BTCUSDT | 5m | 34,560 | 0 | 0 | 0 | 0 | 100.0000% |
-| BTCUSDT | 15m | 11,520 | 0 | 0 | 0 | 0 | 100.0000% |
-| BTCUSDT | 1h | 2,880 | 0 | 0 | 0 | 0 | 100.0000% |
-| BTCUSDT | 4h | 720 | 0 | 0 | 0 | 0 | 100.0000% |
-| ETHUSDT | 1m | 172,800 | 0 | 0 | 0 | 0 | 100.0000% |
-| ETHUSDT | 5m | 34,560 | 0 | 0 | 0 | 0 | 100.0000% |
-| ETHUSDT | 15m | 11,520 | 0 | 0 | 0 | 0 | 100.0000% |
-| ETHUSDT | 1h | 2,880 | 0 | 0 | 0 | 0 | 100.0000% |
-| ETHUSDT | 4h | 720 | 0 | 0 | 0 | 0 | 100.0000% |
+| BTCUSDT | 1m | 1,051,200 | 0 | 0 | 0 | 0 | 100.0000% |
+| BTCUSDT | 5m | 210,240 | 0 | 0 | 0 | 0 | 100.0000% |
+| BTCUSDT | 15m | 70,080 | 0 | 0 | 0 | 0 | 100.0000% |
+| BTCUSDT | 1h | 17,520 | 0 | 0 | 0 | 0 | 100.0000% |
+| BTCUSDT | 4h | 4,380 | 0 | 0 | 0 | 0 | 100.0000% |
+| ETHUSDT | 1m | 1,051,200 | 0 | 0 | 0 | 0 | 100.0000% |
+| ETHUSDT | 5m | 210,240 | 0 | 0 | 0 | 0 | 100.0000% |
+| ETHUSDT | 15m | 70,080 | 0 | 0 | 0 | 0 | 100.0000% |
+| ETHUSDT | 1h | 17,520 | 0 | 0 | 0 | 0 | 100.0000% |
+| ETHUSDT | 4h | 4,380 | 0 | 0 | 0 | 0 | 100.0000% |
 
-Not one missing minute across 345,600 base bars, and the derived counts are
-exactly `base / factor` — 172,800 / 15 = 11,520 — which is what a correct
+Not one missing minute across 2,102,400 base bars, and the derived counts are
+exactly `base / factor` — 1,051,200 / 15 = 70,080 — which is what a correct
 aggregation of a gapless series produces.
 
 ### Partitions (§14.9)
 
 | partition | window | rows |
 | --- | --- | ---: |
-| `TRAIN` | 2026-05-12 → 2026-07-22 | 103,680 |
-| `VALIDATION` | 2026-07-23 → 2026-08-09 | 25,920 |
-| `TEST` | 2026-08-10 → 2026-08-27 | 25,920 |
-| `FINAL_HOLDOUT` | 2026-08-28 → 2026-09-08 | 17,280 |
+| `TRAIN` | 2024-09-15 → 2025-11-26 | 630,720 |
+| `VALIDATION` | 2025-11-27 → 2026-03-16 | 157,680 |
+| `TEST` | 2026-03-16 → 2026-07-03 | 157,680 |
+| `FINAL_HOLDOUT` | 2026-07-04 → 2026-09-14 | 105,120 |
 
 ### The final holdout is untouched (§14.10)
 
@@ -120,24 +120,61 @@ the result must not inform any decision. Nothing in this work has read it.
 
 ---
 
-## Not delivered
+## Final Closure Pass
 
-**Multi-year acquisition.** The programme asks for multi-year data; this is 120
-days. The acquisition tool is the same one either way — it is day-sharded and
-resumable, so extending the window is a matter of running it for longer, not of
-writing anything further. At the observed rate, ~3 years for two symbols is
-roughly 2,200 day-shards and a few hours of wall time.
+The 120-day dataset remains as historical evidence, but the certified Phase 14
+dataset is now `data/research/binance_1m_btcusdt_ethusdt_2y_v1.manifest.json`.
+It was acquired through the existing day-sharded, resumable Binance public
+klines pipeline:
 
-120 days was chosen because it is enough to make the Phase 15 baseline
-meaningfully larger than the 150-evaluation live sample while remaining
-verifiable inside one session. **The dataset is not yet large enough to
-characterise behaviour across market cycles**, and no conclusion in the Phase
-15 report leans on it as if it were.
+| symbol | 1m rows | 5m | 15m | 1h | 4h | completeness |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| BTCUSDT | 1,051,200 | 210,240 | 70,080 | 17,520 | 4,380 | 100.0000% |
+| ETHUSDT | 1,051,200 | 210,240 | 70,080 | 17,520 | 4,380 | 100.0000% |
 
-**Derivatives context** (funding, open interest, basis, liquidations) is not
-acquired in the current BTC/ETH market dataset. The training-example contract
-now represents funding, open interest and basis explicitly as unavailable when
-no timestamp-valid observation exists, rather than zero-filling them.
+No duplicate opens, out-of-order rows, inconsistent intervals, non-positive
+prices, negative volume, OHLC violations, or missing bars were found. The
+manifest records source, venue, provenance, checksums, quality statistics,
+chronological partitions, code revision, and schema versions.
+
+Chronological partitions:
+
+| partition | window | rows |
+| --- | --- | ---: |
+| `TRAIN` | 2024-09-15 → 2025-11-26 | 630,720 |
+| `VALIDATION` | 2025-11-27 → 2026-03-16 | 157,680 |
+| `TEST` | 2026-03-16 → 2026-07-03 | 157,680 |
+| `FINAL_HOLDOUT` | 2026-07-04 → 2026-09-14 | 105,120 |
+
+### Purge / Embargo
+
+`PurgeEmbargoPolicy` and `purge_embargo_partitions()` now explicitly remove
+examples whose label horizon crosses a partition boundary and optionally
+embargo examples immediately after the boundary. The report persists label
+horizon, purge duration, embargo duration, excluded counts, purge ranges, and
+embargo ranges. Boundary tests cover the exact case where an example one bar
+before a split with a 12-bar future label is purged.
+
+### Materialized Examples
+
+`scripts/materialize_research_examples.py` materialized real Phase 14 examples
+from the 2-year dataset:
+
+| item | value |
+| --- | --- |
+| Example manifest | `data/research/binance_1m_btcusdt_ethusdt_2y_v1_examples_v1.manifest.json` |
+| Example dataset | `data/research/examples/binance_1m_btcusdt_ethusdt_2y_v1_examples_v1.jsonl` (ignored artifact) |
+| Examples | 128 |
+| Provenance | `REAL_HISTORICAL` only |
+| Partitions | TRAIN 86, VALIDATION 22, TEST 20 |
+| Final holdout | excluded |
+| Legacy/synthetic | excluded |
+| Horizon | 12 × 15m bars |
+| Output checksum | `7e9842c9d229d2579c30a619e451abf9aa004c6f80c7af0c3910b1c9866b83f5` |
+
+Funding, open interest, basis, and liquidation history remain explicitly
+unavailable in this free spot-klines dataset and are represented as
+`available=false`; no zero fabrication is used.
 
 ---
 
@@ -181,7 +218,7 @@ represented as `available=false`.
 | 14.3 | Future outcome labels | **PASS** for MFE/MAE/return/R/barrier labels |
 | 14.4 | Cost-adjusted labels | **PASS** with explicit fee/spread/slippage/funding cost fields |
 | 14.5 | Provenance on every example | **PASS** with default synthetic/legacy exclusion |
-| 14.6 | Historical acquisition, BTCUSDT + ETHUSDT | **PASS** (120 days, not multi-year) |
+| 14.6 | Historical acquisition, BTCUSDT + ETHUSDT | **PASS** (730 days, multi-year) |
 | 14.7 | 1m base, deterministic derivation | **PASS** |
 | 14.8 | Data-quality validation, no silent filling | **PASS** |
 | 14.9 | Chronological partitions | **PASS** |
@@ -190,12 +227,12 @@ represented as `available=false`.
 
 `PHASE_14_RESEARCH_DATA_CONTRACT`: **PASS** for schema, builder, provenance
 and no-lookahead contract.
-`PHASE_14_DATASET`: **PASS** for 120 days at perfect completeness; multi-year
-acquisition remains outstanding.
+`PHASE_14_DATASET`: **PASS** for 730 days at perfect completeness.
 `HISTORICAL_DATA_QUALITY`: **PASS**.
 `FINAL_HOLDOUT_PROTECTED`: **PASS**.
 
-Overall Phase 14 remains **PARTIAL** because the required multi-year BTCUSDT
-and ETHUSDT certification is not present in the repository. The current
-certified manifest is `data/research/binance_1m_btcusdt_ethusdt_120d.manifest.json`
-with dataset hash `f059310fba212fe4d7f6a45d9cc9e6c1`.
+Overall Phase 14 is **COMPLETE** for the pre-AI research-data gate: immutable
+schema, broker-neutral identity, real multi-year BTCUSDT/ETHUSDT data,
+strict multi-timeframe derivation, quality gates, provenance controls,
+purge/embargo, final-holdout protection, deterministic labels, and real
+materialized examples are present and evidenced.

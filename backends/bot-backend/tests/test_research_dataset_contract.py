@@ -16,6 +16,7 @@ import pytest
 from app.research.dataset import (
     BROKER_DEMO,
     FINAL_HOLDOUT,
+    FORMAL_EVALUATION,
     LEGACY_BACKFILL,
     LIVE,
     PAPER_FORWARD,
@@ -27,14 +28,18 @@ from app.research.dataset import (
     DatasetError,
     FinalHoldoutViolation,
     InstrumentIdentity,
+    Partition,
+    PurgeEmbargoPolicy,
     assess_quality,
     build_manifest,
     build_training_example,
     derive,
     filter_by_provenance,
     guard_final_holdout,
+    holdout_access_audit,
     include_for_training,
     partition,
+    purge_embargo_partitions,
     series_checksum,
 )
 
@@ -205,6 +210,23 @@ def test_reading_the_final_holdout_raises():
         guard_final_holdout(parts, holdout.start_ms, purpose="threshold tuning")
 
 
+def test_formal_evaluation_holdout_access_requires_explicit_mode_and_is_audited():
+    rows = minutes(1000)
+    parts = partition(rows)
+    holdout = next(p for p in parts if p.name == FINAL_HOLDOUT)
+    before = len(holdout_access_audit())
+
+    guard_final_holdout(
+        parts, holdout.start_ms, purpose="final evaluation",
+        mode=FORMAL_EVALUATION,
+    )
+
+    audit = holdout_access_audit()
+    assert len(audit) == before + 1
+    assert audit[-1]["purpose"] == "final evaluation"
+    assert audit[-1]["mode"] == FORMAL_EVALUATION
+
+
 def test_reading_the_training_window_is_fine():
     rows = minutes(1000)
     parts = partition(rows)
@@ -225,6 +247,54 @@ def test_a_dataset_too_small_to_split_is_refused():
 def test_partitioning_nothing_is_refused():
     with pytest.raises(DatasetError, match="empty"):
         partition([])
+
+
+def test_purge_removes_training_examples_whose_labels_cross_the_next_partition():
+    rows = minutes(80)
+    parts = (
+        Partition(TRAIN, int(rows[0][0]), int(rows[39][6]), 40),
+        Partition("VALIDATION", int(rows[40][0]), int(rows[59][6]), 20),
+        Partition("TEST", int(rows[60][0]), int(rows[69][6]), 10),
+        Partition(FINAL_HOLDOUT, int(rows[70][0]), int(rows[79][6]), 10),
+    )
+    example = build_training_example(
+        dataset_id="ds", dataset_hash="hash", instrument=instrument(),
+        timeframe="1m", decision_timestamp_ms=int(rows[38][6]), rows=rows,
+        horizon_bars=12, policy_version="policy", strategy_version="strategy",
+    )
+
+    kept, report = purge_embargo_partitions(
+        [example], parts, PurgeEmbargoPolicy(label_horizon_ms=12 * MINUTE),
+    )
+
+    assert kept == ()
+    assert report.excluded_counts["TRAIN_PURGE"] == 1
+    assert report.purge_ranges[0]["from_partition"] == TRAIN
+
+
+def test_embargo_removes_early_examples_after_a_boundary():
+    rows = minutes(80)
+    parts = (
+        Partition(TRAIN, int(rows[0][0]), int(rows[39][6]), 40),
+        Partition("VALIDATION", int(rows[40][0]), int(rows[59][6]), 20),
+        Partition("TEST", int(rows[60][0]), int(rows[69][6]), 10),
+        Partition(FINAL_HOLDOUT, int(rows[70][0]), int(rows[79][6]), 10),
+    )
+    example = build_training_example(
+        dataset_id="ds", dataset_hash="hash", instrument=instrument(),
+        timeframe="1m", decision_timestamp_ms=int(rows[40][6]), rows=rows,
+        horizon_bars=2, policy_version="policy", strategy_version="strategy",
+    )
+
+    kept, report = purge_embargo_partitions(
+        [example], parts, PurgeEmbargoPolicy(
+            label_horizon_ms=2 * MINUTE, embargo_ms=3 * MINUTE,
+        ),
+    )
+
+    assert kept == ()
+    assert report.excluded_counts["VALIDATION_EMBARGO"] == 1
+    assert report.embargo_ranges[0]["to_partition"] == "VALIDATION"
 
 
 # ══════════════════════════════════════════════════════════════════════════

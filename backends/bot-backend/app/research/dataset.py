@@ -630,6 +630,7 @@ VALIDATION = "VALIDATION"
 TEST = "TEST"
 FINAL_HOLDOUT = "FINAL_HOLDOUT"
 PARTITIONS = (TRAIN, VALIDATION, TEST, FINAL_HOLDOUT)
+FORMAL_EVALUATION = "FORMAL_EVALUATION"
 
 
 @dataclass(frozen=True)
@@ -645,6 +646,40 @@ class Partition:
     def to_dict(self) -> dict[str, Any]:
         return {**asdict(self),
                 "start": _iso(self.start_ms), "end": _iso(self.end_ms)}
+
+
+@dataclass(frozen=True)
+class PurgeEmbargoPolicy:
+    label_horizon_ms: int
+    embargo_ms: int = 0
+
+    def __post_init__(self) -> None:
+        if self.label_horizon_ms < 0 or self.embargo_ms < 0:
+            raise DatasetError("purge/embargo durations must be non-negative")
+
+    @property
+    def purge_ms(self) -> int:
+        return int(self.label_horizon_ms)
+
+
+@dataclass(frozen=True)
+class PurgeEmbargoReport:
+    label_horizon_ms: int
+    purge_ms: int
+    embargo_ms: int
+    excluded_counts: Mapping[str, int]
+    purge_ranges: tuple[dict[str, Any], ...]
+    embargo_ranges: tuple[dict[str, Any], ...]
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "label_horizon_ms": self.label_horizon_ms,
+            "purge_ms": self.purge_ms,
+            "embargo_ms": self.embargo_ms,
+            "excluded_counts": dict(self.excluded_counts),
+            "purge_ranges": list(self.purge_ranges),
+            "embargo_ranges": list(self.embargo_ranges),
+        }
 
 
 def _iso(ms: int) -> str:
@@ -704,12 +739,97 @@ def partition(
     return tuple(out)
 
 
+def purge_embargo_partitions(
+    examples: Iterable[TrainingExample],
+    partitions: Sequence[Partition],
+    policy: PurgeEmbargoPolicy,
+) -> tuple[tuple[TrainingExample, ...], PurgeEmbargoReport]:
+    """Remove examples whose labels or embargo window cross split boundaries.
+
+    The purge is label-aware: an example remains in a partition only when its
+    future label horizon ends inside that same partition. The embargo removes
+    early examples from the following partition when the methodology requires a
+    quiet gap after a boundary.
+    """
+
+    ordered_parts = tuple(sorted(partitions, key=lambda p: p.start_ms))
+    if len(ordered_parts) < 2:
+        raise DatasetError("purge/embargo requires at least two partitions")
+
+    purge_ranges: list[dict[str, Any]] = []
+    embargo_ranges: list[dict[str, Any]] = []
+    excluded_counts: dict[str, int] = {}
+
+    def part_for(ts: int) -> Partition | None:
+        return next((p for p in ordered_parts if p.contains(ts)), None)
+
+    for left, right in zip(ordered_parts, ordered_parts[1:]):
+        purge_start = max(left.start_ms, left.end_ms - policy.purge_ms + 1)
+        purge_ranges.append({
+            "from_partition": left.name,
+            "to_partition": right.name,
+            "start_ms": purge_start,
+            "end_ms": left.end_ms,
+            "start": _iso(purge_start),
+            "end": _iso(left.end_ms),
+        })
+        if policy.embargo_ms > 0:
+            embargo_end = min(right.end_ms, right.start_ms + policy.embargo_ms - 1)
+            embargo_ranges.append({
+                "from_partition": left.name,
+                "to_partition": right.name,
+                "start_ms": right.start_ms,
+                "end_ms": embargo_end,
+                "start": _iso(right.start_ms),
+                "end": _iso(embargo_end),
+            })
+
+    kept: list[TrainingExample] = []
+    for example in sorted(examples, key=lambda e: (e.decision_timestamp_ms, e.example_id)):
+        part = part_for(example.decision_timestamp_ms)
+        if part is None:
+            excluded_counts["OUTSIDE_PARTITIONS"] = excluded_counts.get("OUTSIDE_PARTITIONS", 0) + 1
+            continue
+        label_end = example.decision_timestamp_ms + int(example.labels.horizon_ms or policy.label_horizon_ms)
+        if label_end > part.end_ms:
+            key = f"{part.name}_PURGE"
+            excluded_counts[key] = excluded_counts.get(key, 0) + 1
+            continue
+        embargoed = False
+        if policy.embargo_ms > 0:
+            for left, right in zip(ordered_parts, ordered_parts[1:]):
+                if part.name == right.name and example.decision_timestamp_ms < right.start_ms + policy.embargo_ms:
+                    key = f"{right.name}_EMBARGO"
+                    excluded_counts[key] = excluded_counts.get(key, 0) + 1
+                    embargoed = True
+                    break
+        if embargoed:
+            continue
+        kept.append(example)
+
+    return tuple(kept), PurgeEmbargoReport(
+        label_horizon_ms=int(policy.label_horizon_ms),
+        purge_ms=policy.purge_ms,
+        embargo_ms=int(policy.embargo_ms),
+        excluded_counts=excluded_counts,
+        purge_ranges=tuple(purge_ranges),
+        embargo_ranges=tuple(embargo_ranges),
+    )
+
+
 class FinalHoldoutViolation(RuntimeError):
     """Something tried to read the final holdout. §14.10 forbids it."""
 
 
+_HOLDOUT_ACCESS_AUDIT: list[dict[str, Any]] = []
+
+
+def holdout_access_audit() -> tuple[dict[str, Any], ...]:
+    return tuple(_HOLDOUT_ACCESS_AUDIT)
+
+
 def guard_final_holdout(partitions: Iterable[Partition], timestamp_ms: int,
-                        *, purpose: str) -> None:
+                        *, purpose: str, mode: str | None = None) -> None:
     """Raise if ``timestamp_ms`` falls in the final holdout.
 
     Model selection, threshold tuning, feature selection and augmentation must
@@ -718,6 +838,16 @@ def guard_final_holdout(partitions: Iterable[Partition], timestamp_ms: int,
     """
     for part in partitions:
         if part.name == FINAL_HOLDOUT and part.contains(timestamp_ms):
+            if mode == FORMAL_EVALUATION:
+                _HOLDOUT_ACCESS_AUDIT.append({
+                    "timestamp_ms": int(timestamp_ms),
+                    "timestamp": _iso(timestamp_ms),
+                    "purpose": purpose,
+                    "mode": mode,
+                    "partition": part.to_dict(),
+                    "accessed_at": datetime.now(timezone.utc).isoformat(),
+                })
+                return
             raise FinalHoldoutViolation(
                 f"{purpose} attempted to read {_iso(timestamp_ms)}, which is in "
                 f"the final holdout ({_iso(part.start_ms)} -> "

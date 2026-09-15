@@ -7,6 +7,7 @@ replay is handed a dataset.
 
 from app.research.dataset import (
     FINAL_HOLDOUT,
+    FORMAL_EVALUATION,
     BROKER_DEMO,
     DEFAULT_TRAINING_PROVENANCE,
     FEATURE_SCHEMA_VERSION,
@@ -26,6 +27,8 @@ from app.research.dataset import (
     FutureLabelSet,
     InstrumentIdentity,
     Partition,
+    PurgeEmbargoPolicy,
+    PurgeEmbargoReport,
     QualityReport,
     ResearchFeatureContext,
     TrainingExample,
@@ -35,8 +38,10 @@ from app.research.dataset import (
     derive,
     filter_by_provenance,
     guard_final_holdout,
+    holdout_access_audit,
     include_for_training,
     partition,
+    purge_embargo_partitions,
 )
 
 __all__ = [
@@ -46,6 +51,7 @@ __all__ = [
     "DatasetManifest",
     "FEATURE_SCHEMA_VERSION",
     "FINAL_HOLDOUT",
+    "FORMAL_EVALUATION",
     "FinalHoldoutViolation",
     "FutureLabelSet",
     "InstrumentIdentity",
@@ -54,6 +60,8 @@ __all__ = [
     "LIVE",
     "PAPER_FORWARD",
     "Partition",
+    "PurgeEmbargoPolicy",
+    "PurgeEmbargoReport",
     "QualityReport",
     "REAL_HISTORICAL",
     "REPLAY",
@@ -69,6 +77,8 @@ __all__ = [
     "derive",
     "filter_by_provenance",
     "guard_final_holdout",
+    "holdout_access_audit",
     "include_for_training",
     "partition",
+    "purge_embargo_partitions",
 ]

@@ -15,8 +15,8 @@ Phase 16 begins only when all of these hold. Updated 2026-09-09.
 | Always-on runtime hardening | **PASS** |
 | Phase 12 full lifecycle proof | **PASS** |
 | Phase 13 production-parity replay | **PASS** — §13.2 and §13.8 now proven by running it |
-| Phase 14 research data contract | **PARTIAL** — schema/builder/provenance contract done; multi-year BTC/ETH certification outstanding |
-| Phase 14 dataset | **PASS** for 120 days at 100% completeness; multi-year outstanding |
+| Phase 14 research data contract | **COMPLETE** — schema/builder/provenance, purge/embargo, holdout guard, and materialized examples present |
+| Phase 14 dataset | **PASS** for 730 days BTCUSDT/ETHUSDT at 100% completeness |
 | Provenance cleanup | **PASS** — applied, economics byte-identical |
 | Capital/risk invariant | **PASS** — enforced and tested |
 | Phase 15 full baseline | see the Phase 15 report |
@@ -197,8 +197,9 @@ baseline and nothing more.
    critical path: without it, step 7 cannot reach 60 trades, and the replay
    engine exists precisely so candidate answers can be measured before they are
    committed to forward time.
-6. Extend the dataset toward multi-year and build the §14.1 training-example
-   contract, if the answer to step 5 turns out to need a model.
+6. Use the certified Phase 14 multi-year manifest and materialized examples if
+   the answer to step 5 turns out to need a model; keep the final holdout
+   untouched except for formal evaluation.
 7. Only then open the Phase 16 window with a fresh identity and a locked policy.
 
 Step 5 is the critical path. Step 7 is mostly patience, and it is wasted

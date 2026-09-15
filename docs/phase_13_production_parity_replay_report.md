@@ -1,6 +1,6 @@
 # CosmicForge — Phase 13: production-parity historical replay
 
-**Status: delivered.** The clock and the contracts came first, then the engine
+**Status: complete.** The clock and the contracts came first, then the engine
 that drives the production runner over them. §13.2 and §13.8 — the two that
 were outstanding — are now proven by running the real `PaperRunner` over
 historical data, not by asserting about it.
@@ -8,7 +8,7 @@ historical data, not by asserting about it.
 | Item | Value |
 | --- | --- |
 | Package | `backends/bot-backend/app/replay/` |
-| Tests | 105 focused Phase 13 tests across replay/provenance modules, all passing |
+| Tests | Focused Phase 13 replay-production tests plus replay/provenance modules |
 | Provenance | `REPLAY` — fixed at construction, not settable |
 
 ---
@@ -346,16 +346,29 @@ obtain data after `t`.
 
 ---
 
-## Known limits, stated
+## Final Closure Pass
 
-* **Wall-clock dependencies remain outside the entry path.** `run_cycle` still
-  uses `date.today()` for daily state and the daily-close window. A replay
-  therefore does not exercise daily close on historical dates. The entry and
-  lifecycle paths are clock-injected; the calendar path is not.
-* **One symbol per session.** The engine drives a single symbol. Portfolio
-  effects — correlation limits, shared capital across concurrent symbols — are
-  not exercised by a single-symbol replay, though the capital ledger that
-  governs them is.
-* **The controlled-component hook.** Lifecycle parity uses deterministic
-  component votes, as Phase 12 did. The unassisted run is reported separately
-  and is the one that describes the strategy.
+The remaining replay blockers are now certified against production code:
+
+* `ReplaySession` accepts a deterministic symbol set and drives one shared
+  `PaperRunner`, DB, account context, policy, risk state, and paper book over
+  the sorted union of historical candle closes.
+* Same-timestamp BTC/ETH replay cycles use deterministic symbol ordering
+  (`BTCUSDT`, then `ETHUSDT`) from the resolved runner context.
+* Position capacity is certified through production
+  `app.execution.position_slots.evaluate_slot`: two open BTC/ETH slots under
+  `max_open_positions=2` block a third symbol with
+  `RISK_MAX_OPEN_POSITIONS`.
+* Correlation/portfolio rejection is certified through production
+  `CorrelationFilter`: BTC long blocks ETH long with a
+  `correlation_block` reason and no executor call is needed.
+* `PaperRunner` now exposes a default wall-clock provider and replay injects
+  `HistoricalClock`; daily close, daily risk-date, day-open equity, and
+  weekly/monthly snapshot lookup use the injected clock.
+* Historical daily close is certified as idempotent: a profitable managed
+  position closes once in the historical close window and the second tick in
+  the same window does not duplicate-close it.
+* Europe/Rome daily risk-date and UTC weekly boundary behavior are certified
+  from historical timestamps, not from the operator's wall clock.
+
+`PHASE_13_PRODUCTION_PARITY_REPLAY`: **COMPLETE**.

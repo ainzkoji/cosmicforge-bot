@@ -132,6 +132,7 @@ desktop.ini
 # manifest -- which carries the dataset hash, the quality assessment and the
 # partitions -- is committed so a result can always name the dataset it used.
 data/research/raw/
+data/research/examples/
 data/research/*.db
 data/research/*.db-journal
 data/research/*.db-wal

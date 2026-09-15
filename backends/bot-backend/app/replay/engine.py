@@ -391,7 +391,8 @@ class ReplaySession:
         series: Mapping[str, Mapping[str, Sequence[Any]]],
         *,
         bot_instance_id: str,
-        symbol: str,
+        symbol: str | None = None,
+        symbols: Sequence[str] | None = None,
         timeframe: str,
         higher_timeframe: str | None = None,
         capital_budget: float = 10_000.0,
@@ -407,7 +408,11 @@ class ReplaySession:
         self.db = db
         self.series = series
         self.bot_instance_id = bot_instance_id
-        self.symbol = symbol.upper()
+        selected = tuple(s.upper() for s in (symbols or ([symbol] if symbol else [])))
+        if not selected:
+            raise ReplayDataError("ReplaySession requires at least one symbol")
+        self.symbols = tuple(sorted(selected))
+        self.symbol = self.symbols[0]
         self.timeframe = timeframe
         self.higher_timeframe = higher_timeframe
         self.capital_budget = capital_budget
@@ -425,7 +430,7 @@ class ReplaySession:
         #: exactly as the Phase 12 harness does.
         self.strategy_hook = strategy_hook
 
-        first_close = int(series[self.symbol][timeframe][0][6])
+        first_close = min(int(series[s][timeframe][0][6]) for s in self.symbols)
         self.clock = HistoricalClock(now_ms=first_close - 1)
         self.provider = HistoricalMarketDataProvider(series, self.clock)
         self.run_id = uuid.uuid4().hex
@@ -436,14 +441,14 @@ class ReplaySession:
     # ── Identity ────────────────────────────────────────────────────────────
 
     def identity(self) -> ReplayIdentity:
-        times = self.provider.evaluation_times(self.symbol, self.timeframe)
+        times = self._evaluation_times()
         from app.replay.identity import code_revision
 
         revision, branch, dirty = code_revision()
         return ReplayIdentity(
             dataset_id=self.dataset_id,
             dataset_hash=dataset_hash(self.series),
-            symbols=(self.symbol,),
+            symbols=self.symbols,
             timeframes=tuple(
                 t for t in (self.timeframe, self.higher_timeframe) if t
             ),
@@ -488,7 +493,7 @@ class ReplaySession:
                 "market_type": "CRYPTO", "strategy_id": "master_ensemble",
                 "strategy_version": "1.0.0", "config_id": "__auto_pilot__",
                 "risk_profile_id": "__auto_pilot__",
-                "symbols_json": json.dumps([self.symbol]),
+                "symbols_json": json.dumps(list(self.symbols)),
                 "timeframes_json": json.dumps([self.timeframe]),
                 "allocation_type": "fixed_amount",
                 "allocation_value": self.position_allocation,
@@ -530,13 +535,14 @@ class ReplaySession:
             context.higher_timeframe = self.higher_timeframe
 
         client = ReplayExchangeClient(
-            self.provider, symbols=(self.symbol,), timeframe=self.timeframe,
+            self.provider, symbols=self.symbols, timeframe=self.timeframe,
             equity=self.equity,
         )
         get_instrument_registry().refresh(broker_id="binance", client=client, force=True)
 
         runner = PaperRunner(client, context=context, effective_policy=self.policy)
         runner.runtime_session_id = self.runtime_session_id
+        runner._clock_source = lambda: self.clock.now_ms
         if self.strategy_hook is not None:
             self.strategy_hook(runner.strategy)
         # The freshness guards must judge a historical candle against the
@@ -565,6 +571,17 @@ class ReplaySession:
 
     # ── Running ─────────────────────────────────────────────────────────────
 
+    def _evaluation_times(self, *, start_ms: int | None = None,
+                          end_ms: int | None = None) -> tuple[int, ...]:
+        times: set[int] = set()
+        for symbol in self.symbols:
+            times.update(
+                self.provider.evaluation_times(
+                    symbol, self.timeframe, start_ms=start_ms, end_ms=end_ms,
+                )
+            )
+        return tuple(sorted(times))
+
     def run(self, *, start_ms: int | None = None, end_ms: int | None = None) -> ReplayResult:
         if self.runner is None:
             self.build()
@@ -572,9 +589,8 @@ class ReplaySession:
         identity = self.identity()
         evaluations = 0
         errors: list[str] = []
-        for _close_time in self.provider.step(
-            self.symbol, self.timeframe, start_ms=start_ms, end_ms=end_ms
-        ):
+        for _close_time in self._evaluation_times(start_ms=start_ms, end_ms=end_ms):
+            self.clock.advance_to(_close_time)
             try:
                 self.runner.run_cycle()
                 evaluations += 1

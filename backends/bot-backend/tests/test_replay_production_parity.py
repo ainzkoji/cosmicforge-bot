@@ -11,11 +11,13 @@ import os
 import shutil
 import tempfile
 from contextlib import contextmanager
+from datetime import datetime, timezone
 
 import pytest
 
 from app.replay.engine import ReplaySession, restore_position_state_from_replay_evidence
 from app.replay.historical_provider import TIMEFRAME_MS
+from app.runner.models import SymbolState
 from shared_lib.persistence.db import DB
 from shared_lib.persistence.evidence_schema import ORGANIC_PROVENANCE, REPLAY
 from shared_lib.persistence.migrations import migrate
@@ -67,6 +69,23 @@ def market(*, warmup: int = 150, rise: int = 39, fall: int = 25) -> dict:
         return out
 
     return {"BTCUSDT": {"1m": rows, "15m": aggregate(rows, 15)}}
+
+
+def two_symbol_market() -> dict:
+    btc = market(warmup=120, rise=8, fall=4)["BTCUSDT"]
+    eth_1m = []
+    for row in btc["1m"]:
+        scaled = list(row)
+        for idx in (1, 2, 3, 4):
+            scaled[idx] = f"{float(row[idx]) * 0.04:.4f}"
+        eth_1m.append(scaled)
+    eth_15m = []
+    for row in btc["15m"]:
+        scaled = list(row)
+        for idx in (1, 2, 3, 4):
+            scaled[idx] = f"{float(row[idx]) * 0.04:.4f}"
+        eth_15m.append(scaled)
+    return {"BTCUSDT": btc, "ETHUSDT": {"1m": eth_1m, "15m": eth_15m}}
 
 
 def controlled(strategy):
@@ -391,3 +410,144 @@ def test_the_higher_timeframe_never_leads_the_strategy_candle():
                 assert snapshot.higher_timeframe_closed_candle_time <= close_time
             checked += 1
     assert checked > 100
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# Final closure blockers — multi-symbol and calendar parity
+# ══════════════════════════════════════════════════════════════════════════
+
+
+def test_multi_symbol_replay_uses_one_session_identity_and_deterministic_schedule():
+    with replay_database("multi_symbol_identity") as db:
+        session = ReplaySession(
+            db, two_symbol_market(), bot_instance_id="bot_multi_identity",
+            symbols=("ETHUSDT", "BTCUSDT"), timeframe="1m", higher_timeframe="15m",
+        )
+        times = session._evaluation_times()
+        assert times == tuple(sorted(times))
+        assert len(times) == len(set(times)), "same-timestamp BTC/ETH bars share one cycle"
+
+        session.build()
+        assert tuple(session.runner.trade_symbols) == ("BTCUSDT", "ETHUSDT")
+        manifest = session.identity().manifest()
+        assert tuple(manifest["symbols"]) == ("BTCUSDT", "ETHUSDT")
+
+
+def test_production_position_capacity_counts_positions_across_symbols():
+    from app.decision.reasons import RiskReason
+    from app.execution.position_slots import evaluate_slot
+
+    with replay_database("slot_capacity") as db:
+        bot = "bot_slot_capacity"
+        with db.connect() as conn:
+            conn.execute(
+                "INSERT INTO positions (position_id, bot_instance_id, symbol, side, "
+                "provenance, original_qty, remaining_qty, realized_qty, opened_at, status) "
+                "VALUES ('pos_btc', ?, 'BTCUSDT', 'LONG', 'REPLAY', 1, 1, 0, "
+                "'2026-01-01T00:00:00+00:00', 'OPEN')",
+                (bot,),
+            )
+            conn.execute(
+                "INSERT INTO positions (position_id, bot_instance_id, symbol, side, "
+                "provenance, original_qty, remaining_qty, realized_qty, opened_at, status) "
+                "VALUES ('pos_eth', ?, 'ETHUSDT', 'LONG', 'REPLAY', 1, 1, 0, "
+                "'2026-01-01T00:00:00+00:00', 'OPEN')",
+                (bot,),
+            )
+
+        verdict = evaluate_slot(db, bot, "SOLUSDT", "LONG", max_slots=2)
+
+    assert not verdict.allowed
+    assert verdict.reason == RiskReason.MAX_OPEN_POSITIONS
+    assert verdict.occupied == ("BTCUSDT", "ETHUSDT")
+
+
+def test_production_correlation_filter_blocks_second_same_direction_correlated_symbol():
+    from app.risk.correlation_filter import CorrelationFilter
+
+    blocked, reason = CorrelationFilter().should_block(
+        "ETHUSDT", "LONG", {"BTCUSDT": "LONG"},
+    )
+
+    assert blocked
+    assert "correlation_block" in reason
+    assert "BTCUSDT" in reason
+
+
+def test_historical_daily_close_uses_replay_clock_and_is_idempotent(monkeypatch):
+    from app.execution.position_manager import PositionSide
+
+    series = two_symbol_market()
+    with replay_database("daily_close_clock") as db:
+        session = ReplaySession(
+            db, series, bot_instance_id="bot_daily_close_clock",
+            symbols=("BTCUSDT", "ETHUSDT"), timeframe="1m", higher_timeframe="15m",
+        )
+        runner = session.build()
+        close_ts = int(series["BTCUSDT"]["1m"][110][6])
+        session.clock.advance_to(close_ts)
+        local = datetime.fromtimestamp(close_ts / 1000.0, timezone.utc)
+        monkeypatch.setattr("app.runner.runner.settings.DAILY_CLOSE_ENABLED", True)
+        monkeypatch.setattr("app.runner.runner.settings.DAILY_CLOSE_TIMEZONE", "UTC")
+        monkeypatch.setattr(
+            "app.runner.runner.settings.DAILY_CLOSE_WINDOW_START",
+            f"{local.hour:02d}:{local.minute:02d}",
+        )
+        monkeypatch.setattr(
+            "app.runner.runner.settings.DAILY_CLOSE_WINDOW_END",
+            f"{local.hour:02d}:{(local.minute + 1) % 60:02d}",
+        )
+        monkeypatch.setattr("app.runner.runner.settings.DAILY_CLOSE_MIN_PROFIT_USDT", 0.0)
+        monkeypatch.setattr("app.runner.runner.settings.DAILY_CLOSE_MIN_PROFIT_PCT", 0.0)
+
+        runner.state["BTCUSDT"] = SymbolState(
+            position="LONG", entry_price=90.0, entry_qty=2.0,
+            position_id="pos_daily_close",
+        )
+        runner.position_manager.open_position(
+            "BTCUSDT", PositionSide.LONG, position_id="pos_daily_close",
+            entry_price=90.0, qty=2.0, stop_price=80.0,
+            tp1_price=100.0, tp2_price=110.0,
+        )
+        closed_qty = []
+
+        def fake_close(symbol: str, reason: str):
+            pos = runner.position_manager.get_position(symbol)
+            closed_qty.append(float(pos.current_qty))
+            runner.position_manager.close_position(symbol, reason)
+            runner.state[symbol].position = "NONE"
+            runner.state[symbol].entry_qty = 0.0
+            return {"success": True}
+
+        runner._close_managed_position = fake_close
+
+        assert runner._run_daily_close_from_cycle() == 1
+        assert runner._run_daily_close_from_cycle() == 0
+        assert closed_qty == [2.0]
+
+
+def test_historical_day_and_week_boundaries_use_replay_clock():
+    from app.risk.state import get_week_start
+
+    with replay_database("calendar_boundaries") as db:
+        session = ReplaySession(
+            db, two_symbol_market(), bot_instance_id="bot_calendar_boundaries",
+            symbols=("BTCUSDT", "ETHUSDT"), timeframe="1m", higher_timeframe="15m",
+        )
+        runner = session.build()
+        sunday = int(datetime(2026, 9, 13, 21, 59, tzinfo=timezone.utc).timestamp() * 1000)
+        monday_rome = int(datetime(2026, 9, 13, 22, 1, tzinfo=timezone.utc).timestamp() * 1000)
+        monday_utc = int(datetime(2026, 9, 14, 0, 1, tzinfo=timezone.utc).timestamp() * 1000)
+
+        session.clock.advance_to(sunday)
+        before = runner.daily_budget_engine.risk_date_for(runner._now_utc())
+        before_week = get_week_start(runner._today())
+
+        session.clock.advance_to(monday_rome)
+        after = runner.daily_budget_engine.risk_date_for(runner._now_utc())
+        session.clock.advance_to(monday_utc)
+        after_week = get_week_start(runner._today())
+
+        assert str(before) == "2026-09-13"
+        assert str(after) == "2026-09-14"
+        assert before_week != after_week

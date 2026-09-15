@@ -328,6 +328,9 @@ class PaperRunner:
         self.client = client
         self.settings = settings
         self.context: BotRunContext | None = context  # âœ… Store context
+        # Production defaults to wall-clock UTC. Historical replay may inject
+        # a millisecond clock so calendar decisions use the replay timestamp.
+        self._clock_source = None
         
         # âœ… Store last signal confidence per symbol (used on CLOSE)
         self.last_signal_confidence: dict[str, float] = {}
@@ -654,7 +657,7 @@ class PaperRunner:
         self._closed_symbols_this_cycle: set[str] = set()
 
         # Daily loss kill-switch state
-        self.daily = DailyLossState(day=date.today())
+        self.daily = DailyLossState(day=self._today())
 
         # Drawdown monitor
         self.drawdown_monitor = DrawdownMonitor(self.store)
@@ -1626,7 +1629,7 @@ class PaperRunner:
         from datetime import datetime, timedelta, timezone
         from zoneinfo import ZoneInfo
         try:
-            local = datetime.now(timezone.utc).astimezone(ZoneInfo(settings.DAILY_CLOSE_TIMEZONE))
+            local = self._now_utc().astimezone(ZoneInfo(settings.DAILY_CLOSE_TIMEZONE))
             start_h, start_m = map(int, settings.DAILY_CLOSE_WINDOW_START.split(":"))
             end_h, end_m = map(int, settings.DAILY_CLOSE_WINDOW_END.split(":"))
         except Exception as exc:
@@ -2107,7 +2110,7 @@ class PaperRunner:
                     from app.risk.state import PeriodSnapshot, get_week_start, get_month_start
                     _startup_equity = self.get_account_balance()
                     if _startup_equity > 0:
-                        _today = date.today()
+                        _today = self._today()
                         _week_start = get_week_start(_today)
                         _month_start = get_month_start(_today)
 
@@ -2134,8 +2137,8 @@ class PaperRunner:
             # 1. Update Risk State (daily check)
             # If we passed midnight, day logic handles itself in DailyLossState usually, 
             # but we should ensure DB sync.
-            if self.daily.day != date.today():
-                self.daily = DailyLossState(day=date.today())
+            if self.daily.day != self._today():
+                self.daily = DailyLossState(day=self._today())
                 # Re-load from DB just in case
                 saved_daily = self.store.load_daily(self.daily.day)
                 if saved_daily:
@@ -2467,7 +2470,7 @@ class PaperRunner:
 
     def _day_open_equity(self) -> float:
         bot = self.context.bot_instance_id if self.context else "default"
-        risk_date = self.daily_budget_engine.risk_date_for()
+        risk_date = self.daily_budget_engine.risk_date_for(self._now_utc())
         try:
             with self.db.connect() as conn:
                 rows = conn.execute(
@@ -2515,7 +2518,7 @@ class PaperRunner:
         decision = self.daily_budget_engine.evaluate(
             AdaptiveDailyRiskInputs(
                 bot_instance_id=self.context.bot_instance_id if self.context else "default",
-                risk_date=self.daily_budget_engine.risk_date_for(),
+                risk_date=self.daily_budget_engine.risk_date_for(self._now_utc()),
                 day_open_equity=self._day_open_equity(),
                 current_equity=float(self.get_account_balance() or 0.0),
                 realized_pnl_today=float(getattr(self.daily, "realized_pnl", 0.0) or 0.0),
@@ -2543,7 +2546,7 @@ class PaperRunner:
         Returns a dict suitable for spreading into PolicyContext keyword args.
         Falls back to 0.0 if snapshots are unavailable.
         """
-        today = date.today()
+        today = self._today()
         equity = self.get_account_balance()
         result = {
             "weekly_drawdown_pct": 0.0,
@@ -5434,6 +5437,19 @@ class PaperRunner:
             symbol, confirmed,
         )
 
+    def _now_ms(self) -> int:
+        source = getattr(self, "_clock_source", None)
+        if source is not None:
+            value = source()
+            return int(value.timestamp() * 1000) if hasattr(value, "timestamp") else int(value)
+        return int(datetime.now(timezone.utc).timestamp() * 1000)
+
+    def _now_utc(self) -> datetime:
+        return datetime.fromtimestamp(self._now_ms() / 1000.0, timezone.utc)
+
+    def _today(self) -> date:
+        return self._now_utc().date()
+
     def _effective_execution_mode(self) -> str:
         mode = self.context.execution_mode if self.context else getattr(settings, "EXECUTION_MODE", "paper")
         normalized = str(mode or "paper").strip().lower()
@@ -7237,7 +7253,7 @@ class PaperRunner:
 
                     _daily_reservation_key = None
                     if exec_signal in {"BUY", "SELL"} and bool(getattr(settings, "ADAPTIVE_DAILY_RISK_ENABLED", True)):
-                        _risk_date = self.daily_budget_engine.risk_date_for()
+                        _risk_date = self.daily_budget_engine.risk_date_for(self._now_utc())
                         _daily_reservation_key = trace_id or f"{self.cycle_id}:{symbol}:{exec_signal}"
                         _planned_risk = planned_initial_risk_usdt(
                             quantity=float(getattr(policy, "quantity", 0.0) or 0.0),
@@ -7315,14 +7331,14 @@ class PaperRunner:
                         if _status in {"FILLED", "PARTIALLY_FILLED"} and _actual_risk > 0:
                             self.daily_budget_engine.settle_partial(
                                 self.context.bot_instance_id if self.context else "default",
-                                self.daily_budget_engine.risk_date_for(),
+                                self.daily_budget_engine.risk_date_for(self._now_utc()),
                                 _daily_reservation_key,
                                 _actual_risk,
                             )
                         elif _status not in {"ORDER_PLACED", "SUBMITTED", "PENDING"}:
                             self.daily_budget_engine.release(
                                 self.context.bot_instance_id if self.context else "default",
-                                self.daily_budget_engine.risk_date_for(),
+                                self.daily_budget_engine.risk_date_for(self._now_utc()),
                                 _daily_reservation_key,
                             )
 
