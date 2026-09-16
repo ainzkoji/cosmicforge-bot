@@ -56,6 +56,8 @@ def main() -> int:
     parser.add_argument("--data", default=os.path.join("data", "research"))
     parser.add_argument("--out", default=None, help="research database path")
     parser.add_argument("--json", action="store_true")
+    parser.add_argument("--out-json", default=None, help="write Phase 15 JSON artifact")
+    parser.add_argument("--out-md", default=None, help="write Phase 15 Markdown artifact")
     parser.add_argument(
         "--include-final-holdout", action="store_true",
         help="§14.10 forbids this for anything that informs a decision",
@@ -81,12 +83,14 @@ def main() -> int:
         partition,
     )
     from shared_lib.persistence.db import DB
+    from shared_lib.persistence.evidence_schema import ensure_evidence_schema
     from shared_lib.persistence.migrations import migrate
 
     if os.path.exists(out):
         os.remove(out)
     db = DB(out)
     migrate(db)
+    ensure_evidence_schema(db)
 
     htf = HTF_FOR.get(args.timeframe, "4h")
     print(f"database   : {out}")
@@ -144,7 +148,7 @@ def main() -> int:
     print(f"\n{total_evaluations:,} evaluations in {elapsed / 60:.1f} min")
 
     sys.path.insert(0, os.path.join(REPO_ROOT, "scripts"))
-    from build_master_ensemble_baseline import build, render
+    from build_master_ensemble_baseline import build, markdown_report, render
 
     report = build(db, bot_id=None, provenance="REPLAY")
     report["dataset"] = {
@@ -152,6 +156,17 @@ def main() -> int:
         "symbols": args.symbols, "final_holdout_included": args.include_final_holdout,
         "generated_at": datetime.now(timezone.utc).isoformat(),
     }
+    if args.out_json:
+        out_json = args.out_json if os.path.isabs(args.out_json) else os.path.join(REPO_ROOT, args.out_json)
+        os.makedirs(os.path.dirname(out_json), exist_ok=True)
+        with open(out_json, "w", encoding="utf-8") as handle:
+            json.dump(report, handle, indent=2, sort_keys=True, default=str)
+            handle.write("\n")
+    if args.out_md:
+        out_md = args.out_md if os.path.isabs(args.out_md) else os.path.join(REPO_ROOT, args.out_md)
+        os.makedirs(os.path.dirname(out_md), exist_ok=True)
+        with open(out_md, "w", encoding="utf-8") as handle:
+            handle.write(markdown_report(report))
     print()
     print(json.dumps(report, indent=2, default=str) if args.json else render(report))
     return 0

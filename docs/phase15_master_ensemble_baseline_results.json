@@ -1,0 +1,649 @@
+{
+  "benchmark_preservation": [
+    {
+      "current_status": "not part of current Master Ensemble baseline path",
+      "historical_issue": "STOP_TOO_WIDE historical unit/path defect",
+      "period": "MAY_2026"
+    },
+    {
+      "current_status": "Phase 12/13 evidence path records attempts, fills and positions when approvals occur",
+      "historical_issue": "PAPER_ONLY without actual simulated fills",
+      "period": "JULY_2026_EXECUTION_DEFECT"
+    },
+    {
+      "current_status": "still the dominant observed bottleneck when opportunity rate is low",
+      "historical_issue": "strategy_no_signal/HOLD / opportunity scarcity",
+      "period": "JULY_2026_NATURAL_BEHAVIOR"
+    },
+    {
+      "current_status": "threshold authority and lifecycle are tested separately; baseline still measures zero downstream exercise when approvals are absent",
+      "historical_issue": "multiple confidence authorities, same-candle repeated evaluation, generic HOLD evidence, configuration conflict, lifecycle defects",
+      "period": "SEPTEMBER_2026"
+    }
+  ],
+  "bots": [
+    "bot_a8117dc719fc"
+  ],
+  "components": {
+    "active": {
+      "donchian_breakout": 305,
+      "sma_cross": 305,
+      "supertrend": 305,
+      "trend_pullback": 305
+    },
+    "never_active": [
+      "bollinger_reversion",
+      "squeeze_breakout",
+      "vwap_reversion"
+    ],
+    "never_supported": [
+      "sma_cross"
+    ],
+    "opposing": {
+      "supertrend": 1
+    },
+    "support_count_distribution": {
+      "0": 341,
+      "1": 52,
+      "2": 3
+    },
+    "supporting": {
+      "donchian_breakout": 10,
+      "supertrend": 37,
+      "trend_pullback": 11
+    }
+  },
+  "confidence": {
+    "confidence_minus_threshold": {
+      "max": 0.0,
+      "mean": -0.07554715996392802,
+      "min": -0.504195571288446,
+      "n": 283,
+      "p10": -0.3969734191786126,
+      "p50": 0.0,
+      "p90": 0.0
+    },
+    "effective_entry_threshold": {
+      "max": 0.814643,
+      "mean": 0.1565098595890411,
+      "min": 0.0,
+      "n": 292,
+      "p10": 0.0,
+      "p50": 0.0,
+      "p90": 0.7
+    },
+    "raw_confidence": {
+      "max": 0.6046431056191879,
+      "mean": 0.0636785608841285,
+      "min": 0.0,
+      "n": 283,
+      "p10": 0.0,
+      "p50": 0.0,
+      "p90": 0.30497906681142817
+    }
+  },
+  "confidence_distributions_by_dimension": {
+    "decision_outcome": {
+      "rejected": {
+        "effective_entry_threshold": {
+          "max": 0.814643,
+          "mean": 0.1565098595890411,
+          "min": 0.0,
+          "n": 292,
+          "p10": 0.0,
+          "p50": 0.0,
+          "p90": 0.7
+        },
+        "raw_confidence": {
+          "max": 0.6046431056191879,
+          "mean": 0.0636785608841285,
+          "min": 0.0,
+          "n": 283,
+          "p10": 0.0,
+          "p50": 0.0,
+          "p90": 0.30497906681142817
+        },
+        "rows": 396,
+        "support_count": {
+          "max": 2.0,
+          "mean": 0.14646464646464646,
+          "min": 0.0,
+          "n": 396,
+          "p10": 0.0,
+          "p50": 0.0,
+          "p90": 1.0
+        }
+      }
+    },
+    "direction": {
+      "FLAT": {
+        "effective_entry_threshold": {
+          "max": 0.7,
+          "mean": 0.026582278481012658,
+          "min": 0.0,
+          "n": 237,
+          "p10": 0.0,
+          "p50": 0.0,
+          "p90": 0.0
+        },
+        "raw_confidence": {
+          "max": 0.0,
+          "mean": 0.0,
+          "min": 0.0,
+          "n": 228,
+          "p10": 0.0,
+          "p50": 0.0,
+          "p90": 0.0
+        },
+        "rows": 341,
+        "support_count": {
+          "max": 0.0,
+          "mean": 0.0,
+          "min": 0.0,
+          "n": 341,
+          "p10": 0.0,
+          "p50": 0.0,
+          "p90": 0.0
+        }
+      },
+      "LONG": {
+        "effective_entry_threshold": {
+          "max": 0.784643,
+          "mean": 0.709735,
+          "min": 0.7,
+          "n": 20,
+          "p10": 0.7,
+          "p50": 0.7,
+          "p90": 0.755414
+        },
+        "raw_confidence": {
+          "max": 0.6046431056191879,
+          "mean": 0.34278919098804556,
+          "min": 0.2795712618062192,
+          "n": 20,
+          "p10": 0.2977582963051914,
+          "p50": 0.30737266380028905,
+          "p90": 0.5924597728073802
+        },
+        "rows": 20,
+        "support_count": {
+          "max": 2.0,
+          "mean": 1.1,
+          "min": 1.0,
+          "n": 20,
+          "p10": 1.0,
+          "p50": 1.0,
+          "p90": 2.0
+        }
+      },
+      "SHORT": {
+        "effective_entry_threshold": {
+          "max": 0.814643,
+          "mean": 0.7201765428571428,
+          "min": 0.7,
+          "n": 35,
+          "p10": 0.7,
+          "p50": 0.7,
+          "p90": 0.808147
+        },
+        "raw_confidence": {
+          "max": 0.5858827963592044,
+          "mean": 0.31900711172707014,
+          "min": 0.2671921144478973,
+          "n": 35,
+          "p10": 0.291916599839613,
+          "p50": 0.30600149353963857,
+          "p90": 0.3359577712150725
+        },
+        "rows": 35,
+        "support_count": {
+          "max": 2.0,
+          "mean": 1.0285714285714285,
+          "min": 1.0,
+          "n": 35,
+          "p10": 1.0,
+          "p50": 1.0,
+          "p90": 1.0
+        }
+      }
+    },
+    "month": {
+      "2026-09": {
+        "effective_entry_threshold": {
+          "max": 0.814643,
+          "mean": 0.1565098595890411,
+          "min": 0.0,
+          "n": 292,
+          "p10": 0.0,
+          "p50": 0.0,
+          "p90": 0.7
+        },
+        "raw_confidence": {
+          "max": 0.6046431056191879,
+          "mean": 0.0636785608841285,
+          "min": 0.0,
+          "n": 283,
+          "p10": 0.0,
+          "p50": 0.0,
+          "p90": 0.30497906681142817
+        },
+        "rows": 396,
+        "support_count": {
+          "max": 2.0,
+          "mean": 0.14646464646464646,
+          "min": 0.0,
+          "n": 396,
+          "p10": 0.0,
+          "p50": 0.0,
+          "p90": 1.0
+        }
+      }
+    },
+    "regime": {
+      "LOW_VOLATILITY_CHOP": {
+        "effective_entry_threshold": {
+          "max": 0.7,
+          "mean": 0.7,
+          "min": 0.7,
+          "n": 9,
+          "p10": 0.7,
+          "p50": 0.7,
+          "p90": 0.7
+        },
+        "raw_confidence": {
+          "n": 0
+        },
+        "rows": 36,
+        "support_count": {
+          "max": 0.0,
+          "mean": 0.0,
+          "min": 0.0,
+          "n": 36,
+          "p10": 0.0,
+          "p50": 0.0,
+          "p90": 0.0
+        }
+      },
+      "STRONG_TREND": {
+        "effective_entry_threshold": {
+          "n": 0
+        },
+        "raw_confidence": {
+          "n": 0
+        },
+        "rows": 14,
+        "support_count": {
+          "max": 0.0,
+          "mean": 0.0,
+          "min": 0.0,
+          "n": 14,
+          "p10": 0.0,
+          "p50": 0.0,
+          "p90": 0.0
+        }
+      },
+      "WEAK_TREND": {
+        "effective_entry_threshold": {
+          "max": 0.814643,
+          "mean": 0.1392257208480565,
+          "min": 0.0,
+          "n": 283,
+          "p10": 0.0,
+          "p50": 0.0,
+          "p90": 0.7
+        },
+        "raw_confidence": {
+          "max": 0.6046431056191879,
+          "mean": 0.0636785608841285,
+          "min": 0.0,
+          "n": 283,
+          "p10": 0.0,
+          "p50": 0.0,
+          "p90": 0.30497906681142817
+        },
+        "rows": 340,
+        "support_count": {
+          "max": 2.0,
+          "mean": 0.17058823529411765,
+          "min": 0.0,
+          "n": 340,
+          "p10": 0.0,
+          "p50": 0.0,
+          "p90": 1.0
+        }
+      },
+      "unknown": {
+        "effective_entry_threshold": {
+          "n": 0
+        },
+        "raw_confidence": {
+          "n": 0
+        },
+        "rows": 6,
+        "support_count": {
+          "max": 0.0,
+          "mean": 0.0,
+          "min": 0.0,
+          "n": 6,
+          "p10": 0.0,
+          "p50": 0.0,
+          "p90": 0.0
+        }
+      }
+    },
+    "session": {
+      "americas": {
+        "effective_entry_threshold": {
+          "max": 0.808147,
+          "mean": 0.16316117391304347,
+          "min": 0.0,
+          "n": 115,
+          "p10": 0.0,
+          "p50": 0.0,
+          "p90": 0.7
+        },
+        "raw_confidence": {
+          "max": 0.3359577712150725,
+          "mean": 0.06875640372237249,
+          "min": 0.0,
+          "n": 114,
+          "p10": 0.0,
+          "p50": 0.0,
+          "p90": 0.31283040583849475
+        },
+        "rows": 176,
+        "support_count": {
+          "max": 1.0,
+          "mean": 0.14204545454545456,
+          "min": 0.0,
+          "n": 176,
+          "p10": 0.0,
+          "p50": 0.0,
+          "p90": 1.0
+        }
+      },
+      "asia": {
+        "effective_entry_threshold": {
+          "max": 0.814643,
+          "mean": 0.13158434408602152,
+          "min": 0.0,
+          "n": 93,
+          "p10": 0.0,
+          "p50": 0.0,
+          "p90": 0.7
+        },
+        "raw_confidence": {
+          "max": 0.5858827963592044,
+          "mean": 0.03540508962389795,
+          "min": 0.0,
+          "n": 85,
+          "p10": 0.0,
+          "p50": 0.0,
+          "p90": 0.2671921144478973
+        },
+        "rows": 136,
+        "support_count": {
+          "max": 2.0,
+          "mean": 0.07352941176470588,
+          "min": 0.0,
+          "n": 136,
+          "p10": 0.0,
+          "p50": 0.0,
+          "p90": 0.0
+        }
+      },
+      "europe": {
+        "effective_entry_threshold": {
+          "max": 0.7,
+          "mean": 0.175,
+          "min": 0.0,
+          "n": 84,
+          "p10": 0.0,
+          "p50": 0.0,
+          "p90": 0.7
+        },
+        "raw_confidence": {
+          "max": 0.6046431056191879,
+          "mean": 0.08539726295031638,
+          "min": 0.0,
+          "n": 84,
+          "p10": 0.0,
+          "p50": 0.0,
+          "p90": 0.325
+        },
+        "rows": 84,
+        "support_count": {
+          "max": 2.0,
+          "mean": 0.27380952380952384,
+          "min": 0.0,
+          "n": 84,
+          "p10": 0.0,
+          "p50": 0.0,
+          "p90": 1.0
+        }
+      }
+    },
+    "symbol": {
+      "BTCUSDT": {
+        "effective_entry_threshold": {
+          "max": 0.7,
+          "mean": 0.13900709219858154,
+          "min": 0.0,
+          "n": 141,
+          "p10": 0.0,
+          "p50": 0.0,
+          "p90": 0.7
+        },
+        "raw_confidence": {
+          "max": 0.6046431056191879,
+          "mean": 0.05723602057843144,
+          "min": 0.0,
+          "n": 136,
+          "p10": 0.0,
+          "p50": 0.0,
+          "p90": 0.30600149353963857
+        },
+        "rows": 198,
+        "support_count": {
+          "max": 2.0,
+          "mean": 0.12626262626262627,
+          "min": 0.0,
+          "n": 198,
+          "p10": 0.0,
+          "p50": 0.0,
+          "p90": 1.0
+        }
+      },
+      "ETHUSDT": {
+        "effective_entry_threshold": {
+          "max": 0.814643,
+          "mean": 0.17285350331125826,
+          "min": 0.0,
+          "n": 151,
+          "p10": 0.0,
+          "p50": 0.0,
+          "p90": 0.7
+        },
+        "raw_confidence": {
+          "max": 0.5858827963592044,
+          "mean": 0.06963900633701829,
+          "min": 0.0,
+          "n": 147,
+          "p10": 0.0,
+          "p50": 0.0,
+          "p90": 0.30497906681142817
+        },
+        "rows": 198,
+        "support_count": {
+          "max": 2.0,
+          "mean": 0.16666666666666666,
+          "min": 0.0,
+          "n": 198,
+          "p10": 0.0,
+          "p50": 0.0,
+          "p90": 1.0
+        }
+      }
+    },
+    "year": {
+      "2026": {
+        "effective_entry_threshold": {
+          "max": 0.814643,
+          "mean": 0.1565098595890411,
+          "min": 0.0,
+          "n": 292,
+          "p10": 0.0,
+          "p50": 0.0,
+          "p90": 0.7
+        },
+        "raw_confidence": {
+          "max": 0.6046431056191879,
+          "mean": 0.0636785608841285,
+          "min": 0.0,
+          "n": 283,
+          "p10": 0.0,
+          "p50": 0.0,
+          "p90": 0.30497906681142817
+        },
+        "rows": 396,
+        "support_count": {
+          "max": 2.0,
+          "mean": 0.14646464646464646,
+          "min": 0.0,
+          "n": 396,
+          "p10": 0.0,
+          "p50": 0.0,
+          "p90": 1.0
+        }
+      }
+    }
+  },
+  "consensus": {
+    "buy_score": {
+      "max": 0.6046,
+      "mean": 0.01837948717948718,
+      "min": 0.0,
+      "n": 390,
+      "p10": 0.0,
+      "p50": 0.0,
+      "p90": 0.0
+    },
+    "consensus_observed": {
+      "max": 0.6046431056191879,
+      "mean": 0.05908535321379792,
+      "min": 0.0,
+      "n": 305,
+      "p10": 0.0,
+      "p50": 0.0,
+      "p90": 0.30449572291403276
+    },
+    "sell_score": {
+      "max": 0.5859,
+      "mean": 0.028629230769230768,
+      "min": 0.0,
+      "n": 390,
+      "p10": 0.0,
+      "p50": 0.0,
+      "p90": 0.0
+    }
+  },
+  "diagnosis": {
+    "findings": [
+      "NO_DIRECTIONAL_CANDIDATE is dominant: 341/396 (86%) of evaluations produced no opportunity at all, so the entry threshold was never consulted on them.",
+      "Median raw confidence is exactly 0.0 \u2014 on a typical candle the ensemble has no directional conviction whatsoever.",
+      "Components active but never supporting a direction: sma_cross.",
+      "Components never active in this window (regime-disabled): bollinger_reversion, squeeze_breakout, vwap_reversion.",
+      "Zero approvals in 396 evaluations: nothing reached the risk layer, so risk, sizing, feasibility and execution are entirely unmeasured."
+    ],
+    "sample_adequacy": "THIN",
+    "sample_size": 396
+  },
+  "funnel": {
+    "ENTRY_CONFIDENCE_BELOW_THRESHOLD": 47,
+    "NO_NEW_CANDLE": 4416,
+    "NO_OPPORTUNITY": 155,
+    "REGIME_BLOCKED": 20,
+    "REGIME_LOW_VOL_CHOP": 133,
+    "SESSION_BLOCKED": 35,
+    "STOP_REQUESTED": 6
+  },
+  "phase15_classification": {
+    "classification": "E_INCONCLUSIVE",
+    "reason": "sample lacks enough evaluations and/or closed trades for a primary-strategy retention or replacement decision"
+  },
+  "profitability": {
+    "closed_trades": 0,
+    "note": "no closed positions; profitability is not measurable"
+  },
+  "provenance": [
+    "PAPER_FORWARD"
+  ],
+  "ratios": {
+    "approval_rate": 0.0,
+    "closed_candles_evaluated": 396,
+    "execution_attempts": 0,
+    "execution_feasible": 0,
+    "fills": 0,
+    "opportunity_rate": 0.1388888888888889,
+    "produced_an_opportunity": 55,
+    "quality_approved": 0,
+    "reached_risk": 0
+  },
+  "reason_counts": {
+    "all_rows": {
+      "ENTRY_CONFIDENCE_BELOW_THRESHOLD": 47,
+      "NO_NEW_CANDLE": 4416,
+      "NO_OPPORTUNITY": 155,
+      "REGIME_BLOCKED": 20,
+      "REGIME_LOW_VOL_CHOP": 133,
+      "SESSION_BLOCKED": 35,
+      "STOP_REQUESTED": 6
+    },
+    "approved": {},
+    "attempt": {},
+    "block": {
+      "REGIME_BLOCKED": 20,
+      "REGIME_LOW_VOL_CHOP": 133,
+      "SESSION_BLOCKED": 35
+    },
+    "fill": {},
+    "no_trade": {
+      "ENTRY_CONFIDENCE_BELOW_THRESHOLD": 47,
+      "NO_OPPORTUNITY": 155,
+      "STOP_REQUESTED": 6
+    }
+  },
+  "regime_profitability_placeholder": "populated from closed positions when fills exist",
+  "regimes": {
+    "LOW_VOLATILITY_CHOP": 36,
+    "STRONG_TREND": 14,
+    "WEAK_TREND": 340
+  },
+  "symbols": {
+    "BTCUSDT": 198,
+    "ETHUSDT": 198
+  },
+  "threshold_gap_buckets": {
+    "at_threshold_or_unresolved": 228,
+    "below_by_10_to_20pct": 2,
+    "below_by_5_to_10pct": 1,
+    "below_by_more_than_20pct": 52
+  },
+  "totals": {
+    "decision_rows": 4812,
+    "heartbeats": 4416,
+    "real_evaluations": 396
+  },
+  "transition_rates": {
+    "approved_to_risk_seen": 0.0,
+    "attempt_to_fill": 0.0,
+    "evaluation_to_opportunity": 0.1388888888888889,
+    "feasible_to_attempt": 0.0,
+    "opportunity_to_quality_approved": 0.0,
+    "risk_seen_to_execution_feasible": 0.0
+  },
+  "window": {
+    "from": "2026-09-08T04:32:36.858606+00:00",
+    "to": "2026-09-10T23:45:06.996541+00:00"
+  }
+}

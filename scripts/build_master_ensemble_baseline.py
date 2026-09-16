@@ -69,6 +69,47 @@ def percentiles(values: list[float]) -> dict:
     }
 
 
+def _safe_json(value: str | None, default):
+    if not value:
+        return default
+    try:
+        return json.loads(value)
+    except Exception:
+        return default
+
+
+def _month(iso: str | None) -> str:
+    return str(iso or "")[:7] or "unknown"
+
+
+def _year(iso: str | None) -> str:
+    return str(iso or "")[:4] or "unknown"
+
+
+def _inferred_direction(row: dict) -> str:
+    buy = float(row.get("buy_score") or 0.0)
+    sell = float(row.get("sell_score") or 0.0)
+    if buy > sell:
+        return "LONG"
+    if sell > buy:
+        return "SHORT"
+    return "FLAT"
+
+
+def _gap_bucket(value: float) -> str:
+    if value < -0.20:
+        return "below_by_more_than_20pct"
+    if value < -0.10:
+        return "below_by_10_to_20pct"
+    if value < -0.05:
+        return "below_by_5_to_10pct"
+    if value < 0:
+        return "below_by_less_than_5pct"
+    if value == 0:
+        return "at_threshold_or_unresolved"
+    return "above_threshold"
+
+
 def build(db, *, bot_id: str | None, provenance: str | None) -> dict:
     where, args = ["1=1"], []
     if bot_id:
@@ -128,6 +169,8 @@ def build(db, *, bot_id: str | None, provenance: str | None) -> dict:
         "opportunity_rate": len(opportunities) / n,
         "approval_rate": len(approved) / n,
     }
+    report["reason_counts"] = reason_counts(rows, evaluations)
+    report["transition_rates"] = transition_rates(report["ratios"])
 
     # §15.3 / §15.4 distributions
     def col(key):
@@ -143,25 +186,35 @@ def build(db, *, bot_id: str | None, provenance: str | None) -> dict:
             and r["effective_entry_threshold"] is not None
         ]),
     }
+    report["threshold_gap_buckets"] = dict(Counter(
+        _gap_bucket(float(r["raw_confidence"]) - float(r["effective_entry_threshold"]))
+        for r in evaluations
+        if r["raw_confidence"] is not None
+        and r["effective_entry_threshold"] is not None
+    ))
     report["consensus"] = {
         "buy_score": percentiles(col("buy_score")),
         "sell_score": percentiles(col("sell_score")),
         "consensus_observed": percentiles(col("consensus_observed")),
     }
+    report["confidence_distributions_by_dimension"] = confidence_by_dimension(evaluations)
 
     # §15.5 regimes
     report["regimes"] = dict(Counter(
         str(r["regime"]) for r in evaluations if r["regime"] is not None
     ))
+    report["regime_profitability_placeholder"] = (
+        "populated from closed positions when fills exist"
+    )
 
     # §15.8 component contribution
     active, supporting, opposing = Counter(), Counter(), Counter()
     for r in evaluations:
-        for name in json.loads(r["active_strategies_json"] or "[]"):
+        for name in _safe_json(r["active_strategies_json"], []):
             active[name] += 1
-        for name in json.loads(r["supporting_strategies_json"] or "[]"):
+        for name in _safe_json(r["supporting_strategies_json"], []):
             supporting[name] += 1
-        for name in json.loads(r["opposing_strategies_json"] or "[]"):
+        for name in _safe_json(r["opposing_strategies_json"], []):
             opposing[name] += 1
     report["components"] = {
         "active": dict(active),
@@ -169,10 +222,13 @@ def build(db, *, bot_id: str | None, provenance: str | None) -> dict:
         "opposing": dict(opposing),
         "never_active": sorted(set(_ALL_COMPONENTS) - set(active)),
         "never_supported": sorted(set(active) - set(supporting)),
+        "support_count_distribution": support_distribution(evaluations),
     }
 
     report["profitability"] = profitability(db, bot_id=bot_id, provenance=provenance)
     report["diagnosis"] = diagnose(report, evaluations)
+    report["phase15_classification"] = classify_phase15(report)
+    report["benchmark_preservation"] = historical_benchmark()
     return report
 
 
@@ -180,6 +236,105 @@ _ALL_COMPONENTS = (
     "supertrend", "vwap_reversion", "trend_pullback", "squeeze_breakout",
     "sma_cross", "donchian_breakout", "bollinger_reversion",
 )
+
+
+def reason_counts(all_rows: list[dict], evaluations: list[dict]) -> dict:
+    """§15.1 complete no-trade/block/approved/attempt/fill reason counts."""
+    no_trade = Counter()
+    block = Counter()
+    approved = Counter()
+    attempts = Counter()
+    fills = Counter()
+    for row in evaluations:
+        reason = str(row.get("primary_reason") or "UNKNOWN")
+        action = str(row.get("final_action") or "")
+        if action == "APPROVED" or reason == "APPROVED_FOR_EXECUTION":
+            approved[reason] += 1
+        elif reason.startswith(("RISK_", "EXECUTION_", "REGIME_", "SESSION_", "EVENT_", "HTF_")):
+            block[reason] += 1
+        else:
+            no_trade[reason] += 1
+        if row.get("execution_attempt_id"):
+            attempts[reason] += 1
+        if row.get("position_id"):
+            fills[reason] += 1
+    return {
+        "all_rows": dict(Counter(str(r.get("primary_reason") or "UNKNOWN") for r in all_rows)),
+        "no_trade": dict(no_trade),
+        "block": dict(block),
+        "approved": dict(approved),
+        "attempt": dict(attempts),
+        "fill": dict(fills),
+    }
+
+
+def transition_rates(ratios: dict) -> dict:
+    """§15.2 transition rates between funnel stages."""
+    def rate(num, den):
+        return (num / den) if den else 0.0
+
+    evals = ratios.get("closed_candles_evaluated", 0)
+    opps = ratios.get("produced_an_opportunity", 0)
+    approved = ratios.get("quality_approved", 0)
+    risk = ratios.get("reached_risk", 0)
+    feasible = ratios.get("execution_feasible", 0)
+    attempts = ratios.get("execution_attempts", 0)
+    fills = ratios.get("fills", 0)
+    return {
+        "evaluation_to_opportunity": rate(opps, evals),
+        "opportunity_to_quality_approved": rate(approved, opps),
+        "approved_to_risk_seen": rate(risk, approved),
+        "risk_seen_to_execution_feasible": rate(feasible, risk),
+        "feasible_to_attempt": rate(attempts, feasible),
+        "attempt_to_fill": rate(fills, attempts),
+    }
+
+
+def confidence_by_dimension(rows: list[dict]) -> dict:
+    """§15.3 confidence/threshold/support distributions by audit dimensions."""
+    dimensions = {
+        "symbol": lambda r: str(r.get("symbol") or "unknown"),
+        "direction": _inferred_direction,
+        "regime": lambda r: str(r.get("regime") or "unknown"),
+        "session": lambda r: _session_bucket(r.get("evaluated_at")),
+        "month": lambda r: _month(r.get("evaluated_at")),
+        "year": lambda r: _year(r.get("evaluated_at")),
+        "decision_outcome": lambda r: (
+            "approved" if str(r.get("final_action") or "") == "APPROVED"
+            else "rejected"
+        ),
+    }
+    out: dict[str, dict] = {}
+    for name, key_fn in dimensions.items():
+        buckets: dict[str, list[dict]] = {}
+        for row in rows:
+            buckets.setdefault(key_fn(row), []).append(row)
+        out[name] = {
+            bucket: {
+                "rows": len(group),
+                "raw_confidence": percentiles([
+                    float(r["raw_confidence"]) for r in group
+                    if r.get("raw_confidence") is not None
+                ]),
+                "effective_entry_threshold": percentiles([
+                    float(r["effective_entry_threshold"]) for r in group
+                    if r.get("effective_entry_threshold") is not None
+                ]),
+                "support_count": percentiles([
+                    float(len(_safe_json(r.get("supporting_strategies_json"), [])))
+                    for r in group
+                ]),
+            }
+            for bucket, group in sorted(buckets.items())
+        }
+    return out
+
+
+def support_distribution(rows: list[dict]) -> dict:
+    return dict(Counter(
+        len(_safe_json(row.get("supporting_strategies_json"), []))
+        for row in rows
+    ))
 
 
 def diagnose(report: dict, evaluations: list[dict]) -> dict:
@@ -297,7 +452,8 @@ def profitability(db, *, bot_id: str | None, provenance: str | None) -> dict:
         decisions = {
             r["decision_id"]: dict(r) for r in conn.execute(
                 "SELECT decision_id, regime, symbol, raw_confidence, "
-                "consensus_observed, stop_price FROM trading_decisions"
+                "consensus_observed, stop_price, supporting_strategies_json "
+                "FROM trading_decisions"
             )
         }
 
@@ -321,9 +477,15 @@ def profitability(db, *, bot_id: str | None, provenance: str | None) -> dict:
             "gross": gross, "fees": fees, "net": net,
             "regime": decision.get("regime") or "unknown",
             "month": str(row.get("opened_at") or "")[:7],
+            "year": str(row.get("opened_at") or "")[:4],
             "session": _session_bucket(row.get("opened_at")),
             "r_multiple": (net / risk) if risk else None,
             "notional": entry * qty,
+            "components": _safe_json(
+                decision.get("supporting_strategies_json")
+                if decision else None,
+                [],
+            ),
         })
 
     nets = [t["net"] for t in trades]
@@ -366,8 +528,81 @@ def profitability(db, *, bot_id: str | None, provenance: str | None) -> dict:
         "by_symbol": segment("symbol"),
         "by_side": segment("side"),
         "by_month": segment("month"),
+        "by_year": segment("year"),
         "by_session": segment("session"),
+        "by_component": profitability_by_component(trades),
     }
+
+
+def profitability_by_component(trades: list[dict]) -> dict:
+    out: dict[str, dict] = {}
+    for trade in trades:
+        components = trade.get("components") or ["NO_SUPPORTING_COMPONENT"]
+        for component in components:
+            bucket = out.setdefault(str(component), {"trades": 0, "net_pnl": 0.0, "wins": 0})
+            bucket["trades"] += 1
+            bucket["net_pnl"] += trade["net"]
+            bucket["wins"] += 1 if trade["net"] > 0 else 0
+    for bucket in out.values():
+        bucket["win_rate"] = bucket["wins"] / bucket["trades"]
+        bucket["expectancy"] = bucket["net_pnl"] / bucket["trades"]
+    return out
+
+
+def classify_phase15(report: dict) -> dict:
+    """§15 final gate: choose exactly one current-state classification."""
+    evaluations = int(report.get("totals", {}).get("real_evaluations") or 0)
+    closed = int(report.get("profitability", {}).get("closed_trades") or 0)
+    approvals = int(report.get("ratios", {}).get("quality_approved") or 0)
+    if evaluations < 500 or closed < 30:
+        label = "E_INCONCLUSIVE"
+        reason = (
+            "sample lacks enough evaluations and/or closed trades for a "
+            "primary-strategy retention or replacement decision"
+        )
+    elif approvals == 0:
+        label = "D_REPLACE_AS_PRIMARY_OPPORTUNITY_PRODUCER"
+        reason = "adequate sample produced no approved entries"
+    else:
+        profit = report.get("profitability", {})
+        expectancy = float(profit.get("expectancy_per_trade") or 0.0)
+        pf = profit.get("profit_factor")
+        if expectancy > 0 and (pf is None or float(pf) >= 1.3):
+            label = "A_RETAIN_AS_PRIMARY"
+            reason = "closed-trade expectancy and profit factor pass current gates"
+        elif expectancy > 0:
+            label = "B_RETAIN_BUT_TUNE_LATER"
+            reason = "expectancy is positive but profit factor is below the target"
+        else:
+            label = "C_RETAIN_AS_EXPERT_LAYER"
+            reason = "entry evidence exists but closed-trade economics do not justify primary status"
+    return {"classification": label, "reason": reason}
+
+
+def historical_benchmark() -> list[dict]:
+    """§52 before/after benchmark that must stay visible in Phase 15/16."""
+    return [
+        {
+            "period": "MAY_2026",
+            "historical_issue": "STOP_TOO_WIDE historical unit/path defect",
+            "current_status": "not part of current Master Ensemble baseline path",
+        },
+        {
+            "period": "JULY_2026_EXECUTION_DEFECT",
+            "historical_issue": "PAPER_ONLY without actual simulated fills",
+            "current_status": "Phase 12/13 evidence path records attempts, fills and positions when approvals occur",
+        },
+        {
+            "period": "JULY_2026_NATURAL_BEHAVIOR",
+            "historical_issue": "strategy_no_signal/HOLD / opportunity scarcity",
+            "current_status": "still the dominant observed bottleneck when opportunity rate is low",
+        },
+        {
+            "period": "SEPTEMBER_2026",
+            "historical_issue": "multiple confidence authorities, same-candle repeated evaluation, generic HOLD evidence, configuration conflict, lifecycle defects",
+            "current_status": "threshold authority and lifecycle are tested separately; baseline still measures zero downstream exercise when approvals are absent",
+        },
+    ]
 
 
 def render(report: dict) -> str:
@@ -393,6 +628,16 @@ def render(report: dict) -> str:
         out.append(f"  {key:<30} {value:.4f}" if isinstance(value, float)
                    else f"  {key:<30} {value:,}")
     out.append("")
+    out.append("TRANSITION RATES (§15.2)")
+    for key, value in report.get("transition_rates", {}).items():
+        out.append(f"  {key:<36} {value:.4f}")
+    out.append("")
+    out.append("REASON COUNTS (§15.1)")
+    for group, counts in report.get("reason_counts", {}).items():
+        out.append(f"  {group}")
+        for reason, count in sorted((counts or {}).items()):
+            out.append(f"    {reason:<34} {count:>7,}")
+    out.append("")
     for section, title in (("confidence", "CONFIDENCE (§15.3)"),
                            ("consensus", "CONSENSUS (§15.4)")):
         out.append(title)
@@ -406,6 +651,8 @@ def render(report: dict) -> str:
                 f"max={stats['max']:.4f} mean={stats['mean']:.4f}"
             )
         out.append("")
+    out.append(f"THRESHOLD GAP BUCKETS (§15.3) {report.get('threshold_gap_buckets', {})}")
+    out.append("")
     out.append(f"REGIMES (§15.5)     {report['regimes']}")
     out.append("")
     out.append("COMPONENTS (§15.8)")
@@ -426,7 +673,8 @@ def render(report: dict) -> str:
                 out.append(f"  {key:<24} {value:.6g}")
             else:
                 out.append(f"  {key:<24} {value}")
-        for segment in ("by_regime", "by_symbol", "by_side", "by_month", "by_session"):
+        for segment in ("by_regime", "by_symbol", "by_side", "by_month",
+                        "by_year", "by_session", "by_component"):
             out.append(f"  {segment} (\u00a715.7)")
             for name, stats in sorted((profit.get(segment) or {}).items()):
                 out.append(
@@ -439,7 +687,103 @@ def render(report: dict) -> str:
                f"({diagnosis['sample_adequacy']})")
     for finding in diagnosis["findings"]:
         out.append(f"  * {finding}")
+    phase = report.get("phase15_classification") or {}
+    out.append("")
+    out.append("PHASE 15 CLASSIFICATION")
+    out.append(f"  {phase.get('classification', 'UNKNOWN')}: {phase.get('reason', '')}")
     return "\n".join(out)
+
+
+def markdown_report(report: dict) -> str:
+    """Durable Phase 15 report; intentionally generated from JSON fields."""
+    lines = [
+        "# CosmicForge - Phase 15 Master Ensemble baseline",
+        "",
+        "Measured evidence only. This report is generated from the accompanying "
+        "`phase15_master_ensemble_baseline_results.json` artifact.",
+        "",
+        "## Scope",
+        "",
+        f"- Window: `{report.get('window', {}).get('from')}` -> `{report.get('window', {}).get('to')}`",
+        f"- Bots: `{', '.join(report.get('bots', []))}`",
+        f"- Provenance: `{', '.join(report.get('provenance', []))}`",
+        f"- Real evaluations: `{report.get('totals', {}).get('real_evaluations', 0)}`",
+        f"- Decision rows: `{report.get('totals', {}).get('decision_rows', 0)}`",
+        "",
+        "## Decision Funnel",
+        "",
+        "| Reason | Count |",
+        "| --- | ---: |",
+    ]
+    for reason, count in (report.get("funnel") or {}).items():
+        lines.append(f"| `{reason}` | {count} |")
+    lines.extend([
+        "",
+        "## Transition Rates",
+        "",
+        "| Transition | Rate |",
+        "| --- | ---: |",
+    ])
+    for name, value in (report.get("transition_rates") or {}).items():
+        lines.append(f"| `{name}` | {float(value):.4f} |")
+    lines.extend([
+        "",
+        "## Confidence And Thresholds",
+        "",
+        "```json",
+        json.dumps({
+            "confidence": report.get("confidence"),
+            "threshold_gap_buckets": report.get("threshold_gap_buckets"),
+            "consensus": report.get("consensus"),
+        }, indent=2, sort_keys=True),
+        "```",
+        "",
+        "## Regime And Component Evidence",
+        "",
+        "```json",
+        json.dumps({
+            "regimes": report.get("regimes"),
+            "components": report.get("components"),
+        }, indent=2, sort_keys=True),
+        "```",
+        "",
+        "## Profitability After Costs",
+        "",
+        "```json",
+        json.dumps(report.get("profitability"), indent=2, sort_keys=True),
+        "```",
+        "",
+        "## Diagnosis",
+        "",
+    ])
+    for finding in (report.get("diagnosis") or {}).get("findings", []):
+        lines.append(f"- {finding}")
+    phase = report.get("phase15_classification") or {}
+    lines.extend([
+        "",
+        "## Phase 15 Classification",
+        "",
+        f"`{phase.get('classification', 'UNKNOWN')}` - {phase.get('reason', '')}",
+        "",
+        "## Historical Benchmark",
+        "",
+        "| Period | Historical Issue | Current Status |",
+        "| --- | --- | --- |",
+    ])
+    for row in report.get("benchmark_preservation") or []:
+        lines.append(
+            f"| `{row['period']}` | {row['historical_issue']} | {row['current_status']} |"
+        )
+    lines.extend([
+        "",
+        "## Phase 16 Implication",
+        "",
+        "This artifact does not start or complete Phase 16. Phase 16 still requires "
+        "fresh forward-paper identity, at least three consecutive real forward "
+        "weeks, and at least 60 correctly closed campaign trades.",
+        "",
+    ])
+    return "\n".join(lines)
 
 
 def main() -> int:
@@ -449,7 +793,12 @@ def main() -> int:
     parser.add_argument("--provenance", default=None,
                         help="restrict to one provenance, e.g. PAPER_FORWARD")
     parser.add_argument("--json", action="store_true")
+    parser.add_argument("--out-json", default=None, help="write machine-readable artifact")
+    parser.add_argument("--out-md", default=None, help="write Markdown report artifact")
     args = parser.parse_args()
+    db_path = None
+    if args.db:
+        db_path = args.db if os.path.isabs(args.db) else os.path.join(REPO_ROOT, args.db)
 
     for path in (BACKEND, SHARED):
         if path not in sys.path:
@@ -463,8 +812,19 @@ def main() -> int:
 
     from shared_lib.persistence.db import DB
 
-    report = build(DB(args.db) if args.db else DB(),
+    report = build(DB(db_path) if db_path else DB(),
                    bot_id=args.bot, provenance=args.provenance)
+    if args.out_json:
+        out_json = args.out_json if os.path.isabs(args.out_json) else os.path.join(REPO_ROOT, args.out_json)
+        os.makedirs(os.path.dirname(out_json), exist_ok=True)
+        with open(out_json, "w", encoding="utf-8") as handle:
+            json.dump(report, handle, indent=2, sort_keys=True, default=str)
+            handle.write("\n")
+    if args.out_md:
+        out_md = args.out_md if os.path.isabs(args.out_md) else os.path.join(REPO_ROOT, args.out_md)
+        os.makedirs(os.path.dirname(out_md), exist_ok=True)
+        with open(out_md, "w", encoding="utf-8") as handle:
+            handle.write(markdown_report(report))
     print(json.dumps(report, indent=2, default=str) if args.json else render(report))
     return 0
 
