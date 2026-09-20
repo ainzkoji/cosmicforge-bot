@@ -2122,7 +2122,37 @@ class PaperRunner:
                         _week_start = get_week_start(_today)
                         _month_start = get_month_start(_today)
 
-                        if self.store.load_weekly_snapshot(_week_start) is None:
+                        _existing_weekly = self.store.load_weekly_snapshot(_week_start)
+                        _reconstructed_weekly = self.store.reconstruct_weekly_snapshot(
+                            _week_start,
+                            broker_account_id=self.context.broker_account_id,
+                        ) if self.context and self.context.broker_account_id else None
+                        if _reconstructed_weekly is not None:
+                            if _existing_weekly is not None:
+                                _reconstructed_weekly.peak_equity = max(
+                                    _reconstructed_weekly.peak_equity,
+                                    _existing_weekly.peak_equity,
+                                )
+                                _reconstructed_weekly.low_equity = min(
+                                    _reconstructed_weekly.low_equity,
+                                    _existing_weekly.low_equity,
+                                )
+                            _reconstructed_weekly.peak_equity = max(
+                                _reconstructed_weekly.peak_equity, _startup_equity
+                            )
+                            _reconstructed_weekly.low_equity = min(
+                                _reconstructed_weekly.low_equity, _startup_equity
+                            )
+                            self.store.save_weekly_snapshot(_reconstructed_weekly)
+                            logger.info(
+                                "[DRAWDOWN] Reconciled weekly snapshot from broker equity evidence: "
+                                "start=%.2f peak=%.2f low=%.2f current=%.2f",
+                                _reconstructed_weekly.start_equity,
+                                _reconstructed_weekly.peak_equity,
+                                _reconstructed_weekly.low_equity,
+                                _startup_equity,
+                            )
+                        elif _existing_weekly is None:
                             self.store.save_weekly_snapshot(PeriodSnapshot(
                                 start_date=_week_start,
                                 start_equity=_startup_equity,
@@ -2141,6 +2171,14 @@ class PaperRunner:
                             logger.info("[DRAWDOWN] Created initial monthly snapshot: equity=%.2f", _startup_equity)
                 except Exception as _snap_err:
                     logger.warning("[DRAWDOWN] Failed to create initial snapshots: %s", _snap_err)
+
+            # Keep peak/low protection current and create the next local week/month
+            # snapshot even when the process runs continuously across a boundary.
+            try:
+                _cycle_equity = self.get_account_balance()
+                self.drawdown_monitor.update_snapshots(self._today(), _cycle_equity)
+            except Exception as _snap_err:
+                logger.error("[DRAWDOWN] Failed to update period snapshots: %s", _snap_err)
             
             # 1. Update Risk State (daily check)
             # If we passed midnight, day logic handles itself in DailyLossState usually, 

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import asdict
-from datetime import date, datetime, time, timezone
+from datetime import date, datetime, time, timedelta, timezone
 from typing import Dict, Optional
 from zoneinfo import ZoneInfo
 
@@ -217,6 +217,74 @@ class StateStore:
         return count, evidence_ids
 
     # ---------- SNAPSHOTS ----------
+    def reconstruct_weekly_snapshot(
+        self,
+        week_start: date,
+        *,
+        broker_account_id: str,
+        timezone_name: str = "Europe/Rome",
+    ) -> Optional[PeriodSnapshot]:
+        """Rebuild a weekly snapshot from this bot's organic broker equity evidence."""
+        tz = ZoneInfo(timezone_name)
+        start_utc = datetime.combine(week_start, time.min, tzinfo=tz).astimezone(timezone.utc)
+        end_utc = datetime.combine(
+            week_start + timedelta(days=7), time.min, tzinfo=tz
+        ).astimezone(timezone.utc)
+
+        with self.db.connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT timestamp_utc, equity
+                FROM equity_snapshots
+                WHERE bot_instance_id = ?
+                  AND broker_account_id = ?
+                  AND timestamp_utc >= ?
+                  AND timestamp_utc < ?
+                  AND equity IS NOT NULL
+                  AND equity > 0
+                  AND LOWER(source) IN ('bot_start', 'cycle_end', 'daily_snapshot')
+                ORDER BY timestamp_utc ASC, id ASC
+                """,
+                (
+                    self.bot_instance_id,
+                    broker_account_id,
+                    start_utc.isoformat(),
+                    end_utc.isoformat(),
+                ),
+            ).fetchall()
+            prior_row = conn.execute(
+                """
+                SELECT timestamp_utc, equity
+                FROM equity_snapshots
+                WHERE bot_instance_id = ?
+                  AND broker_account_id = ?
+                  AND timestamp_utc < ?
+                  AND equity IS NOT NULL
+                  AND equity > 0
+                  AND LOWER(source) IN ('bot_start', 'cycle_end', 'daily_snapshot')
+                ORDER BY timestamp_utc DESC, id DESC
+                LIMIT 1
+                """,
+                (self.bot_instance_id, broker_account_id, start_utc.isoformat()),
+            ).fetchone()
+
+        if not rows:
+            return None
+
+        equities = [float(row["equity"]) for row in rows]
+        opening_equity = equities[0]
+        if prior_row is not None:
+            prior_at = datetime.fromisoformat(str(prior_row["timestamp_utc"]).replace("Z", "+00:00"))
+            first_at = datetime.fromisoformat(str(rows[0]["timestamp_utc"]).replace("Z", "+00:00"))
+            if start_utc - prior_at <= first_at - start_utc:
+                opening_equity = float(prior_row["equity"])
+        return PeriodSnapshot(
+            start_date=week_start,
+            start_equity=opening_equity,
+            peak_equity=max(equities),
+            low_equity=min(equities),
+        )
+
     def load_weekly_snapshot(self, week_start: date) -> Optional[PeriodSnapshot]:
         with self.db.connect() as conn:
             row = conn.execute(

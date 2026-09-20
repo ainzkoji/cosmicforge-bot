@@ -113,11 +113,20 @@ def run_startup_safety_check(settings, mode: str = "paper") -> StartupSafetyRepo
 
     # 6. Max trades per day
     max_trades = getattr(settings, "MAX_TRADES_DAILY", 0)
+    daily_cap_disabled = max_trades in (None, 0)
+    daily_cap_valid = daily_cap_disabled or (
+        isinstance(max_trades, int) and not isinstance(max_trades, bool) and 1 <= max_trades <= 20
+    )
     report.add(
         name="MAX_TRADES_DAILY",
-        passed=0 < max_trades <= 20,
+        passed=daily_cap_valid,
         value=str(max_trades),
-        message="" if 0 < max_trades <= 20 else f"Should be 1-20; recommend 5 during validation",
+        message=(
+            "Daily trade cap disabled"
+            if daily_cap_disabled
+            else "" if daily_cap_valid
+            else "Must be disabled (None/0) or an integer from 1-20"
+        ),
     )
 
     # 7. Max open positions
