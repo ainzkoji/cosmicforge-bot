@@ -2628,10 +2628,24 @@ class PaperRunner:
         """
         today = self._today()
         equity = self.get_account_balance()
+
+        # Weekly drawdown remains measured in all environments, but during
+        # paper/demo/testnet development it is advisory rather than blocking.
+        # Unknown/live broker environments fail closed and keep enforcement.
+        broker_env = str(
+            getattr(self.context, "broker_environment", "") if self.context else ""
+        ).strip().lower()
+        execution_mode = str(self._effective_execution_mode()).strip().lower()
+        weekly_limit = float(getattr(settings, "MAX_WEEKLY_DRAWDOWN_PCT", 0.0) or 0.0)
+        weekly_drawdown_enforced = (
+            execution_mode == "broker"
+            and broker_env not in {"demo", "testnet", "paper", "sandbox", "practice"}
+        )
+
         result = {
             "weekly_drawdown_pct": 0.0,
             "monthly_drawdown_pct": 0.0,
-            "max_weekly_drawdown_pct": getattr(settings, "MAX_WEEKLY_DRAWDOWN_PCT", 0.0),
+            "max_weekly_drawdown_pct": weekly_limit if weekly_drawdown_enforced else 0.0,
             "max_monthly_drawdown_pct": getattr(settings, "MAX_MONTHLY_DRAWDOWN_PCT", 0.0),
             "consecutive_losses": getattr(self.daily, "consecutive_losses", 0),
             "max_consecutive_losses": getattr(settings, "MAX_CONSECUTIVE_LOSSES", 0),
@@ -2665,6 +2679,20 @@ class PaperRunner:
                 getattr(self.context, "bot_instance_id", "default") if self.context else "default",
                 _dd_err,
             )
+        if (
+            not weekly_drawdown_enforced
+            and weekly_limit > 0
+            and result["weekly_drawdown_pct"] >= weekly_limit
+        ):
+            logger.warning(
+                "[WEEKLY_DRAWDOWN_SHADOW] bot=%s account_environment=%s "
+                "weekly_drawdown=%.2f%% reference_limit=%.2f%% blocking=False",
+                getattr(self.context, "bot_instance_id", "default") if self.context else "default",
+                broker_env or "paper",
+                result["weekly_drawdown_pct"],
+                weekly_limit,
+            )
+
         return result
 
     def _execution_safety(self) -> Dict[str, Any]:
