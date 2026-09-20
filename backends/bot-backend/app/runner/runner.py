@@ -2637,16 +2637,20 @@ class PaperRunner:
         ).strip().lower()
         execution_mode = str(self._effective_execution_mode()).strip().lower()
         weekly_limit = float(getattr(settings, "MAX_WEEKLY_DRAWDOWN_PCT", 0.0) or 0.0)
-        weekly_drawdown_enforced = (
+        monthly_limit = float(getattr(settings, "MAX_MONTHLY_DRAWDOWN_PCT", 0.0) or 0.0)
+
+        drawdown_limits_enforced = (
             execution_mode == "broker"
             and broker_env not in {"demo", "testnet", "paper", "sandbox", "practice"}
         )
+        weekly_drawdown_enforced = drawdown_limits_enforced
+        monthly_drawdown_enforced = drawdown_limits_enforced
 
         result = {
             "weekly_drawdown_pct": 0.0,
             "monthly_drawdown_pct": 0.0,
             "max_weekly_drawdown_pct": weekly_limit if weekly_drawdown_enforced else 0.0,
-            "max_monthly_drawdown_pct": getattr(settings, "MAX_MONTHLY_DRAWDOWN_PCT", 0.0),
+            "max_monthly_drawdown_pct": monthly_limit if monthly_drawdown_enforced else 0.0,
             "consecutive_losses": getattr(self.daily, "consecutive_losses", 0),
             "max_consecutive_losses": getattr(settings, "MAX_CONSECUTIVE_LOSSES", 0),
             # D-1: pass soft/hard pause state from DailyLossState
@@ -2691,6 +2695,20 @@ class PaperRunner:
                 broker_env or "paper",
                 result["weekly_drawdown_pct"],
                 weekly_limit,
+            )
+
+        if (
+            not monthly_drawdown_enforced
+            and monthly_limit > 0
+            and result["monthly_drawdown_pct"] >= monthly_limit
+        ):
+            logger.warning(
+                "[MONTHLY_DRAWDOWN_SHADOW] bot=%s account_environment=%s "
+                "monthly_drawdown=%.2f%% reference_limit=%.2f%% blocking=False",
+                getattr(self.context, "bot_instance_id", "default") if self.context else "default",
+                broker_env or "paper",
+                result["monthly_drawdown_pct"],
+                monthly_limit,
             )
 
         return result
