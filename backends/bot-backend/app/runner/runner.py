@@ -9,8 +9,9 @@ import uuid
 from collections import defaultdict
 from contextlib import contextmanager
 from dataclasses import dataclass
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from typing import Any, Dict, Optional
+from zoneinfo import ZoneInfo
 import concurrent.futures
 import traceback
 
@@ -349,6 +350,8 @@ class PaperRunner:
             # Risk & Size settings from context
             self.daily_max_loss = self.context.daily_max_loss_usdt
             self.max_trades_daily = self.context.max_trades_daily
+            self.daily_trade_cap_enabled = bool(getattr(self.context, "daily_trade_cap_enabled", False))
+            self.hard_runaway_daily_entry_limit = int(getattr(self.context, "hard_runaway_daily_entry_limit", 200))
             self.max_open_positions = self.context.max_open_positions
             self.trade_usdt = self.context.trade_usdt_per_order
             
@@ -362,7 +365,10 @@ class PaperRunner:
             
             # Default Risk & Size
             self.daily_max_loss = settings.DAILY_MAX_LOSS_USDT
-            self.max_trades_daily = getattr(settings, "MAX_TRADES_DAILY", 20)
+            _raw_max_trades = getattr(settings, "MAX_TRADES_DAILY", None)
+            self.max_trades_daily = None if _raw_max_trades in (None, "", 0, "0") else int(_raw_max_trades)
+            self.daily_trade_cap_enabled = self.max_trades_daily is not None
+            self.hard_runaway_daily_entry_limit = 200
             self.max_open_positions = getattr(settings, "MAX_OPEN_POSITIONS", 3)
             self.trade_usdt = settings.TRADE_USDT_PER_ORDER
 
@@ -754,9 +760,11 @@ class PaperRunner:
         if saved_daily:
             self.daily.realized_pnl = float(saved_daily.get("realized_pnl", 0.0))
             self.daily.kill = bool(saved_daily.get("kill", False))
+            self.daily.trade_count = int(saved_daily.get("trade_count", 0))
             # F-9: restore consecutive loss counter and cooldown from DB
             self.daily.consecutive_losses = int(saved_daily.get("consecutive_losses", 0))
             self.daily.consec_loss_cooldown_until_ms = int(saved_daily.get("consec_loss_cooldown_until_ms", 0))
+        self._reconcile_daily_economic_trade_count("startup")
 
         # Restore symbol states (typed SymbolState objects)
         saved_symbols = self.store.load_symbols()
@@ -2144,10 +2152,12 @@ class PaperRunner:
                 if saved_daily:
                     self.daily.realized_pnl = float(saved_daily.get("realized_pnl", 0.0))
                     self.daily.kill = bool(saved_daily.get("kill", False))
+                    self.daily.trade_count = int(saved_daily.get("trade_count", 0))
                     # F-9: restore consecutive loss state from DB (new day means counter was reset
                     # at midnight but we still restore from DB in case it wasn't 0)
                     self.daily.consecutive_losses = int(saved_daily.get("consecutive_losses", 0))
                     self.daily.consec_loss_cooldown_until_ms = int(saved_daily.get("consec_loss_cooldown_until_ms", 0))
+                self._reconcile_daily_economic_trade_count("daily_rollover")
                 # D-1: Reset per-bot consecutive-loss guard at midnight so each day
                 # starts fresh.  reset_bot() only clears this bot's state.
                 try:
@@ -2399,7 +2409,10 @@ class PaperRunner:
         """
         from app.evidence.fill_bridge import record_fill_with_evidence
 
-        return record_fill_with_evidence(self, db, *args, **kwargs)
+        result = record_fill_with_evidence(self, db, *args, **kwargs)
+        if str(kwargs.get("action") or "").upper() == "OPEN" and float(kwargs.get("qty") or 0.0) > 0:
+            self._reconcile_daily_economic_trade_count("authoritative_open_fill")
+        return result
 
     def get_account_balance(self) -> float:
         now = time.time()
@@ -2468,6 +2481,34 @@ class PaperRunner:
             pass
         return tuple(values)
 
+    def _realized_r_today(self) -> float:
+        bot = self.context.bot_instance_id if self.context else "default"
+        risk_day = self.daily_budget_engine.risk_date_for(self._now_utc())
+        start_local = datetime.combine(
+            risk_day,
+            datetime.min.time(),
+            tzinfo=self.daily_budget_engine.timezone,
+        )
+        start_utc = start_local.astimezone(timezone.utc)
+        end_utc = (start_local + timedelta(days=1)).astimezone(timezone.utc)
+        try:
+            with self.db.connect() as conn:
+                row = conn.execute(
+                    """
+                    SELECT COALESCE(SUM(r_multiple), 0.0) AS realized_r
+                    FROM trade_fills
+                    WHERE bot_instance_id = ?
+                      AND action IN ('CLOSE', 'PARTIAL_CLOSE')
+                      AND r_multiple IS NOT NULL
+                      AND timestamp_utc >= ?
+                      AND timestamp_utc < ?
+                    """,
+                    (bot, start_utc.isoformat(), end_utc.isoformat()),
+                ).fetchone()
+            return float(row["realized_r"] or 0.0) if row else 0.0
+        except Exception:
+            return 0.0
+
     def _day_open_equity(self) -> float:
         bot = self.context.bot_instance_id if self.context else "default"
         risk_date = self.daily_budget_engine.risk_date_for(self._now_utc())
@@ -2522,6 +2563,7 @@ class PaperRunner:
                 day_open_equity=self._day_open_equity(),
                 current_equity=float(self.get_account_balance() or 0.0),
                 realized_pnl_today=float(getattr(self.daily, "realized_pnl", 0.0) or 0.0),
+                realized_r_today=self._realized_r_today(),
                 initial_risk_history_usdt=self._initial_risk_history(),
                 recent_r_history=self._recent_r_history(),
                 account_drawdown_pct=float(dd.get("monthly_drawdown_pct", 0.0) or 0.0),
@@ -2980,6 +3022,8 @@ class PaperRunner:
             account_risk_pct=account_risk_pct,
             max_daily_loss=self.daily_max_loss,
             max_daily_trades=self.max_trades_daily,
+            daily_trade_cap_enabled=bool(getattr(self, "daily_trade_cap_enabled", False)),
+            hard_runaway_daily_entry_limit=int(getattr(self, "hard_runaway_daily_entry_limit", 200)),
             max_open_positions=self.max_open_positions,
             adaptive_daily_risk=self._adaptive_daily_risk_context(
                 symbol=symbol,
@@ -4250,7 +4294,9 @@ class PaperRunner:
                 daily_trade_count=int(getattr(self.daily, "trade_count", 0)),
                 kill_switch=bool(getattr(self.daily, "kill", False)),
                 max_daily_loss=float(self.daily_max_loss),
-                max_daily_trades=int(self.max_trades_daily),
+                max_daily_trades=self.max_trades_daily,
+                daily_trade_cap_enabled=bool(getattr(self, "daily_trade_cap_enabled", False)),
+                hard_runaway_daily_entry_limit=int(getattr(self, "hard_runaway_daily_entry_limit", 200)),
                 max_open_positions=int(self.max_open_positions),
                 adaptive_daily_risk=self._adaptive_daily_risk_context(
                     symbol=symbol,
@@ -5448,7 +5494,40 @@ class PaperRunner:
         return datetime.fromtimestamp(self._now_ms() / 1000.0, timezone.utc)
 
     def _today(self) -> date:
-        return self._now_utc().date()
+        tz_name = str(getattr(settings, "ADAPTIVE_DAILY_RISK_TIMEZONE", "Europe/Rome"))
+        try:
+            return self._now_utc().astimezone(ZoneInfo(tz_name)).date()
+        except Exception:
+            return self._now_utc().date()
+
+    def _reconcile_daily_economic_trade_count(self, reason: str) -> None:
+        if not getattr(self, "store", None) or not getattr(self, "daily", None):
+            return
+        tz_name = str(getattr(settings, "ADAPTIVE_DAILY_RISK_TIMEZONE", "Europe/Rome"))
+        old_count = int(getattr(self.daily, "trade_count", 0) or 0)
+        try:
+            new_count, evidence_ids = self.store.reconcile_daily_trade_count(
+                self.daily.day,
+                realized_pnl=float(getattr(self.daily, "realized_pnl", 0.0) or 0.0),
+                kill=bool(getattr(self.daily, "kill", False)),
+                consecutive_losses=int(getattr(self.daily, "consecutive_losses", 0) or 0),
+                consec_loss_cooldown_until_ms=int(getattr(self.daily, "consec_loss_cooldown_until_ms", 0) or 0),
+                timezone_name=tz_name,
+            )
+            self.daily.trade_count = int(new_count)
+            if old_count != new_count:
+                logger.warning(
+                    "[DAILY_TRADE_COUNT_RECONCILED] bot=%s day=%s old_count=%s new_count=%s "
+                    "reason=%s evidence_ids=%s",
+                    getattr(self.context, "bot_instance_id", "default") if self.context else "default",
+                    self.daily.day,
+                    old_count,
+                    new_count,
+                    reason,
+                    evidence_ids,
+                )
+        except Exception as exc:
+            logger.warning("[DAILY_TRADE_COUNT_RECONCILE_FAILED] reason=%s error=%s", reason, exc)
 
     def _effective_execution_mode(self) -> str:
         mode = self.context.execution_mode if self.context else getattr(settings, "EXECUTION_MODE", "paper")
@@ -6724,6 +6803,8 @@ class PaperRunner:
                 account_risk_pct=_account_risk_pct,  # FIX 2: explicit, derived from risk_level
                 max_daily_loss=self.daily_max_loss,
                 max_daily_trades=self.max_trades_daily,
+                daily_trade_cap_enabled=bool(getattr(self, "daily_trade_cap_enabled", False)),
+                hard_runaway_daily_entry_limit=int(getattr(self, "hard_runaway_daily_entry_limit", 200)),
                 max_open_positions=self.max_open_positions,
                 kill_switch=self.daily.kill,
                 execution_mode=getattr(settings, "EXECUTION_MODE", "paper"),
@@ -7269,6 +7350,7 @@ class PaperRunner:
                                 day_open_equity=self._day_open_equity(),
                                 current_equity=float(self.get_account_balance() or 0.0),
                                 realized_pnl_today=float(getattr(self.daily, "realized_pnl", 0.0) or 0.0),
+                                realized_r_today=self._realized_r_today(),
                                 initial_risk_history_usdt=self._initial_risk_history(),
                                 recent_r_history=self._recent_r_history(),
                                 account_drawdown_pct=float(self._get_drawdown_context().get("monthly_drawdown_pct", 0.0) or 0.0),

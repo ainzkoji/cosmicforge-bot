@@ -122,8 +122,10 @@ class EffectiveBotPolicy:
     max_daily_loss: float
     max_weekly_drawdown: float
     max_monthly_drawdown: float
-    requested_max_daily_trades: int
-    max_daily_trades: int
+    requested_max_daily_trades: int | None
+    max_daily_trades: int | None
+    daily_trade_cap_enabled: bool
+    hard_runaway_daily_entry_limit: int
     requested_max_open_positions: int
     max_open_positions: int
     requested_max_leverage: float
@@ -212,11 +214,14 @@ def resolve_effective_bot_policy(
         "risk_per_trade", requested_risk, limits.max_risk_per_trade_ceiling, warnings, clamps
     )
 
-    operator_trades = int(getattr(settings, "MAX_TRADES_DAILY", limits.max_trades_per_day))
-    requested_trades = int(risk_params.get("max_trades_per_day", operator_trades))
-    trades_ceiling = min(operator_trades, limits.max_trades_per_day)
-    effective_trades = int(min(requested_trades, trades_ceiling))
-    if effective_trades != requested_trades:
+    raw_operator_trades = getattr(settings, "MAX_TRADES_DAILY", None)
+    operator_trades = None if raw_operator_trades in (None, "", 0, "0") else int(raw_operator_trades)
+    raw_requested_trades = risk_params.get("max_trades_per_day", operator_trades)
+    requested_trades = None if raw_requested_trades in (None, "", 0, "0") else int(raw_requested_trades)
+    trades_ceiling = min(operator_trades, limits.max_trades_per_day) if operator_trades is not None else limits.max_trades_per_day
+    effective_trades = None if requested_trades is None else int(min(requested_trades, trades_ceiling))
+    daily_trade_cap_enabled = effective_trades is not None
+    if effective_trades is not None and effective_trades != requested_trades:
         warnings.append(f"max_daily_trades: requested={requested_trades} effective={effective_trades}")
         clamps.append(
             {
@@ -225,7 +230,9 @@ def resolve_effective_bot_policy(
                 "effective_value": effective_trades,
                 "hard_ceiling": trades_ceiling,
                 "clamp_reason": (
-                    "OPERATOR_LIMIT" if operator_trades < limits.max_trades_per_day else "SYSTEM_LIMIT_CEILING"
+                    "OPERATOR_LIMIT"
+                    if operator_trades is not None and operator_trades < limits.max_trades_per_day
+                    else "SYSTEM_LIMIT_CEILING"
                 ),
             }
         )
@@ -313,6 +320,8 @@ def resolve_effective_bot_policy(
         risk_per_trade_ceiling=limits.max_risk_per_trade_ceiling, max_daily_loss=max_daily_loss,
         max_weekly_drawdown=max_weekly, max_monthly_drawdown=max_monthly,
         requested_max_daily_trades=requested_trades, max_daily_trades=effective_trades,
+        daily_trade_cap_enabled=daily_trade_cap_enabled,
+        hard_runaway_daily_entry_limit=int(limits.max_trades_per_day),
         requested_max_open_positions=requested_positions, max_open_positions=effective_positions,
         requested_max_leverage=requested_leverage, max_leverage=effective_leverage,
         max_leverage_ceiling=asset_ceiling,
@@ -339,7 +348,6 @@ def resolve_effective_bot_policy(
     )
     for _name, _value in (
         ("risk_per_trade", effective_risk),
-        ("max_daily_trades", effective_trades),
         ("max_open_positions", effective_positions),
         ("max_leverage", effective_leverage),
         ("max_daily_loss", max_daily_loss),

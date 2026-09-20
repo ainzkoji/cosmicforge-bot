@@ -165,7 +165,7 @@ class TradingOrchestrator:
         # ✅ USE DYNAMIC POLICY limits where applicable (Layer C)
         safety_config = SafetyConfig(
             max_leverage=self._get_max_leverage_for_symbols(),
-            max_trades_per_day=self.validated_config.max_trades_per_day,
+            max_trades_per_day=self.system_limits.max_trades_per_day,
             min_margin_buffer_pct=0.30,
             
             # ✅ DYNAMIC LIMITS from Policy
@@ -573,7 +573,16 @@ class TradingOrchestrator:
             adaptive_daily_risk=kwargs.get("adaptive_daily_risk"),
             kill_switch=bool(kwargs.get("kill_switch", False)),
             max_daily_loss=float(kwargs.get("max_daily_loss", effective_equity)),
-            max_daily_trades=int(kwargs.get("max_daily_trades", self.validated_config.max_trades_per_day)),
+            max_daily_trades=kwargs.get("max_daily_trades"),
+            daily_trade_cap_enabled=bool(kwargs.get("daily_trade_cap_enabled", False)),
+            hard_runaway_daily_entry_limit=int(kwargs.get(
+                "hard_runaway_daily_entry_limit",
+                getattr(
+                    getattr(self, "system_limits", None),
+                    "max_trades_per_day",
+                    SystemLimits().max_trades_per_day,
+                ),
+            )),
             max_open_positions=int(kwargs.get("max_open_positions", self.validated_config.max_open_positions)),
             weekly_drawdown_pct=float(kwargs.get("weekly_drawdown_pct", 0.0)),
             monthly_drawdown_pct=float(kwargs.get("monthly_drawdown_pct", 0.0)),

@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 from dataclasses import asdict
-from datetime import date
+from datetime import date, datetime, time, timezone
 from typing import Dict, Optional
+from zoneinfo import ZoneInfo
 
 from shared_lib.persistence.db import DB, utc_now_iso
 from app.runner.models import SymbolState
@@ -153,6 +154,67 @@ class StateStore:
             }
             for row in rows
         ]
+
+    def daily_economic_trade_evidence(
+        self,
+        day: date,
+        *,
+        timezone_name: str = "Europe/Rome",
+    ) -> list[dict]:
+        """Return one row per economic position opened on the risk date.
+
+        A daily trade is a new economic position entry.  The distinct
+        ``position_id`` evidence makes the count idempotent across partial
+        fills, retries, duplicate broker events, closes and reconciliation.
+        """
+        tz = ZoneInfo(timezone_name)
+        start = datetime.combine(day, time.min, tzinfo=tz).astimezone(timezone.utc).isoformat()
+        end = datetime.combine(day, time.max, tzinfo=tz).astimezone(timezone.utc).isoformat()
+        with self.db.connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT DISTINCT position_id, symbol, side, opened_at,
+                       execution_attempt_id, decision_id, broker_account_id
+                FROM positions
+                WHERE bot_instance_id = ?
+                  AND opened_at >= ?
+                  AND opened_at <= ?
+                  AND position_id IS NOT NULL
+                ORDER BY opened_at, position_id
+                """,
+                (self.bot_instance_id, start, end),
+            ).fetchall()
+        return [dict(row) for row in rows]
+
+    def reconstruct_daily_trade_count(
+        self,
+        day: date,
+        *,
+        timezone_name: str = "Europe/Rome",
+    ) -> tuple[int, list[str]]:
+        evidence = self.daily_economic_trade_evidence(day, timezone_name=timezone_name)
+        return len(evidence), [str(row["position_id"]) for row in evidence]
+
+    def reconcile_daily_trade_count(
+        self,
+        day: date,
+        *,
+        realized_pnl: float,
+        kill: bool,
+        consecutive_losses: int = 0,
+        consec_loss_cooldown_until_ms: int = 0,
+        timezone_name: str = "Europe/Rome",
+    ) -> tuple[int, list[str]]:
+        count, evidence_ids = self.reconstruct_daily_trade_count(day, timezone_name=timezone_name)
+        self.save_daily(
+            day,
+            realized_pnl,
+            kill,
+            trade_count=count,
+            consecutive_losses=consecutive_losses,
+            consec_loss_cooldown_until_ms=consec_loss_cooldown_until_ms,
+        )
+        return count, evidence_ids
 
     # ---------- SNAPSHOTS ----------
     def load_weekly_snapshot(self, week_start: date) -> Optional[PeriodSnapshot]:

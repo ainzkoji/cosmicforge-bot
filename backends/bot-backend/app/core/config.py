@@ -1,5 +1,6 @@
 from pydantic_settings import BaseSettings
 from pydantic import Field
+from typing import Optional
 
 
 class Settings(BaseSettings):
@@ -205,7 +206,9 @@ class Settings(BaseSettings):
     SL_COOLDOWN_SECONDS: int = 600
     
     # Risk Configuration
-    MAX_TRADES_DAILY: int = 3
+    # Optional normal-strategy cap. None/0 means Auto Pilot is governed by risk,
+    # capacity, and execution controls rather than a fixed entry count.
+    MAX_TRADES_DAILY: Optional[int] = None
     MAX_OPEN_POSITIONS: int = 3
     MAX_WEEKLY_DRAWDOWN_PCT: float = 5.0
     MAX_MONTHLY_DRAWDOWN_PCT: float = 10.0
@@ -690,7 +693,7 @@ class Settings(BaseSettings):
                 f"Daily loss protection is disabled."
             )
 
-        if self.MAX_TRADES_DAILY > 10:
+        if self.MAX_TRADES_DAILY is not None and self.MAX_TRADES_DAILY > 10:
             warnings_list.append(
                 f"MAX_TRADES_DAILY={self.MAX_TRADES_DAILY} is high — recommend <= 5 during validation."
             )

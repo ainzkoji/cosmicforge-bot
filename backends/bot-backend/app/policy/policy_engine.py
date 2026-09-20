@@ -71,6 +71,7 @@ class ReasonCode(str, Enum):
     
     # Overtrading controls
     DAILY_TRADE_LIMIT = "DAILY_TRADE_LIMIT"
+    RUNAWAY_DAILY_ENTRY_GUARD = "RUNAWAY_DAILY_ENTRY_GUARD"
     MAX_POSITIONS_REACHED = "MAX_POSITIONS_REACHED"
     MAX_ADDS_REACHED = "MAX_ADDS_REACHED"
     
@@ -221,7 +222,9 @@ class PolicyContext:
     risk_level: RiskLevel = RiskLevel.LOW
     account_risk_pct: float = 1.0  # 1% risk per trade
     max_daily_loss: float = 50.0
-    max_daily_trades: int = 20
+    max_daily_trades: Optional[int] = None
+    daily_trade_cap_enabled: bool = False
+    hard_runaway_daily_entry_limit: int = 200
     max_open_positions: int = 3
     max_leverage: float = 20.0
     min_notional: float = 5.0
@@ -635,10 +638,27 @@ class PolicyEngine:
         # -----------------------------------------------------------------
         # 4. Overtrading controls
         # -----------------------------------------------------------------
-        if ctx.daily_trade_count >= ctx.max_daily_trades:
+        if (
+            ctx.hard_runaway_daily_entry_limit > 0
+            and ctx.daily_trade_count >= ctx.hard_runaway_daily_entry_limit
+        ):
+            return PolicyDecision.blocked(
+                ReasonCode.RUNAWAY_DAILY_ENTRY_GUARD,
+                "RUNAWAY_DAILY_ENTRY_GUARD: "
+                f"{ctx.daily_trade_count} >= {ctx.hard_runaway_daily_entry_limit}",
+                pending_open=pending_open,
+                reentry_confirm_signal=reentry_sig,
+                reentry_confirm_count=reentry_cnt,
+            )
+
+        if (
+            ctx.daily_trade_cap_enabled
+            and ctx.max_daily_trades is not None
+            and ctx.daily_trade_count >= ctx.max_daily_trades
+        ):
             return PolicyDecision.blocked(
                 ReasonCode.DAILY_TRADE_LIMIT,
-                f"Daily trade limit: {ctx.daily_trade_count} >= {ctx.max_daily_trades}",
+                f"DAILY_TRADE_LIMIT_REACHED: {ctx.daily_trade_count} >= {ctx.max_daily_trades}",
                 pending_open=pending_open,
                 reentry_confirm_signal=reentry_sig,
                 reentry_confirm_count=reentry_cnt,

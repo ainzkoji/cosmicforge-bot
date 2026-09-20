@@ -261,11 +261,12 @@ def test_limits_resolve_to_a_single_effective_value():
     policy = policy_for(make_instance())
     limits = SystemLimits()
 
-    assert isinstance(policy.max_daily_trades, int)
+    assert policy.max_daily_trades is None
+    assert policy.requested_max_daily_trades is None
+    assert policy.daily_trade_cap_enabled is False
+    assert policy.hard_runaway_daily_entry_limit == limits.max_trades_per_day
     assert isinstance(policy.max_open_positions, int)
-    assert 0 < policy.max_daily_trades <= limits.max_trades_per_day
     assert 0 < policy.max_open_positions <= limits.max_open_positions
-    assert policy.requested_max_daily_trades >= policy.max_daily_trades
     assert policy.requested_max_open_positions >= policy.max_open_positions
 
 

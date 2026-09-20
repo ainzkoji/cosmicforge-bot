@@ -122,8 +122,39 @@ def get_effective_policy(
         "max_daily_trades": {
             "requested": policy.requested_max_daily_trades,
             "effective": policy.max_daily_trades,
+            "daily_trade_cap_enabled": policy.daily_trade_cap_enabled,
+            "hard_runaway_daily_entry_limit": policy.hard_runaway_daily_entry_limit,
         },
     }
+    try:
+        from datetime import datetime, timezone
+        from zoneinfo import ZoneInfo
+        from app.core.config import settings
+        from shared_lib.persistence.state_store import StateStore
+
+        tz_name = str(getattr(settings, "ADAPTIVE_DAILY_RISK_TIMEZONE", "Europe/Rome"))
+        risk_day = datetime.now(timezone.utc).astimezone(ZoneInfo(tz_name)).date()
+        count, evidence_ids = StateStore(db, bot_instance_id=instance_id).reconstruct_daily_trade_count(
+            risk_day,
+            timezone_name=tz_name,
+        )
+        payload["daily_trade_governance"] = {
+            "daily_economic_trade_count": count,
+            "risk_date": str(risk_day),
+            "risk_timezone": tz_name,
+            "daily_trade_cap_enabled": policy.daily_trade_cap_enabled,
+            "requested_max_daily_trades": policy.requested_max_daily_trades,
+            "effective_max_daily_trades": policy.max_daily_trades,
+            "hard_runaway_daily_entry_limit": policy.hard_runaway_daily_entry_limit,
+            "count_evidence_position_ids": evidence_ids,
+            "daily_limit_blocking": bool(
+                policy.daily_trade_cap_enabled
+                and policy.max_daily_trades is not None
+                and count >= policy.max_daily_trades
+            ),
+        }
+    except Exception as exc:
+        payload["daily_trade_governance"] = {"error": f"{type(exc).__name__}: {exc}"}
     # The allocation is per trade; keep it apart from capital_allocation, the
     # position count, committed margin and account affordability.
     try:

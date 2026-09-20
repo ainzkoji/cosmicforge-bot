@@ -3,7 +3,7 @@ CosmicForge Safety Recovery A-4 to A-9 Tests
 
 A-4: Kill switch closes open positions
 A-5: Max open positions = 3
-A-6: Max daily trades = 6
+A-6: Optional daily economic-entry cap
 A-7: Event/news blackout filter enabled
 A-8: Minimum trade amount 50 USDT
 A-9: master_ensemble default, sma_cross restricted
@@ -26,7 +26,8 @@ def _make_ctx(**kw):
         open_positions_count=0, leverage=3.0, stop_loss_pct=0.02,
         take_profit_pct=0.03, cooldown_seconds=0, sl_cooldown_seconds=0,
         max_adds=0, trade_mode="normal", max_daily_loss=50.0,
-        max_daily_trades=6, max_open_positions=3, kill_switch=False,
+        max_daily_trades=None, daily_trade_cap_enabled=False,
+        max_open_positions=3, kill_switch=False,
         execution_mode="paper", now_ms=int(1e12), entry_price=50000.0, atr=500.0,
         weekly_drawdown_pct=0.0, monthly_drawdown_pct=0.0,
         max_weekly_drawdown_pct=5.0, max_monthly_drawdown_pct=10.0,
@@ -193,20 +194,22 @@ class TestMaxOpenPositions:
 
 
 # ═══════════════════════════════════════════════════════════════════════════
-# A-6: Max Daily Trades = 6
+# A-6: Optional Daily Economic-Entry Cap
 # ═══════════════════════════════════════════════════════════════════════════
 
 class TestMaxDailyTrades:
-    def test_max_trades_daily_matches_operator_limit(self):
+    def test_normal_operator_limit_is_disabled(self):
         from app.core.config import settings
-        assert settings.MAX_TRADES_DAILY == 3, (
-            f"MAX_TRADES_DAILY must be 3, got {settings.MAX_TRADES_DAILY}"
-        )
+        assert settings.MAX_TRADES_DAILY in (None, 0)
 
-    def test_seventh_trade_rejected(self):
+    def test_explicit_fourth_trade_rejected_at_three(self):
         from app.policy.policy_engine import PolicyEngine, ReasonCode
         engine = PolicyEngine()
-        ctx = _make_ctx(daily_trade_count=3, max_daily_trades=3)
+        ctx = _make_ctx(
+            daily_trade_count=3,
+            max_daily_trades=3,
+            daily_trade_cap_enabled=True,
+        )
         decision = engine.evaluate(ctx)
         assert not decision.allowed
         assert decision.reason_code == ReasonCode.DAILY_TRADE_LIMIT
@@ -214,7 +217,11 @@ class TestMaxDailyTrades:
     def test_third_trade_allowed(self):
         from app.policy.policy_engine import PolicyEngine, Action
         engine = PolicyEngine()
-        ctx = _make_ctx(daily_trade_count=2, max_daily_trades=3)
+        ctx = _make_ctx(
+            daily_trade_count=2,
+            max_daily_trades=3,
+            daily_trade_cap_enabled=True,
+        )
         decision = engine.evaluate(ctx)
         assert decision.action == Action.OPEN_LONG
 

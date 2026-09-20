@@ -59,7 +59,7 @@ class SystemLimits:
     max_daily_loss_pct: float = 0.10    # 10% allocated capital hard stop (increased from 5%)
     max_weekly_drawdown_pct: float = 0.15 # 15% allocated capital hard stop
     max_consecutive_losses: int = 8     # Stop after 8 consecutive losses
-    max_trades_per_day: int = 200        # Maximum trades per day per bot
+    max_trades_per_day: int = 200        # Emergency runaway economic-entry guard per bot
     
     # Execution safety
     max_slippage_majors: float = 0.0020 # 0.20%
@@ -88,7 +88,7 @@ class UserConfigurableLimits:
     
     # Daily limits (will be clamped to system max)
     max_daily_loss_pct: float = 0.05  # User wants 5% (system allows up to 10%)
-    max_trades_per_day: int = 3  # Canonical operator default; system ceiling remains absolute
+    max_trades_per_day: Optional[int] = None  # None = no normal Auto Pilot daily trade-count cap
     
     # Position limits (will be clamped)
     max_open_positions: int = 3  # Canonical operator default; system ceiling remains absolute
@@ -160,8 +160,11 @@ class ConfigValidator:
         else:
             clamped.max_daily_loss_pct = user_config.max_daily_loss_pct
         
-        # 2. Clamp trades per day
-        if user_config.max_trades_per_day > self.limits.max_trades_per_day:
+        # 2. Clamp optional normal trades-per-day cap. None means Auto Pilot is
+        # governed by risk/slots/execution quality, not a fixed trade count.
+        if user_config.max_trades_per_day is None:
+            clamped.max_trades_per_day = None
+        elif user_config.max_trades_per_day > self.limits.max_trades_per_day:
             warnings.append(
                 f"Trades per day clamped from {user_config.max_trades_per_day} "
                 f"to system maximum {self.limits.max_trades_per_day}"

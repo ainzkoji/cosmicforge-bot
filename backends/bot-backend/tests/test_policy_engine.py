@@ -123,13 +123,33 @@ class TestPolicyEngineGating:
         assert decision.allowed is False
         assert decision.reason_code == ReasonCode.DAILY_LOSS_LIMIT
     
-    def test_daily_trade_limit_blocks(self, engine):
-        """Exceeding daily trade count should block."""
+    def test_daily_trade_count_does_not_block_when_cap_disabled(self, engine):
+        """Auto Pilot daily trade count is informational unless a cap is explicit."""
         ctx = PolicyContext(
             symbol="BTCUSDT",
             signal="BUY",
-            daily_trade_count=25,
-            max_daily_trades=20,
+            daily_trade_count=3,
+            max_daily_trades=None,
+            daily_trade_cap_enabled=False,
+            now_ms=int(time.time() * 1000),
+            entry_price=50000.0,
+            atr=500.0,
+            equity=1000.0,
+            margin_available=1000.0,
+        )
+
+        decision = engine.evaluate(ctx)
+
+        assert decision.reason_code != ReasonCode.DAILY_TRADE_LIMIT
+
+    def test_daily_trade_limit_blocks_when_explicit_cap_enabled(self, engine):
+        """Explicit operator cap still blocks at the configured count."""
+        ctx = PolicyContext(
+            symbol="BTCUSDT",
+            signal="BUY",
+            daily_trade_count=3,
+            max_daily_trades=3,
+            daily_trade_cap_enabled=True,
             now_ms=int(time.time() * 1000),
         )
         
@@ -137,6 +157,78 @@ class TestPolicyEngineGating:
         
         assert decision.allowed is False
         assert decision.reason_code == ReasonCode.DAILY_TRADE_LIMIT
+
+    def test_hard_runaway_guard_is_separate_from_optional_daily_cap(self, engine):
+        ctx = PolicyContext(
+            symbol="BTCUSDT",
+            signal="BUY",
+            daily_trade_count=200,
+            max_daily_trades=None,
+            daily_trade_cap_enabled=False,
+            hard_runaway_daily_entry_limit=200,
+            now_ms=int(time.time() * 1000),
+        )
+
+        decision = engine.evaluate(ctx)
+
+        assert decision.allowed is False
+        assert decision.reason_code == ReasonCode.RUNAWAY_DAILY_ENTRY_GUARD
+
+    def test_adaptive_risk_blocks_even_when_daily_cap_disabled(self, engine):
+        ctx = PolicyContext(
+            symbol="BTCUSDT",
+            signal="BUY",
+            daily_trade_count=10,
+            max_daily_trades=None,
+            daily_trade_cap_enabled=False,
+            adaptive_daily_risk={
+                "policy_effective": True,
+                "daily_risk_state": "HARD_STOP",
+                "decision_reason": "DAILY_RISK_BUDGET_EXHAUSTED",
+            },
+            now_ms=int(time.time() * 1000),
+        )
+
+        decision = engine.evaluate(ctx)
+
+        assert decision.allowed is False
+        assert decision.reason_code == ReasonCode.DAILY_RISK_BUDGET_EXHAUSTED
+
+    def test_position_slots_block_even_when_daily_cap_disabled(self, engine):
+        ctx = PolicyContext(
+            symbol="BTCUSDT",
+            signal="BUY",
+            position="NONE",
+            daily_trade_count=10,
+            max_daily_trades=None,
+            daily_trade_cap_enabled=False,
+            open_positions_count=2,
+            max_open_positions=2,
+            now_ms=int(time.time() * 1000),
+        )
+
+        decision = engine.evaluate(ctx)
+
+        assert decision.allowed is False
+        assert decision.reason_code == ReasonCode.MAX_POSITIONS_REACHED
+
+        after_close = PolicyContext(
+            symbol="BTCUSDT",
+            signal="BUY",
+            position="NONE",
+            daily_trade_count=10,
+            max_daily_trades=None,
+            daily_trade_cap_enabled=False,
+            open_positions_count=1,
+            max_open_positions=2,
+            now_ms=int(time.time() * 1000),
+            entry_price=50000.0,
+            atr=500.0,
+            equity=1000.0,
+            margin_available=1000.0,
+        )
+        after_close_decision = engine.evaluate(after_close)
+        assert after_close_decision.reason_code != ReasonCode.MAX_POSITIONS_REACHED
     
     def test_cooldown_blocks(self, engine):
         """Active cooldown should block."""

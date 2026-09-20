@@ -266,8 +266,24 @@ def test_percentage_allocation_is_preserved_as_a_percentage():
 
 def test_limits_resolve_once_with_requested_and_effective_visible():
     policy = resolve()
-    assert policy.requested_max_daily_trades >= policy.max_daily_trades
+    assert policy.requested_max_daily_trades is None
+    assert policy.max_daily_trades is None
+    assert policy.daily_trade_cap_enabled is False
+    assert policy.hard_runaway_daily_entry_limit == SystemLimits().max_trades_per_day
     assert policy.requested_max_open_positions >= policy.max_open_positions
-    assert policy.max_daily_trades > 0
     assert policy.max_open_positions > 0
     assert policy.max_daily_loss > 0
+
+
+def test_explicit_daily_trade_cap_is_preserved_and_clamped():
+    limits = SystemLimits()
+    policy = resolve(
+        risk_params={
+            **BotInstanceService.get_risk_profile_preset("balanced"),
+            "max_trades_per_day": limits.max_trades_per_day + 50,
+        }
+    )
+    assert policy.requested_max_daily_trades == limits.max_trades_per_day + 50
+    assert policy.max_daily_trades == limits.max_trades_per_day
+    assert policy.daily_trade_cap_enabled is True
+    assert policy.hard_runaway_daily_entry_limit == limits.max_trades_per_day

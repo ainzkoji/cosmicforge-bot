@@ -41,7 +41,9 @@ class BotRunContext:
     max_leverage: float = 10.0
     daily_max_loss_usdt: float = 100.0
     max_open_positions: int = 3
-    max_trades_daily: int = 6
+    max_trades_daily: Optional[int] = None
+    daily_trade_cap_enabled: bool = False
+    hard_runaway_daily_entry_limit: int = 200
     min_risk_reward: float = 1.8
     
     # Position Sizing
@@ -137,7 +139,7 @@ class BotRunContext:
         
         # Extract risk values
         daily_loss_pct = 0.05
-        max_trades = 20
+        max_trades = None
         max_pos = 5
         lev = 20.0
         stop_pct = 0.02
@@ -252,6 +254,8 @@ class BotRunContext:
             daily_max_loss_usdt=policy.max_daily_loss,
             max_open_positions=policy.max_open_positions,
             max_trades_daily=policy.max_daily_trades,
+            daily_trade_cap_enabled=bool(getattr(policy, "daily_trade_cap_enabled", policy.max_daily_trades is not None)),
+            hard_runaway_daily_entry_limit=int(getattr(policy, "hard_runaway_daily_entry_limit", 200)),
             min_risk_reward=policy.min_risk_reward,
             trade_usdt_per_order=trade_usdt,
             min_notional_usdt=policy.minimum_notional,
@@ -296,4 +300,3 @@ class BotRunContext:
         else:
             # Default: use ATR-based risk sizing
             return "atr_risk", 0.0
-
