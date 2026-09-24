@@ -26,6 +26,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+from bisect import bisect_right
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
@@ -261,8 +262,13 @@ def visible_rows(rows: Sequence[Any], timestamp_ms: int) -> tuple[Any, ...]:
 
 
 def future_rows(rows: Sequence[Any], timestamp_ms: int, horizon_bars: int) -> tuple[Any, ...]:
-    future = [row for row in rows if open_time(row) > timestamp_ms]
-    return tuple(future[: max(0, int(horizon_bars))])
+    """Return the bounded future window from a chronologically sorted candle series."""
+    horizon = max(0, int(horizon_bars))
+    if horizon == 0 or not rows:
+        return ()
+
+    start = bisect_right(rows, int(timestamp_ms), key=open_time)
+    return tuple(rows[start : start + horizon])
 
 
 def build_future_labels(
