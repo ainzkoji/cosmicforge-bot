@@ -171,6 +171,12 @@ CATI_COMPONENT_ERROR_TABLE = "cati_component_errors"
 #: plan, keyed so downstream exports reconstruct it BY ID instead of copying
 #: fields into every contract or recomputing them.
 CATI_DECISION_EVIDENCE_TABLE = "cati_decision_evidence"
+# Section 22 -- research & certification (analytical, append-only; research
+# scope, never tenant account evidence, so no broker_account_id column)
+CATI_CERTIFICATION_RUN_TABLE = "cati_certification_runs"
+CATI_CERTIFICATION_STAGE_TABLE = "cati_certification_stage_results"
+CATI_EXPERIMENT_TABLE = "cati_experiment_registry"
+CATI_HOLDOUT_TABLE = "cati_holdout_registry"
 
 _TENANT_COLS = """
     user_id TEXT,
@@ -278,6 +284,52 @@ def _append_only_triggers(table: str, tag: str):
     )
 
 
+_CREATE_CERTIFICATION = (
+    f"""CREATE TABLE IF NOT EXISTS {CATI_CERTIFICATION_RUN_TABLE} (
+    certification_run_id TEXT PRIMARY KEY,
+    stage TEXT NOT NULL,
+    status TEXT NOT NULL,
+    scope_hash TEXT NOT NULL,
+    dataset_hash TEXT NOT NULL,
+    policy_freeze_hash TEXT NOT NULL,
+    certification_policy_hash TEXT NOT NULL,
+    artifact_hash TEXT NOT NULL,
+    recorded_at INTEGER NOT NULL,{_TAIL_COLS}
+)""",
+    f"""CREATE TABLE IF NOT EXISTS {CATI_CERTIFICATION_STAGE_TABLE} (
+    stage_result_id TEXT PRIMARY KEY,
+    certification_run_id TEXT NOT NULL,
+    stage TEXT NOT NULL,
+    status TEXT NOT NULL,
+    recorded_at INTEGER NOT NULL,{_TAIL_COLS}
+)""",
+    f"""CREATE TABLE IF NOT EXISTS {CATI_EXPERIMENT_TABLE} (
+    experiment_id TEXT PRIMARY KEY,
+    parent_experiment_id TEXT,
+    dataset_hash TEXT NOT NULL,
+    policy_hash TEXT NOT NULL,
+    status TEXT NOT NULL,
+    created_at INTEGER NOT NULL,{_TAIL_COLS}
+)""",
+    # one row per holdout EVENT (RESERVED / OPENED / BURNED): status is the
+    # latest event, so a burned holdout can never be re-labelled untouched
+    f"""CREATE TABLE IF NOT EXISTS {CATI_HOLDOUT_TABLE} (
+    holdout_event_id TEXT PRIMARY KEY,
+    holdout_id TEXT NOT NULL,
+    dataset_hash TEXT NOT NULL,
+    event TEXT NOT NULL CHECK (event IN ('RESERVED', 'OPENED', 'BURNED')),
+    policy_freeze_hash TEXT,
+    recorded_at INTEGER NOT NULL,{_TAIL_COLS}
+)""",
+)
+
+_CERTIFICATION_INDEXES = (
+    f"CREATE INDEX IF NOT EXISTS idx_cati_cert_run_stage ON {CATI_CERTIFICATION_RUN_TABLE}(stage, dataset_hash)",
+    f"CREATE INDEX IF NOT EXISTS idx_cati_cert_stage_run ON {CATI_CERTIFICATION_STAGE_TABLE}(certification_run_id)",
+    f"CREATE INDEX IF NOT EXISTS idx_cati_exp_dataset ON {CATI_EXPERIMENT_TABLE}(dataset_hash, policy_hash)",
+    f"CREATE INDEX IF NOT EXISTS idx_cati_holdout_id ON {CATI_HOLDOUT_TABLE}(holdout_id, recorded_at)",
+)
+
 _EVIDENCE_TRIGGERS = (
     _append_only_triggers(CATI_POSITION_FORECAST_TABLE, "cati_pfc")
     + _append_only_triggers(CATI_EXIT_DECISION_TABLE, "cati_exd")
@@ -285,7 +337,14 @@ _EVIDENCE_TRIGGERS = (
     + _append_only_triggers(CATI_EXECUTION_ATTEMPT_TABLE, "cati_exec")
     + _append_only_triggers(CATI_COMPONENT_ERROR_TABLE, "cati_err")
     + _append_only_triggers(CATI_DECISION_EVIDENCE_TABLE, "cati_dev")
+    + _append_only_triggers(CATI_CERTIFICATION_RUN_TABLE, "cati_crun")
+    + _append_only_triggers(CATI_CERTIFICATION_STAGE_TABLE, "cati_cstg")
+    + _append_only_triggers(CATI_EXPERIMENT_TABLE, "cati_exp")
+    + _append_only_triggers(CATI_HOLDOUT_TABLE, "cati_hold")
 )
+
+CATI_CERTIFICATION_TABLES = (CATI_CERTIFICATION_RUN_TABLE, CATI_CERTIFICATION_STAGE_TABLE, CATI_EXPERIMENT_TABLE,
+                             CATI_HOLDOUT_TABLE)
 
 CATI_EVIDENCE_TABLES = (CATI_POSITION_FORECAST_TABLE, CATI_EXIT_DECISION_TABLE, CATI_RISK_DECISION_TABLE,
                         CATI_EXECUTION_ATTEMPT_TABLE, CATI_COMPONENT_ERROR_TABLE, CATI_DECISION_EVIDENCE_TABLE)
@@ -304,7 +363,8 @@ def ensure_cati_schema_on_connection(conn: Any) -> None:
     conn.execute(_CREATE_TRADE_PLANS)
     for ddl in _TRADE_PLAN_INDEXES + _TRADE_PLAN_TRIGGERS:
         conn.execute(ddl)
-    for ddl in _CREATE_EVIDENCE + _EVIDENCE_INDEXES + _EVIDENCE_TRIGGERS:
+    for ddl in _CREATE_EVIDENCE + _CREATE_CERTIFICATION + _EVIDENCE_INDEXES + _CERTIFICATION_INDEXES \
+            + _EVIDENCE_TRIGGERS:
         conn.execute(ddl)
 
 
@@ -315,4 +375,6 @@ def ensure_cati_schema(db: Any) -> None:
 
 __all__ = ["CATI_RESERVATION_TABLE", "CATI_TRADE_PLAN_TABLE", "CATI_EVIDENCE_TABLES", "CATI_POSITION_FORECAST_TABLE",
            "CATI_EXIT_DECISION_TABLE", "CATI_RISK_DECISION_TABLE", "CATI_EXECUTION_ATTEMPT_TABLE",
-           "CATI_COMPONENT_ERROR_TABLE", "CATI_DECISION_EVIDENCE_TABLE", "ensure_cati_schema", "ensure_cati_schema_on_connection"]
+           "CATI_COMPONENT_ERROR_TABLE", "CATI_DECISION_EVIDENCE_TABLE", "CATI_CERTIFICATION_TABLES",
+           "CATI_CERTIFICATION_RUN_TABLE", "CATI_CERTIFICATION_STAGE_TABLE", "CATI_EXPERIMENT_TABLE",
+           "CATI_HOLDOUT_TABLE", "ensure_cati_schema", "ensure_cati_schema_on_connection"]

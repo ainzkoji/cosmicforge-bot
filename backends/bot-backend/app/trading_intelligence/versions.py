@@ -250,3 +250,25 @@ METRICS_SCHEMA_VERSION = "1.0.0"
 STAGE_LOG_SCHEMA_VERSION = "1.0.0"
 #: Research export row shape (research/export.py).
 RESEARCH_EXPORT_SCHEMA_VERSION = "1.0.0"
+
+# ---------------------------------------------------------------------------
+# Section 22 -- Research & Certification Standard
+# ---------------------------------------------------------------------------
+#: CertificationRun / StageResult / scope contracts (research/certification/contracts.py).
+CERTIFICATION_SCHEMA_VERSION = "1.0.0"
+#: CertificationPolicy shape (research/certification/policy.py).
+CERTIFICATION_POLICY_SCHEMA_VERSION = "1.0.0"
+#: Certification dataset manifest shape (research/certification/dataset.py).
+CERTIFICATION_MANIFEST_SCHEMA_VERSION = "1.0.0"
+#: PolicyFreezeManifest shape (research/certification/freeze.py).
+POLICY_FREEZE_SCHEMA_VERSION = "1.0.0"
+#: ExperimentRecord / holdout event shapes (research/certification/registry.py).
+EXPERIMENT_REGISTRY_SCHEMA_VERSION = "1.0.0"
+#: Replay stage engine (research/certification/replay.py).
+CERTIFICATION_REPLAY_VERSION = "1.0.0"
+#: Modeled historical venue economics used by replay (research/certification/replay_venue.py).
+REPLAY_VENUE_MODEL_VERSION = "1.0.0"
+#: CertificationReport shape (research/certification/report.py).
+CERTIFICATION_REPORT_SCHEMA_VERSION = "1.0.0"
+#: ForwardDemoCertificationTracker evidence shape (research/certification/forward_demo.py).
+FORWARD_DEMO_TRACKER_VERSION = "1.0.0"

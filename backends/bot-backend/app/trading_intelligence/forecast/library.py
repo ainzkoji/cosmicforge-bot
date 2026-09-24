@@ -7,6 +7,7 @@ mutation of an existing one's semantics.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from functools import cached_property
 from typing import Mapping, Tuple
 
 from app.trading_intelligence.contracts.forecast import SetupOutcomeLabel
@@ -48,7 +49,9 @@ class HistoricalOutcomeLibrary:
     #: libraries, so a classification cannot be swapped without a new hash.
     source_kind: str = "UNKNOWN"
 
-    @property
+    # cached: the library is frozen and its rows an immutable tuple, so the
+    # value can never change for an instance (dataclasses.replace -> new object)
+    @cached_property
     def library_hash(self) -> str:
         payload = {
             "source_kind": self.source_kind,
@@ -65,7 +68,7 @@ class HistoricalOutcomeLibrary:
         }
         return stable_hash(payload)
 
-    @property
+    @cached_property
     def rows_content_hash(self) -> str:
         from app.trading_intelligence.forecast.artifact import row_to_dict
 
