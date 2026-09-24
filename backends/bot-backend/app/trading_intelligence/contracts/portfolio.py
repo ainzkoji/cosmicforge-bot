@@ -33,6 +33,9 @@ from app.trading_intelligence.versions import PORTFOLIO_RESERVATION_SCHEMA_VERSI
 
 class ReservationStatus(str, Enum):
     RESERVED = "RESERVED"
+    #: a broker entry submission's outcome is UNKNOWN: ownership is held, never
+    #: expired, until broker-authoritative reconciliation resolves it
+    RESOLUTION_PENDING = "RESOLUTION_PENDING"
     RELEASED = "RELEASED"
     EXPIRED = "EXPIRED"
     CONSUMED = "CONSUMED"

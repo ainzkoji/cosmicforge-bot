@@ -24,6 +24,7 @@ from app.replay.cost_model import BINANCE_FUTURES_STANDARD, CostModel
 from app.trading_intelligence.contracts.economics import AdmissionPolicy, EconomicOpportunity
 from app.trading_intelligence.contracts.ranking import EvaluatedOpportunity, SymbolEvalKind, SymbolEvaluation
 from app.trading_intelligence.contracts.veto import EventRiskContext, SystemHealthContext, VetoPolicy
+from app.trading_intelligence.economics.canonical import canonical_economics
 from app.trading_intelligence.economics.costs import build_cost_estimate
 from app.trading_intelligence.economics.engine import evaluate_economic_opportunity
 from app.trading_intelligence.economics.policy import default_admission_policy
@@ -36,7 +37,6 @@ from app.trading_intelligence.regime.policy import RegimePolicy, default_policy
 from app.trading_intelligence.setups.policy import default_policies
 from app.trading_intelligence.setups.registry import discover_all
 from app.trading_intelligence.venue.context import VenueEconomicContext
-from app.trading_intelligence.venue.cost_model import build_venue_cost_estimate
 from app.trading_intelligence.veto.engine import evaluate_veto
 
 logger = logging.getLogger(__name__)
@@ -86,6 +86,7 @@ class CATIController:
         quote_asset: Optional[str] = None,
         asset_class: str = "CRYPTO",
         venue_context: Optional[Union[VenueEconomicContext, Callable[[], VenueEconomicContext]]] = None,
+        require_venue_economics: bool = False,
     ) -> SymbolEvaluation:
         """One instrument's full Section 9-14 evaluation to a TERMINAL state.
         Never raises: an internal fault becomes an explicit
@@ -127,6 +128,10 @@ class CATIController:
             # only here, so symbols without candidates cost no venue requests.
             if callable(venue_context):
                 venue_context = venue_context()
+            if venue_context is None and require_venue_economics:
+                # the certifiable path never silently falls back to reference costs
+                return SymbolEvaluation(instrument, SymbolEvalKind.CATI_COMPONENT_ERROR.value,
+                                        error="VENUE_ECONOMICS_REQUIRED", candle_rows=rows)
             observation = (venue_context.observe(market_state.instrument_key, market_state.decision_time)
                            if venue_context is not None else None)
             lap("VENUE_ECONOMICS")
@@ -135,15 +140,20 @@ class CATIController:
                 forecast = build_outcome_forecast(candidate, market_state, regime, self._outcome_library, instrument_group=group)
                 lap("FORECAST")
                 if observation is not None:
-                    cost = build_venue_cost_estimate(candidate, observation, forecast=forecast,
-                                                     policy=venue_context.cost_policy,
-                                                     reference_notional=venue_context.reference_notional)
+                    # THE canonical CATI economics (economics/canonical.py)
+                    cost, opportunity = canonical_economics(
+                        candidate, market_state, forecast, observation, venue_policy=venue_context.cost_policy,
+                        reference_notional=venue_context.reference_notional, admission_policy=self._admission_policy,
+                        user_id=user_id, broker_account_id=broker_account_id, bot_instance_id=bot_instance_id,
+                        run_id=run_id, cycle_id=cycle_id)
                 else:
+                    # REFERENCE_DIAGNOSTIC only: never certification-equivalent, never plannable
                     cost = build_cost_estimate(candidate, cost_model=self._cost_model, liquidity_verified=market_state.liquidity_state.available)
-                opportunity = evaluate_economic_opportunity(
-                    candidate, market_state, forecast, cost, policy=self._admission_policy, user_id=user_id,
-                    broker_account_id=broker_account_id, bot_instance_id=bot_instance_id, run_id=run_id, cycle_id=cycle_id,
-                )
+                    opportunity = evaluate_economic_opportunity(
+                        candidate, market_state, forecast, cost, policy=self._admission_policy, user_id=user_id,
+                        broker_account_id=broker_account_id, bot_instance_id=bot_instance_id, run_id=run_id,
+                        cycle_id=cycle_id,
+                    )
                 lap("VENUE_ECONOMICS")
                 veto = evaluate_veto(
                     opportunity=opportunity, candidate=candidate, market_state=market_state, regime_distribution=regime,

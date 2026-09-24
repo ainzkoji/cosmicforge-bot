@@ -239,14 +239,41 @@ def broker_health_from_sources(
     )
 
 
+def canonical_broker_identity(ctx: Any) -> Tuple[Optional[str], str]:
+    """(venue, environment) of the bot's CONNECTED BROKER ACCOUNT -- the one
+    identity every CATI context (broker health, venue economics) uses.
+
+    * environment: ``ctx.broker_environment``, which BotContext loads from the
+      canonical ``broker_accounts.environment`` (DEMO / REAL / TESTNET ...),
+      normalized by the Section 17 ``normalize_environment``. Never derived
+      from ``execution_mode`` (paper/live is how the BOT trades, not which
+      broker environment the account is); unknown stays UNKNOWN.
+    * venue: the Section 17 venue id of the account's broker type (e.g.
+      BINANCE_USDM) -- the same identity VenueEconomicObservation carries --
+      never a Python client class name.
+    """
+    from app.trading_intelligence.venue.adapter import normalize_environment
+    from app.trading_intelligence.venue.registry import resolve_adapter
+
+    broker_type = getattr(ctx, "broker_type", None) if ctx is not None else None
+    venue = None
+    if broker_type:
+        adapter, _collector = resolve_adapter(broker_type)
+        venue = getattr(adapter, "venue_id", None) or str(broker_type).upper()
+    environment = normalize_environment(getattr(ctx, "broker_environment", None) if ctx is not None else None)
+    return venue, environment
+
+
 def broker_health_from_runner(runner: Any, now_ms: Optional[int] = None) -> BrokerHealthContext:
     """Read the runner's own canonical broker-health state. Never raises."""
     now_ms = int(time.time() * 1000) if now_ms is None else now_ms
     ctx = getattr(runner, "context", None)
     account = getattr(ctx, "broker_account_id", None)
     bot_id = getattr(ctx, "bot_instance_id", None)
-    venue = type(getattr(runner, "client", None)).__name__ if getattr(runner, "client", None) is not None else None
-    environment = getattr(ctx, "execution_mode", None)
+    try:
+        venue, environment = canonical_broker_identity(ctx)
+    except Exception:
+        venue, environment = None, "UNKNOWN"
     circuit_state, circuit_ok = None, False
     try:
         key = getattr(runner, "_circuit_id", None)
@@ -282,5 +309,6 @@ def system_context_from_runner(runner: Any, *, component_errors: Iterable[str] =
 __all__ = [
     "MAX_FEED_STALENESS_HOURS", "EVENT_TYPE_MAP", "FIAT_CURRENCIES", "market_event_from_row",
     "event_context_from_records", "MaintenanceProvider", "build_event_risk_context",
-    "broker_health_from_sources", "broker_health_from_runner", "system_context_from_runner",
+    "broker_health_from_sources", "canonical_broker_identity", "broker_health_from_runner",
+    "system_context_from_runner",
 ]

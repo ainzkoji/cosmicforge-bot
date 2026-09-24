@@ -3,6 +3,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from _local_artifacts import active_env_or_skip
+
 from scripts.validation.analyze_strong_trend_block import (
     RECOMMENDATIONS,
     choose_recommendation,
@@ -54,7 +56,8 @@ def test_small_positive_sample_can_only_be_recommended_for_paper():
 
 
 def test_audit_generates_report_without_modifying_active_env(tmp_path):
-    env_path = BOT_ROOT / ".env"
+    # no db_path: the audit resolves the operator database through the deployment .env
+    env_path = active_env_or_skip()
     before = sha256(env_path)
     output_md = tmp_path / "strong_trend.md"
     output_json = tmp_path / "strong_trend.json"

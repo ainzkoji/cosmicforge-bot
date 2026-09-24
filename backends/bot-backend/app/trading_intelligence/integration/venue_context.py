@@ -18,7 +18,7 @@ import time
 from typing import Any, Optional
 
 from app.trading_intelligence.contracts.venue_economics import VenueReasonCode
-from app.trading_intelligence.venue.adapter import VenueRawSnapshot, normalize_environment
+from app.trading_intelligence.venue.adapter import VenueRawSnapshot
 from app.trading_intelligence.venue.context import VenueEconomicContext
 from app.trading_intelligence.venue.policy import VenueCostPolicy, default_venue_cost_policy
 from app.trading_intelligence.venue.registry import resolve_adapter
@@ -47,8 +47,11 @@ def venue_context_from_runner(runner: Any, symbol: str, *, now_ms: Optional[int]
             logger.info("[CATI_VENUE] %s: collection failed (%s)", sym, type(exc).__name__)
             raw = VenueRawSnapshot(venue_symbol=sym, payloads={}, captured_at=now_ms,
                                    reason_codes=(VenueReasonCode.COLLECTION_ERROR.value,))
+    from app.trading_intelligence.integration.context_adapters import canonical_broker_identity
+
+    _venue, environment = canonical_broker_identity(ctx)  # the ONE canonical broker-account identity
     return VenueEconomicContext(
-        adapter=adapter, raw=raw, environment=normalize_environment(safe["broker_environment"]),
+        adapter=adapter, raw=raw, environment=environment,
         decision_time=now_ms, user_id=safe["user_id"], broker_account_id=safe["broker_account_id"],
         bot_instance_id=safe["bot_instance_id"], run_id=str(getattr(runner, "run_id", "") or "") or None,
         cycle_id=getattr(runner, "cycle_id", None), broker_health=broker_health, policy=policy,

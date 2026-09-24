@@ -177,7 +177,8 @@ def test_leverage_is_clamped_by_system_limits(tmp_path):
         broker_health=BrokerHealthContext(h.plan.broker_account_id, h.plan.venue, "DEMO", "HEALTHY", h.now, "t"),
         reservation_state=h.reservations.get(h.plan.portfolio_reservation_id),
         venue_capabilities=h.kw["evaluated"].venue_observation.execution_capabilities, klines=[],
-        current_equity=5000.0, margin_used=0.0, margin_available=5000.0, open_positions=0, atr=2.0)
+        current_equity=50000.0, margin_used=0.0, margin_available=50000.0, open_positions=0, atr=2.0)
+    assert out["risk_decision"].approved, out["risk_decision"].reason_codes
     assert out["risk_decision"].resolved_leverage <= 10.0  # major-crypto ceiling, whatever CATI "prefers"
 
 
@@ -233,7 +234,7 @@ def test_submit_unknown_does_not_release_and_never_resubmits(tmp_path):
     h = Harness(tmp_path, entry=_entry(), order_error=RuntimeError("timeout"))
     res = h.run()
     assert res.status == B.SUBMIT_UNKNOWN and res.attempt.status == X.SUBMIT_UNKNOWN.value
-    assert h.reservation_status() == "RESERVED"
+    assert h.reservation_status() == "RESOLUTION_PENDING"
     assert len(h.seen["orders"]) == 1
     again = h.run()
     assert again.status == B.DUPLICATE_PLAN and len(h.seen["orders"]) == 1
@@ -245,7 +246,7 @@ def test_submit_unknown_reconciled_from_broker_truth(tmp_path):
     h.run(b)
     # still unknown: broker cannot answer -> nothing changes
     assert b.reconcile_submit_unknown(h.plan, now_ms=h.now + 1).status == B.STILL_UNKNOWN
-    assert h.reservation_status() == "RESERVED"
+    assert h.reservation_status() == "RESOLUTION_PENDING"
     h.client.get_order.side_effect = lambda s, o: _order("FILLED", "6.0", "100.0")
     h.client.get_position_info.return_value = {"positionAmt": "6.0", "entryPrice": "100.0"}
     res = b.reconcile_submit_unknown(h.plan, now_ms=h.now + 2)

@@ -9,7 +9,10 @@ reservations (Section 16.23-16.28). A separate resource from production
 position slots (``position_slots``) and account margin
 (``AccountMarginReservations``); it replaces neither and neither reads it.
 
-Lifecycle: RESERVED -> CONSUMED | RELEASED | EXPIRED (terminal).
+Lifecycle: RESERVED -> CONSUMED | RELEASED | EXPIRED (terminal), plus
+RESERVED -> RESOLUTION_PENDING when a broker entry submission's outcome is
+UNKNOWN. RESOLUTION_PENDING never expires; only broker-authoritative
+reconciliation moves it to CONSUMED (entry exists) or RELEASED (proven none).
 
 ``cati_trade_plans`` -- append-only SHADOW TradePlan evidence (Section 18.20).
 
@@ -38,7 +41,7 @@ CREATE TABLE IF NOT EXISTS {CATI_RESERVATION_TABLE} (
     cycle_id TEXT NOT NULL,
     selected_candidate_ids TEXT NOT NULL,
     selected_instruments TEXT NOT NULL,
-    status TEXT NOT NULL CHECK (status IN ('RESERVED', 'CONSUMED', 'RELEASED', 'EXPIRED')),
+    status TEXT NOT NULL CHECK (status IN ('RESERVED', 'RESOLUTION_PENDING', 'CONSUMED', 'RELEASED', 'EXPIRED')),
     mode TEXT NOT NULL DEFAULT 'SHADOW',
     created_at INTEGER NOT NULL,
     expires_at INTEGER NOT NULL,
@@ -47,17 +50,54 @@ CREATE TABLE IF NOT EXISTS {CATI_RESERVATION_TABLE} (
     policy_version TEXT,
     policy_hash TEXT,
     payload_hash TEXT,
-    capacity_snapshot TEXT
+    capacity_snapshot TEXT,
+    trade_plan_id TEXT,
+    execution_attempt_id TEXT,
+    pending_since INTEGER,
+    resolution_deadline INTEGER,
+    resolution_note TEXT
 )
 """
 
-#: Additive columns for a table created by the earlier lazy DDL.
+#: Additive columns for a table created by the earlier lazy DDL (and, for the
+#: last five, by the pre-closure schema): unresolved submit ownership.
 _ADDITIVE_COLUMNS = (
     ("policy_version", "TEXT"),
     ("policy_hash", "TEXT"),
     ("payload_hash", "TEXT"),
     ("capacity_snapshot", "TEXT"),
+    ("trade_plan_id", "TEXT"),
+    ("execution_attempt_id", "TEXT"),
+    ("pending_since", "INTEGER"),
+    ("resolution_deadline", "INTEGER"),
+    ("resolution_note", "TEXT"),
 )
+
+_RESERVATION_COLUMNS = ("reservation_id", "broker_account_id", "bot_instance_id", "cycle_id", "selected_candidate_ids",
+                        "selected_instruments", "status", "mode", "created_at", "expires_at", "updated_at",
+                        "reservation_version", "policy_version", "policy_hash", "payload_hash", "capacity_snapshot")
+
+
+def _upgrade_reservation_status_check(conn: Any) -> None:
+    """``RESOLUTION_PENDING`` (unresolved broker ownership after a
+    SUBMIT_UNKNOWN entry) is a new operational state. SQLite cannot alter a
+    CHECK constraint, so a table created with the older four-state CHECK is
+    rebuilt ONCE: same rows, same values, new constraint. Idempotent -- a
+    table whose DDL already allows RESOLUTION_PENDING is left untouched.
+    This is the mutable OPERATIONAL reservation table, never analytical
+    evidence."""
+    row = conn.execute("SELECT sql FROM sqlite_master WHERE type='table' AND name=?",
+                       (CATI_RESERVATION_TABLE,)).fetchone()
+    if row is None or "RESOLUTION_PENDING" in (row[0] or ""):
+        return
+    old = f"{CATI_RESERVATION_TABLE}__pre_resolution_pending"
+    conn.execute(f"ALTER TABLE {CATI_RESERVATION_TABLE} RENAME TO {old}")
+    conn.execute(_CREATE)
+    have = {r[1] for r in conn.execute(f"PRAGMA table_info({old})").fetchall()}
+    cols = [c for c in _RESERVATION_COLUMNS if c in have]
+    names = ", ".join(cols)
+    conn.execute(f"INSERT INTO {CATI_RESERVATION_TABLE} ({names}) SELECT {names} FROM {old}")
+    conn.execute(f"DROP TABLE {old}")
 
 #: Deliberately few indexes: the reserve transaction's account scan, the
 #: per-bot slot count, and global expiry cleanup.
@@ -65,6 +105,7 @@ _INDEXES = (
     f"CREATE INDEX IF NOT EXISTS idx_cati_resv_account_status_expiry ON {CATI_RESERVATION_TABLE}(broker_account_id, status, expires_at)",
     f"CREATE INDEX IF NOT EXISTS idx_cati_resv_bot_status ON {CATI_RESERVATION_TABLE}(bot_instance_id, status)",
     f"CREATE INDEX IF NOT EXISTS idx_cati_resv_status_expiry ON {CATI_RESERVATION_TABLE}(status, expires_at)",
+    f"CREATE INDEX IF NOT EXISTS idx_cati_resv_pending ON {CATI_RESERVATION_TABLE}(status, resolution_deadline)",
 )
 
 
@@ -125,6 +166,11 @@ CATI_EXIT_DECISION_TABLE = "cati_exit_decisions"
 CATI_RISK_DECISION_TABLE = "cati_risk_decisions"
 CATI_EXECUTION_ATTEMPT_TABLE = "cati_execution_attempts"
 CATI_COMPONENT_ERROR_TABLE = "cati_component_errors"
+#: The canonical UPSTREAM decision evidence (OutcomeForecast incl. its
+#: DistributionShiftAssessment, EconomicOpportunity, VetoDecision) behind a
+#: plan, keyed so downstream exports reconstruct it BY ID instead of copying
+#: fields into every contract or recomputing them.
+CATI_DECISION_EVIDENCE_TABLE = "cati_decision_evidence"
 
 _TENANT_COLS = """
     user_id TEXT,
@@ -185,6 +231,15 @@ _CREATE_EVIDENCE = (
     recorded_at INTEGER NOT NULL,{_TAIL_COLS},
     UNIQUE (execution_attempt_id, sequence)
 )""",
+    f"""CREATE TABLE IF NOT EXISTS {CATI_DECISION_EVIDENCE_TABLE} (
+    decision_evidence_id TEXT PRIMARY KEY,
+    economic_opportunity_id TEXT NOT NULL,
+    forecast_id TEXT NOT NULL,
+    veto_decision_id TEXT NOT NULL,
+    setup_candidate_id TEXT NOT NULL,
+    market_state_id TEXT NOT NULL,{_TENANT_COLS}
+    decision_time INTEGER NOT NULL,{_TAIL_COLS}
+)""",
     f"""CREATE TABLE IF NOT EXISTS {CATI_COMPONENT_ERROR_TABLE} (
     error_id TEXT PRIMARY KEY,
     component TEXT NOT NULL,
@@ -210,6 +265,7 @@ _EVIDENCE_INDEXES = (
     f"CREATE INDEX IF NOT EXISTS idx_cati_exec_account_time ON {CATI_EXECUTION_ATTEMPT_TABLE}(broker_account_id, recorded_at)",
     f"CREATE INDEX IF NOT EXISTS idx_cati_exec_position ON {CATI_EXECUTION_ATTEMPT_TABLE}(position_id)",
     f"CREATE INDEX IF NOT EXISTS idx_cati_err_time ON {CATI_COMPONENT_ERROR_TABLE}(observed_at)",
+    f"CREATE INDEX IF NOT EXISTS idx_cati_dev_opp ON {CATI_DECISION_EVIDENCE_TABLE}(broker_account_id, economic_opportunity_id)",
 )
 
 
@@ -228,13 +284,15 @@ _EVIDENCE_TRIGGERS = (
     + _append_only_triggers(CATI_RISK_DECISION_TABLE, "cati_risk")
     + _append_only_triggers(CATI_EXECUTION_ATTEMPT_TABLE, "cati_exec")
     + _append_only_triggers(CATI_COMPONENT_ERROR_TABLE, "cati_err")
+    + _append_only_triggers(CATI_DECISION_EVIDENCE_TABLE, "cati_dev")
 )
 
 CATI_EVIDENCE_TABLES = (CATI_POSITION_FORECAST_TABLE, CATI_EXIT_DECISION_TABLE, CATI_RISK_DECISION_TABLE,
-                        CATI_EXECUTION_ATTEMPT_TABLE, CATI_COMPONENT_ERROR_TABLE)
+                        CATI_EXECUTION_ATTEMPT_TABLE, CATI_COMPONENT_ERROR_TABLE, CATI_DECISION_EVIDENCE_TABLE)
 
 
 def ensure_cati_schema_on_connection(conn: Any) -> None:
+    _upgrade_reservation_status_check(conn)
     conn.execute(_CREATE)
     cols = {row[1] for row in conn.execute(f"PRAGMA table_info({CATI_RESERVATION_TABLE})").fetchall()}
     for name, col_type in _ADDITIVE_COLUMNS:
@@ -257,4 +315,4 @@ def ensure_cati_schema(db: Any) -> None:
 
 __all__ = ["CATI_RESERVATION_TABLE", "CATI_TRADE_PLAN_TABLE", "CATI_EVIDENCE_TABLES", "CATI_POSITION_FORECAST_TABLE",
            "CATI_EXIT_DECISION_TABLE", "CATI_RISK_DECISION_TABLE", "CATI_EXECUTION_ATTEMPT_TABLE",
-           "CATI_COMPONENT_ERROR_TABLE", "ensure_cati_schema", "ensure_cati_schema_on_connection"]
+           "CATI_COMPONENT_ERROR_TABLE", "CATI_DECISION_EVIDENCE_TABLE", "ensure_cati_schema", "ensure_cati_schema_on_connection"]

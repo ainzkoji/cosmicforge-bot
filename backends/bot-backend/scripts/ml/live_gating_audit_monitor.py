@@ -20,9 +20,10 @@ THRESHOLD = 0.30
 
 def main():
     if not DB_PATH.exists():
-        # Fallback for local testing
-        DB_PATH_FALLBACK = Path('C:/Users/favou/OneDrive/Desktop/cosmicforge-bot/backends/shared/shared_lib/persistence/cosmicforge.db')
-        LOG_DIR_FALLBACK = Path('C:/Users/favou/OneDrive/Desktop/cosmicforge-bot/backends/bot-backend/models/logs')
+        # Fallback: resolve relative to this script (repo layout), not the CWD or a machine path
+        _bot_root = Path(__file__).resolve().parents[2]
+        DB_PATH_FALLBACK = _bot_root.parent / 'shared' / 'shared_lib' / 'persistence' / 'cosmicforge.db'
+        LOG_DIR_FALLBACK = _bot_root / 'models' / 'logs'
         if DB_PATH_FALLBACK.exists():
             db_conn = sqlite3.connect(DB_PATH_FALLBACK)
             log_path = LOG_DIR_FALLBACK

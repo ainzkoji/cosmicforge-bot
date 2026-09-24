@@ -5,6 +5,7 @@ import sqlite3
 from pathlib import Path
 
 from scripts.validation.analyze_signal_thresholds import run_audit
+from _local_artifacts import ACTIVE_ENV, read_bytes_or_none
 
 
 def _create_fixture_db(path: Path) -> None:
@@ -98,11 +99,11 @@ def test_threshold_analysis_reports_additional_possible_signals(tmp_path):
 def test_threshold_analysis_does_not_modify_active_env(tmp_path):
     root = Path(__file__).resolve().parents[1]
     env_path = root / ".env"
-    before = env_path.read_bytes()
+    before = read_bytes_or_none(env_path)  # an absent .env must stay absent
 
     payload = _run(tmp_path)
 
-    assert env_path.read_bytes() == before
+    assert read_bytes_or_none(env_path) == before
     assert payload["safety"]["active_env_unchanged"] is True
     assert payload["safety"]["active_env_modified"] is False
 
@@ -114,5 +115,7 @@ def test_recommendation_never_enables_ml_or_live_mode(tmp_path):
     assert recommendation["paper_only"] is True
     assert recommendation["ml_enabled"] is False
     assert recommendation["live_enabled"] is False
-    assert payload["safety"]["execution_mode_is_paper"] is True
-    assert payload["safety"]["ml_disabled"] is True
+    # the safety facts are read from the ACTIVE deployment .env; with none they fail closed
+    expected = ACTIVE_ENV.exists()
+    assert payload["safety"]["execution_mode_is_paper"] is expected
+    assert payload["safety"]["ml_disabled"] is expected

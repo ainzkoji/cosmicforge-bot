@@ -48,6 +48,13 @@ class EvaluatedOpportunity:
     venue_observation: Any = None
 
     @property
+    def economics_basis(self) -> str:
+        """CANONICAL_VENUE (certifiable) or REFERENCE_DIAGNOSTIC (never plannable)."""
+        from app.trading_intelligence.economics.canonical import economics_basis
+
+        return economics_basis(self)
+
+    @property
     def approved(self) -> bool:
         return self.veto.approved_for_ranking
 

@@ -279,6 +279,17 @@ def trade_plan_stage(db: Any, result: Any, outcome: Any, evaluated: Dict[str, An
                     plan.plan_expiry_time if plan else "-", ",".join(res.reason_codes) or "-")
         if plan is not None and store is not None:
             store.append(plan)
+            try:  # Section 21: the canonical upstream evidence (OOD / forecast / veto) behind this plan
+                from app.trading_intelligence.evidence.stores import DecisionEvidenceStore
+
+                DecisionEvidenceStore(db).append(ev, broker_account_id=plan.broker_account_id, user_id=plan.user_id,
+                                                 bot_instance_id=plan.bot_instance_id)
+            except Exception as exc:  # never silent: the export then reports UPSTREAM_EVIDENCE_UNAVAILABLE
+                from app.trading_intelligence.observability.logging import record_stage_error
+
+                record_stage_error("cycle_shadow.decision_evidence", "EVIDENCE", exc, db=db, cycle_id=plan.cycle_id,
+                                   user_id=plan.user_id, broker_account_id=plan.broker_account_id,
+                                   bot_instance_id=plan.bot_instance_id)
     return results
 
 
@@ -348,6 +359,7 @@ def record_symbol(runner: Any, snapshot: Any, symbol: str, *, venue: str, source
             # Section 17: venue/account cost evidence, captured only if candidates exist
             venue_context=lambda: venue_context_from_runner(
                 runner, str(symbol), broker_health=system_context.broker_health),
+            require_venue_economics=True,  # the whole-universe path is the canonical, certifiable one
         )
         _get_coordinator().record_symbol_evaluation(info["key"], evaluation)
     except Exception as exc:

@@ -34,6 +34,10 @@ class MarketReference:
     spread_bps: Optional[float] = None
 
 
+def _known_env(env: Optional[str]) -> bool:
+    return bool(env) and str(env).upper() != "UNKNOWN"
+
+
 def validate_trade_plan_for_submission(
     plan: TradePlan,
     current_time: int,
@@ -79,6 +83,10 @@ def validate_trade_plan_for_submission(
         add(V.BROKER_DEGRADED, InvalidationCode.BROKER_HEALTH_DEGRADED.value)
     elif broker_health.broker_account_id not in (None, plan.broker_account_id):
         add(V.BROKER_DEGRADED, "BROKER_HEALTH_WRONG_ACCOUNT")
+    elif _known_env(broker_health.environment) and _known_env(plan.environment) \
+            and str(broker_health.environment).upper() != str(plan.environment).upper():
+        # health observed for another broker environment (e.g. DEMO) can never validate this plan's (e.g. REAL)
+        add(V.BROKER_DEGRADED, "BROKER_HEALTH_WRONG_ENVIRONMENT")
 
     if ref is not None:
         zone = plan.allowed_entry_zone

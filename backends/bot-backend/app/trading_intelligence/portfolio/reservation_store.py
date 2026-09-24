@@ -31,6 +31,22 @@ Nothing is ever substituted: the caller must explicitly re-run selection.
 Lifecycle: RESERVED -> CONSUMED | RELEASED | EXPIRED. Transitions are
 compare-and-set from RESERVED only, so repeats are idempotent no-ops, and an
 expired reservation can no longer be consumed.
+
+Unresolved broker ownership (pre-Section-22 closure): when an entry
+submission's outcome is UNKNOWN the reservation moves RESERVED ->
+RESOLUTION_PENDING (``mark_resolution_pending``). A pending reservation:
+
+* never expires (the expiry sweep only touches RESERVED rows),
+* cannot be consumed / released by the normal RESERVED-only transitions,
+* stays in the account's active set, so it still blocks the instrument for
+  every other bot and still counts against this bot's capacity,
+* is never deleted and re-inserted by a repeated ``reserve`` of the same id,
+* is resolved ONLY by ``resolve_pending`` (called from the existing
+  submit-unknown reconciliation with broker-authoritative evidence):
+  CONSUMED when the broker shows the entry, RELEASED when it proves none.
+It is persisted, so it survives a restart. ``overdue_pending`` exposes rows
+past their resolution deadline for SUBMIT_OUTCOME_UNRESOLVED escalation --
+never an implicit "no response means no position".
 """
 from __future__ import annotations
 
@@ -46,6 +62,7 @@ from app.trading_intelligence.contracts.portfolio_intel import (
     ACCOUNT_RESERVATION_CONFLICT, CAPACITY_CHANGED, DUPLICATE_EXPOSURE, EXPOSURE_CHANGED,
 )
 from app.trading_intelligence.hashing import short_id, stable_hash
+from app.trading_intelligence.observability.sanitize import sanitize_text
 from app.trading_intelligence.portfolio.exposure_builder import (
     account_state_fingerprint, dedupe_reservations, load_open_and_pending, reservation_records,
 )
@@ -101,6 +118,16 @@ def _row_to_reservation(row: Any) -> AccountPortfolioReservation:
     )
 
 
+def _resolution_note(note: str) -> str:
+    """``resolution_note`` can carry broker-supplied text (raw order status):
+    redact credential-like content before it is persisted, then bound it."""
+    return sanitize_text(note or "")[:200]
+
+
+def reservation_id_note(rid: str) -> str:
+    return f"RESOLUTION_PENDING:{rid}"
+
+
 def available_slots_from(occupied: Dict[str, set], own_active: Sequence[AccountPortfolioReservation],
                          max_open_positions: int) -> int:
     """max_open - production-occupied slots - this bot's still-unrealised
@@ -147,7 +174,8 @@ class CATIReservationStore:
     @staticmethod
     def _active(conn: Any, account: str, now_ms: int) -> List[AccountPortfolioReservation]:
         rows = conn.execute(
-            f"SELECT * FROM {TABLE} WHERE broker_account_id=? AND status='RESERVED' AND expires_at>? ORDER BY reservation_id",
+            f"SELECT * FROM {TABLE} WHERE broker_account_id=? AND ((status='RESERVED' AND expires_at>?)"
+            " OR status='RESOLUTION_PENDING') ORDER BY reservation_id",
             (account, now_ms),
         ).fetchall()
         return [_row_to_reservation(r) for r in rows]
@@ -174,6 +202,9 @@ class CATIReservationStore:
                 existing = conn.execute(f"SELECT * FROM {TABLE} WHERE reservation_id=?", (rid,)).fetchone()
                 if existing is not None and existing["status"] == ReservationStatus.RESERVED.value:
                     return ReservationOutcome(_row_to_reservation(existing))  # idempotent retry
+                if existing is not None and existing["status"] == ReservationStatus.RESOLUTION_PENDING.value:
+                    # unresolved broker ownership is never deleted / re-reserved
+                    return ReservationOutcome(None, ACCOUNT_RESERVATION_CONFLICT, (reservation_id_note(rid),))
                 opens, pending = load_open_and_pending(conn, broker_account_id)
                 active = self._active(conn, broker_account_id, now_ms)
 
@@ -245,6 +276,61 @@ class CATIReservationStore:
             )
             return cur.rowcount == 1
 
+    # -- unresolved broker ownership ----------------------------------------------------
+    def mark_resolution_pending(self, reservation_id: str, now_ms: int, *, trade_plan_id: str,
+                                execution_attempt_id: str, resolution_deadline: int, note: str = "") -> bool:
+        """RESERVED -> RESOLUTION_PENDING when the broker outcome of the entry
+        submitted under this reservation is UNKNOWN. Also reclaims a row the
+        expiry sweep marked EXPIRED while the submission was in flight: the
+        broker may own a position, so ownership must not be lost. Never raises
+        a row out of CONSUMED / RELEASED."""
+        with self._db.connect() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            cur = conn.execute(
+                f"UPDATE {TABLE} SET status='RESOLUTION_PENDING', updated_at=?, pending_since=COALESCE(pending_since, ?),"
+                " trade_plan_id=?, execution_attempt_id=?, resolution_deadline=?, resolution_note=?"
+                " WHERE reservation_id=? AND status IN ('RESERVED', 'EXPIRED', 'RESOLUTION_PENDING')",
+                (now_ms, now_ms, trade_plan_id, execution_attempt_id, int(resolution_deadline), _resolution_note(note),
+                 reservation_id),
+            )
+            return cur.rowcount == 1
+
+    def resolve_pending(self, reservation_id: str, to_status: str, now_ms: int, *, note: str = "") -> bool:
+        """RESOLUTION_PENDING -> CONSUMED | RELEASED, from broker-authoritative
+        reconciliation ONLY. Compare-and-set: a repeat is a no-op."""
+        if to_status not in (ReservationStatus.CONSUMED.value, ReservationStatus.RELEASED.value):
+            raise ValueError("a pending reservation resolves only to CONSUMED or RELEASED")
+        with self._db.connect() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            cur = conn.execute(
+                f"UPDATE {TABLE} SET status=?, updated_at=?, resolution_note=? "
+                "WHERE reservation_id=? AND status='RESOLUTION_PENDING'",
+                (to_status, now_ms, _resolution_note(note), reservation_id),
+            )
+            return cur.rowcount == 1
+
+    def note_unresolved(self, reservation_id: str, now_ms: int, note: str) -> bool:
+        """Record escalation evidence on a pending row WITHOUT changing ownership."""
+        with self._db.connect() as conn:
+            cur = conn.execute(
+                f"UPDATE {TABLE} SET updated_at=?, resolution_note=? WHERE reservation_id=? AND status='RESOLUTION_PENDING'",
+                (now_ms, _resolution_note(note), reservation_id))
+            return cur.rowcount == 1
+
+    def pending_resolutions(self, broker_account_id: Optional[str] = None) -> List[Dict[str, Any]]:
+        """Persisted unresolved ownership -- the restart-recovery work list."""
+        sql = f"SELECT * FROM {TABLE} WHERE status='RESOLUTION_PENDING'"
+        params: list = []
+        if broker_account_id is not None:
+            sql += " AND broker_account_id=?"
+            params.append(broker_account_id)
+        with self._db.connect() as conn:
+            return [dict(r) for r in conn.execute(sql + " ORDER BY pending_since, reservation_id", params).fetchall()]
+
+    def overdue_pending(self, now_ms: int) -> List[Dict[str, Any]]:
+        return [r for r in self.pending_resolutions()
+                if r.get("resolution_deadline") is not None and int(r["resolution_deadline"]) <= now_ms]
+
     def release(self, reservation_id: str, now_ms: int) -> bool:
         """E.g. hard risk rejected the selected candidate. Never substitutes rank #2."""
         return self._transition(reservation_id, ReservationStatus.RELEASED.value, now_ms)
@@ -264,4 +350,4 @@ class CATIReservationStore:
 
 
 __all__ = ["TABLE", "MODE_SHADOW", "Selected", "ReservationOutcome", "ReservationSchemaMissing",
-           "available_slots_from", "CATIReservationStore"]
+           "available_slots_from", "reservation_id_note", "CATIReservationStore"]

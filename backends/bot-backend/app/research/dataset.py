@@ -702,7 +702,8 @@ def partition(
     if not rows:
         raise DatasetError("cannot partition an empty series")
     fractions = (train, validation, test)
-    if any(f <= 0 for f in fractions) or sum(fractions) >= 1.0:
+    # tolerance: 0.7 + 0.2 + 0.1 == 0.9999999999999999 in floating point, which is still "no holdout"
+    if any(f <= 0 for f in fractions) or sum(fractions) >= 1.0 - 1e-9:
         raise DatasetError(
             "train/validation/test must be positive and leave room for a final "
             f"holdout; got {fractions} summing to {sum(fractions)}"

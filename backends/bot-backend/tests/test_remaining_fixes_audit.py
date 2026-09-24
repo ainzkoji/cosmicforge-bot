@@ -3,7 +3,12 @@ CosmicForge — Remaining Fixes Audit Tests
 B-6, D-1, B-5, A-x, C-x, D-2, B-1, B-7, B-8
 """
 from __future__ import annotations
+from pathlib import Path
+
 import pytest
+
+# repo-relative: the tests read tracked source files, never a developer's machine path
+_BOT_ROOT = Path(__file__).resolve().parents[1]
 
 
 class TestActivityFallbackDisabled:
@@ -65,7 +70,7 @@ class TestGuardModuleD1:
 
 
 class TestGuardWiredInRunner:
-    SRC = open("C:/Users/favou/OneDrive/Desktop/cosmicforge-bot/backends/bot-backend/app/runner/runner.py", encoding="utf-8").read()
+    SRC = open(_BOT_ROOT / "app/runner/runner.py", encoding="utf-8").read()
 
     def test_guard_imported(self):
         assert "app.risk.guard" in self.SRC
@@ -141,7 +146,7 @@ class TestSignalConfig:
         assert DEFAULT_MAX_ACTIVE_SIGNALS == 20
 
     def test_scheduler_in_main(self):
-        src = open("C:/Users/favou/OneDrive/Desktop/cosmicforge-bot/backends/bot-backend/app/main.py", encoding="utf-8").read()
+        src = open(_BOT_ROOT / "app/main.py", encoding="utf-8").read()
         assert "AsyncIOScheduler" in src
         assert "expire_stale_signals" in src
         assert "minutes=5" in src
@@ -154,17 +159,17 @@ class TestRRPolicy:
         assert ctx.min_risk_reward == 1.5
 
     def test_rr_in_engine_source(self):
-        src = open("C:/Users/favou/OneDrive/Desktop/cosmicforge-bot/backends/bot-backend/app/policy/policy_engine.py", encoding="utf-8").read()
+        src = open(_BOT_ROOT / "app/policy/policy_engine.py", encoding="utf-8").read()
         assert "min_risk_reward" in src
 
 
 class TestAutoPlotMinAmount:
     def test_auto_pilot_50_usdt_check(self):
-        src = open("C:/Users/favou/OneDrive/Desktop/cosmicforge-bot/backends/bot-backend/app/api/auto_pilot.py", encoding="utf-8").read()
+        src = open(_BOT_ROOT / "app/api/auto_pilot.py", encoding="utf-8").read()
         assert "50" in src and ("422" in src or "HTTPException" in src)
 
 
 class TestSmaCrossRunner:
     def test_sma_cross_blocked(self):
-        src = open("C:/Users/favou/OneDrive/Desktop/cosmicforge-bot/backends/bot-backend/app/runner/runner.py", encoding="utf-8").read()
+        src = open(_BOT_ROOT / "app/runner/runner.py", encoding="utf-8").read()
         assert "sma_cross" in src.lower() and "master_ensemble" in src

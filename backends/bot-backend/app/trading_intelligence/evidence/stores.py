@@ -190,6 +190,39 @@ class ExecutionAttemptStore(_AppendOnlyStore):
                             "recorded_at, sequence")
 
 
+class DecisionEvidenceStore(_AppendOnlyStore):
+    """The canonical upstream objects behind a TradePlan, persisted verbatim:
+    the OutcomeForecast (with its DistributionShiftAssessment -- the OOD
+    evidence the veto graded), the EconomicOpportunity (the ood_score and
+    penalties admission used) and the VetoDecision's OOD checks. Written
+    once per (opportunity, account); nothing is recomputed."""
+
+    TABLE, ID = "cati_decision_evidence", "decision_evidence_id"
+
+    def append(self, evaluated: Any, *, broker_account_id: str, user_id: Optional[str] = None,
+               bot_instance_id: str = "") -> bool:
+        f, o, v, c = evaluated.forecast, evaluated.opportunity, evaluated.veto, evaluated.candidate
+        payload = {
+            "outcome_forecast": to_payload(f),
+            "economic_opportunity": to_payload(o),
+            "veto": {"veto_decision_id": v.veto_decision_id, "outcome": v.outcome, "stage": v.stage,
+                     "reason_codes": list(v.reason_codes),
+                     "ood_checks": [to_payload(ch) for ch in v.checks if ch.family == "OOD"]},
+            "economics_basis": getattr(evaluated, "economics_basis", None),
+        }
+        return self._insert(dict(
+            decision_evidence_id=short_id("dev", {"opp": o.economic_opportunity_id, "acct": broker_account_id}),
+            economic_opportunity_id=o.economic_opportunity_id, forecast_id=f.forecast_id,
+            veto_decision_id=v.veto_decision_id, setup_candidate_id=c.setup_candidate_id,
+            market_state_id=c.market_state_id, user_id=user_id, broker_account_id=broker_account_id,
+            bot_instance_id=bot_instance_id, decision_time=int(c.decision_time)), payload, "1.0.0")
+
+    def for_opportunity(self, broker_account_id: str, economic_opportunity_id: str) -> Optional[Dict[str, Any]]:
+        rows = self._select("broker_account_id=? AND economic_opportunity_id=?",
+                            (broker_account_id, economic_opportunity_id), "decision_time")
+        return rows[-1] if rows else None
+
+
 class ComponentErrorStore(_AppendOnlyStore):
     TABLE, ID = "cati_component_errors", "error_id"
 
@@ -206,4 +239,4 @@ class ComponentErrorStore(_AppendOnlyStore):
 
 
 __all__ = ["CATIEvidenceSchemaMissing", "EvidenceConflict", "to_payload", "PositionForecastStore", "ExitDecisionStore",
-           "RiskDecisionStore", "ExecutionAttemptStore", "ComponentErrorStore"]
+           "RiskDecisionStore", "ExecutionAttemptStore", "DecisionEvidenceStore", "ComponentErrorStore"]

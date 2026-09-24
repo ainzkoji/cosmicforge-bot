@@ -1,14 +1,17 @@
 fastapi
 uvicorn
 pydantic
+email-validator
 pydantic-settings
 python-jose[cryptography]
 passlib[bcrypt]
 python-multipart
 pandas
+pyarrow
 numpy
 scipy
 requests
+psutil
 python-dotenv
 ta
 annotated-doc

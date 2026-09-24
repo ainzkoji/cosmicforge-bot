@@ -50,6 +50,45 @@ def _execution_outcome(risk: Optional[Dict[str, Any]], attempt: Optional[Dict[st
     return "NOT_SUBMITTED"
 
 
+def _forecast_section(p: Mapping[str, Any], upstream: Optional[Mapping[str, Any]]) -> Dict[str, Any]:
+    """Forecast / OOD evidence RECONSTRUCTED BY ID from the canonical upstream
+    decision evidence (the exact OutcomeForecast + EconomicOpportunity +
+    VetoDecision the admission and veto used). Nothing is recomputed here; with
+    no upstream evidence the OOD fields are explicitly UNAVAILABLE, never 0."""
+    out: Dict[str, Any] = {
+        "p_net_profitable": p.get("p_net_profitable"),
+        "credible_interval": [p.get("credible_interval_low"), p.get("credible_interval_high")],
+        "raw_support": p.get("raw_support"), "ess": p.get("ess"), "backoff_level": p.get("backoff_level"),
+        "forecast_id": p.get("forecast_id"),
+    }
+    if upstream is None:
+        out.update(ood_score=None, ood_evidence_status="UPSTREAM_EVIDENCE_UNAVAILABLE")
+        return out
+    payload = upstream["payload"]
+    fc, opp, veto = payload["outcome_forecast"], payload["economic_opportunity"], payload["veto"]
+    shift = fc.get("distribution_shift_assessment") or {}
+    if fc.get("forecast_id") != p.get("forecast_id") or opp.get("economic_opportunity_id") != p.get(
+            "economic_opportunity_id"):
+        out.update(ood_score=None, ood_evidence_status="UPSTREAM_LINEAGE_MISMATCH")
+        return out
+    out.update(
+        ood_evidence_status="UPSTREAM_EVIDENCE",
+        ood_score=shift.get("ood_score"), ood_severity=shift.get("severity"),
+        ood_reason_codes=list(shift.get("reason_codes") or ()),
+        ood_unseen_categories=list(shift.get("unseen_categories") or ()),
+        ood_support_shift=shift.get("support_shift"),
+        admission_ood_score=opp.get("ood_score"),
+        distribution_shift_penalty_r=opp.get("distribution_shift_penalty_r"),
+        forecast_uncertainty=fc.get("forecast_uncertainty"), forecast_status=fc.get("status"),
+        cohort_signature=fc.get("cohort_signature"), library_hash=fc.get("library_hash"),
+        calibration_status=fc.get("calibration_status"),
+        veto_ood_checks=[{k: c.get(k) for k in ("check", "status", "observed_value", "policy_value", "reason_code")}
+                         for c in veto.get("ood_checks") or ()],
+        decision_evidence_id=upstream["decision_evidence_id"],
+    )
+    return out
+
+
 def export_research_rows(db: Any, broker_account_id: str, *,
                          market_outcomes: Optional[Mapping[str, Mapping[str, Any]]] = None,
                          account_outcomes: Optional[Mapping[str, Mapping[str, Any]]] = None) -> List[Dict[str, Any]]:
@@ -57,6 +96,9 @@ def export_research_rows(db: Any, broker_account_id: str, *,
         raise ValueError("research export is tenant-scoped: broker_account_id is required")
     market_outcomes = market_outcomes or {}
     account_outcomes = account_outcomes or {}
+    from app.trading_intelligence.evidence.stores import DecisionEvidenceStore
+
+    decisions = DecisionEvidenceStore(db)
     plans = _rows(db, "SELECT * FROM cati_trade_plans WHERE broker_account_id=? ORDER BY created_at, trade_plan_id",
                   (broker_account_id,))
     out: List[Dict[str, Any]] = []
@@ -75,6 +117,7 @@ def export_research_rows(db: Any, broker_account_id: str, *,
                          "ORDER BY forecast_time", (broker_account_id, pid))
         exds = _rows(db, "SELECT * FROM cati_exit_decisions WHERE broker_account_id=? AND trade_plan_id=? "
                          "ORDER BY decision_time", (broker_account_id, pid))
+        upstream = decisions.for_opportunity(broker_account_id, p.get("economic_opportunity_id") or "")
         mo = dict(market_outcomes.get(pid) or {})
         m_label = str(mo.get("terminal_outcome") or "UNLABELED")
         if m_label not in MARKET_OUTCOME_LABELS:
@@ -101,11 +144,7 @@ def export_research_rows(db: Any, broker_account_id: str, *,
                        "asset_class": (p.get("instrument_key") or {}).get("asset_class"), "venue": p.get("venue"),
                        "environment": p.get("environment"), "setup_family": p.get("setup_family"), "side": p.get("side"),
                        "decision_time": p.get("decision_time")},
-            "forecast": {"p_net_profitable": p.get("p_net_profitable"),
-                         "credible_interval": [p.get("credible_interval_low"), p.get("credible_interval_high")],
-                         "raw_support": p.get("raw_support"), "ess": p.get("ess"), "backoff_level": p.get("backoff_level"),
-                         # the TradePlan does not carry the OOD score; the forecast id links to it
-                         "ood_score": None},
+            "forecast": _forecast_section(p, upstream),
             "economics": {"expected_gross_R": p.get("expected_gross_R"), "expected_net_R": p.get("expected_net_R"),
                           "conservative_edge_R": p.get("conservative_edge_R"), "planned_costs_R": costs},
             "decision": {"veto_decision_id": p.get("veto_decision_id"), "ranked_opportunity_id": p.get("ranked_opportunity_id"),

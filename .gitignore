@@ -70,6 +70,10 @@ debug_*.py
 dump_*.py
 diagnose_*.py
 audit_*.py
+# ...but these are REAL source modules imported by tracked code (app.adaptive.engine,
+# tests/test_runtime_replay_mismatch_audit.py); the glob above must never hide them.
+!backends/bot-backend/app/adaptive/audit_log.py
+!backends/bot-backend/scripts/validation/audit_runtime_replay_mismatch.py
 check_schema*.py
 report.xml
 error.txt

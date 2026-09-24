@@ -19,9 +19,15 @@ Portfolio reservation lifecycle (20.15):
     executor slot / margin / sizing rejects    RELEASED
     execution fails before any position        RELEASED
     authoritative (partial) fill               CONSUMED
-    submit-unknown / same-intent reuse         left RESERVED until
-                                               ``reconcile_submit_unknown``
-                                               proves whether a position exists
+    submit-unknown / same-intent reuse         RESOLUTION_PENDING -- never expires,
+                                               never re-submitted, still counted in
+                                               account exposure/capacity -- until
+                                               ``reconcile_submit_unknown`` proves
+                                               from BROKER truth whether an entry
+                                               exists (-> CONSUMED | RELEASED).
+                                               Past the escalation deadline it is
+                                               flagged SUBMIT_OUTCOME_UNRESOLVED
+                                               (a system fault), still owned.
 Transitions are the reservation store's compare-and-set (BEGIN IMMEDIATE),
 so a repeat is a no-op. The next-ranked candidate is NEVER substituted.
 """
@@ -87,18 +93,27 @@ class BoundaryResult:
     detail: Mapping[str, Any] = field(default_factory=dict)
 
 
+#: How long an unresolved submit may stay pending before it is escalated as a
+#: SUBMIT_OUTCOME_UNRESOLVED system fault. Escalation never releases ownership.
+DEFAULT_RESOLUTION_ESCALATION_MS = 15 * 60_000
+
+SUBMIT_OUTCOME_UNRESOLVED = "SUBMIT_OUTCOME_UNRESOLVED"
+
+
 def _now() -> int:
     return int(time.time() * 1000)
 
 
 class CATIExecutionBoundary:
     def __init__(self, *, orchestrator: Any, adapter: Any, db: Any, config: Optional[CATIExecutionConfig] = None,
-                 position_manager: Any = None, clock=None) -> None:
+                 position_manager: Any = None, clock=None,
+                 resolution_escalation_ms: int = DEFAULT_RESOLUTION_ESCALATION_MS) -> None:
         self.orchestrator = orchestrator
         self.adapter = adapter
         self.config = config if config is not None else CATIExecutionConfig.from_env()
         self.position_manager = position_manager
         self._clock = clock or _now
+        self.resolution_escalation_ms = int(resolution_escalation_ms)
         self.reservations = CATIReservationStore(db)
         self.risk_store = RiskDecisionStore(db)
         self.attempts = ExecutionAttemptStore(db)
@@ -192,7 +207,10 @@ class CATIExecutionBoundary:
     def _settle(self, plan, base: ExecutionAttempt, req: EntryRequest, entry: EntryResult, now: int,
                 runtime_session_id) -> BoundaryResult:
         status = entry.status
-        keep_reserved = status == X.SUBMIT_UNKNOWN.value or entry.raw_status == "ENTRY_INTENT_REUSED"
+        if entry.raw_status == "ENTRY_INTENT_REUSED":
+            # the executor holds an identical in-flight intent: CATI cannot know if it filled
+            status = X.SUBMIT_UNKNOWN.value
+        keep_reserved = status == X.SUBMIT_UNKNOWN.value
         position_id = None
         if status in POSITION_EXISTS:
             position_id = f"cati_{base.execution_attempt_id}"
@@ -217,6 +235,12 @@ class CATIExecutionBoundary:
             self._register_lifecycle(plan, req, entry, position_id)
             outcome = BoundaryStatus.EXECUTED
         elif keep_reserved:
+            # ownership is UNKNOWN: hold it explicitly (never expires, never re-submits)
+            self.reservations.mark_resolution_pending(
+                plan.portfolio_reservation_id, now, trade_plan_id=plan.trade_plan_id,
+                execution_attempt_id=attempt.execution_attempt_id,
+                resolution_deadline=now + self.resolution_escalation_ms, note=str(entry.raw_status or ""))
+            METRICS.inc("cati_reservation_resolution_pending_total", venue=plan.venue)
             outcome = BoundaryStatus.SUBMIT_UNKNOWN
         else:
             self.reservations.release(plan.portfolio_reservation_id, now)
@@ -242,9 +266,17 @@ class CATIExecutionBoundary:
                                   plan.trade_plan_id, ("NOTHING_TO_RECONCILE",))
         last = rows[-1]["payload"]
         sym = plan.instrument_key.venue_symbol
-        order = self.adapter.query_order(sym, broker_order_id=last.get("broker_order_id"),
-                                         client_order_id=last.get("client_order_id"))
-        pos = self.adapter.reconcile_position(sym)
+        try:
+            order = self.adapter.query_order(sym, broker_order_id=last.get("broker_order_id"),
+                                             client_order_id=last.get("client_order_id"))
+            pos = self.adapter.reconcile_position(sym)
+        except Exception as exc:  # reconciliation failure is NOT evidence of "no position": stay pending
+            record_stage_error("boundary.reconcile_submit_unknown", "EXECUTION", exc, db=self._db,
+                               cycle_id=plan.cycle_id, user_id=plan.user_id,
+                               broker_account_id=plan.broker_account_id, bot_instance_id=plan.bot_instance_id)
+            METRICS.inc("cati_execution_reconciliation_total", outcome="RECONCILIATION_ERROR")
+            return BoundaryResult(BoundaryStatus.STILL_UNKNOWN, plan.trade_plan_id, ("RECONCILIATION_ERROR",),
+                                  reservation_status=self._res_status(plan))
         base = self._attempt_from_payload(plan, last)
         if pos.answered and pos.side == plan.side and pos.quantity > 0 and (not order.answered or order.executed_qty > 0):
             filled = order.executed_qty if order.answered and order.executed_qty > 0 else pos.quantity
@@ -253,7 +285,7 @@ class CATIExecutionBoundary:
                                resolved_at=now, recorded_at=now,
                                reason_codes=base.reason_codes + ("RECONCILED_FROM_BROKER",))
             self.attempts.append(resolved, len(rows))
-            self.reservations.consume(plan.portfolio_reservation_id, now)
+            self._resolve(plan, "CONSUMED", now, "BROKER_CONFIRMED_ENTRY")
             METRICS.inc("cati_execution_reconciliation_total", outcome="POSITION_EXISTS")
             return BoundaryResult(BoundaryStatus.RECONCILED, plan.trade_plan_id, ("RECONCILED_POSITION_EXISTS",),
                                   attempt=resolved, reservation_status=self._res_status(plan))
@@ -262,13 +294,64 @@ class CATIExecutionBoundary:
             resolved = replace(base, status=X.RECONCILED_NO_POSITION.value, resolved_at=now, recorded_at=now,
                                reason_codes=base.reason_codes + ("RECONCILED_FROM_BROKER",))
             self.attempts.append(resolved, len(rows))
-            self.reservations.release(plan.portfolio_reservation_id, now)
+            self._resolve(plan, "RELEASED", now, "BROKER_CONFIRMED_NO_ENTRY")
             METRICS.inc("cati_execution_reconciliation_total", outcome="NO_POSITION")
             return BoundaryResult(BoundaryStatus.RECONCILED, plan.trade_plan_id, ("RECONCILED_NO_POSITION",),
                                   attempt=resolved, reservation_status=self._res_status(plan))
         METRICS.inc("cati_execution_reconciliation_total", outcome="STILL_UNKNOWN")
         return BoundaryResult(BoundaryStatus.STILL_UNKNOWN, plan.trade_plan_id, ("BROKER_STATE_STILL_UNKNOWN",),
                               reservation_status=self._res_status(plan))
+
+    def _resolve(self, plan: TradePlan, to_status: str, now: int, note: str) -> None:
+        rid = plan.portfolio_reservation_id
+        if not self.reservations.resolve_pending(rid, to_status, now, note=note):
+            # a reservation that was never marked pending (still RESERVED) resolves the same way
+            (self.reservations.consume if to_status == "CONSUMED" else self.reservations.release)(rid, now)
+
+    def recover_pending(self, *, now_ms: Optional[int] = None) -> list:
+        """Restart / periodic recovery over PERSISTED unresolved ownership.
+
+        For every RESOLUTION_PENDING reservation on this adapter's venue: reload
+        its immutable TradePlan (integrity-verified) and run the EXISTING
+        submit-unknown reconciliation. Nothing is ever re-submitted. A pending
+        row past its escalation deadline that is still unresolved is flagged
+        SUBMIT_OUTCOME_UNRESOLVED (component-error evidence + metric) and stays
+        owned -- no broker answer is never read as "no position"."""
+        from app.trading_intelligence.trade_plan.evidence_store import TradePlanEvidenceStore
+
+        now = int(now_ms if now_ms is not None else self._clock())
+        plans = TradePlanEvidenceStore(self._db)
+        out = []
+        for row in self.reservations.pending_resolutions():
+            plan = None
+            try:
+                if row.get("trade_plan_id"):
+                    plan = plans.load_plan(row["broker_account_id"], row["trade_plan_id"])
+            except Exception:
+                plan = None
+            if plan is None:
+                result = BoundaryResult(BoundaryStatus.STILL_UNKNOWN, str(row.get("trade_plan_id")),
+                                        ("TRADE_PLAN_EVIDENCE_UNAVAILABLE",), reservation_status=row["status"])
+            elif plan.venue.upper() != str(getattr(self.adapter, "venue", "")).upper():
+                continue  # another venue's adapter owns this reconciliation
+            else:
+                result = self.reconcile_submit_unknown(plan, now_ms=now)
+            deadline = row.get("resolution_deadline")
+            if result.status == BoundaryStatus.STILL_UNKNOWN and deadline is not None and int(deadline) <= now:
+                self._escalate_unresolved(row, now)
+                result = replace(result, reason_codes=tuple(result.reason_codes) + (SUBMIT_OUTCOME_UNRESOLVED,))
+            out.append(result)
+        return out
+
+    def _escalate_unresolved(self, row: Mapping[str, Any], now: int) -> None:
+        self.reservations.note_unresolved(row["reservation_id"], now, SUBMIT_OUTCOME_UNRESOLVED)
+        record_stage_error(
+            "boundary.recover_pending", "EXECUTION",
+            RuntimeError(f"{SUBMIT_OUTCOME_UNRESOLVED}: reservation {row['reservation_id']} pending since "
+                         f"{row.get('pending_since')}; broker has not resolved the entry outcome"),
+            db=self._db, cycle_id=row.get("cycle_id"), broker_account_id=row.get("broker_account_id"),
+            bot_instance_id=row.get("bot_instance_id"))
+        METRICS.inc("cati_submit_outcome_unresolved_total", venue=str(getattr(self.adapter, "venue", "UNKNOWN")))
 
     # -- 20.17 exit-intent handoff (disabled by default) -----------------------------------------
     def process_exit_decision(self, decision: ExitDecision, plan: TradePlan, *, live_qty: float,
@@ -405,4 +488,5 @@ class CATIExecutionBoundary:
             pass
 
 
-__all__ = ["BoundaryStatus", "AccountState", "BoundaryResult", "CATIExecutionBoundary"]
+__all__ = ["BoundaryStatus", "AccountState", "BoundaryResult", "CATIExecutionBoundary",
+           "DEFAULT_RESOLUTION_ESCALATION_MS", "SUBMIT_OUTCOME_UNRESOLVED"]

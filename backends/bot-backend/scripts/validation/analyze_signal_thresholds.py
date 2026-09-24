@@ -496,6 +496,10 @@ def render_recommendation(payload: dict[str, Any]) -> str:
 
 
 def file_hash(path: Path) -> str:
+    # A missing .env (fresh clone / CI) hashes to a sentinel so before==after still
+    # proves the audit neither modified nor created it.
+    if not path.exists():
+        return "ABSENT"
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 

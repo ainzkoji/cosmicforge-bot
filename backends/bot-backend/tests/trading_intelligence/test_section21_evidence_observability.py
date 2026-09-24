@@ -348,7 +348,7 @@ def test_no_silent_exception_on_submit(tmp_path):
     res = h.run(h.boundary(adapter=Exploding()))
     assert res.status == "SUBMIT_UNKNOWN_PENDING_RECONCILIATION"  # never read as a failure, never re-submitted
     assert any(r.component == "boundary.submit_entry" for r in recent_component_errors())
-    assert h.reservation_status() == "RESERVED"
+    assert h.reservation_status() == "RESOLUTION_PENDING"
 
 
 # ============================== MULTI-TENANT ==============================

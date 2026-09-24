@@ -25,7 +25,16 @@ ENV_FLAG = "CATI_SHADOW_ENABLED"
 #: EconomicOpportunity). Kept independent of ENV_FLAG so the already-proven
 #: MarketState/RegimeDistribution-only shadow path is never put at risk by
 #: enabling the newer, heavier pipeline, and vice versa.
+#:
+#: DEPRECATED -- DIAGNOSTIC ONLY (pre-Section-22 closure). This per-symbol hook
+#: has no broker-account venue context, so its costs are the Section 13
+#: REFERENCE_RESEARCH model, NOT the canonical Section 17 venue economics the
+#: whole-universe cycle (``cycle_shadow``) uses. Its output is tagged
+#: ``[CATI_ECONOMIC_DIAGNOSTIC] economics_basis=REFERENCE_DIAGNOSTIC
+#: certification_parity=false``, it is never ranked, reserved or planned, and it
+#: must never be used as certification evidence. Default: disabled.
 FULL_PIPELINE_ENV_FLAG = "CATI_FULL_PIPELINE_SHADOW_ENABLED"
+ECONOMICS_BASIS = "REFERENCE_DIAGNOSTIC"
 
 _controller = None
 
@@ -109,8 +118,10 @@ def run_full_shadow_pipeline(
     run_id: Optional[str] = None,
     cycle_id: Optional[str] = None,
 ) -> None:
-    """Best-effort, fire-and-forget run of the full Sections 11-13 pipeline
-    (setup discovery -> forecast -> cost estimate -> EconomicOpportunity).
+    """DEPRECATED, DIAGNOSTIC-ONLY per-symbol run of Sections 11-13 with
+    REFERENCE costs (setup discovery -> forecast -> reference cost estimate ->
+    EconomicOpportunity). Not certification-equivalent -- see the canonical
+    ``economics/canonical.py`` path used by the whole-universe cycle.
 
     Disabled by default via ``CATI_FULL_PIPELINE_SHADOW_ENABLED``. No
     production HistoricalOutcomeLibrary is wired to this call, so every
@@ -133,7 +144,8 @@ def run_full_shadow_pipeline(
         opportunities = _controller.run_cycle(snapshot=snapshot, venue=venue, source=source)
         for opportunity in opportunities:
             logger.info(
-                "[CATI_ECONOMIC_SHADOW] symbol=%s bot=%s run=%s cycle=%s setup_family=%s "
+                "[CATI_ECONOMIC_DIAGNOSTIC] economics_basis=" + ECONOMICS_BASIS + " certification_parity=false "
+                "symbol=%s bot=%s run=%s cycle=%s setup_family=%s "
                 "setup_candidate_id=%s economic_opportunity_id=%s admission_status=%s "
                 "ev_gross_r=%.4f ev_net_r=%.4f conservative_edge_r=%.4f reason_codes=%s",
                 symbol, bot_instance_id, run_id, cycle_id, opportunity.setup_family,
@@ -144,7 +156,7 @@ def run_full_shadow_pipeline(
     except Exception as exc:  # Intentional: see module docstring -- CATI may never break live trading.
         from app.trading_intelligence.integration.errors import record_component_error, sanitize_message
 
-        logger.error("[CATI_ECONOMIC_SHADOW] %s: full pipeline shadow evaluation failed (non-fatal, no trading impact): %s",
+        logger.error("[CATI_ECONOMIC_DIAGNOSTIC] %s: diagnostic pipeline evaluation failed (non-fatal, no trading impact): %s",
                      symbol, sanitize_message(exc))
         record_component_error("shadow_hook.run_full_shadow_pipeline", exc, cycle_id=cycle_id,
                                bot_instance_id=bot_instance_id, symbol=symbol)
@@ -153,6 +165,7 @@ def run_full_shadow_pipeline(
 __all__ = [
     "ENV_FLAG",
     "FULL_PIPELINE_ENV_FLAG",
+    "ECONOMICS_BASIS",
     "is_enabled",
     "is_full_pipeline_enabled",
     "run_shadow_evaluation",

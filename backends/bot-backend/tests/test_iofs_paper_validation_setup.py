@@ -5,12 +5,14 @@ from pathlib import Path
 from app.core.config import settings
 from app.strategy.iofs_components.models import IOFSGateResult
 from app.strategy.iofs_gate import gate_result_details, is_session_allowed, is_symbol_allowed
+from _local_artifacts import active_env_or_skip, artifact_or_skip
 
 
 BACKEND_ROOT = Path(__file__).resolve().parents[1]
 
 
 def test_active_validation_config_is_paper_shadow_only():
+    active_env_or_skip()  # these ARE the active deployment settings, loaded from .env
     assert settings.EXECUTION_MODE == "paper"
     assert settings.ML_ENABLED is False
     assert settings.IOFS_GATE_ENABLED is True
@@ -50,6 +52,8 @@ def test_iofs_log_payload_contains_score_reason_and_trace_fields():
 
 def test_validation_artifacts_exist_and_remain_pending():
     reports = BACKEND_ROOT / "models" / "reports"
+    artifact_or_skip(*(reports / n for n in ("iofs_paper_trade_review_template.md", "iofs_paper_validation_status.md",
+                                             "section4_paper_validation_checklist.md")))
     review = (reports / "iofs_paper_trade_review_template.md").read_text(encoding="utf-8")
     status = (reports / "iofs_paper_validation_status.md").read_text(encoding="utf-8")
     checklist = (reports / "section4_paper_validation_checklist.md").read_text(encoding="utf-8")

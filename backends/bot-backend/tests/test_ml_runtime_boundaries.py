@@ -7,6 +7,7 @@ import joblib
 
 from app.ml.scorer import ACTION_SKIP, MLEntryScorer
 from shared_lib.ml.contract import ML_FEATURE_COLUMNS, ML_FEATURE_SCHEMA_HASH
+from _local_artifacts import active_env_or_skip, artifact_or_skip
 
 
 def _disable_runtime_status_write(monkeypatch) -> None:
@@ -115,7 +116,7 @@ def test_ml_enabled_is_false_by_default():
 
 
 def test_active_env_keeps_ml_disabled():
-    active_env = Path(__file__).resolve().parents[1] / ".env"
+    active_env = active_env_or_skip()
     settings = {}
     for raw_line in active_env.read_text(encoding="utf-8").splitlines():
         line = raw_line.strip()
@@ -126,7 +127,7 @@ def test_active_env_keeps_ml_disabled():
 
 
 def test_active_env_keeps_paper_execution_and_iofs_shadow_mode():
-    active_env = Path(__file__).resolve().parents[1] / ".env"
+    active_env = active_env_or_skip()
     settings = {}
     for raw_line in active_env.read_text(encoding="utf-8").splitlines():
         line = raw_line.strip()
@@ -216,7 +217,7 @@ def test_artifacts_readme_marks_v1x_as_retired():
     along with the legacy schema hashes and the prohibition on production use.
     """
     readme = Path(__file__).resolve().parents[1] / "models" / "artifacts" / "README.md"
-    assert readme.exists(), "models/artifacts/README.md must exist."
+    artifact_or_skip(readme)
     text = readme.read_text(encoding="utf-8")
     for marker in (
         "entry_quality_v1.0_20260322",
@@ -267,6 +268,7 @@ def test_experiment_metadata_is_marked_offline_only():
         root / "models" / "experiments" / "event_features_experimental_20260426" / "phase_f_results_20260426.json",
         root / "models" / "experiments" / "phase_h_20260427" / "phase_h_results_20260427.json",
     ]
+    artifact_or_skip(*experiment_files)
 
     for path in experiment_files:
         payload = json.loads(path.read_text(encoding="utf-8"))

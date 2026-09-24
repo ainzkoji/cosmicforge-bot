@@ -42,6 +42,51 @@ class Action(str, Enum):
     FLIP_TO_SHORT = "FLIP_TO_SHORT"
 
 
+#: The canonical PolicyEngine signal vocabulary. BUY / SELL are trade sides;
+#: HOLD and CLOSE are the two non-directional signals the runner also routes
+#: through the policy engine.
+TRADE_SIDES = ("BUY", "SELL")
+POLICY_SIGNALS = ("BUY", "SELL", "HOLD", "CLOSE")
+
+
+class InvalidPolicySignal(ValueError):
+    """A signal/side that is not part of the canonical vocabulary. Fails
+    closed: an unknown value is never silently mapped to a trade side."""
+
+
+def _signal_token(value: Any) -> str:
+    """Canonical token from a string or an enum (``Signal.BUY`` whose value is
+    ``"buy"``, ``Side.SELL``, ...). No other coercion is attempted."""
+    if value is None:
+        raise InvalidPolicySignal("signal is None")
+    if isinstance(value, Enum):
+        value = value.value if isinstance(value.value, str) else value.name
+    if not isinstance(value, str):
+        raise InvalidPolicySignal(f"signal {value!r} is not a string or enum")
+    token = value.strip().upper()
+    if not token:
+        raise InvalidPolicySignal("signal is empty")
+    return token
+
+
+def normalize_policy_signal(value: Any) -> str:
+    """ONE canonical normalization for every PolicyContext signal:
+    ``buy``/``Buy``/``BUY``/``Signal.BUY`` -> ``"BUY"`` (same for SELL, HOLD,
+    CLOSE). Anything else raises ``InvalidPolicySignal``."""
+    token = _signal_token(value)
+    if token not in POLICY_SIGNALS:
+        raise InvalidPolicySignal(f"unknown policy signal {value!r}")
+    return token
+
+
+def normalize_trade_side(value: Any) -> str:
+    """Strict trade side: only BUY or SELL. HOLD/CLOSE/anything else raises."""
+    token = _signal_token(value)
+    if token not in TRADE_SIDES:
+        raise InvalidPolicySignal(f"{value!r} is not a trade side (BUY/SELL)")
+    return token
+
+
 class TradeAmountMode(str, Enum):
     """Trade amount sizing modes."""
     FIXED = "fixed"           # Fixed USDT amount per trade
@@ -268,6 +313,15 @@ class PolicyContext:
     # When set, the policy engine uses this key for circuit checks instead of broker_id
     # so that Bot A's trip never blocks Bot B on the same broker.
     circuit_key: Optional[str] = None
+
+    def __post_init__(self) -> None:
+        # The single canonical boundary: every caller (V2 runner, V2
+        # orchestrator, CATI TradePlan path) reaches PolicyEngine with the same
+        # uppercase signal. Before this, TradingOrchestrator passed
+        # Signal.value ("buy"/"sell"), so ``is_new_open`` was always False on
+        # that path and the max-open-position, R:R and ATR noise-floor/risk-cap
+        # gates silently never ran.
+        self.signal = normalize_policy_signal(self.signal)
 
 
 @dataclass
@@ -726,7 +780,7 @@ class PolicyEngine:
             _sl = ctx.stop_loss_price
             _tp = ctx.take_profit_price
             _ep = ctx.entry_price
-            _sig = ctx.signal.upper()
+            _sig = ctx.signal
 
             if _ep > 0 and _sl > 0 and _tp > 0:
                 if _sig == "BUY":
@@ -780,7 +834,7 @@ class PolicyEngine:
             _atr_d3 = ctx.atr
             _ep_d3 = ctx.entry_price
             _sl_d3 = ctx.stop_loss_price
-            _sig_d3 = ctx.signal.upper()
+            _sig_d3 = ctx.signal
             _mult = ctx.min_stop_atr_multiplier  # default 0.5
 
             if _atr_d3 <= 0:
@@ -1160,7 +1214,7 @@ class PolicyEngine:
         reentry_cnt = ctx.reentry_confirm_count
         
         pos = ctx.position.upper() if ctx.position else "NONE"
-        sig = ctx.signal.upper() if ctx.signal else "HOLD"
+        sig = ctx.signal
         
         # ---------------------------
         # Position = FLAT/NONE

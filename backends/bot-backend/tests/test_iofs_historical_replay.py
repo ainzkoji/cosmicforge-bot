@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 from datetime import datetime, time, timezone
-from pathlib import Path
 
 from app.strategy.iofs_components.models import Candle
+from _local_artifacts import active_env_or_skip
 from scripts.validation.replay_iofs_historical import (
     LOOKBACKS,
     build_window,
@@ -109,7 +109,7 @@ def test_report_marks_pass_only_when_all_gates_pass():
 
 
 def test_historical_replay_does_not_enable_ml():
-    active_env = Path(__file__).resolve().parents[1] / ".env"
+    active_env = active_env_or_skip()
     settings = {}
     for line in active_env.read_text(encoding="utf-8").splitlines():
         if line and not line.startswith("#") and "=" in line:

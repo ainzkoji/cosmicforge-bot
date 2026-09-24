@@ -74,7 +74,10 @@ def resolve_db_path(explicit: str | None = None) -> Path:
     if explicit:
         return Path(explicit).resolve()
     prefix = "DATABASE_URL=sqlite:///"
-    for line in (_BOT_ROOT / ".env").read_text(encoding="utf-8").splitlines():
+    env_path = _BOT_ROOT / ".env"
+    # no private .env (fresh clone / CI): same default as a .env without DATABASE_URL
+    env_lines = env_path.read_text(encoding="utf-8").splitlines() if env_path.exists() else []
+    for line in env_lines:
         if line.startswith(prefix):
             return (_BOT_ROOT / line[len(prefix) :].strip()).resolve()
     return (_SHARED_ROOT / "shared_lib" / "persistence" / "cosmicforge.db").resolve()
