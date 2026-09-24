@@ -352,14 +352,16 @@ def _pop(n, mean, *, p=0.99, dd=2.0):
             "drawdown_tail": {"max_drawdown_R": dd}}
 
 
-def _primary(n=100, mean=0.2, *, p=0.99, m15=0.1, m2=0.0, share=0.3):
+def _primary(n=100, mean=0.2, *, p=0.99, m15=0.1, m2=0.0, share=0.3, neighbors=1.0, pbo=0.1):
     conc = {k: {"largest_segment": "x", "largest_positive_share": share} for k in ("symbol", "month", "regime",
                                                                                   "setup_family", "side")}
     return {"counts": {"approved": n, "admissible": n, "candidates": n},
             "populations": {"APPROVED": _pop(n, mean, p=p), "ADMISSIBLE": _pop(n, mean)},
             "cost_stress": {m: {"reselected": {"APPROVED": _pop(n, v), "ADMISSIBLE": _pop(n, v)}}
                             for m, v in (("1.0", mean), ("1.5", m15), ("2.0", m2))},
-            "concentration": {"population": "APPROVED", "by": conc}}
+            "concentration": {"population": "APPROVED", "by": conc},
+            "parameter_neighbors": {"approved_positive_share": neighbors},
+            "overfitting": {"pbo_cscv": {"status": "OK", "pbo": pbo}}}
 
 
 GOOD_INTEGRITY = {"lookahead_violations": 0, "determinism_ok": True, "manifest_valid": True, "certifiable_source": True,
@@ -397,6 +399,9 @@ def test_every_gate_passes_only_with_a_configured_policy_and_evidence():
     ("B_NET_EXPECTANCY", {"primary": _primary(mean=-0.05)}, "FAIL"),
     ("B_NET_EXPECTANCY", {"primary": _primary(p=0.6)}, "FAIL"),
     ("B_NET_EXPECTANCY", {"primary": _primary(n=0)}, "INSUFFICIENT_EVIDENCE"),
+    ("B_NET_EXPECTANCY", {"primary": _primary(neighbors=0.25)}, "FAIL"),
+    ("B_NET_EXPECTANCY", {"primary": _primary(pbo=0.6)}, "FAIL"),
+    ("B_NET_EXPECTANCY", {"primary": _primary(neighbors=None)}, "INSUFFICIENT_EVIDENCE"),
     ("C_COST_STRESS", {"primary": _primary(m15=-0.01)}, "FAIL"),
     ("C_COST_STRESS", {"primary": _primary(m2=-0.5)}, "FAIL"),
     ("D_HOLDOUT", {"holdout": None}, "BLOCKED"),
@@ -551,3 +556,22 @@ def test_flags_and_frozen_policies_are_untouched_by_the_framework():
     cfg = CATIExecutionConfig()
     assert not cfg.active_execution_enabled and not cfg.exit_intent_routing_enabled
     assert default_admission_policy().minimum_conservative_edge_r == -0.05  # neighbors never replace the frozen value
+
+
+def test_research_default_v1_resolves_every_threshold_and_is_frozen():
+    from app.trading_intelligence.research.certification.policy import (
+        RESEARCH_DEFAULT_V1_VALUES, canonical_certification_policy, research_default_v1,
+    )
+
+    v1 = research_default_v1()
+    assert v1.not_configured() == () and v1.policy_name == "RESEARCH_DEFAULT_V1"
+    assert v1.policy_hash == canonical_certification_policy().policy_hash == research_default_v1().policy_hash
+    assert v1.policy_hash != default_certification_policy().policy_hash
+    for name, (value, why) in RESEARCH_DEFAULT_V1_VALUES.items():
+        pv = v1.get(name)
+        assert pv.value == value and pv.provenance == "RESEARCH_DEFAULT" and pv.note.startswith("RESEARCH_DEFAULT_V1")
+    assert v1.min_probability_expectancy_positive.value == 0.95 and v1.min_accepted_evidence_count.value == 100
+    with pytest.raises(ValueError):
+        v1.configure(min_accepted_evidence_count=50)            # never loosened because CATI fails
+    with pytest.raises(ValueError):
+        v1.configure(max_pbo=0.4)

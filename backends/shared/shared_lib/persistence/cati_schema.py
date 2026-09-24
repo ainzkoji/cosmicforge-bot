@@ -177,6 +177,14 @@ CATI_CERTIFICATION_RUN_TABLE = "cati_certification_runs"
 CATI_CERTIFICATION_STAGE_TABLE = "cati_certification_stage_results"
 CATI_EXPERIMENT_TABLE = "cati_experiment_registry"
 CATI_HOLDOUT_TABLE = "cati_holdout_registry"
+# Section 23 -- CATI ML estimator registry / status history / shadow evidence
+CATI_ML_MODEL_TABLE = "cati_ml_models"
+CATI_ML_MODEL_EVENT_TABLE = "cati_ml_model_events"
+CATI_ML_SHADOW_TABLE = "cati_ml_shadow_predictions"
+# Section 25 -- promotion governance (phase history, M7 scopes, kill switch)
+CATI_PHASE_HISTORY_TABLE = "cati_promotion_phase_history"
+CATI_PROMOTION_SCOPE_TABLE = "cati_promotion_scopes"
+CATI_GOVERNANCE_CONTROL_TABLE = "cati_governance_controls"
 
 _TENANT_COLS = """
     user_id TEXT,
@@ -323,6 +331,74 @@ _CREATE_CERTIFICATION = (
 )""",
 )
 
+_CREATE_ML_GOVERNANCE = (
+    f"""CREATE TABLE IF NOT EXISTS {CATI_ML_MODEL_TABLE} (
+    model_id TEXT PRIMARY KEY,
+    role TEXT NOT NULL,
+    artifact_hash TEXT NOT NULL,
+    training_dataset_hash TEXT NOT NULL,
+    feature_schema_hash TEXT NOT NULL,
+    label_schema_hash TEXT NOT NULL,
+    code_commit TEXT,
+    supersedes_model_id TEXT,
+    created_at INTEGER NOT NULL,{_TAIL_COLS}
+)""",
+    f"""CREATE TABLE IF NOT EXISTS {CATI_ML_MODEL_EVENT_TABLE} (
+    model_event_id TEXT PRIMARY KEY,
+    model_id TEXT NOT NULL,
+    from_status TEXT,
+    to_status TEXT NOT NULL,
+    recorded_at INTEGER NOT NULL,{_TAIL_COLS}
+)""",
+    f"""CREATE TABLE IF NOT EXISTS {CATI_ML_SHADOW_TABLE} (
+    prediction_id TEXT PRIMARY KEY,
+    model_id TEXT NOT NULL,
+    role TEXT NOT NULL,
+    market_state_id TEXT,
+    setup_candidate_id TEXT,
+    decision_time INTEGER NOT NULL,
+    recorded_at INTEGER NOT NULL,{_TAIL_COLS}
+)""",
+    f"""CREATE TABLE IF NOT EXISTS {CATI_PHASE_HISTORY_TABLE} (
+    transition_id TEXT PRIMARY KEY,
+    from_phase TEXT NOT NULL,
+    to_phase TEXT NOT NULL,
+    scope_hash TEXT NOT NULL,
+    source_commit TEXT,
+    certification_run_id TEXT,
+    policy_freeze_hash TEXT,
+    requested_at INTEGER NOT NULL,
+    approved_at INTEGER,
+    recorded_at INTEGER NOT NULL,{_TAIL_COLS}
+)""",
+    f"""CREATE TABLE IF NOT EXISTS {CATI_PROMOTION_SCOPE_TABLE} (
+    scope_event_id TEXT PRIMARY KEY,
+    scope_hash TEXT NOT NULL,
+    event TEXT NOT NULL CHECK (event IN ('GRANTED', 'REVOKED')),
+    broker_account_id TEXT NOT NULL,
+    venue TEXT NOT NULL,
+    environment TEXT NOT NULL,
+    recorded_at INTEGER NOT NULL,{_TAIL_COLS}
+)""",
+    f"""CREATE TABLE IF NOT EXISTS {CATI_GOVERNANCE_CONTROL_TABLE} (
+    control_event_id TEXT PRIMARY KEY,
+    control TEXT NOT NULL,
+    state TEXT NOT NULL CHECK (state IN ('ON', 'OFF')),
+    scope TEXT NOT NULL,
+    recorded_at INTEGER NOT NULL,{_TAIL_COLS}
+)""",
+)
+
+_ML_GOVERNANCE_INDEXES = (
+    f"CREATE INDEX IF NOT EXISTS idx_cati_mlm_role ON {CATI_ML_MODEL_TABLE}(role, created_at)",
+    f"CREATE INDEX IF NOT EXISTS idx_cati_mle_model ON {CATI_ML_MODEL_EVENT_TABLE}(model_id, recorded_at)",
+    f"CREATE INDEX IF NOT EXISTS idx_cati_mls_model ON {CATI_ML_SHADOW_TABLE}(model_id, decision_time)",
+    f"CREATE INDEX IF NOT EXISTS idx_cati_mls_cand ON {CATI_ML_SHADOW_TABLE}(setup_candidate_id)",
+    f"CREATE INDEX IF NOT EXISTS idx_cati_phase_time ON {CATI_PHASE_HISTORY_TABLE}(recorded_at)",
+    f"CREATE INDEX IF NOT EXISTS idx_cati_scope_acct ON {CATI_PROMOTION_SCOPE_TABLE}(broker_account_id, recorded_at)",
+    f"CREATE INDEX IF NOT EXISTS idx_cati_ctrl ON {CATI_GOVERNANCE_CONTROL_TABLE}(control, scope, recorded_at)",
+)
+
 _CERTIFICATION_INDEXES = (
     f"CREATE INDEX IF NOT EXISTS idx_cati_cert_run_stage ON {CATI_CERTIFICATION_RUN_TABLE}(stage, dataset_hash)",
     f"CREATE INDEX IF NOT EXISTS idx_cati_cert_stage_run ON {CATI_CERTIFICATION_STAGE_TABLE}(certification_run_id)",
@@ -341,6 +417,12 @@ _EVIDENCE_TRIGGERS = (
     + _append_only_triggers(CATI_CERTIFICATION_STAGE_TABLE, "cati_cstg")
     + _append_only_triggers(CATI_EXPERIMENT_TABLE, "cati_exp")
     + _append_only_triggers(CATI_HOLDOUT_TABLE, "cati_hold")
+    + _append_only_triggers(CATI_ML_MODEL_TABLE, "cati_mlm")
+    + _append_only_triggers(CATI_ML_MODEL_EVENT_TABLE, "cati_mle")
+    + _append_only_triggers(CATI_ML_SHADOW_TABLE, "cati_mls")
+    + _append_only_triggers(CATI_PHASE_HISTORY_TABLE, "cati_phase")
+    + _append_only_triggers(CATI_PROMOTION_SCOPE_TABLE, "cati_scope")
+    + _append_only_triggers(CATI_GOVERNANCE_CONTROL_TABLE, "cati_ctrl")
 )
 
 CATI_CERTIFICATION_TABLES = (CATI_CERTIFICATION_RUN_TABLE, CATI_CERTIFICATION_STAGE_TABLE, CATI_EXPERIMENT_TABLE,
@@ -363,8 +445,8 @@ def ensure_cati_schema_on_connection(conn: Any) -> None:
     conn.execute(_CREATE_TRADE_PLANS)
     for ddl in _TRADE_PLAN_INDEXES + _TRADE_PLAN_TRIGGERS:
         conn.execute(ddl)
-    for ddl in _CREATE_EVIDENCE + _CREATE_CERTIFICATION + _EVIDENCE_INDEXES + _CERTIFICATION_INDEXES \
-            + _EVIDENCE_TRIGGERS:
+    for ddl in _CREATE_EVIDENCE + _CREATE_CERTIFICATION + _CREATE_ML_GOVERNANCE + _EVIDENCE_INDEXES \
+            + _CERTIFICATION_INDEXES + _ML_GOVERNANCE_INDEXES + _EVIDENCE_TRIGGERS:
         conn.execute(ddl)
 
 
@@ -377,4 +459,6 @@ __all__ = ["CATI_RESERVATION_TABLE", "CATI_TRADE_PLAN_TABLE", "CATI_EVIDENCE_TAB
            "CATI_EXIT_DECISION_TABLE", "CATI_RISK_DECISION_TABLE", "CATI_EXECUTION_ATTEMPT_TABLE",
            "CATI_COMPONENT_ERROR_TABLE", "CATI_DECISION_EVIDENCE_TABLE", "CATI_CERTIFICATION_TABLES",
            "CATI_CERTIFICATION_RUN_TABLE", "CATI_CERTIFICATION_STAGE_TABLE", "CATI_EXPERIMENT_TABLE",
-           "CATI_HOLDOUT_TABLE", "ensure_cati_schema", "ensure_cati_schema_on_connection"]
+           "CATI_HOLDOUT_TABLE", "CATI_ML_MODEL_TABLE", "CATI_ML_MODEL_EVENT_TABLE", "CATI_ML_SHADOW_TABLE",
+           "CATI_PHASE_HISTORY_TABLE", "CATI_PROMOTION_SCOPE_TABLE", "CATI_GOVERNANCE_CONTROL_TABLE",
+           "ensure_cati_schema", "ensure_cati_schema_on_connection"]

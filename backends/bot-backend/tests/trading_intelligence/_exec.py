@@ -122,6 +122,11 @@ class Harness:
         self.reservations = CATIReservationStore(self.db)
 
     def boundary(self, config=ON, adapter=None, **kw):
+        # Section 25: these tests exercise the boundary BEHIND hard risk, so they grant an
+        # explicit test authority (a real deployment needs the persisted M6+ phase)
+        from app.trading_intelligence.governance.promotion import StaticAuthority
+
+        kw.setdefault("authority", StaticAuthority(True, "TEST_AUTHORITY_M6_DEMO"))
         return CATIExecutionBoundary(orchestrator=self.orch, adapter=adapter or self.adapter, db=self.db, config=config,
                                      **kw)
 

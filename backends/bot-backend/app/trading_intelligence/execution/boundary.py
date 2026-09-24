@@ -63,6 +63,7 @@ class BoundaryStatus:
     VENUE_MISMATCH = "EXECUTION_VENUE_MISMATCH"
     DUPLICATE_PLAN = "DUPLICATE_PLAN_IGNORED"
     RISK_REJECTED = "RISK_REJECTED"
+    GOVERNANCE_NOT_AUTHORIZED = "GOVERNANCE_NOT_AUTHORIZED"
     EXECUTED = "EXECUTED"
     EXECUTION_REJECTED = "EXECUTION_REJECTED"
     SUBMIT_UNKNOWN = "SUBMIT_UNKNOWN_PENDING_RECONCILIATION"
@@ -107,7 +108,7 @@ def _now() -> int:
 class CATIExecutionBoundary:
     def __init__(self, *, orchestrator: Any, adapter: Any, db: Any, config: Optional[CATIExecutionConfig] = None,
                  position_manager: Any = None, clock=None,
-                 resolution_escalation_ms: int = DEFAULT_RESOLUTION_ESCALATION_MS) -> None:
+                 resolution_escalation_ms: int = DEFAULT_RESOLUTION_ESCALATION_MS, authority: Any = None) -> None:
         self.orchestrator = orchestrator
         self.adapter = adapter
         self.config = config if config is not None else CATIExecutionConfig.from_env()
@@ -118,6 +119,13 @@ class CATIExecutionBoundary:
         self.risk_store = RiskDecisionStore(db)
         self.attempts = ExecutionAttemptStore(db)
         self._db = db
+        # Section 25 dual key: the flag alone authorizes nothing -- the persisted
+        # promotion phase (and its kill switch / M7 scopes) must also allow the entry
+        if authority is None:
+            from app.trading_intelligence.governance.promotion import GovernanceAuthority
+
+            authority = GovernanceAuthority(db)
+        self.authority = authority
 
     # ---------------------------------------------------------------------------------------
     def process_trade_plan(self, plan: TradePlan, *, market_reference: Any, broker_health: Any,
@@ -134,6 +142,14 @@ class CATIExecutionBoundary:
         if plan.environment.upper() not in self.config.allowed_environments:
             return BoundaryResult(BoundaryStatus.ENVIRONMENT_NOT_ALLOWED, plan.trade_plan_id,
                                   (f"ENVIRONMENT_NOT_ALLOWED:{plan.environment}",))
+        try:
+            authorized, why = self.authority.authorize_entry(plan)
+        except Exception as exc:  # governance unreadable => fail closed, recorded
+            record_stage_error("boundary.governance", "GOVERNANCE", exc, db=self._db, **ids)
+            authorized, why = False, "GOVERNANCE_UNAVAILABLE"
+        if not authorized:
+            METRICS.inc("cati_execution_boundary_total", status=BoundaryStatus.GOVERNANCE_NOT_AUTHORIZED)
+            return BoundaryResult(BoundaryStatus.GOVERNANCE_NOT_AUTHORIZED, plan.trade_plan_id, (why,))
 
         attempt_id = ExecutionAttempt.build_id(trade_plan_id=plan.trade_plan_id, trade_plan_hash=plan.trade_plan_hash,
                                                broker_account_id=plan.broker_account_id)

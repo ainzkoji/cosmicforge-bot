@@ -29,7 +29,7 @@ from .contracts import (
 from .dataset import CertificationDatasetManifest, build_certification_manifest
 from .freeze import PolicyFreezeManifest, build_policy_freeze
 from .gates import evaluate_gates, overall_status, ready_for_forward_demo
-from .policy import CertificationPolicy, default_certification_policy
+from .policy import CertificationPolicy, canonical_certification_policy
 from .registry import (
     CertificationRunStore, ExperimentRecord, ExperimentRegistry, ExperimentStatus, HoldoutBurned, HoldoutRegistry,
 )
@@ -74,7 +74,7 @@ def certify(series: Mapping[str, Mapping[str, Sequence[Any]]], meta: Mapping[str
             freeze: Optional[PolicyFreezeManifest] = None, hypothesis: str = "frozen CATI deterministic baseline",
             now_ms: Optional[int] = None) -> CertificationReport:
     started = int(now_ms or time.time() * 1000)
-    policy = policy or default_certification_policy()
+    policy = policy or canonical_certification_policy()
     from app.replay.cost_model import BINANCE_FUTURES_STANDARD
     from app.trading_intelligence.versions import RESEARCH_COST_MODEL_VERSION
 
@@ -333,7 +333,7 @@ def blocked_report(*, reason: str, policy: Optional[CertificationPolicy] = None,
     """Every stage BLOCKED_DATA when no real market data is reachable."""
     from .gates import evaluate_gates
 
-    policy = policy or default_certification_policy()
+    policy = policy or canonical_certification_policy()
     freeze = build_policy_freeze(certification_policy=policy)
     stages = {s.value: CertificationStageResult(stage=s.value, status=S.BLOCKED_DATA.value,
                                                 reason_codes=(R.NO_REAL_DATA.value, reason))

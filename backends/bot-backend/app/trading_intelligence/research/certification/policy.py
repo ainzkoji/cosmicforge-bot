@@ -65,6 +65,8 @@ def _nc(note):
 @dataclass(frozen=True)
 class CertificationPolicy:
     schema_version: str = CERTIFICATION_POLICY_SCHEMA_VERSION
+    #: which frozen policy this is (part of the hash)
+    policy_name: str = "BASE_FAIL_CLOSED"
 
     # -- Gate A: integrity ------------------------------------------------------------
     max_lookahead_violations: PolicyValue = _v(0, SOURCE_SPEC, "zero known lookahead violations")
@@ -149,7 +151,7 @@ class CertificationPolicy:
         return tuple(n for n in names if not self.get(n).configured)
 
     def to_dict(self) -> dict:
-        return {"schema_version": self.schema_version,
+        return {"schema_version": self.schema_version, "policy_name": self.policy_name,
                 "thresholds": {k: v.to_dict() for k, v in sorted(self.thresholds().items())}}
 
     @property
@@ -200,14 +202,55 @@ def _loosens(name: str, old: Any, new: Any) -> bool:
 
 
 def default_certification_policy() -> CertificationPolicy:
+    """The BASE schema policy: every threshold the source does not give is
+    NOT_CONFIGURED and fails closed. Used to prove fail-closed semantics."""
     return CertificationPolicy()
 
 
+#: RESEARCH_DEFAULT_V1 -- the eight thresholds neither the specification nor
+#: the repository defines, fixed ONCE from statistical / governance reasoning
+#: BEFORE any holdout was opened and WITHOUT looking at CATI results. They
+#: are conservative research defaults, not guarantees and not tuned optima.
+#: Frozen: a change is a new policy version (new hash, new experiment), and
+#: they may only be tightened, never loosened because CATI fails.
+RESEARCH_DEFAULT_V1_VALUES: Mapping[str, Tuple[Any, str]] = {
+    "min_probability_expectancy_positive": (
+        0.95, "conventional one-sided 95% confidence that after-cost expectancy is positive"),
+    "catastrophic_floor_R_at_2x": (
+        -0.10, "under doubled costs the mean may not lose more than 0.10 R per trade; worse = cost-fragile edge"),
+    "max_holdout_drawdown_R": (
+        10.0, "holdout peak-to-trough <= 10 R (ten full stop-outs); beyond that the path risk is unacceptable"),
+    "max_single_segment_positive_share": (
+        0.50, "no single symbol/month/regime/setup/side may explain more than half of the positive result"),
+    "min_accepted_evidence_count": (
+        100, "~100 approved trades bound the bootstrap CI half-width near 0.2 R for a ~1 R dispersion"),
+    "min_forward_demo_executed_count": (
+        30, "conventional minimum sample for a forward estimate, IN ADDITION to the 30 calendar days"),
+    "max_pbo": (
+        0.25, "probability of backtest overfitting well below a coin flip (0.5)"),
+    "parameter_neighbor_min_positive_share": (
+        0.75, "at least 3 of the 4 predeclared parameter neighbors must keep a positive expectancy"),
+}
+RESEARCH_DEFAULT_V1 = "RESEARCH_DEFAULT_V1"
+
+
+def research_default_v1() -> CertificationPolicy:
+    base = CertificationPolicy(policy_name=RESEARCH_DEFAULT_V1)
+    return replace(base, **{name: PolicyValue(value, RESEARCH_DEFAULT, f"{RESEARCH_DEFAULT_V1}: {why}")
+                            for name, (value, why) in RESEARCH_DEFAULT_V1_VALUES.items()})
+
+
+def canonical_certification_policy() -> CertificationPolicy:
+    """The frozen policy certification runs use unless an experiment supplies a stricter one."""
+    return research_default_v1()
+
+
 def policy_summary(policy: Optional[CertificationPolicy] = None) -> Mapping[str, Any]:
-    p = policy or default_certification_policy()
-    return {"policy_hash": p.policy_hash, "not_configured": list(p.not_configured()),
+    p = policy or canonical_certification_policy()
+    return {"policy_hash": p.policy_hash, "policy_name": p.policy_name, "not_configured": list(p.not_configured()),
             "research_defaults": list(p.research_defaults())}
 
 
 __all__ = ["CertificationPolicy", "PolicyValue", "default_certification_policy", "policy_summary",
+           "research_default_v1", "canonical_certification_policy", "RESEARCH_DEFAULT_V1", "RESEARCH_DEFAULT_V1_VALUES",
            "SOURCE_SPEC", "EXISTING_REPO", "RESEARCH_DEFAULT", "NOT_CONFIGURED"]

@@ -76,6 +76,19 @@ def gate_net_expectancy(primary, policy: CertificationPolicy) -> GateResult:
         return blocked
     if (net.get("p_expectancy_positive") or 0.0) < policy.min_probability_expectancy_positive.value:
         return GateResult(gate, G.FAIL.value, (R.LOW_PROBABILITY_POSITIVE.value,), obs)
+    # robustness: a single magic setting / an overfit selection cannot pass (22.17-22.18)
+    blocked = _incomplete(policy, gate, "parameter_neighbor_min_positive_share", "max_pbo", observed=obs)
+    if blocked:
+        return blocked
+    share = (primary.get("parameter_neighbors") or {}).get("approved_positive_share")
+    pbo = ((primary.get("overfitting") or {}).get("pbo_cscv") or {})
+    obs = {**obs, "neighbor_positive_share": share, "pbo": pbo.get("pbo"), "pbo_status": pbo.get("status")}
+    if share is None:
+        return GateResult(gate, G.INSUFFICIENT_EVIDENCE.value, ("PARAMETER_NEIGHBORS_UNEVALUATED",), obs)
+    if share < policy.parameter_neighbor_min_positive_share.value:
+        return GateResult(gate, G.FAIL.value, ("PARAMETER_NEIGHBOR_FRAGILE",), obs)
+    if pbo.get("status") == "OK" and pbo.get("pbo") is not None and pbo["pbo"] > policy.max_pbo.value:
+        return GateResult(gate, G.FAIL.value, ("PBO_EXCEEDED",), obs)
     return GateResult(gate, G.PASS.value, (), obs)
 
 
