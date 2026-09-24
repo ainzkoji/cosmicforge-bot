@@ -37,7 +37,7 @@ from app.trading_intelligence.contracts.venue_economics import (
     FATAL_VENUE_REASONS, CarrySource, FeeModel, FeeSource, FinancingSource, FundingSource, SessionStatus,
     SlippageSource, SpreadSource, SwapUnit, VenueEconomicObservation, VenueReasonCode,
 )
-from app.trading_intelligence.hashing import stable_hash
+from app.trading_intelligence.hashing import short_id, stable_hash
 from app.trading_intelligence.venue.policy import VenueCostPolicy, default_venue_cost_policy
 from app.trading_intelligence.versions import VENUE_ECONOMIC_COST_MODEL_VERSION
 
@@ -501,4 +501,149 @@ def build_venue_cost_estimate(
     )
 
 
-__all__ = ["expected_holding", "rollover_count", "build_venue_cost_estimate"]
+# ---------------------------------------------------------------------------
+# Section 19.9 -- REMAINING (from-NOW) holding and exit costs
+# ---------------------------------------------------------------------------
+def _exit_fee_r(obs, q: float, price: float, mult: float, risk_ccy: float, policy: VenueCostPolicy,
+                acc: _Acc) -> Tuple[float, float]:
+    """ONE side (the exit) of the fee model ``_fees`` prices round trip."""
+    fee, meta = obs.fee_observation, obs.instrument_metadata
+    notional = price * q * mult
+    if fee.source == FeeSource.UNAVAILABLE.value:
+        acc.reason(R.FEE_UNAVAILABLE, fatal=True)
+        return 0.0, 0.0
+    conv = 1.0
+    if fee.commission_currency and meta is not None and fee.commission_currency != meta.quote_currency:
+        if fee.commission_to_quote_rate:
+            conv = fee.commission_to_quote_rate
+        elif fee.commission_per_contract or fee.exchange_fee_per_contract or fee.clearing_fee_per_contract:
+            acc.reason(R.CURRENCY_CONVERSION_UNAVAILABLE, fatal=True)
+            return 0.0, 0.0
+    ccy = 0.0
+    if fee.fee_model == FeeModel.PERCENT_NOTIONAL.value:
+        rate = fee.taker_fee_rate if policy.assume_taker_exit else fee.maker_fee_rate
+        if rate is None:
+            acc.reason(R.FEE_UNAVAILABLE, fatal=True)
+            return 0.0, 0.0
+        ccy = rate * notional
+    elif fee.fee_model in (FeeModel.PER_CONTRACT.value, FeeModel.SPREAD_PLUS_COMMISSION.value):
+        if fee.commission_per_contract is None and fee.broker_commission_rate is None:
+            acc.reason(R.FEE_UNAVAILABLE, fatal=True)
+            return 0.0, 0.0
+        if fee.commission_per_contract is not None:
+            per = fee.commission_per_contract + (fee.exchange_fee_per_contract or 0.0) + (fee.clearing_fee_per_contract or 0.0)
+            ccy += per * (q / (fee.commission_contract_size or 1.0)) * conv
+        if fee.broker_commission_rate is not None:
+            ccy += fee.broker_commission_rate * notional
+    if fee.other_charge_per_trade:
+        ccy += fee.other_charge_per_trade * conv
+    fee_r = ccy / risk_ccy if risk_ccy > 0 else 0.0
+    return fee_r, policy.fee_uncertainty_fraction.get(fee.source, 1.0) * fee_r
+
+
+def _exit_slippage_r(obs, side: str, q: float, price: float, risk: float, policy: VenueCostPolicy,
+                     acc: _Acc) -> Tuple[float, float]:
+    sl = obs.slippage_observation
+    floor_px = policy.min_slippage_bps_floor / 1e4 * price
+    if sl.source == SlippageSource.DEPTH_WALK.value and sl.depth_asks and sl.depth_bids:
+        levels = sl.depth_bids if side == "LONG" else sl.depth_asks  # exiting a LONG sells into the bids
+        vwap, full = _walk(levels, q, side != "LONG", policy.beyond_depth_penalty_bps)
+        px = max(abs(vwap - levels[0][0]), floor_px)
+        if not full:
+            acc.reason(R.DEPTH_INSUFFICIENT_FOR_SIZE)
+    else:
+        bps = sl.per_side_bps if sl.per_side_bps is not None else policy.conservative_slippage_bps
+        top = sl.top_bid_quantity if side == "LONG" else sl.top_ask_quantity
+        scale = max(1.0, math.sqrt(q / top)) if top else 1.0
+        px = max(bps * scale / 1e4 * price, floor_px)
+    slip_r = px / risk
+    return slip_r, policy.slippage_uncertainty_fraction.get(sl.source, 2.0) * slip_r
+
+
+def build_remaining_cost_estimate(
+    *,
+    path,
+    observation: Optional[VenueEconomicObservation],
+    expected_remaining_holding_ms: int,
+    max_remaining_holding_ms: int,
+    policy: Optional[VenueCostPolicy] = None,
+):
+    """Remaining costs for one open position, from ``path.current_time``.
+
+    Reuses the Section 17 component models (funding stamps, FX rollovers,
+    futures basis convergence, spread, depth walk) with t0 = NOW, the
+    CURRENT price and the REMAINING hold -- never the original full-hold
+    estimate. Only the EXIT side of fee/spread/slippage is future cost (the
+    entry side is already paid). Sunk costs (entry fees, funding/financing
+    already paid) are reported in ``costs_already_realized_R`` and are never
+    part of ``expected_future_holding_and_exit_costs_R``. Every R value is in
+    ORIGINAL-R units (see contracts/position.py). Fail closed: missing or
+    non-causal evidence -> source_quality INVALID (unknown cost is never 0).
+    """
+    from app.trading_intelligence.contracts.position import RemainingCostEstimate
+
+    policy = policy or default_venue_cost_policy()
+    R0 = float(path.original_R_reference)
+    mult = float(path.contract_multiplier or 1.0)
+    orig_risk_ccy = R0 * max(float(path.original_quantity), 1e-12) * mult
+    entry_fee_R = float(path.entry_fees_paid) / orig_risk_ccy
+    funding_paid_R = float(path.funding_paid_or_accrued) / orig_risk_ccy
+    financing_paid_R = float(path.financing_paid_or_accrued) / orig_risk_ccy
+    sunk = entry_fee_R + funding_paid_R + financing_paid_R
+    acc = _Acc()
+    hold, max_hold = max(0, int(expected_remaining_holding_ms)), max(0, int(max_remaining_holding_ms))
+
+    def _result(quality, parts, unc, obs_id, policy_hash):
+        fee_r, sp_r, sl_r, fu_r, fi_r, ca_r = parts
+        reasons = list(acc.reasons)
+        return RemainingCostEstimate(
+            remaining_cost_id=short_id("rcost", {"path": path.position_path_id, "obs": obs_id, "hold": hold,
+                                                 "max_hold": max_hold, "policy": policy_hash}),
+            venue_observation_id=obs_id, decision_time=int(path.current_time),
+            expected_remaining_holding_ms=hold, max_remaining_holding_ms=max_hold,
+            exit_fee_R=fee_r, exit_spread_R=sp_r, exit_slippage_R=sl_r, future_funding_R=fu_r,
+            future_financing_R=fi_r, future_carry_R=ca_r,
+            expected_future_holding_and_exit_costs_R=fee_r + sp_r + sl_r + fu_r + fi_r + ca_r,
+            remaining_cost_uncertainty_R=unc, costs_already_realized_R=sunk, entry_fees_paid_R=entry_fee_R,
+            funding_paid_R=funding_paid_R, financing_paid_R=financing_paid_R, source_quality=quality,
+            reason_codes=tuple(dict.fromkeys(reasons)), cost_policy_hash=policy_hash)
+
+    if observation is None:
+        acc.reason("REMAINING_COST_OBSERVATION_MISSING", fatal=True)
+        return _result("INVALID", (0.0,) * 6, 0.0, None, policy.policy_hash)
+    obs = observation
+    for code in obs.reason_codes:
+        acc.reason(code, fatal=code in FATAL_VENUE_REASONS)
+    if obs.instrument_key.canonical_symbol != path.instrument_key.canonical_symbol:
+        acc.reason(R.INSTRUMENT_MAPPING_MISMATCH, fatal=True)
+    if obs.observed_at > path.current_time or obs.decision_time > path.current_time:
+        acc.reason(R.NON_CAUSAL_OBSERVATION, fatal=True)
+    if not obs.session_state.tradable:
+        acc.reason(R.MARKET_CLOSED if obs.session_state.status in (SessionStatus.CLOSED.value,
+                                                                   SessionStatus.ROLLOVER.value)
+                   else R.SESSION_UNKNOWN, fatal=True)
+    price, side = float(path.current_price), path.side
+    q = float(path.current_quantity) if path.current_quantity > 0 else float(
+        max(getattr(obs.instrument_metadata, "minimum_quantity", 0.0) or 0.0,
+            getattr(obs.instrument_metadata, "step_size", 1e-9) or 1e-9))
+    risk_ccy = R0 * q * mult
+    thin = obs.session_state.status == SessionStatus.THIN.value
+    fee_r, fee_u = _exit_fee_r(obs, q, price, mult, risk_ccy, policy, acc)
+    sp_full, sp_u_full = _spread(obs, price, R0, policy, thin, acc)
+    sp_r, sp_u = sp_full / 2.0, sp_u_full / 2.0  # only the exit half-spread is still to be paid
+    sl_r, sl_u = _exit_slippage_r(obs, side, q, price, R0, policy, acc)
+    fu_r, fu_u = _funding(obs, side, price, R0, hold, max_hold, policy, acc)
+    fi_r, fi_u = _financing(obs, side, price, R0, hold, max_hold, policy, acc)
+    ca_r, ca_u = _carry(obs, side, price, R0, hold, max_hold, policy, acc)
+    unc = fee_u + sp_u + sl_u + fu_u + fi_u + ca_u
+    unc += policy.adapter_uncertainty_fraction.get(obs.adapter_status, 1.0) * (
+        abs(fee_r) + abs(sp_r) + abs(sl_r) + abs(fu_r) + abs(fi_r) + abs(ca_r))
+    if acc.fatal:
+        quality = "INVALID"
+    else:
+        quality = "DEGRADED" if any(l.quality == "FALLBACK" for l in acc.lineage) or obs.source_quality != "VALID" \
+            else "VALID"
+    return _result(quality, (fee_r, sp_r, sl_r, fu_r, fi_r, ca_r), unc, obs.observation_id, policy.policy_hash)
+
+
+__all__ = ["expected_holding", "rollover_count", "build_venue_cost_estimate", "build_remaining_cost_estimate"]

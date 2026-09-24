@@ -17,6 +17,7 @@ capital/position reference, and nothing returns an order confirmation.
 from __future__ import annotations
 
 import logging
+import time
 from typing import Any, Callable, Optional, Sequence, Union
 
 from app.replay.cost_model import BINANCE_FUTURES_STANDARD, CostModel
@@ -90,17 +91,33 @@ class CATIController:
         Never raises: an internal fault becomes an explicit
         CATI_COMPONENT_ERROR terminal record (Section 15.2)."""
         instrument = str(snapshot.symbol).upper()
+        # Section 21.22: per-stage latency (bounded label ``stage`` only)
+        from app.trading_intelligence.observability import emitters
+        from app.trading_intelligence.observability.metrics import METRICS
+
+        clock = {"t": time.perf_counter()}
+
+        def lap(stage: str) -> None:
+            now = time.perf_counter()
+            METRICS.observe("cati_stage_latency_ms", (now - clock["t"]) * 1000.0, stage=stage)
+            clock["t"] = now
+
         try:
             market_state = evaluate_market_state(
                 snapshot, venue=venue, source=source, base_asset=base_asset, quote_asset=quote_asset,
                 asset_class=asset_class,
             )
+            lap("MARKET_STATE")
+            emitters.observe_market_data(market_state, now_ms=int(time.time() * 1000))
             if not market_state.is_usable:
                 return SymbolEvaluation(instrument, SymbolEvalKind.CATI_COMPONENT_ERROR.value, error="MARKET_STATE_INVALID")
             regime = compute_regime_distribution(market_state, self._regime_policy)
+            lap("REGIME")
+            emitters.observe_market_state(market_state, regime)
             candidates = discover_all(
                 snapshot=snapshot, market_state=market_state, regime_distribution=regime, policies=self._setup_policies,
             )
+            lap("SETUP_DISCOVERY")
             rows = tuple(snapshot.candles)
             if not candidates:
                 return SymbolEvaluation(instrument, SymbolEvalKind.NO_CANDIDATES.value, candle_rows=rows)
@@ -112,9 +129,11 @@ class CATIController:
                 venue_context = venue_context()
             observation = (venue_context.observe(market_state.instrument_key, market_state.decision_time)
                            if venue_context is not None else None)
+            lap("VENUE_ECONOMICS")
             evaluated = []
             for candidate in candidates:
                 forecast = build_outcome_forecast(candidate, market_state, regime, self._outcome_library, instrument_group=group)
+                lap("FORECAST")
                 if observation is not None:
                     cost = build_venue_cost_estimate(candidate, observation, forecast=forecast,
                                                      policy=venue_context.cost_policy,
@@ -125,22 +144,27 @@ class CATIController:
                     candidate, market_state, forecast, cost, policy=self._admission_policy, user_id=user_id,
                     broker_account_id=broker_account_id, bot_instance_id=bot_instance_id, run_id=run_id, cycle_id=cycle_id,
                 )
+                lap("VENUE_ECONOMICS")
                 veto = evaluate_veto(
                     opportunity=opportunity, candidate=candidate, market_state=market_state, regime_distribution=regime,
                     forecast=forecast, cost_estimate=cost, policy=self._veto_policy, event_context=event_context,
                     system_context=system_context, user_id=user_id, broker_account_id=broker_account_id,
                     bot_instance_id=bot_instance_id, run_id=run_id, cycle_id=cycle_id,
                 )
+                lap("VETO")
                 evaluated.append(EvaluatedOpportunity(candidate, market_state, regime, forecast, cost, opportunity, veto,
                                                       venue_observation=observation))
-            return SymbolEvaluation(instrument, SymbolEvalKind.EVALUATED.value, opportunities=tuple(evaluated), candle_rows=rows)
+            result = SymbolEvaluation(instrument, SymbolEvalKind.EVALUATED.value, opportunities=tuple(evaluated),
+                                      candle_rows=rows)
+            emitters.observe_symbol_evaluation(result)
+            return result
         except Exception as exc:  # explicit terminal state, recorded -- not swallowed silently
             from app.trading_intelligence.integration.errors import record_component_error
 
             logger.error("[CATI] %s: component error during symbol evaluation (%s)", instrument, type(exc).__name__)
             rec = record_component_error("controller.evaluate_symbol", exc, cycle_id=cycle_id,
                                          bot_instance_id=bot_instance_id, broker_account_id=broker_account_id,
-                                         symbol=instrument)
+                                         symbol=instrument, stage="SYMBOL_EVALUATION", user_id=user_id)
             return SymbolEvaluation(instrument, SymbolEvalKind.CATI_COMPONENT_ERROR.value,
                                     error=f"{rec.exception_class}: {rec.message}")
 

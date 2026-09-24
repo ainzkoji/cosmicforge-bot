@@ -106,4 +106,29 @@ def validate_trade_plan_for_submission(
                                       int(current_time))
 
 
-__all__ = ["MarketReference", "validate_trade_plan_for_submission"]
+def verify_trade_plan_integrity(plan: TradePlan) -> bool:
+    """Section 20.3 plan-hash integrity: the analytical content still hashes
+    to ``trade_plan_hash`` and the id is derived from that hash. A plan
+    altered after creation (it is frozen, but a payload can be forged) fails."""
+    from app.trading_intelligence.hashing import short_id
+
+    from dataclasses import MISSING
+
+    try:
+        fields = {k: getattr(plan, k) for k in TradePlan.__dataclass_fields__}
+        # ``TradePlan.build`` hashes the fields the builder PASSED; defaulted
+        # fields it did not pass (mode, schema_version) are not part of that
+        # digest. Accept exactly those two canonical field sets -- any changed
+        # analytical value still changes both digests.
+        defaults = {k: f.default for k, f in TradePlan.__dataclass_fields__.items() if f.default is not MISSING}
+        explicit = {k: v for k, v in fields.items() if not (k in defaults and v == defaults[k])}
+        for candidate in (fields, explicit):
+            digest = TradePlan.content_hash(candidate)
+            if digest == plan.trade_plan_hash and plan.trade_plan_id == short_id("tplan", digest):
+                return True
+        return False
+    except Exception:
+        return False
+
+
+__all__ = ["MarketReference", "validate_trade_plan_for_submission", "verify_trade_plan_integrity"]

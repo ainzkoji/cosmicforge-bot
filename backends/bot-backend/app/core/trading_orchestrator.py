@@ -289,51 +289,10 @@ class TradingOrchestrator:
             }
         }
         
-        # Step 0: Check Stop-Loss cooldowns
-        now_ts = time.time()
-        cooldown_exp = self._stop_loss_cooldowns.get(symbol, 0.0)
-        if now_ts < cooldown_exp:
-            result["decision"] = "blocked"
-            result["reason"] = f"Symbol on post-stop-loss cooldown for {cooldown_exp - now_ts:.1f}s"
-            self.record_decision(
-                symbol=symbol,
-                run_id=kwargs.get("run_id"),
-                strategy_signal_json="{}",
-                risk_gate_decision_json=json.dumps({
-                    **result["details"]["observability"],
-                    "reason_code": "STOP_LOSS_COOLDOWN",
-                    "reason_detail": result["reason"],
-                }),
-                sizing_decision_json="{}",
-                protection_decision_json="{}",
-                final_action="blocked"
-            )
-            return result
-        # Clean up expired cooldowns silently
-        elif cooldown_exp > 0:
-            del self._stop_loss_cooldowns[symbol]
+        blocked = self._pre_signal_gates(symbol, result, kwargs)
+        if blocked is not None:
+            return blocked
 
-        
-        # Step 1: Check if symbol is allowed
-        if symbol not in self.validated_config.allowed_symbols:
-            result["decision"] = "blocked"
-            result["reason"] = f"Symbol {symbol} not in allowed list"
-            
-            self.record_decision(
-                symbol=symbol,
-                run_id=kwargs.get("run_id"),
-                strategy_signal_json="{}",
-                risk_gate_decision_json=json.dumps({
-                    **result["details"]["observability"],
-                    "reason_code": "SYMBOL_NOT_ALLOWED",
-                    "reason_detail": result["reason"],
-                }),
-                sizing_decision_json="{}",
-                protection_decision_json="{}",
-                final_action="blocked"
-            )
-            return result
-        
         # Step 2: Get strategy signal
         try:
             strategy_output: StrategyOutput = self.strategy.analyze(
@@ -429,6 +388,247 @@ class TradingOrchestrator:
             )
             return result
         
+        return self._evaluate_hard_risk(
+            symbol=symbol,
+            klines=klines,
+            current_price=current_price,
+            current_equity=current_equity,
+            margin_used=margin_used,
+            margin_available=margin_available,
+            open_positions=open_positions,
+            client=client,
+            strategy_output=strategy_output,
+            result=result,
+            kwargs=kwargs,
+        )
+
+    def process_trade_plan(
+        self,
+        plan,
+        *,
+        now_ms: int,
+        market_reference,
+        broker_health,
+        reservation_state,
+        venue_capabilities,
+        klines: list,
+        current_equity: float,
+        margin_used: float,
+        margin_available: float,
+        open_positions: int,
+        client=None,
+        atr: Optional[float] = None,
+        runtime_session_id: Optional[str] = None,
+        **kwargs,
+    ) -> Dict[str, Any]:
+        """CATI-native entry into the EXISTING hard-risk / sizing stack
+        (Section 20.1). NOT promoted: nothing in the runtime calls this;
+        the CATI execution boundary does, and only when
+        CATI_ACTIVE_EXECUTION_ENABLED is explicitly set.
+
+        Starts from an already-built, immutable TradePlan and SKIPS
+        ``strategy.analyze()``, the Master Ensemble and the V2 adaptive
+        confidence threshold. Everything else is the same code the V2 path
+        runs (``_pre_signal_gates`` + ``_evaluate_hard_risk``): stop-loss
+        cooldown, allowed symbols, Layer A (daily loss, adaptive daily risk
+        incl. the hard daily equity cap, drawdown, leverage, KYC/readiness,
+        broker health), PolicyEngine sizing, Layer B, Layer C. CATI cannot
+        override any of it and plan quality never loosens a limit.
+
+        Returns the same result shape as ``process_trading_opportunity`` plus
+        ``risk_decision`` (CATI RiskDecision EVIDENCE of this verdict). Slot
+        and account-margin reservation stay with the executor, at submission.
+        """
+        from app.trading_intelligence.execution.risk_evidence import (
+            allocation_basis, build_risk_decision,
+        )
+        from app.trading_intelligence.contracts.execution import RiskRejectionFamily, RiskStage
+        from app.trading_intelligence.trade_plan.validation import (
+            validate_trade_plan_for_submission, verify_trade_plan_integrity,
+        )
+
+        symbol = plan.instrument_key.venue_symbol
+        observability = {
+            "bot_instance_id": plan.bot_instance_id, "user_id": plan.user_id,
+            "broker_account_id": plan.broker_account_id, "market_type": kwargs.get("market_type", "UNKNOWN"),
+            "mode": kwargs.get("execution_mode", "paper"), "symbol": symbol, "timeframe": kwargs.get("timeframe"),
+            "strategy_id": "CATI_TRADE_PLAN", "run_id": plan.run_id, "cycle_id": plan.cycle_id,
+            "trace_id": kwargs.get("trace_id"), "signal_source": "cati_trade_plan",
+            "trade_plan_id": plan.trade_plan_id, "trade_plan_hash": plan.trade_plan_hash,
+            "runtime_session_id": runtime_session_id, "session_status": None, "risk_evaluated": False,
+            "risk_allowed": None, "sizing_evaluated": False, "execution_attempted": False, "fill_recorded": False,
+        }
+        result: Dict[str, Any] = {"symbol": symbol, "decision": "no_action", "reason": "",
+                                  "trade_plan_id": plan.trade_plan_id, "details": {"observability": observability}}
+        alloc = allocation_basis(getattr(self, "validated_config", None))
+
+        def rejected(codes, family=None, *, trade_params=None):
+            result["decision"] = "blocked"
+            result["risk_decision"] = build_risk_decision(
+                plan, approved=False, stage=RiskStage.PRE_EXECUTION.value, reason_codes=codes,
+                decision_time=now_ms, runtime_session_id=runtime_session_id, trade_params=trade_params,
+                allocation=alloc, rejection_family=family)
+            return result
+
+        # 20.3 -- immediately before hard risk: hash integrity + Section 18 validator
+        if not verify_trade_plan_integrity(plan):
+            result["reason"] = "TRADE_PLAN_HASH_MISMATCH"
+            return rejected(("TRADE_PLAN_HASH_MISMATCH",), RiskRejectionFamily.PREVALIDATION.value)
+        validation = validate_trade_plan_for_submission(
+            plan, now_ms, market_reference, broker_health, reservation_state, venue_capabilities)
+        result["details"]["prevalidation"] = {"status": validation.status, "reason_codes": list(validation.reason_codes)}
+        if not validation.valid:
+            result["reason"] = f"PREVALIDATION_{validation.status}"
+            self.record_decision(
+                symbol=symbol, run_id=plan.run_id, strategy_signal_json=json.dumps({"trade_plan_id": plan.trade_plan_id}),
+                risk_gate_decision_json=json.dumps({**observability, "reason_code": result["reason"],
+                                                    "reason_detail": list(validation.reason_codes)}),
+                sizing_decision_json="{}", protection_decision_json="{}", final_action="blocked")
+            return rejected((f"PREVALIDATION_{validation.status}",) + tuple(validation.reason_codes),
+                            RiskRejectionFamily.PREVALIDATION.value)
+
+        blocked = self._pre_signal_gates(symbol, result, {**kwargs, "run_id": plan.run_id})
+        if blocked is not None:
+            code = "SYMBOL_NOT_ALLOWED" if "not in allowed" in str(blocked.get("reason")) else "STOP_LOSS_COOLDOWN"
+            return rejected((code,))
+
+        # The plan's own geometry -- never a strategy signal.
+        price = float(market_reference.price)
+        long_side = plan.side == "LONG"
+        inv = float(plan.structural_invalidation_price)
+        stop_distance = abs(price - inv) / price
+        target = None
+        if plan.target_zones:
+            z = plan.target_zones[0]
+            target = z.price_high if long_side else z.price_low
+        if atr is None:
+            from app.policy.policy_engine import calculate_atr
+
+            try:
+                atr = float(calculate_atr(klines, period=14)) if klines and len(klines) >= 15 else 0.0
+            except Exception:
+                atr = 0.0
+        strategy_output = StrategyOutput(
+            signal=Signal.BUY if long_side else Signal.SELL,
+            confidence=min(1.0, max(0.0, float(plan.p_net_profitable))),
+            suggested_stop_distance=stop_distance,
+            take_profit_distance=(abs(target - price) / price) if target else None,
+            reason="CATI_TRADE_PLAN", indicators={"atr": float(atr or 0.0)},
+            meta={"signal_source": "cati_trade_plan", "trade_plan_id": plan.trade_plan_id,
+                  "trade_plan_hash": plan.trade_plan_hash, "session_reason_code": None},
+        )
+        result["details"]["strategy_output"] = {
+            "signal": strategy_output.signal.value, "confidence": strategy_output.confidence,
+            "suggested_stop": stop_distance, "reason": "CATI_TRADE_PLAN", "meta": strategy_output.meta}
+        observability["signal"] = strategy_output.signal.value
+        observability["risk_evaluated"] = True
+
+        risk_kwargs = {**kwargs, "run_id": plan.run_id, "cycle_id": plan.cycle_id, "user_id": plan.user_id,
+                       "bot_instance_id": plan.bot_instance_id, "broker_account_id": plan.broker_account_id}
+        result = self._evaluate_hard_risk(
+            symbol=symbol, klines=klines, current_price=price, current_equity=current_equity,
+            margin_used=margin_used, margin_available=margin_available, open_positions=open_positions,
+            client=client, strategy_output=strategy_output, result=result, kwargs=risk_kwargs)
+
+        if result["decision"] != "execute":
+            code = result["details"].get("reason_code") or result.get("reason") or "HARD_RISK_REJECTED"
+            if result["details"].get("layer_b", {}).get("size_zero_blocked") if isinstance(
+                    result["details"].get("layer_b"), dict) else False:
+                code = "SIZE_ZERO"
+            return rejected((str(code),), trade_params=result.get("trade_params"))
+
+        tp = result["trade_params"]
+        resolved_stop = float(tp["stop_loss"])
+        # CATI may be TIGHTENED by hard risk (Layer C clamp) but never widened past its invalidation.
+        widened = resolved_stop < inv - 1e-9 * price if long_side else resolved_stop > inv + 1e-9 * price
+        if widened:
+            result["decision"] = "blocked"
+            result["reason"] = "STOP_GEOMETRY_WIDENED"
+            return rejected(("STOP_GEOMETRY_WIDENED",), RiskRejectionFamily.SIZING.value, trade_params=tp)
+        tightened = abs(resolved_stop - inv) > 1e-9 * price
+        result["risk_decision"] = build_risk_decision(
+            plan, approved=True, stage=RiskStage.PRE_EXECUTION.value, reason_codes=("APPROVED_FOR_EXECUTION",),
+            decision_time=now_ms, runtime_session_id=runtime_session_id, trade_params=tp, allocation=alloc,
+            stop_tightened=tightened,
+            risk_budget=(tp.get("sizing_trace") or {}).get("max_risk_capital"),
+            policy_versions=(("risk_policy", str(getattr(getattr(self, "risk_policy", None), "config", None)
+                                               and self.risk_policy.config.label)),))
+        return result
+
+    def _pre_signal_gates(self, symbol: str, result: Dict[str, Any], kwargs: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """Stop-loss cooldown and allowed-symbol gates -- shared by the V2 and
+        CATI TradePlan paths. Returns the blocked result, or None to continue.
+        Moved verbatim out of process_trading_opportunity."""
+        # Step 0: Check Stop-Loss cooldowns
+        now_ts = time.time()
+        cooldown_exp = self._stop_loss_cooldowns.get(symbol, 0.0)
+        if now_ts < cooldown_exp:
+            result["decision"] = "blocked"
+            result["reason"] = f"Symbol on post-stop-loss cooldown for {cooldown_exp - now_ts:.1f}s"
+            self.record_decision(
+                symbol=symbol,
+                run_id=kwargs.get("run_id"),
+                strategy_signal_json="{}",
+                risk_gate_decision_json=json.dumps({
+                    **result["details"]["observability"],
+                    "reason_code": "STOP_LOSS_COOLDOWN",
+                    "reason_detail": result["reason"],
+                }),
+                sizing_decision_json="{}",
+                protection_decision_json="{}",
+                final_action="blocked"
+            )
+            return result
+        # Clean up expired cooldowns silently
+        elif cooldown_exp > 0:
+            del self._stop_loss_cooldowns[symbol]
+
+        
+        # Step 1: Check if symbol is allowed
+        if symbol not in self.validated_config.allowed_symbols:
+            result["decision"] = "blocked"
+            result["reason"] = f"Symbol {symbol} not in allowed list"
+            
+            self.record_decision(
+                symbol=symbol,
+                run_id=kwargs.get("run_id"),
+                strategy_signal_json="{}",
+                risk_gate_decision_json=json.dumps({
+                    **result["details"]["observability"],
+                    "reason_code": "SYMBOL_NOT_ALLOWED",
+                    "reason_detail": result["reason"],
+                }),
+                sizing_decision_json="{}",
+                protection_decision_json="{}",
+                final_action="blocked"
+            )
+            return result
+        return None
+
+    def _evaluate_hard_risk(
+        self,
+        *,
+        symbol: str,
+        klines: list,
+        current_price: float,
+        current_equity: float,
+        margin_used: float,
+        margin_available: float,
+        open_positions: int,
+        client,
+        strategy_output: StrategyOutput,
+        result: Dict[str, Any],
+        kwargs: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        """The ONE hard-risk / sizing pipeline, shared by the V2 strategy path
+        (``process_trading_opportunity``) and the CATI TradePlan path
+        (``process_trade_plan``): market conditions, broker health, daily
+        activity fallback, Layer A pre-trade gating (daily loss, adaptive
+        daily risk, drawdown, leverage, KYC/readiness ...), PolicyEngine
+        sizing, Layer B sizing controls and Layer C protective-order
+        validation. Moved verbatim out of process_trading_opportunity -- the
+        V2 path's behaviour is unchanged.
+        """
         # Step 3: Analyze market conditions
         ticker = kwargs.get("ticker", {})
         if ticker:
@@ -496,6 +696,7 @@ class TradingOrchestrator:
             result["decision"] = "blocked"
             result["reason"] = f"Layer A: {gate_decision.message}"
             result["details"]["layer_a"] = gate_decision.details
+            result["details"]["reason_code"] = getattr(gate_decision.block_reason, "value", str(gate_decision.block_reason))
             result["details"]["observability"].update(
                 risk_evaluated=True, risk_allowed=False
             )
@@ -598,6 +799,7 @@ class TradingOrchestrator:
         if not decision.allowed:
             result["decision"] = "blocked"
             result["reason"] = f"PolicyEngine Sizing Blocked: {decision.reason}"
+            result["details"]["reason_code"] = getattr(decision.reason_code, "value", str(decision.reason_code))
             result["details"]["observability"].update(
                 risk_evaluated=True,
                 risk_allowed=True,
@@ -664,6 +866,7 @@ class TradingOrchestrator:
         if not size_decision.allowed:
             result["decision"] = "blocked"
             result["reason"] = f"Layer B: {size_decision.message}"
+            result["details"]["reason_code"] = getattr(size_decision.block_reason, "value", str(size_decision.block_reason))
             result["details"]["layer_b"] = size_decision.details
             result["details"]["observability"].update(
                 risk_evaluated=True, risk_allowed=True, sizing_evaluated=True
@@ -704,6 +907,7 @@ class TradingOrchestrator:
         if not protection_decision.allowed:
             result["decision"] = "blocked"
             result["reason"] = f"Layer C: {protection_decision.message}"
+            result["details"]["reason_code"] = getattr(protection_decision.block_reason, "value", str(protection_decision.block_reason))
             result["details"]["layer_c"] = protection_decision.details
             result["details"]["observability"].update(
                 risk_evaluated=True, risk_allowed=True, sizing_evaluated=True

@@ -93,11 +93,22 @@ class TradePlanBuilder:
                              portfolio_decision: PortfolioSelectionDecision,
                              reservation: Optional[AccountPortfolioReservation], evaluated: EvaluatedOpportunity,
                              tenant: TenantContext, now_ms: int) -> TradePlanResult:
-        return self.build(
+        import time as _time
+
+        t0 = _time.perf_counter()
+        result = self.build(
             ranked=ranked, ranking_batch=ranking_batch, portfolio_decision=portfolio_decision, reservation=reservation,
             market_state=evaluated.market_state, regime=evaluated.regime, candidate=evaluated.candidate,
             forecast=evaluated.forecast, cost_estimate=evaluated.cost_estimate, opportunity=evaluated.opportunity,
             veto=evaluated.veto, venue_observation=evaluated.venue_observation, tenant=tenant, now_ms=now_ms)
+        try:  # Section 21.22 stage latency (bounded label only)
+            from app.trading_intelligence.observability.metrics import METRICS
+
+            METRICS.observe("cati_stage_latency_ms", (_time.perf_counter() - t0) * 1000.0, stage="TRADE_PLAN")
+            METRICS.inc("cati_trade_plans_total", status=result.status)
+        except Exception:
+            pass
+        return result
 
     def build(self, *, ranked: RankedOpportunity, ranking_batch: BotCycleEvaluationBatch,
               portfolio_decision: PortfolioSelectionDecision, reservation: Optional[AccountPortfolioReservation],

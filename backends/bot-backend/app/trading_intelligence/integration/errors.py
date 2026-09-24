@@ -55,11 +55,15 @@ class ComponentErrorRecord:
     broker_account_id: Optional[str]
     symbol: Optional[str]
     observed_at: int
+    #: Section 21.21: the pipeline stage and opaque tenant user id (additive)
+    stage: Optional[str] = None
+    user_id: Optional[str] = None
 
 
 def record_component_error(
     component: str, exc: BaseException, *, cycle_id: Optional[str] = None, bot_instance_id: Optional[str] = None,
-    broker_account_id: Optional[str] = None, symbol: Optional[str] = None,
+    broker_account_id: Optional[str] = None, symbol: Optional[str] = None, stage: Optional[str] = None,
+    user_id: Optional[str] = None,
 ) -> ComponentErrorRecord:
     """Log + retain one structured record. Never raises."""
     try:
@@ -67,7 +71,7 @@ def record_component_error(
             reason_code="CATI_COMPONENT_ERROR", component=str(component), exception_class=type(exc).__name__,
             message=sanitize_message(exc), cycle_id=None if cycle_id is None else str(cycle_id),
             bot_instance_id=bot_instance_id, broker_account_id=broker_account_id, symbol=symbol,
-            observed_at=int(time.time() * 1000),
+            observed_at=int(time.time() * 1000), stage=stage, user_id=user_id,
         )
         with _LOCK:
             _RECENT.append(rec)

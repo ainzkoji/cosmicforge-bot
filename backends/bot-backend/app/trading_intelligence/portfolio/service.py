@@ -91,6 +91,37 @@ class ShadowAccountPortfolioService:
         now_ms: int,
         evaluated_by_candidate_id: Optional[Mapping[str, EvaluatedOpportunity]] = None,
     ) -> PortfolioOutcome:
+        """Section 21: stage latency + bounded portfolio metrics around the
+        unchanged selection/reservation logic."""
+        import time as _time
+
+        t0 = _time.perf_counter()
+        outcome = self._select_and_reserve(
+            ranked=ranked, broker_account_id=broker_account_id, bot_instance_id=bot_instance_id, cycle_id=cycle_id,
+            max_open_positions=max_open_positions, context=context, now_ms=now_ms,
+            evaluated_by_candidate_id=evaluated_by_candidate_id)
+        try:
+            from app.trading_intelligence.observability.emitters import observe_portfolio
+            from app.trading_intelligence.observability.metrics import METRICS
+
+            METRICS.observe("cati_stage_latency_ms", (_time.perf_counter() - t0) * 1000.0, stage="PORTFOLIO")
+            observe_portfolio(outcome.decision)
+        except Exception:
+            pass
+        return outcome
+
+    def _select_and_reserve(
+        self,
+        *,
+        ranked: Sequence[RankedOpportunity],
+        broker_account_id: str,
+        bot_instance_id: str,
+        cycle_id: str,
+        max_open_positions: int,
+        context: PortfolioMarketContext,
+        now_ms: int,
+        evaluated_by_candidate_id: Optional[Mapping[str, EvaluatedOpportunity]] = None,
+    ) -> PortfolioOutcome:
         p = self._policy
         if self._store is None:
             return PortfolioOutcome(self._fault_decision(ranked, broker_account_id, bot_instance_id, cycle_id, context,

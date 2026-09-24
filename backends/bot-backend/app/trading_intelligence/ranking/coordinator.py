@@ -128,6 +128,26 @@ class CATICycleCoordinator:
         )
 
     def finalize_bot_cycle(self, key: Tuple[str, str]) -> CycleResult:
+        """Rank the whole batch once (idempotent). Section 21: stage latency +
+        bounded ranking metrics are recorded here, so shadow, replay and test
+        pipelines emit identically."""
+        import time as _time
+
+        first = key not in self._done
+        t0 = _time.perf_counter()
+        result = self._finalize_bot_cycle(key)
+        if first:
+            try:
+                from app.trading_intelligence.observability.emitters import observe_ranking
+                from app.trading_intelligence.observability.metrics import METRICS
+
+                METRICS.observe("cati_stage_latency_ms", (_time.perf_counter() - t0) * 1000.0, stage="RANKING")
+                observe_ranking(result)
+            except Exception:
+                pass
+        return result
+
+    def _finalize_bot_cycle(self, key: Tuple[str, str]) -> CycleResult:
         with self._lock:
             if key in self._done:
                 return self._done[key]  # idempotent: never re-ranks

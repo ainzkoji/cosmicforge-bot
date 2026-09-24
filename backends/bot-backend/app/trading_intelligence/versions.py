@@ -201,3 +201,52 @@ TRADE_PLAN_POLICY_SCHEMA_VERSION = "1.0.0"
 TRADE_PLAN_BUILDER_VERSION = "1.0.0"
 #: cati_trade_plans canonical-migration table shape.
 TRADE_PLAN_TABLE_VERSION = "1.0.0"
+
+# ---------------------------------------------------------------------------
+# Section 19 -- Position Intelligence & Adaptive Exit (ADVISORY / SHADOW)
+# ---------------------------------------------------------------------------
+#: PositionPathSnapshot contract shape (contracts/position.py).
+POSITION_PATH_SCHEMA_VERSION = "1.0.0"
+#: PositionForecast contract shape (contracts/position.py).
+POSITION_FORECAST_SCHEMA_VERSION = "1.0.0"
+#: The conditioned-analog remaining-edge engine (position/forecast.py).
+POSITION_FORECAST_ENGINE_VERSION = "1.0.0"
+#: Thesis re-evaluation rules (position/thesis.py).
+THESIS_EVALUATOR_VERSION = "1.0.0"
+#: ExitPolicy shape + RESEARCH DEFAULT values (contracts/position.py).
+EXIT_POLICY_SCHEMA_VERSION = "1.0.0"
+#: ExitDecision contract shape.
+EXIT_DECISION_SCHEMA_VERSION = "1.0.0"
+#: The deterministic exit-priority engine (position/exit_engine.py).
+EXIT_ENGINE_VERSION = "1.0.0"
+#: Remaining (from-NOW) holding + exit cost model (venue/cost_model.py).
+REMAINING_COST_MODEL_VERSION = "1.0.0"
+
+# ---------------------------------------------------------------------------
+# Section 20 -- Hard Risk and Execution Boundary (NOT PROMOTED)
+# ---------------------------------------------------------------------------
+#: RiskDecision evidence shape (contracts/execution.py) -- evidence ABOUT the
+#: existing hard-risk stack's verdict, never a second risk engine.
+RISK_DECISION_SCHEMA_VERSION = "1.0.0"
+#: ExecutionAttempt evidence shape (contracts/execution.py).
+EXECUTION_ATTEMPT_SCHEMA_VERSION = "1.0.0"
+#: Broker-neutral ExecutionAdapter protocol (execution/adapter.py).
+EXECUTION_ADAPTER_PROTOCOL_VERSION = "1.0.0"
+#: Declared execution-support statuses (execution/adapter.py) -- distinct
+#: from ADAPTER_STATUS_REGISTRY_VERSION, which covers Section 17 economics.
+EXECUTION_SUPPORT_REGISTRY_VERSION = "1.0.0"
+#: The CATI execution boundary orchestration (execution/boundary.py).
+EXECUTION_BOUNDARY_VERSION = "1.0.0"
+
+# ---------------------------------------------------------------------------
+# Section 21 -- Evidence, Observability and Research Data
+# ---------------------------------------------------------------------------
+#: cati_position_forecasts / cati_exit_decisions / cati_risk_decisions /
+#: cati_execution_attempts / cati_component_errors table shapes.
+CATI_EVIDENCE_TABLE_VERSION = "1.0.0"
+#: Bounded-label metric families (observability/metrics.py).
+METRICS_SCHEMA_VERSION = "1.0.0"
+#: Structured stage-log payload shape (observability/logging.py).
+STAGE_LOG_SCHEMA_VERSION = "1.0.0"
+#: Research export row shape (research/export.py).
+RESEARCH_EXPORT_SCHEMA_VERSION = "1.0.0"

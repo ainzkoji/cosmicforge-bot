@@ -611,6 +611,7 @@ class BinanceExecutor:
         usdt: float,
         sl_price: float,
         tp_price: float,
+        intent_identity: str | None = None,
     ) -> tuple[str, str]:
         intent_bucket = int(time.time() // 30) * 30
         strategy_intent = "|".join(
@@ -623,6 +624,14 @@ class BinanceExecutor:
                 f"{float(tp_price or 0.0):.8f}",
             ]
         )
+        if intent_identity:
+            # CATI (Section 20.9): the TradePlan id + hash IS the execution
+            # identity. No time bucket: re-processing the same plan -- in any
+            # cycle, after any restart -- maps to the same intent key and
+            # clientOrderId, so the existing entry-protection lock reuses or
+            # blocks it and can never open a duplicate position.
+            intent_bucket = 0
+            strategy_intent = f"cati|{intent_identity}"
         intent_key = build_entry_intent_key(
             bot_instance_id=self.bot_instance_id or "default",
             symbol=symbol,
@@ -1027,14 +1036,20 @@ class BinanceExecutor:
         position_side: str | None = None,
         remaining_quantity: float | None = None,
         fallback_price: float | None = None,
+        intent_identity: str | None = None,
     ) -> ExecResult:
         """
         Execute a trading signal, allowing typed exceptions to propagate.
+
+        ``intent_identity`` (optional, CATI only) replaces the time-bucketed
+        entry idempotency identity with a stable one; None keeps the
+        existing behaviour exactly.
         """
         return self._execute_impl(
             symbol, signal, usdt, sl_price, tp_price, current_open_count, current_equity, leverage_mult, leverage_override,
             cycle_id=cycle_id, position_side=position_side,
             remaining_quantity=remaining_quantity, fallback_price=fallback_price,
+            intent_identity=intent_identity,
         )
 
     def _execute_impl(self, *args, **kwargs) -> ExecResult:
@@ -1094,6 +1109,7 @@ class BinanceExecutor:
         position_side: str | None = None,
         remaining_quantity: float | None = None,
         fallback_price: float | None = None,
+        intent_identity: str | None = None,
     ) -> ExecResult:
         """
         Internal implementation of execute_signal.
@@ -1337,6 +1353,7 @@ class BinanceExecutor:
                 usdt=float(usdt),
                 sl_price=float(sl_price or 0.0),
                 tp_price=float(tp_price or 0.0),
+                intent_identity=intent_identity,
             )
             _existing_entry = None
             # ── Exposure guard: reject if adding would breach configured maximum ──
@@ -1366,6 +1383,7 @@ class BinanceExecutor:
                 usdt=float(usdt),
                 sl_price=float(sl_price or 0.0),
                 tp_price=float(tp_price or 0.0),
+                intent_identity=intent_identity,
             )
 
             def _acquire_intent():
@@ -1831,6 +1849,7 @@ class BinanceExecutor:
                 usdt=float(usdt),
                 sl_price=float(sl_price or 0.0),
                 tp_price=float(tp_price or 0.0),
+                intent_identity=intent_identity,
             )
         req = OrderRequest(
             symbol=symbol,
