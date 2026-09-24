@@ -596,6 +596,18 @@ class BinanceFuturesClient:
             params={"symbol": symbol.upper()},
         )
 
+    def depth(self, symbol: str, limit: int = 20) -> dict:
+        """Public order-book depth snapshot (read-only market data)."""
+        return self._request(
+            "GET",
+            "/fapi/v1/depth",
+            params={"symbol": symbol.upper(), "limit": int(limit)},
+        )
+
+    def funding_info(self) -> list:
+        """Public per-symbol funding interval/cap metadata (read-only)."""
+        return self._request("GET", "/fapi/v1/fundingInfo")
+
     # ---------------- SUBSTITUTED METHOD (ONLY CHANGE) ----------------
 
     def last_price(self, symbol: str) -> float:

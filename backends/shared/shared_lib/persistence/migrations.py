@@ -2738,6 +2738,11 @@ def migrate(db_path: str | DB = None):
     from shared_lib.persistence.universe_schema import ensure_universe_schema
     ensure_universe_schema(db)
 
+    # 48d) CATI persistent schema: account-scoped SHADOW portfolio reservations.
+    # Additive and idempotent; CATI runtime code no longer creates it lazily.
+    from shared_lib.persistence.cati_schema import ensure_cati_schema
+    ensure_cati_schema(db)
+
     # 47) Event/News automatic runtime mode controller.
     # Keep this after the main migration connection closes so the helper can
     # self-heal temporary test databases through the normal DB context manager.

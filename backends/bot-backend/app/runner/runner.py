@@ -2225,6 +2225,9 @@ class PaperRunner:
             # bounded by a time and request budget; a deferred candidate keeps
             # its unclaimed candle and is evaluated on a following cycle.
             self._apply_universe()
+            from app.trading_intelligence.integration import cycle_shadow as _cati_cycle
+
+            _cati_cycle.on_cycle_start(self)  # flag-gated shadow batch; never raises
             # Held-position management has priority and does not consume the
             # new-entry scan budget. Start that clock at the first candidate.
             _candidate_started: float | None = None
@@ -2279,6 +2282,7 @@ class PaperRunner:
             
             if getattr(self, "_universe_runtime", None) is not None:
                 self._after_universe_cycle(_deferred)
+            _cati_cycle.on_cycle_end(self, results, tuple(_deferred))
 
             # 3. Post-cycle cleanup (e.g. realized PnL sync if needed)
             # (Logic handled inside step_symbol usually for PnL recording)
@@ -6243,6 +6247,44 @@ class PaperRunner:
                     )
                 except Exception as _ms_exc:
                     logger.error("[EVIDENCE] %s: snapshot persist failed: %s", symbol, _ms_exc)
+
+            # CATI shadow evaluation -- disabled by default (CATI_SHADOW_ENABLED),
+            # observes the same causally-pinned snapshot, never returns a value
+            # this loop reads, and cannot raise (see shadow_hook module docstring).
+            # Gated the same way snapshot persistence is: once per claimed candle,
+            # not every 10s heartbeat.
+            if _evaluate_entry:
+                from app.trading_intelligence.integration.shadow_hook import run_full_shadow_pipeline, run_shadow_evaluation
+
+                run_shadow_evaluation(
+                    _snapshot,
+                    venue=type(self.client).__name__,
+                    source=type(self.client).__name__,
+                    bot_instance_id=self.context.bot_instance_id if self.context else None,
+                    symbol=symbol,
+                    run_id=str(self.run_id) if getattr(self, "run_id", None) else None,
+                    cycle_id=getattr(self, "_current_cycle_id", None),
+                )
+                # Section 11-13 pipeline -- separate flag (CATI_FULL_PIPELINE_
+                # SHADOW_ENABLED), disabled by default, same never-raises
+                # contract. See shadow_hook.run_full_shadow_pipeline docstring
+                # for why it legitimately returns INSUFFICIENT_EVIDENCE for
+                # every candidate until a real outcome library exists.
+                run_full_shadow_pipeline(
+                    _snapshot,
+                    venue=type(self.client).__name__,
+                    source=type(self.client).__name__,
+                    bot_instance_id=self.context.bot_instance_id if self.context else None,
+                    symbol=symbol,
+                    run_id=str(self.run_id) if getattr(self, "run_id", None) else None,
+                    cycle_id=getattr(self, "_current_cycle_id", None),
+                )
+                from app.trading_intelligence.integration import cycle_shadow as _cycle_shadow
+
+                _cycle_shadow.record_symbol(
+                    self, _snapshot, symbol,
+                    venue=type(self.client).__name__, source=type(self.client).__name__,
+                )
 
             try:
                 _last_row = _snapshot.candles[-1]

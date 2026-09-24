@@ -1,0 +1,538 @@
+{
+ "source": "https://demo-fapi.binance.com (public market-data endpoints, recorded 2026-09-23 for the Section 17 contract suite)",
+ "exchange_info_server_time": 1790170223940,
+ "symbols": {
+  "BTCUSDT": {
+   "exchange_info_symbol": {
+    "symbol": "BTCUSDT",
+    "pair": "BTCUSDT",
+    "contractType": "PERPETUAL",
+    "deliveryDate": 4133404802000,
+    "status": "TRADING",
+    "baseAsset": "BTC",
+    "quoteAsset": "USDT",
+    "marginAsset": "USDT",
+    "pricePrecision": 2,
+    "quantityPrecision": 4,
+    "filters": [
+     {
+      "tickSize": "0.10",
+      "maxPrice": "809484",
+      "minPrice": "261.10",
+      "filterType": "PRICE_FILTER"
+     },
+     {
+      "maxQty": "1000",
+      "filterType": "LOT_SIZE",
+      "stepSize": "0.0001",
+      "minQty": "0.0001"
+     },
+     {
+      "filterType": "MARKET_LOT_SIZE",
+      "minQty": "0.0001",
+      "stepSize": "0.0001",
+      "maxQty": "120"
+     },
+     {
+      "filterType": "MAX_NUM_ORDERS",
+      "limit": 10000
+     },
+     {
+      "filterType": "MIN_NOTIONAL",
+      "notional": "50"
+     },
+     {
+      "filterType": "PERCENT_PRICE",
+      "multiplierUp": "1.0500",
+      "multiplierDown": "0.9500",
+      "multiplierDecimal": "4"
+     },
+     {
+      "filterType": "POSITION_RISK_CONTROL",
+      "positionControlSide": "NONE"
+     }
+    ],
+    "orderTypes": [
+     "LIMIT",
+     "MARKET",
+     "STOP",
+     "STOP_MARKET",
+     "TAKE_PROFIT",
+     "TAKE_PROFIT_MARKET",
+     "TRAILING_STOP_MARKET"
+    ],
+    "timeInForce": [
+     "GTC",
+     "IOC",
+     "FOK",
+     "GTX",
+     "GTD"
+    ]
+   },
+   "book_ticker": {
+    "symbol": "BTCUSDT",
+    "bidPrice": "84366.70",
+    "bidQty": "1.8918",
+    "askPrice": "84367.40",
+    "askQty": "0.2936",
+    "time": 1790191915538,
+    "lastUpdateId": 435865036459
+   },
+   "premium_index": {
+    "symbol": "BTCUSDT",
+    "markPrice": "84370.74503623",
+    "indexPrice": "84414.87173913",
+    "estimatedSettlePrice": "84357.55378007",
+    "lastFundingRate": "0.00010000",
+    "interestRate": "0.00010000",
+    "nextFundingTime": 1790208000000,
+    "time": 1790191916000
+   },
+   "depth": {
+    "lastUpdateId": 435865060048,
+    "E": 1790191917913,
+    "T": 1790191917908,
+    "bids": [
+     [
+      "84366.70",
+      "1.8918"
+     ],
+     [
+      "84366.30",
+      "23.2099"
+     ],
+     [
+      "84366.00",
+      "34.5611"
+     ],
+     [
+      "84365.80",
+      "11.4016"
+     ],
+     [
+      "84365.70",
+      "0.0042"
+     ],
+     [
+      "84365.30",
+      "11.4198"
+     ],
+     [
+      "84365.10",
+      "0.0027"
+     ],
+     [
+      "84364.60",
+      "22.9676"
+     ],
+     [
+      "84364.40",
+      "23.0500"
+     ],
+     [
+      "84363.70",
+      "2.8099"
+     ],
+     [
+      "84363.60",
+      "11.3333"
+     ],
+     [
+      "84363.50",
+      "11.4239"
+     ],
+     [
+      "84363.20",
+      "22.9404"
+     ],
+     [
+      "84363.10",
+      "23.1181"
+     ],
+     [
+      "84362.90",
+      "11.3821"
+     ],
+     [
+      "84362.80",
+      "0.0066"
+     ],
+     [
+      "84362.60",
+      "2.8303"
+     ],
+     [
+      "84362.30",
+      "11.3726"
+     ],
+     [
+      "84362.20",
+      "0.0076"
+     ],
+     [
+      "84362.10",
+      "0.0077"
+     ]
+    ],
+    "asks": [
+     [
+      "84367.40",
+      "0.2899"
+     ],
+     [
+      "84367.60",
+      "163.5135"
+     ],
+     [
+      "84368.90",
+      "75.2467"
+     ],
+     [
+      "84369.60",
+      "57.4870"
+     ],
+     [
+      "84369.70",
+      "17.7597"
+     ],
+     [
+      "84369.90",
+      "57.4870"
+     ],
+     [
+      "84370.00",
+      "1.8600"
+     ],
+     [
+      "84370.30",
+      "57.4870"
+     ],
+     [
+      "84371.20",
+      "0.0018"
+     ],
+     [
+      "84371.40",
+      "57.4902"
+     ],
+     [
+      "84371.50",
+      "0.0072"
+     ],
+     [
+      "84371.60",
+      "0.0013"
+     ],
+     [
+      "84371.80",
+      "114.9740"
+     ],
+     [
+      "84372.00",
+      "57.4870"
+     ],
+     [
+      "84372.40",
+      "0.0020"
+     ],
+     [
+      "84373.30",
+      "57.4870"
+     ],
+     [
+      "84373.90",
+      "57.4894"
+     ],
+     [
+      "84374.00",
+      "0.0188"
+     ],
+     [
+      "84374.60",
+      "57.4870"
+     ],
+     [
+      "84375.00",
+      "0.0137"
+     ]
+    ]
+   },
+   "funding_info": [
+    {
+     "symbol": "BTCUSDT",
+     "adjustedFundingRateCap": "0.00300",
+     "adjustedFundingRateFloor": "-0.00300",
+     "fundingIntervalHours": 8,
+     "disclaimer": true,
+     "updateTime": null
+    }
+   ]
+  },
+  "ETHUSDT": {
+   "exchange_info_symbol": {
+    "symbol": "ETHUSDT",
+    "pair": "ETHUSDT",
+    "contractType": "PERPETUAL",
+    "deliveryDate": 4133404800000,
+    "status": "TRADING",
+    "baseAsset": "ETH",
+    "quoteAsset": "USDT",
+    "marginAsset": "USDT",
+    "pricePrecision": 2,
+    "quantityPrecision": 3,
+    "filters": [
+     {
+      "filterType": "PRICE_FILTER",
+      "minPrice": "39.86",
+      "tickSize": "0.01",
+      "maxPrice": "306177"
+     },
+     {
+      "minQty": "0.001",
+      "maxQty": "10000",
+      "stepSize": "0.001",
+      "filterType": "LOT_SIZE"
+     },
+     {
+      "minQty": "0.001",
+      "filterType": "MARKET_LOT_SIZE",
+      "maxQty": "10000",
+      "stepSize": "0.001"
+     },
+     {
+      "filterType": "MAX_NUM_ORDERS",
+      "limit": 10000
+     },
+     {
+      "notional": "20",
+      "filterType": "MIN_NOTIONAL"
+     },
+     {
+      "multiplierDown": "0.9500",
+      "multiplierUp": "1.0500",
+      "multiplierDecimal": "4",
+      "filterType": "PERCENT_PRICE"
+     },
+     {
+      "positionControlSide": "NONE",
+      "filterType": "POSITION_RISK_CONTROL"
+     }
+    ],
+    "orderTypes": [
+     "LIMIT",
+     "MARKET",
+     "STOP",
+     "STOP_MARKET",
+     "TAKE_PROFIT",
+     "TAKE_PROFIT_MARKET",
+     "TRAILING_STOP_MARKET"
+    ],
+    "timeInForce": [
+     "GTC",
+     "IOC",
+     "FOK",
+     "GTX",
+     "GTD"
+    ]
+   },
+   "book_ticker": {
+    "symbol": "ETHUSDT",
+    "bidPrice": "2672.69",
+    "bidQty": "0.008",
+    "askPrice": "2673.16",
+    "askQty": "0.008",
+    "time": 1790191918871,
+    "lastUpdateId": 435865066509
+   },
+   "premium_index": {
+    "symbol": "ETHUSDT",
+    "markPrice": "2673.52068798",
+    "indexPrice": "2674.30046512",
+    "estimatedSettlePrice": "2669.84387343",
+    "lastFundingRate": "0.00010000",
+    "interestRate": "0.00010000",
+    "nextFundingTime": 1790208000000,
+    "time": 1790191920000
+   },
+   "depth": {
+    "lastUpdateId": 435865090192,
+    "E": 1790191921123,
+    "T": 1790191921115,
+    "bids": [
+     [
+      "2672.69",
+      "0.008"
+     ],
+     [
+      "2672.35",
+      "757.860"
+     ],
+     [
+      "2672.28",
+      "0.047"
+     ],
+     [
+      "2672.23",
+      "3404.047"
+     ],
+     [
+      "2672.22",
+      "376.631"
+     ],
+     [
+      "2672.21",
+      "905.726"
+     ],
+     [
+      "2672.20",
+      "2263.851"
+     ],
+     [
+      "2672.19",
+      "19.467"
+     ],
+     [
+      "2672.18",
+      "377.348"
+     ],
+     [
+      "2672.17",
+      "1014.035"
+     ],
+     [
+      "2672.16",
+      "2915.556"
+     ],
+     [
+      "2672.15",
+      "779.180"
+     ],
+     [
+      "2672.14",
+      "19.796"
+     ],
+     [
+      "2672.12",
+      "0.035"
+     ],
+     [
+      "2672.11",
+      "19.446"
+     ],
+     [
+      "2672.10",
+      "0.158"
+     ],
+     [
+      "2672.07",
+      "0.027"
+     ],
+     [
+      "2672.06",
+      "657.765"
+     ],
+     [
+      "2672.05",
+      "0.034"
+     ],
+     [
+      "2672.04",
+      "0.026"
+     ]
+    ],
+    "asks": [
+     [
+      "2673.16",
+      "0.008"
+     ],
+     [
+      "2673.42",
+      "127.909"
+     ],
+     [
+      "2673.43",
+      "359.022"
+     ],
+     [
+      "2673.44",
+      "1744.744"
+     ],
+     [
+      "2673.45",
+      "872.372"
+     ],
+     [
+      "2673.47",
+      "1051.878"
+     ],
+     [
+      "2673.48",
+      "179.545"
+     ],
+     [
+      "2673.51",
+      "179.506"
+     ],
+     [
+      "2673.52",
+      "179.506"
+     ],
+     [
+      "2673.53",
+      "872.372"
+     ],
+     [
+      "2673.55",
+      "1051.878"
+     ],
+     [
+      "2673.58",
+      "3116.672"
+     ],
+     [
+      "2673.59",
+      "0.035"
+     ],
+     [
+      "2673.61",
+      "5610.857"
+     ],
+     [
+      "2673.62",
+      "7481.051"
+     ],
+     [
+      "2673.64",
+      "0.042"
+     ],
+     [
+      "2673.67",
+      "179.506"
+     ],
+     [
+      "2673.68",
+      "872.372"
+     ],
+     [
+      "2673.69",
+      "7481.089"
+     ],
+     [
+      "2673.70",
+      "0.112"
+     ]
+    ]
+   },
+   "funding_info": [
+    {
+     "symbol": "ETHUSDT",
+     "adjustedFundingRateCap": "0.00375",
+     "adjustedFundingRateFloor": "-0.00375",
+     "fundingIntervalHours": 8,
+     "disclaimer": true,
+     "updateTime": null
+    }
+   ]
+  }
+ }
+}

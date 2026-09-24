@@ -7,6 +7,7 @@ passlib[bcrypt]
 python-multipart
 pandas
 numpy
+scipy
 requests
 python-dotenv
 ta
