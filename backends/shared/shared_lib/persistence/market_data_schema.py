@@ -19,6 +19,10 @@ New research data goes to venue-aware tables instead:
 * ``fx_reference_quotes``      provider FX reference prices (bid/ask/mid,
                                REFERENCE_MARKET_PRICE -- not an execution
                                venue price).
+* ``fx_reference_ingest_log``  one row per (provider, pair, timeframe, period,
+                               side): FETCHED / NO_FILE / EMPTY / FAILED, so a
+                               missing provider file is an explicit gap marker
+                               and ingestion resumes without re-downloading.
 * ``dataset_manifests``        immutable research/certification manifests
                                (content-hashed; a manifest row is never
                                updated or deleted).
@@ -109,6 +113,20 @@ _DDL = (
         source_version TEXT,
         ingested_at INTEGER NOT NULL,
         PRIMARY KEY (provider, pair, timeframe, open_time)
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS fx_reference_ingest_log (
+        provider TEXT NOT NULL,
+        pair TEXT NOT NULL,
+        timeframe TEXT NOT NULL,
+        period TEXT NOT NULL,          -- UTC day (1m files) or month (1h files)
+        side TEXT NOT NULL,            -- BID | ASK
+        status TEXT NOT NULL CHECK (status IN ('FETCHED', 'NO_FILE', 'EMPTY', 'FAILED')),
+        rows INTEGER NOT NULL DEFAULT 0,
+        reason TEXT,
+        recorded_at INTEGER NOT NULL,
+        PRIMARY KEY (provider, pair, timeframe, period, side)
     )
     """,
     """

@@ -33,6 +33,8 @@ from typing import Callable, Dict, Iterable, List, Optional, Protocol, Sequence
 
 MINUTE_MS = 60_000
 DUKASCOPY_URL = "https://datafeed.dukascopy.com/datafeed/{pair}/{y:04d}/{m:02d}/{d:02d}/{side}_candles_min_1.bi5"
+#: one file per (pair, side, UTC month) of HOURLY candles; records are seconds from the month start
+DUKASCOPY_HOUR_URL = "https://datafeed.dukascopy.com/datafeed/{pair}/{y:04d}/{m:02d}/{side}_candles_hour_1.bi5"
 _RECORD = struct.Struct(">IIIIIf")
 
 MAJORS = ("EURUSD", "GBPUSD", "USDJPY", "USDCHF", "USDCAD", "AUDUSD", "NZDUSD")
@@ -118,6 +120,34 @@ class DukascopyProvider:
         return merge_sides(sides["BID"], sides["ASK"], pair=pair)
 
 
+def month_start_ms(year: int, month: int) -> int:
+    return int(datetime(year, month, 1, tzinfo=timezone.utc).timestamp() * 1000)
+
+
+def decode_hour_file(payload: bytes, *, year: int, month: int, point: float) -> List[Dict]:
+    """Decode one ``*_candles_hour_1.bi5`` month file; records outside the month are refused."""
+    start = month_start_ms(year, month)
+    end = month_start_ms(year + (month == 12), 1 if month == 12 else month + 1)
+    rows = decode_bi5_candles(payload, day_start_ms=start, point=point)
+    bad = [r["open_time"] for r in rows if not (start <= r["open_time"] < end)]
+    if bad:
+        raise ValueError(f"hour file record outside month {year}-{month:02d}: {bad[:3]}")
+    return rows
+
+
+def drop_flat_closed_bars(rows: Sequence[Dict]) -> List[Dict]:
+    """Dukascopy pads CLOSED-market periods with zero-volume flat bars
+    (open == high == low == close). They are not quotes: drop them so a
+    closed market is a gap, never a fabricated price."""
+    out = []
+    for r in rows:
+        flat = r["open"] == r["high"] == r["low"] == r["close"]
+        if flat and not r.get("volume"):
+            continue
+        out.append(r)
+    return out
+
+
 @dataclass
 class CsvFxReferenceProvider:
     path_for: Callable[[str, date], str]
@@ -184,5 +214,6 @@ def resample_quotes(quotes: Sequence[Dict], factor: int) -> List[Dict]:
     return out
 
 
-__all__ = ["CsvFxReferenceProvider", "DUKASCOPY_URL", "DukascopyProvider", "FXReferenceProvider", "MAJORS",
+__all__ = ["CsvFxReferenceProvider", "DUKASCOPY_HOUR_URL", "DUKASCOPY_URL", "decode_hour_file",
+           "drop_flat_closed_bars", "month_start_ms", "DukascopyProvider", "FXReferenceProvider", "MAJORS",
            "decode_bi5_candles", "fx_session", "ingest", "merge_sides", "point_for", "resample_quotes", "split_pair"]

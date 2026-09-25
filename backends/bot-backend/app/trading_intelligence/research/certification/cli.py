@@ -10,9 +10,19 @@
     python -m app.trading_intelligence.research.certification report --artifacts data/research/certification
     python -m app.trading_intelligence.research.certification status --research-db data/research/certification.db
 
+    python -m app.trading_intelligence.research.certification plan \\
+        --db ../shared/shared_lib/persistence/cosmicforge.db \\
+        --universe-manifest ../../docs/research/cati_crypto_universe_binance_v1.json
+
 The candle database is opened READ-ONLY. ``run`` never opens the holdout
 unless ``--open-holdout`` is passed (and the pipeline's own preconditions
 hold). Nothing here enables CATI execution.
+
+``--universe-manifest`` pins the run to a FROZEN universe manifest
+(``app.market_data.universe.load_frozen_universe`` refuses an edited file):
+its members replace ``--symbols``, its window is the default ``--start`` /
+``--end``, and its ``universe_hash`` becomes part of the dataset identity, so
+a different universe can never masquerade as the frozen one.
 """
 from __future__ import annotations
 
@@ -46,6 +56,32 @@ def _coverage(db: str, symbols: Sequence[str], tf: str) -> dict:
     finally:
         conn.close()
     return out
+
+
+def _universe(args):
+    """(manifest | None). Applies a frozen universe manifest to the args in place."""
+    path = getattr(args, "universe_manifest", None)
+    if not path:
+        return None
+    from app.market_data.universe import load_frozen_universe
+
+    m = load_frozen_universe(path)
+    args.symbols = ",".join(m["selected_symbols"])
+    if m.get("timeframes") and args.timeframe not in m["timeframes"]:
+        raise SystemExit(f"timeframe {args.timeframe} is not in the frozen universe {m['timeframes']}")
+    fmt = lambda ms: datetime.fromtimestamp(ms / 1000, timezone.utc).strftime("%Y-%m-%dT%H:%M:%S")
+    args.start = args.start or fmt(m["window_start_ms"])
+    args.end = args.end or fmt(m["window_end_ms"] - 1)
+    return m
+
+
+def _universe_summary(m) -> Optional[dict]:
+    if not m:
+        return None
+    return {"universe_id": m["universe_id"], "universe_hash": m["universe_hash"], "role": m["role"],
+            "members": len(m["selected_symbols"]), "window_start_ms": m["window_start_ms"],
+            "window_end_ms": m["window_end_ms"], "rule_version": m["rule_version"],
+            "survivorship_bias": m.get("survivorship_bias")}
 
 
 def _load(args):
@@ -82,6 +118,7 @@ def cmd_plan(args) -> int:
     from .policy import policy_summary
     from .replay import ReplayConfig, chronology_for
 
+    universe = _universe(args)
     if not args.db or not Path(args.db).exists():
         return _blocked(args, [s.upper() for s in args.symbols.split(",")], "CANDLE_DATABASE_NOT_FOUND")
     symbols, cov, series, meta, source = _load(args)
@@ -91,7 +128,10 @@ def cmd_plan(args) -> int:
                        label_horizon_bars=args.label_horizon_bars, higher_timeframe=args.higher_timeframe)
     plan = chronology_for(series, cfg)
     days = (max(c["end_ms"] for c in cov.values() if c["end_ms"]) - min(c["start_ms"] for c in cov.values() if c["start_ms"])) / 86_400_000
-    print(json.dumps({"coverage": cov, "coverage_days": round(days, 2), "data_sources": source,
+    missing = sorted(s for s in symbols if s not in series)
+    print(json.dumps({"universe": _universe_summary(universe), "symbols_requested": len(symbols),
+                      "symbols_with_data": len(series), "symbols_missing_data": missing,
+                      "coverage": cov, "coverage_days": round(days, 2), "data_sources": source,
                       "chronology": plan.to_dict(), "policy": policy_summary(), "config_hash": cfg.config_hash,
                       "feasible": {"FAST": plan.evaluation_window.days >= 30 if plan.evaluation_window else False,
                                    "MEDIUM": plan.evaluation_window.days >= 180 if plan.evaluation_window else False,
@@ -106,10 +146,14 @@ def cmd_run(args) -> int:
     from .registry import SqliteResearchStore
     from .replay import ReplayConfig
 
+    universe = _universe(args)
     symbols = [s.upper() for s in args.symbols.split(",")]
     if not args.db or not Path(args.db).exists():
         return _blocked(args, symbols, "CANDLE_DATABASE_NOT_FOUND")
     symbols, _cov, series, meta, source = _load(args)
+    if universe is not None and len(series) != len(symbols):
+        # a frozen universe is certified whole or not at all -- never a silent subset
+        return _blocked(args, symbols, f"FROZEN_UNIVERSE_INCOMPLETE_{len(series)}_OF_{len(symbols)}")
     if not series:
         return _blocked(args, symbols, "NO_CANDLES_FOR_SCOPE")
     cfg = ReplayConfig(symbols=tuple(sorted(series)), timeframe=args.timeframe,
@@ -117,7 +161,8 @@ def cmd_run(args) -> int:
     Path(args.research_db).parent.mkdir(parents=True, exist_ok=True)
     runtime = SqliteResearchStore(args.runtime_db) if args.runtime_db else None
     report = certify(series, meta, cfg=cfg, data_sources=source["data_sources"], source_provider="binance",
-                     dataset_identity=f"historical_candles:{Path(args.db).name}",
+                     dataset_identity=(f"historical_candles:{Path(args.db).name}"
+                                       + (f":universe:{universe['universe_hash']}" if universe else "")),
                      research_db=SqliteResearchStore(args.research_db), artifact_dir=Path(args.artifacts),
                      runtime_db=runtime, open_holdout=args.open_holdout)
     jpath, mpath = report.write(Path(args.artifacts))
@@ -175,6 +220,8 @@ def build_parser() -> argparse.ArgumentParser:
         sp.add_argument("--data-source", default=None)
         sp.add_argument("--label-horizon-bars", type=int, default=48)
         sp.add_argument("--artifacts", default="data/research/certification")
+        sp.add_argument("--universe-manifest", default=None,
+                        help="frozen universe manifest JSON (members + window + hash pin the run)")
 
     plan = sub.add_parser("plan")
     data_args(plan)

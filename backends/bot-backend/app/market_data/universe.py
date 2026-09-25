@@ -170,6 +170,138 @@ def execution_eligibility(evidence: Mapping[str, Optional[bool]]) -> Tuple[bool,
     return (not missing), missing
 
 
-__all__ = ["CERTIFICATION", "EXECUTION", "EXECUTION_REQUIREMENTS", "RESEARCH", "ROLES", "SelectionCriteria", "TRAINING",
-           "UniverseSelection", "deep_subset", "execution_eligibility", "persist_dataset_manifest",
-           "persist_universe_manifest", "select_universe"]
+# ── Frozen, reproducible universes (certification) ──────────────────────────
+#
+# A live 24h ticker changes every minute, so a selection ranked on it cannot
+# be reproduced. A CERTIFICATION universe is ranked on HISTORICAL liquidity
+# inside a fixed window (median daily quote volume over the last N closed
+# days that end at the window end): the same window always yields the same
+# ranking. The frozen manifest file is the authority afterwards -- re-running
+# the selector later produces a NEW research universe, never a silent edit of
+# the frozen one (``load_frozen_universe`` refuses a manifest whose hash
+# drifted).
+
+HISTORICAL_SELECTION_RULE_VERSION = "universe-selection-historical-liquidity-v1"
+FROZEN_UNIVERSE_SCHEMA_VERSION = "frozen-universe-manifest-v1"
+#: stable-value bases are not directional crypto markets
+STABLE_BASES = frozenset({"USDT", "USDC", "FDUSD", "BUSD", "TUSD", "DAI", "USDP", "USDE", "USD1", "PYUSD"})
+_FROZEN_IDENTITY_KEYS = ("schema_version", "role", "source_venue", "source_provider", "asset_class", "rule_version",
+                         "selection_rule_version", "criteria", "window_start_ms", "window_end_ms", "timeframes",
+                         "selected_symbols", "members", "metadata_hash")
+
+
+@dataclass(frozen=True)
+class HistoricalLiquidity:
+    """Stats object for ``select_universe`` built from closed historical daily bars."""
+    quote_volume_24h: Optional[float]      # median daily quote volume over the lookback
+    spread_bps: Optional[float] = None     # historical spread is not published by the venue: UNAVAILABLE
+    days_observed: int = 0
+    source: str = "HISTORICAL_DAILY_KLINES_MEDIAN"
+
+
+def historical_liquidity(daily_klines: Sequence[Sequence[Any]], *, lookback_days: int = 30,
+                         end_ms: Optional[int] = None) -> HistoricalLiquidity:
+    """Median daily quote volume of the last ``lookback_days`` CLOSED daily bars.
+
+    Kline layout ``[open_time, o, h, l, c, v, close_time, quote_volume, ...]``.
+    Fewer than half the lookback observed -> liquidity UNKNOWN (None), which
+    the selector treats as an exclusion, never as "small".
+    """
+    rows = [k for k in daily_klines if end_ms is None or int(k[6] if len(k) > 6 else k[0]) <= end_ms]
+    rows = list(rows)[-lookback_days:]
+    vols = sorted(float(k[7]) for k in rows if len(k) > 7 and k[7] not in (None, ""))
+    if len(vols) < max(1, lookback_days // 2):
+        return HistoricalLiquidity(None, None, len(vols))
+    mid = len(vols) // 2
+    med = vols[mid] if len(vols) % 2 else (vols[mid - 1] + vols[mid]) / 2.0
+    return HistoricalLiquidity(med, None, len(vols))
+
+
+def exclude_stable_bases(instruments: Sequence[Any]) -> Tuple[List[Any], Dict[str, str]]:
+    keep, dropped = [], {}
+    for ins in instruments:
+        if str(getattr(ins, "base_currency", "")).upper() in STABLE_BASES:
+            dropped[ins.venue_symbol] = "STABLECOIN_BASE"
+        else:
+            keep.append(ins)
+    return keep, dropped
+
+
+def _metadata_hash(instruments: Sequence[Any], symbols: Sequence[str]) -> str:
+    wanted = set(symbols)
+    body = [{k: getattr(ins, k, None) for k in (
+        "venue", "venue_symbol", "canonical_symbol", "asset_class", "product_type", "settlement_asset",
+        "listed_at_ms", "tick_size", "qty_step", "min_qty", "min_notional")}
+        for ins in sorted(instruments, key=lambda i: i.venue_symbol) if ins.venue_symbol in wanted]
+    return hashlib.sha256(json.dumps(body, sort_keys=True, default=str).encode()).hexdigest()
+
+
+def build_frozen_universe_manifest(selection: UniverseSelection, instruments: Sequence[Any], *, window_start_ms: int,
+                                   window_end_ms: int, timeframes: Sequence[str], source_provider: str,
+                                   generated_at: str, extra_excluded: Optional[Mapping[str, str]] = None,
+                                   liquidity: Optional[Mapping[str, HistoricalLiquidity]] = None,
+                                   role: str = CERTIFICATION) -> Dict[str, Any]:
+    """The immutable file-level manifest for a research/certification universe.
+
+    ``generated_at`` is operational metadata: it is NOT part of
+    ``universe_hash`` (identical selections over the same window hash equal).
+    """
+    if role not in ROLES:
+        raise ValueError(role)
+    by_sym = {i.venue_symbol: i for i in instruments}
+    excluded = dict(selection.excluded)
+    excluded.update(extra_excluded or {})
+    members = []
+    for sym in selection.selected:
+        ins = by_sym[sym]
+        liq = (liquidity or {}).get(sym)
+        members.append({"venue_symbol": sym, "canonical_instrument_id": ins.canonical_symbol,
+                        "asset_class": ins.asset_class, "product_type": ins.product_type,
+                        "base_asset": ins.base_currency, "quote_asset": ins.quote_currency,
+                        "settlement_asset": ins.settlement_asset, "listed_at_ms": ins.listed_at_ms,
+                        "median_daily_quote_volume": liq.quote_volume_24h if liq else None})
+    identity = {
+        "schema_version": FROZEN_UNIVERSE_SCHEMA_VERSION, "role": role, "source_venue": selection.venue,
+        "source_provider": source_provider, "asset_class": selection.asset_class,
+        "rule_version": HISTORICAL_SELECTION_RULE_VERSION, "selection_rule_version": selection.rule_version,
+        "criteria": dict(selection.criteria), "window_start_ms": int(window_start_ms),
+        "window_end_ms": int(window_end_ms), "timeframes": list(timeframes),
+        "selected_symbols": list(selection.selected), "members": members,
+        "metadata_hash": _metadata_hash(instruments, selection.selected),
+    }
+    universe_hash = hashlib.sha256(json.dumps(identity, sort_keys=True, default=str).encode()).hexdigest()
+    return {**identity, "universe_id": f"univ_{selection.venue}_{universe_hash[:12]}", "universe_hash": universe_hash,
+            "generated_at": generated_at, "shortfall": selection.shortfall,
+            "rejected": dict(sorted(excluded.items())), "execution_authorized": False,
+            "note": "research/certification membership never authorizes execution"}
+
+
+class FrozenUniverseError(ValueError):
+    pass
+
+
+def verify_frozen_universe(manifest: Mapping[str, Any]) -> str:
+    """Recompute the identity hash; raise if the manifest was edited."""
+    missing = [k for k in _FROZEN_IDENTITY_KEYS if k not in manifest]
+    if missing:
+        raise FrozenUniverseError(f"frozen universe manifest missing {missing}")
+    h = hashlib.sha256(json.dumps({k: manifest[k] for k in _FROZEN_IDENTITY_KEYS}, sort_keys=True,
+                                  default=str).encode()).hexdigest()
+    if h != manifest.get("universe_hash"):
+        raise FrozenUniverseError(f"universe hash mismatch: recorded {manifest.get('universe_hash')} computed {h}")
+    return h
+
+
+def load_frozen_universe(path: str) -> Dict[str, Any]:
+    with open(path, "r", encoding="utf-8") as fh:
+        manifest = json.load(fh)
+    verify_frozen_universe(manifest)
+    return manifest
+
+
+__all__ = ["CERTIFICATION", "EXECUTION", "EXECUTION_REQUIREMENTS", "FROZEN_UNIVERSE_SCHEMA_VERSION",
+           "FrozenUniverseError", "HISTORICAL_SELECTION_RULE_VERSION", "HistoricalLiquidity", "RESEARCH", "ROLES",
+           "STABLE_BASES", "SelectionCriteria", "TRAINING", "UniverseSelection", "build_frozen_universe_manifest",
+           "deep_subset", "exclude_stable_bases", "execution_eligibility", "historical_liquidity",
+           "load_frozen_universe", "persist_dataset_manifest", "persist_universe_manifest", "select_universe",
+           "verify_frozen_universe"]
