@@ -22,6 +22,8 @@ Tiers
              (``fx_reference.resample_quotes``; incomplete windows dropped).
 * ``validate`` coverage, gap markers, spread sanity and triangular
              consistency (EURSEK ~= EURUSD x USDSEK) as a price-scale check.
+* ``tracking`` venue FX perpetual 15m closes (Bybit, EXECUTION_VENUE_PRICE) vs
+             the reference 15m mid on aligned closed bars (median/p95 |bps|).
 
 Throttled (Dukascopy rate-limits and blocks bursts): fixed pacing, backoff
 on 429/timeouts, resumable through ``fx_reference_ingest_log`` (a period
@@ -338,6 +340,44 @@ def cmd_validate(args, db, f):
                       "triangular_max_rel_diff": rep["triangular_max_rel_diff"]}, indent=2))
 
 
+def cmd_tracking(args, db, f):
+    """Venue FX perpetual (EXECUTION_VENUE_PRICE) vs Dukascopy reference mid, on aligned CLOSED 15m bars."""
+    import requests
+
+    from app.exchange import instruments as I
+    from app.market_data import venue_history as vh
+    from app.market_data.reference_mapping import link_for, tracking_statistics
+
+    rows, cursor = [], ""
+    while True:
+        d = requests.get("https://api.bybit.com/v5/market/instruments-info",
+                         params={"category": "linear", "limit": 1000, **({"cursor": cursor} if cursor else {})},
+                         timeout=30).json()
+        rows += d["result"]["list"]
+        cursor = d["result"].get("nextPageCursor") or ""
+        if not cursor:
+            break
+    fx_ins = [i for i in (I.parse_bybit_instrument(r) for r in rows) if i and i.asset_class == I.FX]
+    get = vh.requests_getter()
+    out = {"provider": PROVIDER, "venue": "bybit_linear", "timeframe": "15m", "instruments": {}}
+    now = int(time.time() * 1000)
+    for ins in fx_ins:
+        link = link_for(ins)
+        pair = ins.base_currency + ins.quote_currency
+        start = max(int(ins.listed_at_ms or 0), now - args.days * 86_400_000)
+        venue = [{"open_time": int(k[0]), "close": float(k[4])}
+                 for k in vh.bybit_klines(get, ins.venue_symbol, "15m", start, now - 900_000)]
+        with db.connect() as conn:
+            ref = [{"open_time": r[0], "mid_close": r[1]} for r in conn.execute(
+                "SELECT open_time, mid_close FROM fx_reference_quotes WHERE provider=? AND pair=? AND timeframe='15m' "
+                "AND open_time>=?", (PROVIDER, pair, start))]
+        st = tracking_statistics(venue, ref, timeframe="15m")
+        out["instruments"][ins.venue_symbol] = {"link": link.to_dict() if link else None, "tracking": st.to_dict()}
+        print(json.dumps({ins.venue_symbol: st.to_dict()}), flush=True)
+    if args.out:
+        open(args.out, "w", encoding="utf-8").write(json.dumps(out, indent=2, sort_keys=True))
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--db", required=True)
@@ -353,10 +393,14 @@ def main() -> int:
     d.add_argument("--pairs", default=None)
     v = sub.add_parser("validate")
     v.add_argument("--out", default=None)
+    t = sub.add_parser("tracking")
+    t.add_argument("--days", type=int, default=60)
+    t.add_argument("--out", default=None)
     args = ap.parse_args()
     db = _db(args.db)
     f = Fetcher()
-    {"probe": cmd_probe, "broad": cmd_broad, "deep": cmd_deep, "validate": cmd_validate}[args.cmd](args, db, f)
+    {"probe": cmd_probe, "broad": cmd_broad, "deep": cmd_deep, "validate": cmd_validate,
+     "tracking": cmd_tracking}[args.cmd](args, db, f)
     return 0
 
 
