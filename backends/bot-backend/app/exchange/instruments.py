@@ -13,11 +13,17 @@ Identity keeps venue observations separate:
 * ``venue`` + ``venue_symbol`` what the order is sent with
 
 Classification source is recorded. Venue metadata (Binance
-``underlyingType`` / ``contractType``, Bybit ``symbolType``) wins; the
-symbol-shape fallback only recognises ISO-4217 fiat bases (FX) and precious
-metal codes (commodities) and says so (``classification_source=
-"SYMBOL_HEURISTIC"``). An unrecognised product is OTHER -- never guessed
-into a tradable class.
+``underlyingType`` / ``contractType``, Bybit ``symbolType``, the BingX
+``NCFX``/``NCSK``/``NCCO``/``NCSI`` TradFi symbol namespaces of its official
+swap contract list) wins; the symbol-shape fallback only recognises ISO-4217
+fiat bases (FX) and precious metal codes (commodities) and says so
+(``classification_source="SYMBOL_HEURISTIC"``). A venue product type this
+module does not know is OTHER -- never guessed into a tradable class (Bybit
+ETF perpetuals and BingX NC* TradFi contracts were once defaulted into CRYPTO).
+
+FX identity is the currency PAIR, never the venue's coin label: Bybit lists
+``EURUSDUSDT`` with ``baseCoin="EURUSD"``; its canonical symbol is
+``EUR/USD:FX_PERPETUAL`` (economic base EUR, quote USD, settlement USDT).
 
 Unknown numeric metadata stays ``None`` (never 0).
 """
@@ -45,12 +51,51 @@ STABLE_USD = frozenset({"USDT", "USDC", "FDUSD", "BUSD", "USD1", "TUSD", "DAI"})
 METALS = frozenset({"XAU", "XAG", "XPT", "XPD", "GOLD", "SILVER"})
 
 _UNDERLYING_TYPE = {  # venue metadata -> asset class
-    "COIN": CRYPTO, "CRYPTO": CRYPTO, "PREMARKET": CRYPTO,
+    # Binance underlyingType; Bybit symbolType ("innovation"/"adventure" are crypto listing zones)
+    "COIN": CRYPTO, "CRYPTO": CRYPTO, "PREMARKET": CRYPTO, "INNOVATION": CRYPTO, "ADVENTURE": CRYPTO,
     "COMMODITY": COMMODITIES, "COMMODITIES": COMMODITIES, "METAL": COMMODITIES,
-    "EQUITY": STOCK, "STOCK": STOCK, "STOCKS": STOCK, "XSTOCKS": STOCK,
+    "EQUITY": STOCK, "STOCK": STOCK, "STOCKS": STOCK, "XSTOCKS": STOCK, "ETF": STOCK,
+    "HK_EQUITY": STOCK, "KR_EQUITY": STOCK, "CN_EQUITY": STOCK, "US_EQUITY": STOCK,
     "INDEX": INDEX, "INDICES": INDEX,
     "FX": FX, "FOREX": FX, "CURRENCY": FX,
 }
+
+#: BingX lists TradFi perpetuals in the same official swap contract API under
+#: namespaced symbols: NCFX<BASE>2<QUOTE> (FX), NCSK<TICKER>2USD (stocks),
+#: NCCO<NAME>2USD (commodities), NCSI<INDEX>2USD (indices).
+_BINGX_NAMESPACE = {"NCFX": FX, "NCSK": STOCK, "NCCO": COMMODITIES, "NCSI": INDEX}
+_COMMODITY_ALIASES = {"GOLD": "XAU", "SILVER": "XAG", "PLATINUM": "XPT", "PALLADIUM": "XPD"}
+
+
+def fx_legs(base: str, quote: str) -> Tuple[str, str]:
+    """Economic (base, quote) of an FX instrument.
+
+    ``EURUSD`` + ``USDT`` -> (EUR, USD); ``GBP`` + ``USDT`` -> (GBP, USD).
+    """
+    b, q = str(base or "").upper(), str(quote or "").upper()
+    if len(b) == 6 and b[:3] in FIAT and b[3:] in FIAT:
+        return b[:3], b[3:]
+    return b, ("USD" if q in STABLE_USD else q)
+
+
+def bingx_namespace(asset: str) -> Optional[Tuple[str, str, str]]:
+    """(asset_class, economic base, economic quote) for a BingX NC* symbol, else None."""
+    import re
+
+    a = str(asset or "").upper()
+    m = re.fullmatch(r"(NC[A-Z]{2})(.+)2([A-Z]{3})", a)
+    if not m:
+        # observed variants without the "2" separator: NCSKTMFUSDT, NCCOXAGJPYUSD
+        m = re.fullmatch(r"(NC[A-Z]{2})(.+?)(USDT|USD)", a)
+        if not m or m.group(1) not in _BINGX_NAMESPACE:
+            return None
+    ac = _BINGX_NAMESPACE.get(m.group(1), OTHER)
+    base = m.group(2)
+    if m.group(3) == "USDT":
+        return ac, base, "USD"
+    if ac == COMMODITIES:
+        base = _COMMODITY_ALIASES.get(base, base)
+    return ac, base, m.group(3)
 
 
 def _pos(v: Any) -> Optional[float]:
@@ -160,7 +205,9 @@ def classify(base: str, quote: str, *, underlying_type: Optional[str] = None,
         ac = _UNDERLYING_TYPE.get(str(underlying_type).upper())
         if ac:
             return _shape(ac, b, q, contract_type) + ("VENUE_METADATA",)
-    if b in FIAT and (q in FIAT or q in STABLE_USD):
+        # a venue product type this module does not know is NOT defaulted into crypto
+        return _shape(OTHER, b, q, contract_type) + ("VENUE_METADATA_UNMAPPED",)
+    if (b in FIAT and (q in FIAT or q in STABLE_USD)) or (len(b) == 6 and b[:3] in FIAT and b[3:] in FIAT):
         return _shape(FX, b, q, contract_type) + ("SYMBOL_HEURISTIC",)
     if b in METALS:
         return _shape(COMMODITIES, b, q, contract_type) + ("SYMBOL_HEURISTIC",)
@@ -173,11 +220,15 @@ def _shape(ac: str, b: str, q: str, contract_type: str) -> Tuple[str, str, str, 
         product = PERPETUAL if contract_type == PERPETUAL else (SPOT if contract_type == SPOT else DELIVERY)
         return CRYPTO, product, canonical_instrument(b, q, kind).canonical_id, q
     if ac == FX:
-        econ_q = "USD" if q in STABLE_USD else q  # a USDT-quoted FX perpetual is a USD-pair proxy
+        # a USDT-quoted FX perpetual is a USD-pair proxy; a 6-letter pair label is split into its legs
+        b, econ_q = fx_legs(b, q)
         product = FX_PERPETUAL if contract_type == PERPETUAL else (SPOT if contract_type == SPOT else DELIVERY)
         return FX, product, f"{b}/{econ_q}:{product}", econ_q
+    econ_q = "USD" if q in STABLE_USD else q
+    if ac == COMMODITIES:
+        b = _COMMODITY_ALIASES.get(b, b)
     product = TRADFI_PERPETUAL if contract_type == PERPETUAL else DELIVERY
-    return ac, product, f"{b}/{q}:{product}", q
+    return ac, product, f"{b}/{econ_q}:{product}", econ_q
 
 
 # ── Venue parsers ────────────────────────────────────────────────────────────
@@ -196,9 +247,12 @@ def parse_binance_symbol(s: Mapping[str, Any], *, venue: str = "binance_usdm") -
     f = {x.get("filterType"): x for x in s.get("filters", []) or []}
     lot, price, notional = f.get("LOT_SIZE", {}), f.get("PRICE_FILTER", {}), f.get("MIN_NOTIONAL", {})
     status = str(s.get("status") or "")
+    base_ccy = str(s.get("baseAsset", "")).upper()
+    if ac == FX:
+        base_ccy, econ_q = fx_legs(base_ccy, s.get("quoteAsset", ""))
     return DiscoveredInstrument(
         venue=venue, venue_symbol=sym, asset_class=ac, product_type=product,
-        canonical_symbol=canon, base_currency=str(s.get("baseAsset", "")).upper(), quote_currency=econ_q,
+        canonical_symbol=canon, base_currency=base_ccy, quote_currency=econ_q,
         settlement_asset=str(s.get("marginAsset") or s.get("quoteAsset") or "").upper(), contract_type=contract,
         status=status, api_tradable=status.upper() == "TRADING",
         tick_size=_pos(price.get("tickSize")), qty_step=_pos(lot.get("stepSize")), min_qty=_pos(lot.get("minQty")),
@@ -224,9 +278,12 @@ def parse_bybit_instrument(r: Mapping[str, Any], *, category: str = "linear",
                                                   underlying_type=r.get("symbolType") or None, contract_type=contract)
     lot, price, lev = r.get("lotSizeFilter") or {}, r.get("priceFilter") or {}, r.get("leverageFilter") or {}
     status = str(r.get("status") or "")
+    base_ccy = str(r.get("baseCoin", "")).upper()
+    if ac == FX:
+        base_ccy, econ_q = fx_legs(base_ccy, r.get("quoteCoin", ""))
     return DiscoveredInstrument(
         venue=venue, venue_symbol=sym, asset_class=ac, product_type=product, canonical_symbol=canon,
-        base_currency=str(r.get("baseCoin", "")).upper(), quote_currency=econ_q,
+        base_currency=base_ccy, quote_currency=econ_q,
         settlement_asset=str(r.get("settleCoin") or r.get("quoteCoin") or "").upper(), contract_type=contract,
         status=status, api_tradable=status.lower() == "trading",
         tick_size=_pos(price.get("tickSize")), qty_step=_pos(lot.get("qtyStep") or lot.get("basePrecision")),
@@ -251,7 +308,15 @@ def parse_bingx_contract(c: Mapping[str, Any], *, venue: str = "bingx_swap") -> 
     base, _, quote = raw.partition("-")
     quote = str(c.get("currency") or quote or "USDT").upper()
     base = str(c.get("asset") or base).upper()
-    ac, product, canon, econ_q, source = classify(base, quote, contract_type=PERPETUAL)
+    ns = bingx_namespace(base)
+    if ns is not None:
+        ns_class, ns_base, ns_quote = ns
+        ac, product, canon, econ_q, _src = classify(ns_base, ns_quote, underlying_type=ns_class,
+                                                    contract_type=PERPETUAL)
+        source = "VENUE_SYMBOL_NAMESPACE" if ns_class != OTHER else "VENUE_SYMBOL_NAMESPACE_UNMAPPED"
+        base = fx_legs(ns_base, ns_quote)[0] if ac == FX else canon.split("/")[0]
+    else:
+        ac, product, canon, econ_q, source = classify(base, quote, contract_type=PERPETUAL)
     status = c.get("status")
     api_open = c.get("apiStateOpen")
     tradable = (str(status) == "1") and (api_open in (None, True, "true", "True"))
@@ -265,7 +330,8 @@ def parse_bingx_contract(c: Mapping[str, Any], *, venue: str = "bingx_swap") -> 
         qty_step=_pos(c.get("size")) or ((10 ** -qty_prec) if qty_prec is not None else None),
         min_qty=_pos(c.get("tradeMinQuantity")), max_qty=None, min_notional=_pos(c.get("tradeMinUSDT")),
         max_leverage=None, listed_at_ms=_int(c.get("launchTime")),
-        session_restricted=None, classification_source=source,
+        session_restricted=(True if ns is not None and ac in (FX, STOCK, INDEX, COMMODITIES) else None),
+        classification_source=source,
         venue_metadata={k: c.get(k) for k in ("apiStateOpen", "apiStateClose", "status", "displayName") if c.get(k) is not None},
     )
 
@@ -334,12 +400,16 @@ def from_dict(d: Mapping[str, Any]) -> DiscoveredInstrument:
 
 __all__ = [
     "CRYPTO", "FX", "COMMODITIES", "STOCK", "INDEX", "OTHER", "PERPETUAL", "FX_PERPETUAL", "TRADFI_PERPETUAL",
-    "DELIVERY", "SPOT", "DiscoveredInstrument", "InstrumentCatalog", "classify", "from_dict",
+    "DELIVERY", "SPOT", "DiscoveredInstrument", "InstrumentCatalog", "bingx_namespace", "classify", "from_dict",
+    "fx_legs",
     "parse_binance_symbol", "parse_bingx_contract", "parse_bybit_instrument",
 ]
 
 
 # ── Account-level execution eligibility (Phase 3E) ───────────────────────────
+
+#: classification sources that come from the venue itself (metadata or its documented symbol namespace)
+VENUE_EVIDENCED_SOURCES = frozenset({"VENUE_METADATA", "VENUE_SYMBOL_NAMESPACE"})
 
 _PRODUCT_CAPABILITY = {CRYPTO: "crypto_perpetuals", FX: "fx_perpetuals", COMMODITIES: "tradfi", STOCK: "tradfi",
                        INDEX: "tradfi"}
@@ -359,6 +429,13 @@ def execution_eligibility(ins: DiscoveredInstrument, *, broker: str, environment
     reasons = []
     if not ins.api_tradable:
         reasons.append("INSTRUMENT_NOT_API_TRADABLE")
+        # BingX publishes whether the API accepts NEW orders per contract: a listed contract whose
+        # apiStateOpen is false is market-known but not API-executable.
+        if str((ins.venue_metadata or {}).get("apiStateOpen", "")).lower() == "false":
+            reasons.append("VENUE_API_NOT_SUPPORTED")
+    if ins.asset_class != CRYPTO and ins.classification_source not in VENUE_EVIDENCED_SOURCES:
+        # a symbol-shape guess never authorizes a TradFi order
+        reasons.append("CLASSIFICATION_NOT_VENUE_EVIDENCED")
     if ins.contract_type != PERPETUAL:
         reasons.append("CONTRACT_TYPE_NOT_SUPPORTED")
     cap = _PRODUCT_CAPABILITY.get(ins.asset_class)

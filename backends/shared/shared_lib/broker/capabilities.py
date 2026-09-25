@@ -242,8 +242,9 @@ _BYBIT = _profile("bybit", {
     Capability.CRYPTO_PERPETUALS: _e(V, REASON_NOT_VALIDATED, "linear USDT/USDC perpetuals"),
     Capability.FX_PERPETUALS: _e(V, REASON_PRODUCT_FROM_DISCOVERY,
                                  "FX perpetuals only where V5 instruments-info lists them"),
-    Capability.TRADFI: _e(X, REASON_VENUE_API,
-                          "Bybit TradFi/MT5 is a separate platform not reachable through V5"),
+    Capability.TRADFI: _e(V, REASON_PRODUCT_FROM_DISCOVERY,
+                          "stock/ETF/commodity linear perpetuals listed by V5 instruments-info (symbolType); "
+                          "Bybit MT5/CFD TradFi is a separate platform NOT reachable through V5 and unsupported"),
     Capability.ACCOUNT_BALANCE: _e(V, REASON_NOT_VALIDATED),
     Capability.POSITIONS: _e(V, REASON_NOT_VALIDATED),
     Capability.ORDERS: _e(V, REASON_NOT_VALIDATED),
@@ -262,10 +263,16 @@ _BINGX = _profile("bingx", {
     Capability.INSTRUMENT_DISCOVERY: _e(V, REASON_NOT_VALIDATED, "implemented; no demo validation run yet"),
     Capability.SPOT_TRADING: _e(U, REASON_NOT_IMPLEMENTED),
     Capability.CRYPTO_PERPETUALS: _e(V, REASON_NOT_VALIDATED, "USDT-M perpetual swap"),
-    Capability.FX_PERPETUALS: _e(X, REASON_VENUE_API,
-                                 "no official API execution path for BingX TradFi/FX is implemented"),
-    Capability.TRADFI: _e(X, REASON_VENUE_API,
-                          "BingX TradFi is not exposed through the supported swap API"),
+    # Evidence (2026-09-26, public /openApi/swap/v2/quote/contracts on mainnet AND the VST demo host):
+    # BingX lists FX / stock / commodity / index perpetuals in the SAME official swap contract API under
+    # NCFX/NCSK/NCCO/NCSI symbols, each with its own apiStateOpen + status. Availability is therefore
+    # resolved per instrument by discovery (apiStateOpen false -> VENUE_API_NOT_SUPPORTED for that
+    # instrument); the adapter has not been demo-validated on them -> UNVALIDATED (LIVE refused).
+    Capability.FX_PERPETUALS: _e(V, REASON_PRODUCT_FROM_DISCOVERY,
+                                 "NCFX* swap contracts; per-instrument apiStateOpen/status decides; not demo-validated"),
+    Capability.TRADFI: _e(V, REASON_PRODUCT_FROM_DISCOVERY,
+                          "NCSK/NCCO/NCSI* swap contracts; per-instrument apiStateOpen/status decides; "
+                          "not demo-validated"),
     Capability.ACCOUNT_BALANCE: _e(V, REASON_NOT_VALIDATED),
     Capability.POSITIONS: _e(V, REASON_NOT_VALIDATED),
     Capability.ORDERS: _e(V, REASON_NOT_VALIDATED),

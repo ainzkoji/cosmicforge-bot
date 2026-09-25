@@ -131,13 +131,14 @@ _BINANCE_ROUTES = {
 }
 
 # ── Bybit V5 ──────────────────────────────────────────────────────────────────
-# UTA: the UNIFIED wallet collateralises spot + all derivatives (incl. any FX
-# perpetuals listed on V5). Classic: CONTRACT and SPOT are separate wallets.
-# TradFi/MT5 is a different platform and has no V5 wallet here.
+# UTA: the UNIFIED wallet collateralises spot + all derivatives, including the
+# FX (symbolType "forex") and stock/ETF/commodity (TradFi) linear perpetuals V5
+# instruments-info lists. Classic: CONTRACT and SPOT are separate wallets.
+# Bybit MT5/CFD TradFi is a different platform and has no V5 wallet here.
 _BYBIT_UTA_WALLETS = (
     BrokerWallet("bybit", "FUND", P.FUNDING, (), "Funding wallet"),
-    BrokerWallet("bybit", "UNIFIED", P.UNIFIED, ("CRYPTO_PERPETUAL", "FX_PERPETUAL", "CRYPTO_SPOT"),
-                 "Unified Trading Account"),
+    BrokerWallet("bybit", "UNIFIED", P.UNIFIED, ("CRYPTO_PERPETUAL", "FX_PERPETUAL", "TRADFI_PERPETUAL",
+                                                 "CRYPTO_SPOT"), "Unified Trading Account"),
 )
 _BYBIT_UTA_ROUTES = {("FUND", "UNIFIED"): "FUND->UNIFIED", ("UNIFIED", "FUND"): "UNIFIED->FUND"}
 _BYBIT_CLASSIC_WALLETS = (
@@ -153,9 +154,12 @@ _BYBIT_CLASSIC_ROUTES = {
 
 # ── BingX ─────────────────────────────────────────────────────────────────────
 # Asset transfer ``type`` codes (FUND <-> USDT-M perpetual, FUND <-> spot).
+# The NCFX/NCSK/NCCO/NCSI TradFi contracts are USDT-M swap contracts in the same
+# official swap API, so the perpetual account collateralises them (UNVALIDATED).
 _BINGX_WALLETS = (
     BrokerWallet("bingx", "FUND", P.FUNDING, (), "Fund account"),
-    BrokerWallet("bingx", "PFUTURES", P.DERIVATIVES, ("CRYPTO_PERPETUAL",), "USDT-M perpetual futures account"),
+    BrokerWallet("bingx", "PFUTURES", P.DERIVATIVES, ("CRYPTO_PERPETUAL", "FX_PERPETUAL", "TRADFI_PERPETUAL"),
+                 "USDT-M perpetual futures account"),
 )
 _BINGX_ROUTES = {("FUND", "PFUTURES"): "FUND_PFUTURES", ("PFUTURES", "FUND"): "PFUTURES_FUND"}
 

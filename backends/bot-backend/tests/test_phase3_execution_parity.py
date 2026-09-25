@@ -58,10 +58,13 @@ def test_capabilities_reflect_implemented_but_unvalidated_parity():
         assert execution_readiness(b, "demo").permitted
         r = execution_readiness(b, "live")
         assert not r.permitted and r.reason_code == REASON_EXECUTION_UNVALIDATED_LIVE
-    assert declared_profile("bingx").state(Capability.TRADFI) == CapabilityState.VENUE_API_UNAVAILABLE
-    assert declared_profile("bingx").entry(Capability.FX_PERPETUALS).reason_code == "VENUE_API_NOT_SUPPORTED"
-    r = execution_readiness("bingx", "demo", product=Capability.FX_PERPETUALS)
-    assert not r.permitted and "fx_perpetuals" in r.missing
+    # BingX lists FX/TradFi in its official swap contract API (NC* namespace): resolved per instrument by
+    # discovery, UNVALIDATED -> demo only, LIVE refused.
+    assert declared_profile("bingx").state(Capability.TRADFI) == CapabilityState.UNVALIDATED
+    assert declared_profile("bingx").entry(Capability.FX_PERPETUALS).reason_code == "PRODUCT_AVAILABILITY_RESOLVED_BY_DISCOVERY"
+    assert execution_readiness("bingx", "demo", product=Capability.FX_PERPETUALS).permitted
+    r = execution_readiness("bingx", "live", product=Capability.FX_PERPETUALS)
+    assert not r.permitted and r.reason_code == REASON_EXECUTION_UNVALIDATED_LIVE
     assert execution_readiness("binance", "live").permitted  # no regression
 
 
@@ -232,10 +235,11 @@ def test_universe_adapters_exist_for_all_three_brokers():
 
 # ── 3A catalog + 3E account eligibility ───────────────────────────────────
 
-def _fx(symbol="EURUSDT", tradable=True):
+def _fx(symbol="EURUSDUSDT", tradable=True):
+    # the recorded Bybit V5 shape (2026-09): baseCoin is the PAIR, symbolType "forex"
     return parse_bybit_instrument({"symbol": symbol, "contractType": "LinearPerpetual",
-                                   "status": "Trading" if tradable else "Closed", "baseCoin": symbol[:3],
-                                   "quoteCoin": "USDT", "settleCoin": "USDT"})
+                                   "status": "Trading" if tradable else "Closed", "baseCoin": symbol[:6],
+                                   "quoteCoin": "USDT", "settleCoin": "USDT", "symbolType": "forex"})
 
 
 def test_catalog_keeps_delisted_rows_and_never_records_partial_discovery(tmp_path):
@@ -253,7 +257,7 @@ def test_catalog_keeps_delisted_rows_and_never_records_partial_discovery(tmp_pat
     assert cat.upsert("bybit_linear", "LIVE", [btc], 2)["delisted"] == 1
     assert [i.venue_symbol for i in cat.list("bybit_linear", "LIVE")] == ["BTCUSDT"]
     with db.connect() as c:
-        assert c.execute("SELECT delisted_at_ms FROM venue_instruments WHERE venue_symbol='EURUSDT'").fetchone()[0] == 2
+        assert c.execute("SELECT delisted_at_ms FROM venue_instruments WHERE venue_symbol='EURUSDUSDT'").fetchone()[0] == 2
     empty = SimpleNamespace(discover_instruments=lambda: [])
     with pytest.raises(RuntimeError):
         sync_instruments(empty, catalog=cat, venue="bybit_linear", environment="LIVE", now_ms=3)
@@ -268,9 +272,21 @@ def test_account_eligibility_separates_market_availability_from_api_execution():
     assert ok, reasons  # Bybit V5 FX perpetual: discovered + adapter usable on DEMO
     ok, reasons = execution_eligibility(fx, broker="bybit", environment="live")
     assert not ok and reasons == ("BROKER_EXECUTION_UNVALIDATED_FOR_LIVE",)
-    bingx_fx = parse_bingx_contract({"symbol": "EUR-USDT", "status": 1, "apiStateOpen": "true"})
-    ok, reasons = execution_eligibility(bingx_fx, broker="bingx", environment="demo")
+    # a symbol-shape guess (not a real BingX contract) never authorizes an FX order
+    guessed = parse_bingx_contract({"symbol": "EUR-USDT", "status": 1, "apiStateOpen": "true"})
+    ok, reasons = execution_eligibility(guessed, broker="bingx", environment="demo")
+    assert not ok and "CLASSIFICATION_NOT_VENUE_EVIDENCED" in reasons
+    # the real NCFX contract: API-open + trading -> demo-eligible; API closed -> VENUE_API_NOT_SUPPORTED
+    real = {"symbol": "NCFXEUR2USD-USDT", "asset": "NCFXEUR2USD", "currency": "USDT", "status": 1,
+            "apiStateOpen": "true", "displayName": "EURUSD-USDT"}
+    ok, reasons = execution_eligibility(parse_bingx_contract(real), broker="bingx", environment="demo")
+    assert ok, reasons
+    ok, reasons = execution_eligibility(parse_bingx_contract({**real, "apiStateOpen": "false"}), broker="bingx",
+                                        environment="demo")
     assert not ok and "VENUE_API_NOT_SUPPORTED" in reasons
+    ok, reasons = execution_eligibility(parse_bingx_contract({**real, "status": 25}), broker="bingx",
+                                        environment="demo")
+    assert not ok and reasons == ("INSTRUMENT_NOT_API_TRADABLE",)
     ok, reasons = execution_eligibility(_fx(tradable=False), broker="bybit", environment="demo")
     assert "INSTRUMENT_NOT_API_TRADABLE" in reasons
     ok, reasons = execution_eligibility(fx, broker="bybit", environment="demo", permissions={"TRADE": False})

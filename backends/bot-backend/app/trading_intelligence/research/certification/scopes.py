@@ -53,9 +53,11 @@ SCOPES: Mapping[str, ScopeSpec] = {s.scope_id: s for s in (
     ScopeSpec("FX/REFERENCE_DATA/CATI_INTELLIGENCE", "FX", "FX_REFERENCE", "REFERENCE", "REFERENCE_DATA", False,
               "intelligence quality on provider reference data; certifies no execution venue"),
     ScopeSpec("FX/BYBIT/FX_PERPETUAL", "FX", "BYBIT_LINEAR", "FX_PERPETUAL", "EXECUTION_VENUE", True,
-              "only if V5 discovery lists FX perpetuals for the account"),
+              "V5 instruments-info lists symbolType=forex perpetuals (EURUSDUSDT, GBPUSDUSDT, USDJPYUSDT; "
+              "launched 2026-09-08) -- venue history is short, so the reference scope carries the learning"),
     ScopeSpec("FX/BINGX/TRADFI", "FX", "BINGX_TRADFI", "TRADFI", "EXECUTION_VENUE", True,
-              "future: blocked until an official API execution path exists"),
+              "NCFX* contracts in the official swap contract API; API execution resolved per instrument "
+              "(apiStateOpen/status); adapter not demo-validated"),
 )}
 
 

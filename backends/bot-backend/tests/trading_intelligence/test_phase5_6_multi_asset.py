@@ -143,7 +143,8 @@ def test_planner_fail_closed_paths(free, kw, settings, outcome, reason):
 
 
 def test_product_without_a_wallet_is_unsupported():
-    plan = plan_capital(state=_state(topology_for("bingx"), {"PFUTURES": 1000}), product="FX_PERPETUAL",
+    # BingX's perpetual account collateralises its NCFX/TradFi swap contracts; nothing collateralises spot
+    plan = plan_capital(state=_state(topology_for("bingx"), {"PFUTURES": 1000}), product="CRYPTO_SPOT",
                         required=D("10"), settings=AUTO, plan_key="k")
     assert plan.outcome == TRANSFER_UNSUPPORTED and "NO_WALLET_COLLATERALISES_PRODUCT" in plan.reason_codes
 
