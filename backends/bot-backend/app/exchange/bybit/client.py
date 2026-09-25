@@ -164,6 +164,40 @@ class BybitClient:
             "raw": acc
         }
 
+    # ------------------ WALLET / INTERNAL TRANSFER (V5 asset) ------------------
+    # Moves between THIS account's own wallets only (FUND <-> UNIFIED etc.).
+    # There is deliberately NO withdrawal method on this client.
+
+    def query_api_key(self) -> dict:
+        return self._request_v5("GET", "/v5/user/query-api")
+
+    def account_info(self) -> dict:
+        """/v5/account/info: unifiedMarginStatus (1 = classic, >=3 = UTA)."""
+        return self._request_v5("GET", "/v5/account/info")
+
+    def inter_transfer(self, transfer_id: str, coin: str, amount: str, from_account_type: str,
+                       to_account_type: str) -> dict:
+        """POST /v5/asset/transfer/inter-transfer. ``transfer_id`` is a
+        caller-supplied UUID: the broker de-duplicates on it, and it is the
+        lookup key when the submission outcome is unknown."""
+        return self._request_v5("POST", "/v5/asset/transfer/inter-transfer", {
+            "transferId": str(transfer_id), "coin": coin.upper(), "amount": str(amount),
+            "fromAccountType": from_account_type, "toAccountType": to_account_type,
+        })
+
+    def query_inter_transfers(self, transfer_id: str | None = None, coin: str | None = None,
+                              start_time_ms: int | None = None, end_time_ms: int | None = None,
+                              limit: int = 50, cursor: str | None = None) -> dict:
+        return self._request_v5("GET", "/v5/asset/transfer/query-inter-transfer-list", {
+            "transferId": transfer_id, "coin": coin.upper() if coin else None,
+            "startTime": start_time_ms, "endTime": end_time_ms, "limit": limit, "cursor": cursor,
+        })
+
+    def account_coin_balance(self, account_type: str, coin: str) -> dict:
+        """GET /v5/asset/transfer/query-account-coin-balance -> transferBalance."""
+        return self._request_v5("GET", "/v5/asset/transfer/query-account-coin-balance",
+                                {"accountType": account_type, "coin": coin.upper()})
+
     def get_transfers_history(self, start_time=None, end_time=None, limit=100, cursor=None) -> dict:
         """
         Get deposit/withdraw history from Bybit V5.

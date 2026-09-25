@@ -33,11 +33,9 @@ async def create_bot_instance(
         creds = get_decrypted_credentials(user["id"], connection_id)
         if not creds:
              raise HTTPException(400, "Invalid broker_connection_id or account not found.")
-        
-        # Inject credentials into payload
-        body["broker_credentials"] = creds
-        
-        # Also ensure broker_id matches if passed, or set it
+
+        # Ownership verified. Secrets are NOT forwarded: bot-backend resolves
+        # credentials itself through the canonical resolver.
         if "broker_id" not in body:
             body["broker_id"] = creds.get("broker_id")
             

@@ -4,6 +4,7 @@ import requests
 import json
 from typing import Dict, Any, Optional, List
 from app.exchange.bingx.signing import sign_bingx, get_timestamp
+from shared_lib.core.security.redaction import redact_text as _redact
 from app.models.unified_trading import SymbolFilters
 from app.exchange.binance.filters import extract_filters
 
@@ -19,8 +20,10 @@ class BingXClient:
         if base_url:
             self.base_url = base_url.rstrip("/")
         else:
-            # Default to Mainnet. VST (Demo) requires specific VST credentials and URL.
-            self.base_url = "https://open-api.bingx.com"
+            # Canonical URL table: DEMO -> VST host, LIVE -> mainnet. `testnet`
+            # used to be ignored, silently validating demo accounts on mainnet.
+            from shared_lib.broker.environment import BrokerEnvironment, resolve_base_url
+            self.base_url = resolve_base_url("bingx", BrokerEnvironment.DEMO if testnet else BrokerEnvironment.LIVE)
 
     def _normalize_symbol(self, symbol: str) -> str:
         """
@@ -92,7 +95,7 @@ class BingXClient:
             return data
             
         except requests.RequestException as e:
-            raise RuntimeError(f"BingX Network Error: {str(e)}")
+            raise RuntimeError(_redact(f"BingX Network Error: {e}"))
 
     # ------------------ LEGACY / FACTORY INTERFACE ------------------
 
@@ -255,6 +258,22 @@ class BingXClient:
             "currency": "USDT",
             "raw": acc
         }
+
+    # ------------------ WALLET / INTERNAL TRANSFER ------------------
+    # Moves between THIS account's own wallets only (FUND <-> PFUTURES).
+    # There is deliberately NO withdrawal method on this client.
+
+    def asset_transfer(self, transfer_type: str, asset: str, amount: str) -> dict:
+        """POST /openApi/api/v3/post/asset/transfer (type e.g. FUND_PFUTURES)."""
+        return self._request("POST", "/openApi/api/v3/post/asset/transfer",
+                             {"type": transfer_type, "asset": asset.upper(), "amount": str(amount)})
+
+    def asset_transfer_history(self, transfer_type: str, start_time_ms: int | None = None,
+                               end_time_ms: int | None = None, size: int = 100, current: int = 1) -> dict:
+        return self._request("GET", "/openApi/api/v3/asset/transfer", {
+            "type": transfer_type, "startTime": start_time_ms, "endTime": end_time_ms,
+            "size": size, "current": current,
+        })
 
     def get_transfers_history(self, start_time=None, end_time=None, limit=100, cursor=None) -> dict:
         """

@@ -107,14 +107,17 @@ def _build_bybit(auth: BrokerAuth) -> Any:
 
 
 def _build_bingx(auth: BrokerAuth) -> Any:
+    # The BingX client lives at app.exchange.bingx.client in both backends.
+    # (A previous revision imported a non-existent app.exchange.bingx_client,
+    # which made every BingX account fail at client construction.)
     try:
-        from app.exchange.bingx_client import BingXClient  # type: ignore[import]
-    except ImportError:
+        from app.exchange.bingx.client import BingXClient  # type: ignore[import]
+    except ImportError as exc:
         raise BrokerResolverError(
             BrokerResolverError.REASON_AUTH_FAILED,
-            "BingX client module not found. "
-            "Ensure app.exchange.bingx_client is present.",
-        )
+            f"BingX client module not importable: {exc}",
+            account_id=auth.account_id,
+        ) from exc
 
     return BingXClient(
         api_key=auth.api_key,

@@ -662,6 +662,37 @@ class MultiBotRunner:
 
                     continue
 
+                # A'. Execution-capability gate: a bot on a broker whose adapter
+                #     cannot execute is refused before any client is built.
+                from shared_lib.broker.capabilities import execution_readiness
+                from app.core.broker_capability_gate import load_permission_evidence
+                try:
+                    with self.service.db.connect() as _gconn:
+                        _perms = load_permission_evidence(_gconn, auth.account_id)
+                except Exception:
+                    _perms = None
+                _readiness = execution_readiness(auth.broker_type, auth.environment, permissions=_perms)
+                if not _readiness.permitted:
+                    logger.error(
+                        "bot_execution_capability_refused bot_id=%s broker=%s env=%s reason=%s missing=%s",
+                        instance.id, auth.broker_type, auth.environment.value,
+                        _readiness.reason_code, list(_readiness.missing),
+                    )
+                    self.service.update_bot_health(
+                        instance.id,
+                        bot_health_status="ERROR_CONFIGURATION",
+                        bot_health_message=_readiness.detail,
+                        bot_health_reason_code=_readiness.reason_code,
+                        bot_health_recommended_action="This broker cannot execute trades on this platform yet.",
+                        last_error=_readiness.detail,
+                    )
+                    try:
+                        self.service.quarantine_bot(instance.id, _readiness.reason_code, _readiness.detail)
+                    except Exception as _qe:
+                        logger.warning("quarantine_bot failed bot_id=%s: %s", instance.id, _qe)
+                    self._runners.pop(instance.id, None)
+                    continue
+
                 # Build credentials dict for legacy BotRunContext shim
                 creds = {
                     "api_key":    auth.api_key,

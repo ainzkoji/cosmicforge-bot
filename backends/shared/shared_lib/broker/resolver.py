@@ -28,7 +28,7 @@ from shared_lib.broker.environment import (
     normalize_environment,
     resolve_base_url,
 )
-from shared_lib.core.security.broker_security import decrypt_credentials
+from shared_lib.core.security.broker_security import BrokerEncryptionConfigError, decrypt_credentials
 from shared_lib.persistence.db import DB
 
 logger = logging.getLogger(__name__)
@@ -80,10 +80,22 @@ _NON_CONNECTABLE_STATUSES = {
 _CONNECTABLE_STATUSES = {"connected", "active"}
 
 
+#: brokers whose runtime client needs an API key + secret pair. Bridge/token
+#: brokers (oanda, mt4/5, ibkr) carry their fields in ``BrokerAuth.extra``.
+_KEY_SECRET_BROKERS = {"binance", "bybit", "bingx"}
+
+#: statuses a credential may be read in for VALIDATION (never for trading)
+_VALIDATION_ACCOUNT_STATUSES = _CONNECTABLE_STATUSES | {"draft", "pending", "validating", "invalid",
+                                                        "restricted", "error", "quarantined"}
+_VALIDATION_CREDENTIAL_STATUSES = {"active", "connected", "validating", "pending"}
+
+
 def resolve_broker_auth(
     account_id: str,
     user_id: str,
     db: DB,
+    *,
+    allow_unvalidated: bool = False,
 ) -> BrokerAuth:
     """
     Resolve active, validated broker credentials for the given account.
@@ -138,7 +150,11 @@ def resolve_broker_auth(
 
         # ── 3. Status lifecycle check ────────────────────────────────────────
         status = (account["status"] or "").lower()
-        if status not in _CONNECTABLE_STATUSES:
+        # allow_unvalidated: the credential-VALIDATION path reads a pending /
+        # invalid account's own credentials (ownership still enforced). A
+        # revoked, deleted or superseded account is never readable.
+        allowed_statuses = _VALIDATION_ACCOUNT_STATUSES if allow_unvalidated else _CONNECTABLE_STATUSES
+        if status not in allowed_statuses:
             reason = _NON_CONNECTABLE_STATUSES.get(status, BrokerResolverError.REASON_INVALID)
             detail = account.get("last_error_message") or status
             raise BrokerResolverError(
@@ -247,7 +263,8 @@ def resolve_broker_auth(
         cred = dict(cred_row)
 
         cred_status = (cred.get("status") or "active").lower()
-        if cred_status not in ("active", "connected"):
+        allowed_cred = _VALIDATION_CREDENTIAL_STATUSES if allow_unvalidated else {"active", "connected"}
+        if cred_status not in allowed_cred:
             reason = _NON_CONNECTABLE_STATUSES.get(
                 cred_status, BrokerResolverError.REASON_AUTH_FAILED
             )
@@ -259,7 +276,14 @@ def resolve_broker_auth(
             )
 
         # ── 6. Decrypt ───────────────────────────────────────────────────────
-        decrypted = decrypt_credentials(cred["encrypted_blob"])
+        try:
+            decrypted = decrypt_credentials(cred["encrypted_blob"])
+        except BrokerEncryptionConfigError as exc:
+            raise BrokerResolverError(
+                BrokerResolverError.REASON_DECRYPT_FAILED,
+                f"Broker credential encryption is not configured: {exc}",
+                account_id=account_id,
+            ) from exc
         if not decrypted:
             raise BrokerResolverError(
                 BrokerResolverError.REASON_DECRYPT_FAILED,
@@ -272,8 +296,9 @@ def resolve_broker_auth(
 
         api_key    = decrypted.get("api_key")    or decrypted.get("key")    or ""
         api_secret = decrypted.get("api_secret") or decrypted.get("secret") or ""
+        broker_type = (account["broker_id"] or "").lower()
 
-        if not api_key or not api_secret:
+        if broker_type in _KEY_SECRET_BROKERS and (not api_key or not api_secret):
             raise BrokerResolverError(
                 BrokerResolverError.REASON_NO_CREDENTIALS,
                 f"Decrypted credentials for {account_id!r} are missing "
@@ -311,12 +336,13 @@ def resolve_broker_auth(
                 )
 
         # ── 8. Resolve base URL ───────────────────────────────────────────────
-        broker_type = account["broker_id"].lower()
 
         # Explicit base_url in blob overrides table (supports MT bridge, IBKR, custom)
         explicit_base_url = decrypted.get("base_url")
         if explicit_base_url:
             base_url = explicit_base_url
+        elif broker_type not in _KEY_SECRET_BROKERS and broker_type != "oanda":
+            base_url = decrypted.get("bridge_url") or ""
         else:
             try:
                 base_url = resolve_base_url(broker_type, environment)

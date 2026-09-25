@@ -29,10 +29,7 @@ logger = logging.getLogger(__name__)
 def decode_token(token: str) -> Optional[dict]:
     """Decode and validate a JWT token. Returns payload or None if invalid."""
     try:
-        # Debugging: Use logger to ensure output is seen
-        logger.warning(f"[AUTH DEBUG] Validating token: {token[:10]}... key_prefix={settings.SECRET_KEY[:5]}")
-        logger.warning(f"[AUTH DEBUG] Expected Audience: {AUDIENCE}, Issuer: {ISSUER}")
-        
+        # Never log the token or any part of the signing secret.
         # Enforce issuer and audience
         payload = jwt.decode(
             token, 
@@ -44,7 +41,6 @@ def decode_token(token: str) -> Optional[dict]:
                 "require": ["iss", "aud", "exp", "sub"]
             }
         )
-        logger.warning(f"[AUTH DEBUG] Token valid! User: {payload.get('sub')}")
         return payload
     except ExpiredSignatureError:
         logger.warning("[AUTH] Token validation failed: Signature has expired.")

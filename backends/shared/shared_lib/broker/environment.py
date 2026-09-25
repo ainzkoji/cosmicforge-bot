@@ -9,7 +9,7 @@ Rules:
 """
 from __future__ import annotations
 from enum import Enum
-from typing import Dict, Tuple
+from typing import Dict, Optional, Tuple
 
 
 class BrokerEnvironment(str, Enum):
@@ -31,6 +31,20 @@ _BASE_URLS: Dict[Tuple[str, BrokerEnvironment], str] = {
     ("bingx",    BrokerEnvironment.DEMO): "https://open-api-vst.bingx.com",
     ("oanda",    BrokerEnvironment.LIVE): "https://api-fxtrade.oanda.com",
     ("oanda",    BrokerEnvironment.DEMO): "https://api-fxpractice.oanda.com",
+}
+
+# ── Wallet / asset API hosts ─────────────────────────────────────────────────
+# Internal-transfer and API-key-permission endpoints. Binance serves them from
+# the spot/SAPI host, not fapi. ``None`` = no verified wallet API for that
+# environment: transfer / permission inspection there fails closed with
+# VENUE_API_UNAVAILABLE instead of guessing a host.
+_WALLET_BASE_URLS: Dict[Tuple[str, BrokerEnvironment], Optional[str]] = {
+    ("binance",  BrokerEnvironment.LIVE): "https://api.binance.com",
+    ("binance",  BrokerEnvironment.DEMO): None,
+    ("bybit",    BrokerEnvironment.LIVE): "https://api.bybit.com",
+    ("bybit",    BrokerEnvironment.DEMO): "https://api-testnet.bybit.com",
+    ("bingx",    BrokerEnvironment.LIVE): "https://open-api.bingx.com",
+    ("bingx",    BrokerEnvironment.DEMO): None,
 }
 
 # Aliases accepted on input → normalized BrokerEnvironment
@@ -88,3 +102,8 @@ def environments_match(a: str, b: str) -> bool:
         return normalize_environment(a) == normalize_environment(b)
     except ValueError:
         return False
+
+
+def resolve_wallet_base_url(broker_id: str, environment: BrokerEnvironment) -> Optional[str]:
+    """Host for wallet/asset endpoints, or None when none is verified."""
+    return _WALLET_BASE_URLS.get((broker_id.strip().lower(), normalize_environment(environment)))

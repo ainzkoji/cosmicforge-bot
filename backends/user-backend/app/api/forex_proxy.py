@@ -41,7 +41,7 @@ async def get_forex_instruments(
     if broker_account_id:
         # Verify user owns this broker account
         try:
-            credentials = await get_decrypted_credentials(user["id"], broker_account_id)
+            credentials = get_decrypted_credentials(user["id"], broker_account_id)
             if not credentials:
                 logger.warning(f"No credentials found for user {user['id']} broker_account_id {broker_account_id}")
                 # Continue without credentials

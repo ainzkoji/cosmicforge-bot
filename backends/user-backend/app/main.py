@@ -47,6 +47,14 @@ except Exception as e:
     print(f"[FIREBASE] Push notifications will not be available.")
 
 # Create FastAPI app
+# Broker-credential security (Phase 2D): refuse to start a production process
+# without a dedicated BROKER_SECRET_KEY, and scrub secrets from every log line.
+from shared_lib.core.security.broker_security import assert_broker_encryption_configured
+from shared_lib.core.security.redaction import install_log_redaction
+
+assert_broker_encryption_configured()
+install_log_redaction()
+
 app = FastAPI(title="CosmicForge API", version="1.0.0")
 runtime_logger = logging.getLogger("cosmicforge.runtime")
 

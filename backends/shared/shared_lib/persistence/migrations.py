@@ -2743,6 +2743,12 @@ def migrate(db_path: str | DB = None):
     from shared_lib.persistence.cati_schema import ensure_cati_schema
     ensure_cati_schema(db)
 
+    # 48e) Broker-account security + broker-INTERNAL transfer ledger
+    # (permission evidence per credential version, transfer requests/events,
+    # reconciliation runs, per-account transfer settings). Additive.
+    from shared_lib.persistence.broker_schema import ensure_broker_schema
+    ensure_broker_schema(db)
+
     # 47) Event/News automatic runtime mode controller.
     # Keep this after the main migration connection closes so the helper can
     # self-heal temporary test databases through the normal DB context manager.

@@ -116,8 +116,11 @@ class BinanceFuturesClient:
                 last_err = e
                 break
 
+        from shared_lib.core.security.redaction import redact_text
+
+        # requests' HTTPError text embeds the full signed URL; never re-raise it raw.
         raise RuntimeError(
-            f"Binance request failed after retries: {method} {path} ({last_err})"
+            redact_text(f"Binance request failed after retries: {method} {path} ({last_err})")
         )
 
     # ---------------- TIME SYNC ----------------
@@ -1069,6 +1072,37 @@ class BinanceFuturesClient:
                     continue
             return selected
         return None
+
+    # ---------------- WALLET / INTERNAL TRANSFER (SAPI host) ----------------
+    # These endpoints live on the spot/SAPI host (api.binance.com), not fapi:
+    # call them on a client built with shared_lib.broker.environment.
+    # resolve_wallet_base_url(). There is deliberately NO withdrawal method.
+
+    def api_restrictions(self) -> dict:
+        return self._signed_get("/sapi/v1/account/apiRestrictions", {})
+
+    def universal_transfer(self, transfer_type: str, asset: str, amount: str) -> dict:
+        """POST /sapi/v1/asset/transfer -- moves funds between THIS account's
+        own wallets (e.g. MAIN_UMFUTURE). Returns {"tranId": ...}."""
+        return self._signed_post("/sapi/v1/asset/transfer",
+                                 {"type": transfer_type, "asset": asset.upper(), "amount": str(amount)})
+
+    def universal_transfer_history(self, transfer_type: str, start_time_ms: int | None = None,
+                                   end_time_ms: int | None = None, size: int = 100, current: int = 1) -> dict:
+        params: dict = {"type": transfer_type, "size": int(size), "current": int(current)}
+        if start_time_ms is not None:
+            params["startTime"] = int(start_time_ms)
+        if end_time_ms is not None:
+            params["endTime"] = int(end_time_ms)
+        return self._signed_get("/sapi/v1/asset/transfer", params)
+
+    def spot_account(self) -> dict:
+        return self._signed_get("/api/v3/account", {"omitZeroBalances": "true"})
+
+    def funding_assets(self, asset: str | None = None) -> list:
+        params = {"asset": asset.upper()} if asset else {}
+        data = self._signed_post("/sapi/v1/asset/get-funding-asset", params)
+        return data if isinstance(data, list) else []
 
     def get_order(self, symbol: str, order_id: int) -> dict:
         return self._signed_get(

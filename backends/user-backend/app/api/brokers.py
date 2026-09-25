@@ -111,7 +111,7 @@ async def test_broker_connection(
     # For MT4/MT5, proxy to bot-backend with credentials
     if broker_id in ("mt4", "mt5"):
         # Get decrypted credentials
-        creds = get_decrypted_credentials(user_id, account_id)
+        creds = get_decrypted_credentials(user_id, account_id, allow_unvalidated=True)
         if not creds:
             raise HTTPException(404, "Bridge configuration not found")
         
@@ -133,7 +133,7 @@ async def test_broker_connection(
     # For IBKR, proxy to bot-backend with bridge params
     elif broker_id == "ibkr":
         # Get credentials (bridge config)
-        creds = get_decrypted_credentials(user_id, account_id)
+        creds = get_decrypted_credentials(user_id, account_id, allow_unvalidated=True)
         if not creds:
             raise HTTPException(404, "Bridge configuration not found")
         
@@ -320,3 +320,57 @@ def ibkr_link_callback(
         return {"success": True}
     except ValueError as e:
         raise HTTPException(400, str(e))
+
+
+# -----------------------------------------------
+# Broker-INTERNAL wallet transfers (proxied to bot-backend, which resolves
+# the account for the token's user through the canonical resolver).
+# No withdrawal / external-destination route exists.
+# -----------------------------------------------
+from app.api.proxy_utils import proxy_request as _proxy
+
+
+@router.get("/{account_id}/transfer-capabilities")
+async def transfer_capabilities(request: Request, account_id: str, user_id: str = Depends(get_current_user_id)):
+    return await _proxy(request, f"/api/v1/brokers/{account_id}/transfer-capabilities")
+
+
+@router.get("/{account_id}/wallets")
+async def broker_wallets(request: Request, account_id: str, user_id: str = Depends(get_current_user_id)):
+    return await _proxy(request, f"/api/v1/brokers/{account_id}/wallets")
+
+
+@router.get("/{account_id}/transfer-settings")
+async def get_transfer_settings(request: Request, account_id: str, user_id: str = Depends(get_current_user_id)):
+    return await _proxy(request, f"/api/v1/brokers/{account_id}/transfer-settings")
+
+
+@router.put("/{account_id}/transfer-settings")
+async def put_transfer_settings(request: Request, account_id: str, body: Dict[str, Any] = Body(...),
+                                user_id: str = Depends(get_current_user_id)):
+    return await _proxy(request, f"/api/v1/brokers/{account_id}/transfer-settings", json_body=body)
+
+
+@router.post("/{account_id}/internal-transfers")
+async def create_internal_transfer(request: Request, account_id: str, body: Dict[str, Any] = Body(...),
+                                   user_id: str = Depends(get_current_user_id)):
+    key = request.headers.get("idempotency-key")
+    if key and not body.get("idempotency_key"):
+        body = {**body, "idempotency_key": key}
+    return await _proxy(request, f"/api/v1/brokers/{account_id}/internal-transfers", json_body=body)
+
+
+@router.get("/{account_id}/internal-transfers")
+async def list_internal_transfers(request: Request, account_id: str, user_id: str = Depends(get_current_user_id)):
+    return await _proxy(request, f"/api/v1/brokers/{account_id}/internal-transfers")
+
+
+@router.get("/{account_id}/internal-transfers/{transfer_id}")
+async def get_internal_transfer(request: Request, account_id: str, transfer_id: str,
+                                user_id: str = Depends(get_current_user_id)):
+    return await _proxy(request, f"/api/v1/brokers/{account_id}/internal-transfers/{transfer_id}")
+
+
+@router.post("/{account_id}/internal-transfers/reconcile")
+async def reconcile_internal_transfers(request: Request, account_id: str, user_id: str = Depends(get_current_user_id)):
+    return await _proxy(request, f"/api/v1/brokers/{account_id}/internal-transfers/reconcile", json_body={})

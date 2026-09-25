@@ -91,6 +91,12 @@ class BotInstanceService:
         instance_id = f"bot_{uuid.uuid4().hex[:12]}"
         now = utc_now_iso()
 
+        # A bot starts active, so the broker must be able to execute before the
+        # row exists (fails closed with BROKER_EXECUTION_CAPABILITY_INCOMPLETE).
+        from app.core.broker_capability_gate import assert_broker_execution_capability
+        assert_broker_execution_capability(
+            self.db, user_id=request.user_id, broker_account_id=request.broker_account_id)
+
         # Section F — product safety: user-capital readiness gate.
         # Live/user-capital activation must be explicitly approved and backed by
         # proven paper-mode performance (see app.product_safety.readiness_gate).
@@ -578,7 +584,11 @@ class BotInstanceService:
         
         if instance.status == "active":
             raise ValueError(f"Bot instance {instance_id} is already active")
-        
+
+        from app.core.broker_capability_gate import assert_broker_execution_capability
+        assert_broker_execution_capability(
+            self.db, user_id=instance.user_id, broker_account_id=instance.broker_account_id)
+
         now = datetime.utcnow().isoformat()
         
         with self.db.connect() as conn:

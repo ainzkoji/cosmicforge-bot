@@ -34,7 +34,9 @@ BROKER_CATALOG = [
             {"name": "api_secret", "label": "API Secret", "type": "password", "required": True},
         ],
         "features": ["futures"],
-        "required_permissions": ["Read General", "Futures Trading"]
+        "required_permissions": ["Read General", "Futures Trading"],
+        "optional_permissions": ["Permits Universal Transfer (only for internal wallet transfers)"],
+        "forbidden_permissions": ["Enable Withdrawals"]
     },
     {
         "id": "bybit",
@@ -47,7 +49,9 @@ BROKER_CATALOG = [
             {"name": "api_secret", "label": "API Secret", "type": "password", "required": True},
         ],
         "features": ["spot", "futures", "derivatives"],
-        "required_permissions": ["Read", "Contract Trade", "Spot Trade"]
+        "required_permissions": ["Read", "Contract Trade"],
+        "optional_permissions": ["Wallet: Account Transfer (only for internal wallet transfers)"],
+        "forbidden_permissions": ["Wallet: Withdraw"]
     },
     {
         "id": "bingx",
@@ -60,7 +64,8 @@ BROKER_CATALOG = [
             {"name": "api_secret", "label": "API Secret", "type": "password", "required": True},
         ],
         "features": ["futures"],
-        "required_permissions": ["Perpetual Futures Trading"]
+        "required_permissions": ["Perpetual Futures Trading"],
+        "forbidden_permissions": ["Withdraw"]
     },
     {
         "id": "coinbase",
@@ -203,7 +208,7 @@ def get_broker_catalog(user_id: str) -> List[Dict[str, Any]]:
         if not auth_types:  # Default to api_key if unclear
             auth_types = ["api_key"]
         
-        is_available = broker["id"] in ["binance", "bybit", "bingx", "oanda", "ibkr", "mt4", "mt5"]
+        is_available = broker["id"] in ["binance", "bybit", "bingx", "oanda", "ibkr", "mt4", "mt5"]  # connectable; execution is gated by broker capabilities
         
         transformed.append({
             "id": broker["id"],
@@ -213,6 +218,9 @@ def get_broker_catalog(user_id: str) -> List[Dict[str, Any]]:
             "auth_fields": broker["auth_fields"],
             "features": broker["features"],
             "required_permissions": broker["required_permissions"],
+            # The platform never needs withdrawal permission; keys with it are rejected.
+            "forbidden_permissions": broker.get("forbidden_permissions", ["Withdraw"]),
+            "optional_permissions": broker.get("optional_permissions", []),
             "is_available": is_available,
             "unavailable_reason": None if is_available else "Coming Soon",
             "signup_url": broker.get("signup_url"),
@@ -363,19 +371,35 @@ def validate_broker_account(user_id: str, account_id: str) -> Dict[str, Any]:
             return {"success": False, "error": "Account not found"}
         broker_id = row["broker_id"]
 
-    # 2. Resolve credentials via canonical v2 resolver (v1 fallback included)
+    # 2. Resolve credentials via the canonical resolver in VALIDATION mode
+    #    (reads this user's own pending/invalid account; revoked never).
     try:
-        auth = resolve_broker_auth(account_id, user_id, db)
+        auth = resolve_broker_auth(account_id, user_id, db, allow_unvalidated=True)
     except BrokerResolverError as exc:
         return {"success": False, "error": str(exc)}
 
     # 3. Test live connection
-    credentials = {"api_key": auth.api_key, "api_secret": auth.api_secret}
+    credentials = {**auth.extra, "api_key": auth.api_key, "api_secret": auth.api_secret, "base_url": auth.base_url}
     environment = auth.environment.value
     validation_result = _test_broker_connection(broker_id, credentials, environment)
 
-    # 4. Persist result
+    # 4. Permission evidence + decision (withdraw-capable keys never trade)
+    permission = None
     if validation_result["success"]:
+        permission = _evaluate_key_permissions(broker_id, environment, credentials, account_id, user_id,
+                                               auth.credential_version)
+
+    # 5. Persist result
+    if validation_result.get("unsupported"):
+        new_status = "unsupported"
+        capabilities = []
+        error_msg = validation_result.get("error")
+    elif validation_result["success"] and permission["decision"].startswith("REJECTED"):
+        new_status = "restricted"
+        capabilities = []
+        error_msg = f"{permission['decision']}: {permission['message']}"
+        validation_result = {**validation_result, "success": False}
+    elif validation_result["success"]:
         new_status = "connected"
         capabilities = validation_result.get("capabilities", ["read", "trade"])
         error_msg = None
@@ -397,13 +421,21 @@ def validate_broker_account(user_id: str, account_id: str) -> Dict[str, Any]:
             """,
             (new_status, json.dumps(capabilities) if capabilities else None, now, error_msg, now, account_id),
         )
+        if permission is not None:
+            conn.execute("UPDATE broker_accounts SET permission_status=? WHERE id=?",
+                         (permission["decision"], account_id))
+            conn.execute("UPDATE broker_credentials_v2 SET permissions_json=? WHERE account_id=? AND version=?",
+                         (json.dumps(permission["evidence"]), account_id, auth.credential_version))
         _log_audit_event(conn, account_id, user_id, "validation_completed",
-                         {"success": validation_result["success"], "status": new_status})
+                         {"success": validation_result["success"], "status": new_status,
+                          "permission_decision": permission["decision"] if permission else None})
 
     return {
         "success": validation_result["success"],
         "status": new_status,
         "capabilities": capabilities,
+        "permissions": permission["evidence"]["permissions"] if permission else None,
+        "permission_decision": permission["decision"] if permission else None,
         "error": error_msg,
     }
 
@@ -449,11 +481,11 @@ def get_broker_summary(user_id: str, account_id: str) -> Dict[str, Any]:
         client = _BinanceWrap(client_raw)
     elif broker_id == "bybit":
         from app.exchange.bybit.client import BybitClient
-        testnet = (auth.environment.value in ("demo",))
-        client = BybitClient(auth.api_key, auth.api_secret, testnet=testnet)
+        client = BybitClient(auth.api_key, auth.api_secret, base_url=auth.base_url)
     elif broker_id == "bingx":
         from app.exchange.bingx.client import BingXClient
-        client = BingXClient(auth.api_key, auth.api_secret)
+        # canonical base_url (previously omitted: demo accounts hit mainnet)
+        client = BingXClient(auth.api_key, auth.api_secret, base_url=auth.base_url)
     elif broker_id == "oanda":
         from app.exchange.oanda_client import OandaClient
         practice = (auth.environment.value == "demo")
@@ -548,6 +580,45 @@ def get_broker_summary(user_id: str, account_id: str) -> Dict[str, Any]:
         }
 
 
+UNSUPPORTED_BROKER = "UNSUPPORTED_BROKER"
+
+
+def _unsupported_broker_result(label: str) -> Dict[str, Any]:
+    return {
+        "success": False,
+        "unsupported": True,
+        "reason_code": UNSUPPORTED_BROKER,
+        "error": f"{UNSUPPORTED_BROKER}: {label} is not supported for automated trading on this platform yet.",
+        "capabilities": [],
+    }
+
+
+def _evaluate_key_permissions(broker_id: str, environment: str, credentials: Dict[str, Any],
+                              account_id: str, user_id: str, version: int) -> Dict[str, Any]:
+    """Ask the broker what this key may do; decide whether it may trade.
+
+    Returns {"evidence": dict, "decision": str, "message": str}. A key with
+    WITHDRAW permission is REJECTED: the platform never needs it.
+    """
+    from shared_lib.broker.environment import normalize_environment, resolve_base_url
+    from shared_lib.broker.permission_probe import probe_permissions
+    from shared_lib.broker.permissions import evaluate_trading_permissions, unverified
+    from shared_lib.broker.resolver import BrokerAuth
+
+    if broker_id not in ("binance", "bybit", "bingx"):
+        ev = unverified(broker_id, f"{broker_id}:not-inspectable")
+    else:
+        env = normalize_environment(environment)
+        api_key = credentials.get("api_key") or ""
+        auth = BrokerAuth(account_id=account_id, user_id=user_id, broker_type=broker_id, environment=env,
+                          base_url=credentials.get("base_url") or resolve_base_url(broker_id, env),
+                          api_key=api_key, api_secret=credentials.get("api_secret") or "",
+                          credential_version=version, key_fingerprint=f"...{api_key[-4:]}" if len(api_key) >= 4 else "****")
+        ev = probe_permissions(auth)
+    decision, message = evaluate_trading_permissions(ev)
+    return {"evidence": ev.to_dict(), "decision": decision.value, "message": message}
+
+
 def _test_broker_connection(broker_id: str, credentials: Dict[str, Any], environment: str) -> Dict[str, Any]:
     """Test connection to a specific broker using their API"""
     try:
@@ -595,29 +666,16 @@ def _test_broker_connection(broker_id: str, credentials: Dict[str, Any], environ
             return client.test_connection()
             
         elif broker_id == "coinbase":
-            # Coinbase validation would go here
-            # For now, return mock success
-            return {
-                "success": True,
-                "message": "Coinbase validation not yet implemented",
-                "capabilities": ["read", "trade", "spot"]
-            }
+            # No platform adapter: never report a broker we did not contact as connected.
+            return _unsupported_broker_result("Coinbase")
             
         elif broker_id == "kraken":
-            # Kraken validation would go here
-            return {
-                "success": True,
-                "message": "Kraken validation not yet implemented",
-                "capabilities": ["read", "trade", "spot"]
-            }
+            # No platform adapter: never report a broker we did not contact as connected.
+            return _unsupported_broker_result("Kraken")
             
         elif broker_id == "alpaca":
-            # Alpaca validation would go here
-            return {
-                "success": True,
-                "message": "Alpaca validation not yet implemented",
-                "capabilities": ["read", "trade", "stocks"]
-            }
+            # No platform adapter: never report a broker we did not contact as connected.
+            return _unsupported_broker_result("Alpaca")
         
         elif broker_id == "ibkr":
             # IBKR validation
@@ -803,34 +861,48 @@ def delete_broker_account_permanently(user_id: str, account_id: str) -> bool:
         
         return True
 
-def get_decrypted_credentials(user_id: str, account_id: str) -> Optional[Dict[str, Any]]:
+def get_decrypted_credentials(
+    user_id: str,
+    account_id: str,
+    *,
+    allow_unvalidated: bool = False,
+) -> Optional[Dict[str, Any]]:
+    """Owned, decrypted credentials via the canonical resolver, or None.
+
+    Goes through ``shared_lib.broker.resolve_broker_auth`` (ownership, active
+    credential version, environment, revocation, decryption) instead of the
+    legacy ``broker_credentials`` table, which goes stale after a v2
+    rotation. ``allow_unvalidated`` is for the validation/test-connection
+    path only: it reads a not-yet-connected account's own credentials.
     """
-    Internal helper to retrieve and decrypt credentials.
-    Used by proxies to inject credentials into bot-backend requests.
-    """
+    from shared_lib.broker import BrokerResolverError, resolve_broker_auth
+
     db = get_db()
+    try:
+        auth = resolve_broker_auth(account_id, user_id, db, allow_unvalidated=allow_unvalidated)
+    except BrokerResolverError:
+        return None
     with db.connect() as conn:
-        # Check ownership
-        row = conn.execute("SELECT broker_id, market_type, environment FROM broker_accounts WHERE id = ? AND user_id = ?", (account_id, user_id)).fetchone()
-        if not row:
-            return None
-        
-        market_type = row["market_type"]
-        broker_id = row["broker_id"]
-        
-        cred_row = conn.execute("SELECT encrypted_blob FROM broker_credentials WHERE account_id = ?", (account_id,)).fetchone()
-        if not cred_row:
-             return None
-             
-        from shared_lib.core.security.broker_security import decrypt_credentials
-        creds = decrypt_credentials(cred_row["encrypted_blob"])
-        
-        # Add metadata that might be useful for the bot
-        creds["broker_id"] = broker_id
-        creds["market_type"] = market_type
-        creds["account_id"] = account_id # The internal ID
-        
-        return creds
+        row = conn.execute(
+            "SELECT market_type FROM broker_accounts WHERE id = ? AND user_id = ?", (account_id, user_id)
+        ).fetchone()
+    creds: Dict[str, Any] = dict(auth.extra)
+    if auth.api_key:
+        creds["api_key"] = auth.api_key
+    if auth.api_secret:
+        creds["api_secret"] = auth.api_secret
+    creds["environment"] = auth.environment.value
+    creds["base_url"] = auth.base_url
+    creds["broker_id"] = auth.broker_type
+    creds["market_type"] = row["market_type"] if row else None
+    creds["account_id"] = account_id
+    return creds
+
+
+def assert_owned_broker_account(user_id: str, account_id: str) -> bool:
+    """True when the account exists, belongs to the user and can resolve."""
+    return get_decrypted_credentials(user_id, account_id) is not None
+
 
 # ============================================================================
 # Private Helpers
@@ -1113,6 +1185,15 @@ def validate_and_activate_credential_v2(
 
         # Live exchange validation
         validation = _test_broker_connection(broker_id, decrypted, environment)
+        permission = None
+        if validation["success"]:
+            permission = _evaluate_key_permissions(broker_id, environment, decrypted, account_id, user_id, version)
+            conn.execute("UPDATE broker_credentials_v2 SET permissions_json=? WHERE account_id=? AND version=?",
+                         (json.dumps(permission["evidence"]), account_id, version))
+            if permission["decision"].startswith("REJECTED"):
+                # e.g. REJECTED_WITHDRAW_PERMISSION: never activate this key.
+                validation = {"success": False,
+                              "error": f"{permission['decision']}: {permission['message']}"}
 
         if not validation["success"]:
             err_msg = validation.get("error", "Unknown validation error")
@@ -1121,15 +1202,20 @@ def validate_and_activate_credential_v2(
                 "last_validated_at=?, updated_at=? WHERE account_id=? AND version=?",
                 (err_msg, now, now, account_id, version),
             )
+            # A key rejected on permissions leaves the account's CURRENT active
+            # version untouched only when one exists; otherwise the account is
+            # restricted (never connected with a withdrawal-capable key).
+            _acct_status = "restricted" if permission and permission["decision"].startswith("REJECTED") else "invalid"
             conn.execute(
-                "UPDATE broker_accounts SET status='invalid', last_error_message=?, "
-                "validation_error=?, updated_at=? WHERE id=?",
-                (err_msg, err_msg, now, account_id),
+                "UPDATE broker_accounts SET status=?, last_error_message=?, "
+                "validation_error=?, permission_status=COALESCE(?, permission_status), updated_at=? WHERE id=?",
+                (_acct_status, err_msg, err_msg, permission["decision"] if permission else None, now, account_id),
             )
             _log_audit_event(conn, account_id, user_id, "credentials_validation_failed_v2", {
                 "version": version, "error": err_msg,
             })
-            return {"success": False, "status": "invalid", "error": err_msg, "version": version}
+            return {"success": False, "status": _acct_status, "error": err_msg, "version": version,
+                    "permission_decision": permission["decision"] if permission else None}
 
         # ── SUCCESS PATH — atomic promotion ──────────────────────────────────
 
@@ -1164,10 +1250,11 @@ def validate_and_activate_credential_v2(
                 last_validated_at         = ?,
                 last_error_message        = NULL,
                 validation_error          = NULL,
+                permission_status         = ?,
                 updated_at                = ?
             WHERE id = ?
             """,
-            (version, json.dumps(capabilities), now, now, account_id),
+            (version, json.dumps(capabilities), now, permission["decision"], now, account_id),
         )
 
         _log_audit_event(conn, account_id, user_id, "credentials_activated_v2", {

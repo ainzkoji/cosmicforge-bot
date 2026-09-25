@@ -136,6 +136,14 @@ from app.execution.confirm import wait_until_flat
 from shared_lib.persistence.migrations import migrate
 from shared_lib.core.policy.kyc_policy import check_kyc_gate, KYCAction
 from app.core.auth import get_current_active_user
+from app.core.auth import require_admin
+
+# Legacy single-tenant routes below drive the process-global runner and/or the
+# operator's platform Binance key (settings.BINANCE_API_KEY). They are
+# operator tooling, never a user trading surface: every one requires an admin
+# token. User trading resolves user -> broker account -> credential version
+# through shared_lib.broker.resolve_broker_auth instead.
+_LEGACY_ADMIN_ONLY = [Depends(require_admin)]
 from fastapi import HTTPException
 
 
@@ -282,6 +290,14 @@ except Exception as e:
     print(f"[FIREBASE] Push notifications will not be available.")
 
 
+# Broker-credential security (Phase 2D): refuse to start a production process
+# without a dedicated BROKER_SECRET_KEY, and scrub secrets from every log line.
+from shared_lib.core.security.broker_security import assert_broker_encryption_configured
+from shared_lib.core.security.redaction import install_log_redaction
+
+assert_broker_encryption_configured()
+install_log_redaction()
+
 app = FastAPI(title="CosmicForge Bot MVP")
 
 # --- CORS Middleware ---
@@ -389,6 +405,11 @@ from app.api.brokers import router as brokers_router
 
 app.include_router(brokers_router, prefix="/api/v1/brokers")
 
+# Broker-INTERNAL wallet transfers (user-scoped; no withdrawal route exists)
+from app.api.broker_transfers import router as broker_transfers_router
+
+app.include_router(broker_transfers_router, prefix="/api/v1/brokers", tags=["Broker Internal Transfers"])
+
 # Register IBKR Connect API router
 from app.api.ibkr import router as ibkr_router
 
@@ -439,7 +460,7 @@ async def _startup_validate_config():
     """Fail-fast config validation at startup."""
     try:
         # Debug Auth Config
-        print(f"[STARTUP] SECRET_KEY prefix: {settings.SECRET_KEY[:5]}...")
+        print(f"[STARTUP] SECRET_KEY configured: {bool(settings.SECRET_KEY)}")
         print(f"[STARTUP] Execution Mode: {settings.EXECUTION_MODE}")
 
         warnings = settings.validate_runtime()
@@ -526,6 +547,15 @@ async def _startup_run_manager():
     runner_service.running = True
     runner_service.task = asyncio.create_task(runner_loop())
     print("[RUNNER] Loop started automatically.")
+
+    # Broker-internal transfer reconciliation: resolves SUBMITTED / UNKNOWN
+    # transfers from broker history (never re-submits).
+    import os as _os_tr
+    if _os_tr.getenv("TRANSFER_RECONCILIATION_ENABLED", "true").strip().lower() not in ("0", "false", "no", "off"):
+        from shared_lib.persistence.db import DB as _TrDB
+        from app.transfers.reconciliation import reconciliation_loop
+
+        asyncio.create_task(reconciliation_loop(_TrDB()))
 
 
 @app.on_event("shutdown")
@@ -993,7 +1023,7 @@ def root():
     }
 
 
-@app.get("/binance/ping", dependencies=[Depends(get_current_active_user)])
+@app.get("/binance/ping", dependencies=_LEGACY_ADMIN_ONLY)
 def binance_ping():
     client = BinanceFuturesClient(
         api_key=settings.BINANCE_API_KEY,
@@ -1004,7 +1034,7 @@ def binance_ping():
     return client.ping()
 
 
-@app.get("/binance/balance", dependencies=[Depends(get_current_active_user)])
+@app.get("/binance/balance", dependencies=_LEGACY_ADMIN_ONLY)
 def binance_balance():
     raise HTTPException(status_code=410, detail="Legacy .env broker endpoint retired. Use a bot-scoped broker account endpoint.")
     client = BinanceFuturesClient(
@@ -1016,7 +1046,7 @@ def binance_balance():
     return client.account_balance()
 
 
-@app.get("/binance/price", dependencies=[Depends(get_current_active_user)])
+@app.get("/binance/price", dependencies=_LEGACY_ADMIN_ONLY)
 def binance_price(symbol: str = "BTCUSDT"):
     client = BinanceFuturesClient(
         api_key=settings.BINANCE_API_KEY,
@@ -1027,7 +1057,7 @@ def binance_price(symbol: str = "BTCUSDT"):
     return client.mark_price(symbol)
 
 
-@app.get("/binance/klines", dependencies=[Depends(get_current_active_user)])
+@app.get("/binance/klines", dependencies=_LEGACY_ADMIN_ONLY)
 def binance_klines(symbol: str = "BTCUSDT", interval: str = "1m", limit: int = 50):
     client = BinanceFuturesClient(
         api_key=settings.BINANCE_API_KEY,
@@ -1038,7 +1068,7 @@ def binance_klines(symbol: str = "BTCUSDT", interval: str = "1m", limit: int = 5
     return client.klines(symbol, interval, limit)
 
 
-@app.get("/config/symbols", dependencies=[Depends(get_current_active_user)])
+@app.get("/config/symbols", dependencies=_LEGACY_ADMIN_ONLY)
 def config_symbols():
     symbols = [
         s.strip().upper() for s in settings.TRADE_SYMBOLS.split(",") if s.strip()
@@ -1046,7 +1076,7 @@ def config_symbols():
     return {"symbols": symbols, "interval": settings.DEFAULT_INTERVAL}
 
 
-@app.get("/symbols/universe", dependencies=[Depends(get_current_active_user)])
+@app.get("/symbols/universe", dependencies=_LEGACY_ADMIN_ONLY)
 def symbols_universe():
     client = BinanceFuturesClient(
         api_key=settings.BINANCE_API_KEY,
@@ -1068,7 +1098,7 @@ def symbols_universe():
     }
 
 
-@app.get("/binance/prices", dependencies=[Depends(get_current_active_user)])
+@app.get("/binance/prices", dependencies=_LEGACY_ADMIN_ONLY)
 def binance_prices():
     client = BinanceFuturesClient(
         api_key=settings.BINANCE_API_KEY,
@@ -1088,14 +1118,14 @@ def binance_prices():
     }  # return first 50 to avoid huge payload
 
 
-@app.get("/runner/paper/once", dependencies=[Depends(get_current_active_user)])
+@app.get("/runner/paper/once", dependencies=_LEGACY_ADMIN_ONLY)
 def paper_run_once(max_symbols: int = 10):
     raise HTTPException(
         status_code=410, detail="Legacy runner endpoint disabled. Use Auto Pilot."
     )
 
 
-@app.get("/runner/paper/state", dependencies=[Depends(get_current_active_user)])
+@app.get("/runner/paper/state", dependencies=_LEGACY_ADMIN_ONLY)
 def paper_state():
     runner = get_runner()
     items = list(runner.state.items())[:50]
@@ -1111,7 +1141,7 @@ def paper_state():
     }
 
 
-@app.post("/binance/leverage", dependencies=[Depends(get_current_active_user)])
+@app.post("/binance/leverage", dependencies=_LEGACY_ADMIN_ONLY)
 def binance_set_leverage(symbol: str = "BTCUSDT"):
     client = BinanceFuturesClient(
         api_key=settings.BINANCE_API_KEY,
@@ -1132,7 +1162,7 @@ def binance_set_leverage(symbol: str = "BTCUSDT"):
     }
 
 
-@app.get("/binance/qty", dependencies=[Depends(get_current_active_user)])
+@app.get("/binance/qty", dependencies=_LEGACY_ADMIN_ONLY)
 def binance_qty(symbol: str = "BTCUSDT", usdt: float = 10.0):
     """
     Calculates a valid order quantity for a given USDT amount using stepSize/minQty.
@@ -1188,7 +1218,7 @@ async def require_kyc_trading(user: dict = Depends(get_current_active_user)):
     return user
 
 
-@app.post("/trade/market", dependencies=[Depends(require_kyc_trading)])
+@app.post("/trade/market", dependencies=_LEGACY_ADMIN_ONLY)
 def trade_market(symbol: str = "XRPUSDT", side: str = "BUY", usdt: float = 10.0):
     """
     Places a MARKET order using the centralized BinanceExecutor.
@@ -1198,14 +1228,14 @@ def trade_market(symbol: str = "XRPUSDT", side: str = "BUY", usdt: float = 10.0)
     )
 
 
-@app.post("/runner/live/once", dependencies=[Depends(require_kyc_trading)])
+@app.post("/runner/live/once", dependencies=_LEGACY_ADMIN_ONLY)
 def runner_live_once(max_symbols: int = 10):
     raise HTTPException(
         status_code=410, detail="Legacy runner endpoint disabled. Use Auto Pilot."
     )
 
 
-@app.get("/binance/order", dependencies=[Depends(get_current_active_user)])
+@app.get("/binance/order", dependencies=_LEGACY_ADMIN_ONLY)
 def binance_order(symbol: str, order_id: int):
     client = BinanceFuturesClient(
         api_key=settings.BINANCE_API_KEY,
@@ -1216,7 +1246,7 @@ def binance_order(symbol: str, order_id: int):
     return client.get_order(symbol, order_id)
 
 
-@app.get("/binance/open-orders", dependencies=[Depends(get_current_active_user)])
+@app.get("/binance/open-orders", dependencies=_LEGACY_ADMIN_ONLY)
 def binance_open_orders(symbol: str = "XRPUSDT"):
     raise HTTPException(status_code=410, detail="Legacy .env broker endpoint retired. Use a bot-scoped broker account endpoint.")
     client = BinanceFuturesClient(
@@ -1228,7 +1258,7 @@ def binance_open_orders(symbol: str = "XRPUSDT"):
     return client.open_orders(symbol)
 
 
-@app.get("/binance/position", dependencies=[Depends(get_current_active_user)])
+@app.get("/binance/position", dependencies=_LEGACY_ADMIN_ONLY)
 def binance_position(symbol: str = "XRPUSDT"):
     raise HTTPException(status_code=410, detail="Legacy .env broker endpoint retired. Use a bot-scoped broker account endpoint.")
     client = BinanceFuturesClient(
@@ -1240,7 +1270,7 @@ def binance_position(symbol: str = "XRPUSDT"):
     return client.position_risk(symbol)
 
 
-@app.post("/trade/close", dependencies=[Depends(get_current_active_user)])
+@app.post("/trade/close", dependencies=_LEGACY_ADMIN_ONLY)
 def trade_close(symbol: str = "XRPUSDT"):
     raise HTTPException(status_code=410, detail="Legacy unscoped close endpoint disabled.")
     runner = get_runner()
@@ -1265,7 +1295,7 @@ def trade_close(symbol: str = "XRPUSDT"):
 from app.core.config import settings
 
 
-@app.get("/debug/settings", dependencies=[Depends(get_current_active_user)])
+@app.get("/debug/settings", dependencies=_LEGACY_ADMIN_ONLY)
 def debug_settings():
     """
     Show loaded settings so we can confirm FORCE_SIGNAL, symbols, sizing, etc.
@@ -1284,7 +1314,7 @@ def debug_settings():
     }
 
 
-@app.post("/binance/cancel-all", dependencies=[Depends(get_current_active_user)])
+@app.post("/binance/cancel-all", dependencies=_LEGACY_ADMIN_ONLY)
 def binance_cancel_all(symbol: str = "XRPUSDT"):
     client = BinanceFuturesClient(
         api_key=settings.BINANCE_API_KEY,
@@ -1295,7 +1325,7 @@ def binance_cancel_all(symbol: str = "XRPUSDT"):
     return client.cancel_all_orders(symbol)
 
 
-@app.get("/trade/protection", dependencies=[Depends(get_current_active_user)])
+@app.get("/trade/protection", dependencies=_LEGACY_ADMIN_ONLY)
 def trade_protection(symbol: str = "XRPUSDT"):
     client = BinanceFuturesClient(
         api_key=settings.BINANCE_API_KEY,
@@ -1307,7 +1337,7 @@ def trade_protection(symbol: str = "XRPUSDT"):
     return ex.ensure_protection(symbol)
 
 
-@app.get("/risk/daily", dependencies=[Depends(get_current_active_user)])
+@app.get("/risk/daily", dependencies=_LEGACY_ADMIN_ONLY)
 def risk_daily():
     runner = get_runner()
     today = date.today()
@@ -1332,7 +1362,7 @@ def risk_daily():
     }
 
 
-@app.post("/risk/reset", dependencies=[Depends(get_current_active_user)])
+@app.post("/risk/reset", dependencies=_LEGACY_ADMIN_ONLY)
 def risk_reset():
     runner = get_runner()
 
@@ -1355,7 +1385,7 @@ def risk_reset():
     }
 
 
-@app.post("/risk/circuit/reset", dependencies=[Depends(get_current_active_user)])
+@app.post("/risk/circuit/reset", dependencies=_LEGACY_ADMIN_ONLY)
 def risk_circuit_reset(broker_id: str = None):
     """
     Reset circuit breaker for a specific broker.
@@ -1392,7 +1422,7 @@ def risk_circuit_reset(broker_id: str = None):
         }
 
 
-@app.get("/risk/circuit/status", dependencies=[Depends(get_current_active_user)])
+@app.get("/risk/circuit/status", dependencies=_LEGACY_ADMIN_ONLY)
 def risk_circuit_status(broker_id: str = None):
     """
     Get circuit breaker status for all brokers or a specific one.
@@ -1414,7 +1444,7 @@ def risk_circuit_status(broker_id: str = None):
         }
 
 
-@app.get("/risk/status", dependencies=[Depends(get_current_active_user)])
+@app.get("/risk/status", dependencies=_LEGACY_ADMIN_ONLY)
 def risk_status():
     """
     Comprehensive risk status endpoint exposing:
@@ -1494,7 +1524,7 @@ def risk_status():
     }
 
 
-@app.post("/trade/close-record", dependencies=[Depends(get_current_active_user)])
+@app.post("/trade/close-record", dependencies=_LEGACY_ADMIN_ONLY)
 def trade_close_record(symbol: str = "ETHUSDT"):
     raise HTTPException(status_code=410, detail="Legacy unscoped close endpoint disabled.")
     global paper_runner_instance
@@ -1551,7 +1581,7 @@ def trade_close_record(symbol: str = "ETHUSDT"):
     }
 
 
-@app.post("/runner/live/start")
+@app.post("/runner/live/start", dependencies=_LEGACY_ADMIN_ONLY)
 async def runner_live_start(
     interval_seconds: int | None = None,
     max_symbols: int | None = None,
@@ -1604,7 +1634,7 @@ async def runner_live_start(
     }
 
 
-@app.post("/runner/live/stop")
+@app.post("/runner/live/stop", dependencies=_LEGACY_ADMIN_ONLY)
 async def runner_live_stop():
     if not runner_service.running:
         return {
@@ -1735,7 +1765,7 @@ def runner_status() -> dict:
     }
 
 
-@app.get("/runner/status")
+@app.get("/runner/status", dependencies=_LEGACY_ADMIN_ONLY)
 def runner_status_endpoint():
     return runner_status()
 
@@ -1754,7 +1784,7 @@ async def on_shutdown():
                 pass
 
 
-@app.get("/logs/events/tail")
+@app.get("/logs/events/tail", dependencies=_LEGACY_ADMIN_ONLY)
 def logs_events_tail(limit: int = 50):
     if limit < 1:
         limit = 1
@@ -1787,7 +1817,7 @@ def logs_events_tail(limit: int = 50):
     return {"count": len(data), "events": data}
 
 
-@app.get("/debug/db/daily")
+@app.get("/debug/db/daily", dependencies=_LEGACY_ADMIN_ONLY)
 def debug_db_daily():
     runner = get_runner()
     with runner.db.connect() as conn:
@@ -1797,7 +1827,7 @@ def debug_db_daily():
     return {"rows": [dict(r) for r in rows]}
 
 
-@app.get("/debug/db/symbols")
+@app.get("/debug/db/symbols", dependencies=_LEGACY_ADMIN_ONLY)
 def debug_db_symbols():
     runner = get_runner()
     with runner.db.connect() as conn:
@@ -1807,7 +1837,7 @@ def debug_db_symbols():
     return {"rows": [dict(r) for r in rows]}
 
 
-@app.post("/trade/close-record-usertrades")
+@app.post("/trade/close-record-usertrades", dependencies=_LEGACY_ADMIN_ONLY)
 def trade_close_record_usertrades(symbol: str = "ETHUSDT", window_minutes: int = 10):
     raise HTTPException(status_code=410, detail="Legacy unscoped close endpoint disabled.")
     """
@@ -2409,7 +2439,7 @@ def trade_close_record_usertrades(symbol: str = "ETHUSDT", window_minutes: int =
         }
 
 
-@app.post("/risk/kill")
+@app.post("/risk/kill", dependencies=_LEGACY_ADMIN_ONLY)
 def risk_kill(reason: str = "manual_kill"):
     runner = get_runner()
 
@@ -2446,7 +2476,7 @@ def risk_kill(reason: str = "manual_kill"):
     return {"status": "killed", "reason": reason, "day": str(today)}
 
 
-@app.post("/risk/unkill")
+@app.post("/risk/unkill", dependencies=_LEGACY_ADMIN_ONLY)
 def risk_unkill():
     runner = get_runner()
     today = date.today()
@@ -2476,7 +2506,7 @@ def risk_unkill():
     }
 
 
-@app.get("/strategy/signal")
+@app.get("/strategy/signal", dependencies=_LEGACY_ADMIN_ONLY)
 def strategy_signal(symbol: str = "ETHUSDT"):
     runner = get_runner()
     res = runner.strategy.get_signal(symbol)
@@ -2490,13 +2520,13 @@ def strategy_signal(symbol: str = "ETHUSDT"):
     }
 
 
-@app.post("/debug/crash-next-cycle")
+@app.post("/debug/crash-next-cycle", dependencies=_LEGACY_ADMIN_ONLY)
 def debug_crash_next_cycle():
     runner_service.crash_next_cycle = True
     return {"status": "ok", "crash_next_cycle": runner_service.crash_next_cycle}
 
 
-@app.get("/runner/audit/tail")
+@app.get("/runner/audit/tail", dependencies=_LEGACY_ADMIN_ONLY)
 def audit_tail(limit: int = Query(50, ge=1, le=500)):
     """
     Tail the live audit log so we can see DECISION / EXECUTION_RESULT without opening files.
@@ -2511,7 +2541,7 @@ def audit_tail(limit: int = Query(50, ge=1, le=500)):
     return {"ok": True, "limit": limit, "lines": tail}
 
 
-@app.post("/emergency/flatten")
+@app.post("/emergency/flatten", dependencies=_LEGACY_ADMIN_ONLY)
 async def emergency_flatten():
     """
     Cancel all open orders and close all positions for EVERY active bot managed by MultiBotRunner.
@@ -2548,14 +2578,14 @@ async def emergency_flatten():
         return {"ok": False, "error": str(e)}
 
 
-@app.get("/debug/position_amt/{symbol}")
+@app.get("/debug/position_amt/{symbol}", dependencies=_LEGACY_ADMIN_ONLY)
 def debug_position_amt(symbol: str):
     runner = get_runner()
     amt = runner.client.get_position_amt(symbol.upper())
     return {"symbol": symbol.upper(), "position_amt": amt}
 
 
-@app.post("/risk/reset_kill")
+@app.post("/risk/reset_kill", dependencies=_LEGACY_ADMIN_ONLY)
 def reset_kill(reset_pnl: bool = False):
     runner = get_runner()
 
@@ -2592,7 +2622,7 @@ def reset_kill(reset_pnl: bool = False):
     }
 
 
-@app.post("/debug/set_last_stop")
+@app.post("/debug/set_last_stop", dependencies=_LEGACY_ADMIN_ONLY)
 def debug_set_last_stop(payload: dict = Body(...)):
     """
     Set last_stop_ms for a symbol to simulate a recent stop-loss.
@@ -2918,7 +2948,7 @@ def _settings_public_dict() -> Dict[str, Any]:
     return data
 
 
-@app.get("/debug/config")
+@app.get("/debug/config", dependencies=_LEGACY_ADMIN_ONLY)
 async def debug_config():
     return {"config": _settings_public_dict()}
 
@@ -2989,12 +3019,12 @@ def _sanity_checks() -> Dict[str, Any]:
     }
 
 
-@app.get("/debug/sanity")
+@app.get("/debug/sanity", dependencies=_LEGACY_ADMIN_ONLY)
 async def debug_sanity():
     return _sanity_checks()
 
 
-@app.get("/debug/run/current")
+@app.get("/debug/run/current", dependencies=_LEGACY_ADMIN_ONLY)
 def debug_run_current():
     return {
         "run_id": CURRENT_RUN_ID,
@@ -3003,7 +3033,7 @@ def debug_run_current():
     }
 
 
-@app.post("/debug/run/cycle")
+@app.post("/debug/run/cycle", dependencies=_LEGACY_ADMIN_ONLY)
 def debug_run_cycle(symbol: str = "ETHUSDT"):
     raise HTTPException(status_code=410, detail="Legacy .env debug runner disabled. Use automatic bot-scoped cycles.")
     """
@@ -3032,7 +3062,7 @@ def debug_run_cycle(symbol: str = "ETHUSDT"):
     }
 
 
-@app.post("/debug/run/force")
+@app.post("/debug/run/force", dependencies=_LEGACY_ADMIN_ONLY)
 def debug_run_force():
     raise HTTPException(status_code=410, detail="Legacy .env debug runner disabled. Use automatic bot-scoped cycles.")
     """
@@ -3042,7 +3072,7 @@ def debug_run_force():
     return runner.run_once(max_symbols=runner_service.max_symbols)
 
 
-@app.get("/debug/check-symbol")
+@app.get("/debug/check-symbol", dependencies=_LEGACY_ADMIN_ONLY)
 def debug_check_symbol(symbol: str = "ETHUSDT"):
     """
     Inspects internal state for a symbol, including last signal, position, and recent klines info.
@@ -3069,7 +3099,7 @@ def debug_check_symbol(symbol: str = "ETHUSDT"):
     }
 
 
-@app.get("/debug/strategy/check")
+@app.get("/debug/strategy/check", dependencies=_LEGACY_ADMIN_ONLY)
 def debug_strategy_check(symbol: str = "ETHUSDT"):
     """
     Directly calls the strategy's get_signal method to see what it returns right now.

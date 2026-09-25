@@ -77,79 +77,56 @@ class DailySnapshotScheduler:
                 logger.error(f"Error in daily snapshot scheduler: {e}")
                 time.sleep(300)  # Continue running despite errors
     
-    def _record_daily_snapshots(self):
-        """Record snapshots for all active broker accounts."""
+    def _record_daily_snapshots(self) -> dict:
+        """Record one account-level snapshot per connected broker account.
+
+        Credentials come ONLY from the canonical resolver (ownership, active
+        credential version, environment, decryption) and the client ONLY from
+        the canonical factory. A previous revision read the legacy
+        broker_credentials table, filtered on status='active' (accounts are
+        'connected'), defaulted every broker to its mainnet URL, and imported
+        a non-existent factory function, so every snapshot failed silently.
+        """
+        from shared_lib.broker import BrokerResolverError, build_client_from_auth, resolve_broker_auth
+
+        summary = {"accounts": 0, "recorded": 0, "failed": 0, "errors": {}}
         try:
-            # Get all active broker accounts
-            with self.db.get_connection() as conn:
+            with self.db.connect() as conn:
                 rows = conn.execute(
-                    """
-                    SELECT DISTINCT 
-                        ba.id as broker_account_id,
-                        ba.user_id,
-                        ba.broker_id,
-                        bc.encrypted_blob
-                    FROM broker_accounts ba
-                    JOIN broker_credentials bc ON ba.id = bc.account_id
-                    WHERE ba.status = 'active'
-                    """
+                    "SELECT id, user_id, broker_id FROM broker_accounts "
+                    "WHERE LOWER(status) IN ('connected', 'active')"
                 ).fetchall()
-            
-            logger.info(f"Found {len(rows)} active broker accounts for daily snapshot")
-            
-            for row in rows:
-                try:
-                    # Build client for this broker account
-                    from shared_lib.core.security.broker_security import decrypt_credentials
-                    from app.exchange.factory import build_exchange_client_from_broker
-                    
-                    creds = decrypt_credentials(row["encrypted_blob"])
-                    
-                    # Build a minimal context just for snapshot
-                    # We need to build the client based on broker_id
-                    if row["broker_id"] == "binance":
-                        from app.exchange.binance.client import BinanceFuturesClient
-                        client = BinanceFuturesClient(
-                            creds["api_key"],
-                            creds["api_secret"],
-                            base_url=creds.get("base_url", "https://fapi.binance.com")
-                        )
-                    elif row["broker_id"] == "bybit":
-                        from app.exchange.bybit.client import BybitClient
-                        client = BybitClient(
-                            creds["api_key"],
-                            creds["api_secret"],
-                            base_url=creds.get("base_url", "https://api.bybit.com")
-                        )
-                    elif row["broker_id"] == "bingx":
-                        from app.exchange.bingx.client import BingXClient
-                        client = BingXClient(
-                            creds["api_key"],
-                            creds["api_secret"],
-                            base_url=creds.get("base_url", "https://open-api.bingx.com")
-                        )
-                    else:
-                        logger.warning(f"Unknown broker_id: {row['broker_id']}, skipping")
-                        continue
-                    
-                    # Record snapshot
-                    self.snapshot_service.record_snapshot(
-                        user_id=row["user_id"],
-                        broker_account_id=row["broker_account_id"],
-                        broker_id=row["broker_id"],
-                        client=client,
-                        source="daily_snapshot",
-                        bot_instance_id=None  # Daily snapshots are account-level, not bot-specific
-                    )
-                    
-                except Exception as e:
-                    logger.error(f"Failed to record daily snapshot for {row['broker_account_id']}: {e}")
-                    continue
-            
-            logger.info("Daily snapshot batch completed")
-            
         except Exception as e:
             logger.error(f"Failed to fetch broker accounts for daily snapshot: {e}")
+            summary["errors"]["_query"] = str(e)
+            return summary
+
+        summary["accounts"] = len(rows)
+        logger.info("Found %d connected broker accounts for daily snapshot", len(rows))
+        for row in rows:
+            account_id, user_id, broker_id = row["id"], row["user_id"], row["broker_id"]
+            try:
+                auth = resolve_broker_auth(account_id, user_id, self.db)
+                client = build_client_from_auth(auth)
+                self.snapshot_service.record_snapshot(
+                    user_id=user_id,
+                    broker_account_id=account_id,
+                    broker_id=broker_id,
+                    client=client,
+                    source="daily_snapshot",
+                    bot_instance_id=None,  # account-level, not bot-specific
+                )
+                summary["recorded"] += 1
+            except BrokerResolverError as e:
+                summary["failed"] += 1
+                summary["errors"][account_id] = e.reason_code
+                logger.warning("daily_snapshot_skipped account=%s reason=%s", account_id, e.reason_code)
+            except Exception as e:
+                summary["failed"] += 1
+                summary["errors"][account_id] = type(e).__name__
+                logger.error("Failed to record daily snapshot for %s: %s", account_id, e)
+        logger.info("Daily snapshot batch completed: %s", {k: v for k, v in summary.items() if k != "errors"})
+        return summary
 
 
 # Singleton instance

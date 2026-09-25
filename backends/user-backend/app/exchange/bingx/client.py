@@ -3,6 +3,7 @@ import requests
 import time
 from typing import Dict, Any, Optional
 from app.exchange.bingx.signing import sign_bingx, get_timestamp
+from shared_lib.core.security.redaction import redact_text as _redact
 
 class BingXClient:
     """
@@ -13,9 +14,12 @@ class BingXClient:
         self.api_secret = api_secret
         
         if base_url:
-             self.base_url = base_url.rstrip("/")
+            self.base_url = base_url.rstrip("/")
         else:
-             self.base_url = "https://open-api.bingx.com"
+            # Canonical URL table: DEMO -> VST host, LIVE -> mainnet. `testnet`
+            # used to be ignored, silently validating demo accounts on mainnet.
+            from shared_lib.broker.environment import BrokerEnvironment, resolve_base_url
+            self.base_url = resolve_base_url("bingx", BrokerEnvironment.DEMO if testnet else BrokerEnvironment.LIVE)
 
     def _request(self, method: str, path: str, payload: dict | None = None) -> dict:
         url = f"{self.base_url}{path}"
@@ -47,7 +51,7 @@ class BingXClient:
             
             return r.json()
         except Exception as e:
-            raise RuntimeError(f"BingX Network Error: {str(e)}")
+            raise RuntimeError(_redact(f"BingX Network Error: {e}"))
 
     def test_connection(self) -> Dict[str, Any]:
         """Test API connection."""

@@ -69,15 +69,14 @@ async def deploy_auto_pilot(
         if not user.get("is_verified"):
              raise HTTPException(403, "Live Forex trading requires account verification. Please verify your email.")
 
-    # Inject credentials
+    # Ownership check only. Secrets are NOT forwarded: bot-backend resolves
+    # credentials itself through the canonical resolver.
     from app.core.broker_service import get_decrypted_credentials
-    credentials_map = {}
-    
+
     for acc_id in body.broker_account_ids:
         creds = get_decrypted_credentials(user["id"], acc_id)
         if not creds:
              raise HTTPException(400, f"Broker account {acc_id} not found or invalid.")
-        credentials_map[acc_id] = creds
 
     # Transform to backend contract
     backend_payload = {
@@ -87,7 +86,6 @@ async def deploy_auto_pilot(
         "capital_allocation": body.allocation.total_capital_budget,
         "capital_allocation_type": "fixed_amount",
         "broker_account_ids": body.broker_account_ids,
-        "broker_credentials_map": credentials_map, # New injection
         "mode": body.execution_mode,
         "market_type": getattr(body, "market_type", "crypto"),
         "forex_config": getattr(body, "forex_config", None)

@@ -9,7 +9,10 @@ class BinanceClient:
     """Wrapper around BinanceFuturesClient for broker validation"""
     
     def __init__(self, api_key: str, api_secret: str, testnet: bool = False):
-        base_url = "https://testnet.binancefuture.com" if testnet else "https://fapi.binance.com"
+        # Same canonical URL table the runtime uses (demo-fapi for DEMO); the
+        # old testnet.binancefuture.com host validated a different environment.
+        from shared_lib.broker.environment import BrokerEnvironment, resolve_base_url
+        base_url = resolve_base_url("binance", BrokerEnvironment.DEMO if testnet else BrokerEnvironment.LIVE)
         self.client = BinanceFuturesClient(
             api_key=api_key,
             api_secret=api_secret,

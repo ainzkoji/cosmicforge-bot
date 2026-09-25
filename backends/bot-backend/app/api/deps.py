@@ -31,8 +31,6 @@ def get_current_active_user(
     )
     
     try:
-        # Debugging: Print key prefix to ensure it matches
-        print(f"[DEBUG-DEPS] Validating token with Secret Key Prefix: {settings.SECRET_KEY[:5]}...")
         
         payload = jwt.decode(
             token, 

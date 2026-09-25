@@ -30,6 +30,8 @@ class BrokerCatalogItem(BaseModel):
     auth_types: List[str]   # api_key, oauth, mt5
     features: List[str]     # spot, futures, leverage
     required_permissions: List[str]
+    forbidden_permissions: List[str] = []
+    optional_permissions: List[str] = []
     is_available: bool = True
     unavailable_reason: Optional[str] = None
     affiliate_info: Optional[Dict[str, str]] = None

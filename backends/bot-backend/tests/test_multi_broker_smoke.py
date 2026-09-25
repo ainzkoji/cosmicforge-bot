@@ -28,7 +28,9 @@ def test_factory_builds_bingx_client():
     
     assert isinstance(client, BingXClient)
     assert client.api_key == "key"
-    assert client.base_url == "https://open-api.bingx.com" 
+    # paper mode -> BingX VST (demo) host. This used to assert mainnet: the
+    # client ignored ``testnet`` and sent paper-mode bots to the live venue.
+    assert client.base_url == "https://open-api-vst.bingx.com"
 
 def test_factory_builds_binance_client():
     """
