@@ -102,7 +102,9 @@ def test_shared_long_eur_detected():
 def test_factor_concentration_works_without_pairwise_correlation_data():
     ctx = context()  # NO return history at all
     cands = [ranked("EURUSD", 1.0, pos=1), ranked("GBPUSD", 1.0, pos=2), ranked("AUDUSD", 1.0, pos=3)]
-    p = dataclasses.replace(PortfolioPolicy(), lambda_corr=0.0, lambda_sector=0.0, lambda_beta=1.0)
+    # the SOFT factor penalty in isolation (the hard currency cap is covered separately)
+    p = dataclasses.replace(PortfolioPolicy(), lambda_corr=0.0, lambda_sector=0.0, lambda_beta=1.0,
+                            max_net_currency_units=None)
     d = select(cands, ctx, slots=3, policy=p)
     unpenalised = select(cands, ctx, slots=3, policy=dataclasses.replace(p, lambda_beta=0.0))
     assert len(unpenalised.selected_opportunity_ids) == 3
@@ -115,11 +117,17 @@ def test_factor_concentration_works_without_pairwise_correlation_data():
 
 def test_existing_account_usd_exposure_penalises_new_short_usd():
     ctx = context()
-    p = dataclasses.replace(PortfolioPolicy(), lambda_corr=0.0, lambda_sector=0.0, lambda_beta=1.0)
+    p = dataclasses.replace(PortfolioPolicy(), lambda_corr=0.0, lambda_sector=0.0, lambda_beta=1.0,
+                            max_net_currency_units=None)
     existing = [held("EURUSD", key=fx("EURUSD")), held("AUDUSD", key=fx("AUDUSD"))]
     d = select([ranked("GBPUSD", 0.5, pos=1)], ctx, slots=1, existing=existing, policy=p)
     assert d.selected_opportunity_ids == ()
     assert d.rejected_candidates[0].reason_code == "COMMON_FACTOR_CONCENTRATION"
+    # with the default HARD cap (2 units) the third short-USD leg is refused outright
+    hard = select([ranked("GBPUSD", 0.5, pos=1)], ctx, slots=1, existing=existing, policy=PortfolioPolicy())
+    assert hard.selected_opportunity_ids == ()
+    assert (hard.rejected_candidates[0].reason_code, hard.rejected_candidates[0].detail) == (
+        "CURRENCY_FACTOR_CAP", "CURRENCY_FACTOR_CAP:USD")
     hedge = select([ranked("USDJPY", 0.5, pos=1)], ctx, slots=1, existing=existing, policy=p)
     assert hedge.selected_opportunity_ids  # LONG USD offsets the account's short USD
 

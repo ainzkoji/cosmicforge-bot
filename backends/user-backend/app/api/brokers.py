@@ -374,3 +374,18 @@ async def get_internal_transfer(request: Request, account_id: str, transfer_id: 
 @router.post("/{account_id}/internal-transfers/reconcile")
 async def reconcile_internal_transfers(request: Request, account_id: str, user_id: str = Depends(get_current_user_id)):
     return await _proxy(request, f"/api/v1/brokers/{account_id}/internal-transfers/reconcile", json_body={})
+
+
+# -----------------------------------------------
+# Multi-asset market / capability status (proxied; bot-backend resolves the
+# account for the token's user and derives every state -- nothing here enables).
+# -----------------------------------------------
+@router.get("/{account_id}/market-status")
+async def broker_market_status(request: Request, account_id: str, user_id: str = Depends(get_current_user_id)):
+    return await _proxy(request, f"/api/v1/brokers/{account_id}/market-status")
+
+
+@router.post("/{account_id}/market-discovery/sync")
+async def broker_market_discovery_sync(request: Request, account_id: str,
+                                       user_id: str = Depends(get_current_user_id)):
+    return await _proxy(request, f"/api/v1/brokers/{account_id}/market-discovery/sync", json_body={})

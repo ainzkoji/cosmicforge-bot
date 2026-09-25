@@ -1,14 +1,20 @@
-"""CATI active-execution configuration (Section 20.18) -- OFF by default.
+"""CATI active-execution configuration (Section 20.18).
 
-``CATI_ACTIVE_EXECUTION_ENABLED`` is a SEPARATE, explicit flag. It is not
-``CATI_CYCLE_SHADOW_ENABLED`` (shadow evidence) and is never implied by it.
-Unset / anything but an explicit truthy value = disabled. Section 25
-promotion policy is what may enable it later; nothing in this codebase sets
-it, and the runner never calls the CATI execution boundary.
+AUTO_ACTIVE_IF_ELIGIBLE: the Section 25 governance phase is the authority,
+not a flag an operator must remember. ``CATI_ACTIVE_EXECUTION_ENABLED`` is an
+OPERATOR OVERRIDE that can only switch execution OFF (``0``/``false``/``off``);
+unset (AUTO) lets the boundary ask ``GovernanceAuthority`` -- which refuses
+every entry below M6, live below M7, unpromoted M7 scopes and anything while
+the kill switch is on. A flag can never grant what governance has not.
 
-``CATI_EXIT_INTENT_ROUTING_ENABLED`` separately gates routing Section 19
-ExitDecisions to PositionManager/executor (``process_exit_decision``);
-also OFF by default, and it additionally requires active execution.
+``CATI_EXIT_INTENT_ROUTING_ENABLED`` is the same kind of override for routing
+Section 19 ExitDecisions (``process_exit_decision``), which additionally
+requires active execution.
+
+A directly constructed ``CATIExecutionConfig()`` is explicit OFF (tests,
+tooling); ``from_env()`` is the runtime reading. Runtime CATI entries also
+need the runner's authority switch, which does not exist yet
+(``app.activation.cati.RUNTIME_AUTHORITY_SWITCH_IMPLEMENTED``).
 """
 from __future__ import annotations
 
@@ -21,7 +27,10 @@ _TRUE = ("1", "true", "yes", "on")
 
 
 def _flag(name: str) -> bool:
-    return os.environ.get(name, "").strip().lower() in _TRUE
+    """AUTO unless explicitly switched off (operator override)."""
+    from app.activation.model import OperatorOverride, operator_override
+
+    return operator_override(name) == OperatorOverride.AUTO
 
 
 @dataclass(frozen=True)

@@ -342,6 +342,14 @@ def test_watch_and_reject_cannot_plan(tmp_path, outcome):
 def test_active_execution_and_exit_routing_default_off(monkeypatch):
     for name in ("CATI_ACTIVE_EXECUTION_ENABLED", "CATI_EXIT_INTENT_ROUTING_ENABLED"):
         monkeypatch.delenv(name, raising=False)
+    # AUTO: unset switches are not "off", they defer to governance (M0 here -> no authority)
+    cfg = CATIExecutionConfig.from_env()
+    assert cfg.active_execution_enabled is True and cfg.exit_intent_routing_enabled is True
+    from app.activation import cati as act
+
+    assert not act.exit_intent_routing(None).active and not act.active_execution(None).active
+    for name in ("CATI_ACTIVE_EXECUTION_ENABLED", "CATI_EXIT_INTENT_ROUTING_ENABLED"):
+        monkeypatch.setenv(name, "0")
     cfg = CATIExecutionConfig.from_env()
     assert cfg.active_execution_enabled is False and cfg.exit_intent_routing_enabled is False
     assert _Client  # the shadow-flow client stand-in (order paths explode) is the one used above

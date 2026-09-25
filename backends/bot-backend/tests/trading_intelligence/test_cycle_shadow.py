@@ -94,8 +94,9 @@ def _eval(sym, seed):
     return SymbolEvaluation(sym, SymbolEvalKind.EVALUATED.value, opportunities=(ev,))
 
 
-def test_disabled_by_default_is_noop(monkeypatch):
-    monkeypatch.delenv(cs.ENV_FLAG, raising=False)
+def test_operator_off_override_is_noop(monkeypatch):
+    # AUTO_ACTIVE_IF_ELIGIBLE: unset = active; an explicit off value is the operator override
+    monkeypatch.setenv(cs.ENV_FLAG, "0")
     r = _runner()
     cs.on_cycle_start(r)
     cs.record_symbol(r, "x", "AAAUSDT", venue="v", source="s")

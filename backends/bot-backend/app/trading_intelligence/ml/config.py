@@ -1,10 +1,12 @@
-"""CATI ML flags -- OFF by default, and never an authority by themselves.
+"""CATI ML switches -- AUTO_ACTIVE_IF_ELIGIBLE, never an authority by themselves.
 
-``CATI_ML_SHADOW_ENABLED`` lets shadow estimators record evidence.
-``CATI_ML_ENABLED`` is necessary but NOT sufficient for a promoted estimator
-to be used: the model must be PROMOTED in the registry AND the Section 25
-promotion phase must authorize CATI authority for the scope. Legacy V2
-``ML_ENABLED`` / ``ML_SHADOW_MODE`` / ``ML_HARD_BLOCK_FLOOR`` are never read.
+``CATI_ML_SHADOW_ENABLED`` / ``CATI_ML_ENABLED`` are OPERATOR OVERRIDES that
+can only switch ML OFF (``0``/``false``/``off``). Unset = AUTO: a promoted
+estimator is used only when the model is PROMOTED in the registry AND the
+Section 25 phase authorizes CATI; otherwise the deterministic CATI estimator
+is used (never V2). Legacy V2 ``ML_ENABLED`` / ``ML_SHADOW_MODE`` /
+``ML_HARD_BLOCK_FLOOR`` are never read. A directly constructed
+``CATIMLConfig()`` is explicit OFF (tests / tooling).
 """
 from __future__ import annotations
 
@@ -17,7 +19,10 @@ _TRUE = ("1", "true", "yes", "on")
 
 
 def _flag(name: str) -> bool:
-    return os.environ.get(name, "").strip().lower() in _TRUE
+    """AUTO unless explicitly switched off (operator override)."""
+    from app.activation.model import OperatorOverride, operator_override
+
+    return operator_override(name) == OperatorOverride.AUTO
 
 
 @dataclass(frozen=True)

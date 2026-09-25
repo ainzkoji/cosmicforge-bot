@@ -121,7 +121,8 @@ class CATIController:
             lap("SETUP_DISCOVERY")
             rows = tuple(snapshot.candles)
             if not candidates:
-                return SymbolEvaluation(instrument, SymbolEvalKind.NO_CANDIDATES.value, candle_rows=rows)
+                return SymbolEvaluation(instrument, SymbolEvalKind.NO_CANDIDATES.value, candle_rows=rows,
+                                        market_state=market_state)
             group = static_group_for(instrument)
             # Section 17: ONE side-independent venue observation per instrument,
             # shared by every candidate on it. A callable context is resolved
@@ -165,7 +166,7 @@ class CATIController:
                 evaluated.append(EvaluatedOpportunity(candidate, market_state, regime, forecast, cost, opportunity, veto,
                                                       venue_observation=observation))
             result = SymbolEvaluation(instrument, SymbolEvalKind.EVALUATED.value, opportunities=tuple(evaluated),
-                                      candle_rows=rows)
+                                      candle_rows=rows, market_state=market_state)
             emitters.observe_symbol_evaluation(result)
             return result
         except Exception as exc:  # explicit terminal state, recorded -- not swallowed silently

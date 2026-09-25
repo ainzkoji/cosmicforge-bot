@@ -88,10 +88,16 @@ def test_legacy_v2_semantics_and_flags_are_not_cati_authority(monkeypatch):
     bad = dataclasses.replace(FEATURE_SCHEMAS["OUTCOME"], columns=("confidence_normed", "threshold_gap"))
     with pytest.raises(FeatureContractViolation):
         validate_schema(bad)
-    monkeypatch.setenv("ML_ENABLED", "true")
-    monkeypatch.setenv("ML_SHADOW_MODE", "false")
-    monkeypatch.setenv("ML_HARD_BLOCK_FLOOR", "0.9")
-    assert CATIMLConfig.from_env() == CATIMLConfig(ml_enabled=False, shadow_enabled=False)
+    for name in ("CATI_ML_ENABLED", "CATI_ML_SHADOW_ENABLED"):
+        monkeypatch.delenv(name, raising=False)
+    baseline = CATIMLConfig.from_env()  # AUTO: promotion + governance decide, not a flag
+    for legacy in (("true", "false", "0.9"), ("false", "true", "0.1")):  # legacy V2 flags are never read
+        monkeypatch.setenv("ML_ENABLED", legacy[0])
+        monkeypatch.setenv("ML_SHADOW_MODE", legacy[1])
+        monkeypatch.setenv("ML_HARD_BLOCK_FLOOR", legacy[2])
+        assert CATIMLConfig.from_env() == baseline
+    monkeypatch.setenv("CATI_ML_ENABLED", "off")  # only the CATI operator override can switch ML off
+    assert CATIMLConfig.from_env().ml_enabled is False
 
 
 # ============================== SECTION 23: CONTRACTS / DATA ==============================
@@ -296,7 +302,8 @@ def test_destination_map_is_semantically_compliant():
     from app.trading_intelligence.governance.destination_map import LEGACY_AFTER_PROMOTION, compliance, verify
 
     status, gaps = compliance(BOT_ROOT)
-    assert status == "PARTIAL" and set(gaps) == {"contracts.global_market_state", "global_context"}
+    # Section 24 closure: GlobalMarketState contract + engine + evidence integrated in the cycle
+    assert status == "PASS" and gaps == []
     assert all(v["status"] != "MISSING" for v in verify(BOT_ROOT).values())
     assert all((BOT_ROOT / p).exists() for p in LEGACY_AFTER_PROMOTION)  # retained until M9
 
@@ -467,7 +474,14 @@ def test_runtime_safety_flags_remain_off():
     from app.trading_intelligence.ml.config import CATIMLConfig
     from app.trading_intelligence.research.certification.policy import canonical_certification_policy
 
-    c = CATIExecutionConfig.from_env()
-    assert not c.active_execution_enabled and not c.exit_intent_routing_enabled
-    assert not CATIMLConfig.from_env().ml_enabled
+    # AUTO_ACTIVE_IF_ELIGIBLE: the env switches are operator overrides; AUTHORITY is governance-derived.
+    # In the test database no phase transition exists (M0), so nothing is authorized at runtime.
+    from app.activation import cati as act
+
+    assert CATIExecutionConfig().active_execution_enabled is False  # explicit construction stays OFF
+    assert CATIMLConfig().ml_enabled is False
+    for env in ("DEMO", "LIVE"):
+        d = act.active_execution(None, environment=env)
+        assert d.state.value == "BLOCKED" and not d.active
+    assert "RUNTIME_AUTHORITY_SWITCH_NOT_IMPLEMENTED" in act.active_execution(None).reasons
     assert canonical_certification_policy().policy_name == "RESEARCH_DEFAULT_V1"

@@ -1,5 +1,8 @@
 """Whole-universe CATI cycle shadow (Sections 15.1-15.4, 16), wired into the
-live runner behind ``CATI_CYCLE_SHADOW_ENABLED`` (unset/false = disabled).
+live runner. AUTO_ACTIVE_IF_ELIGIBLE (``app.activation.cati``): active by
+default; ``CATI_CYCLE_SHADOW_ENABLED=0/false/off`` is an operator override
+that switches it OFF (a flag can never switch anything ON past its
+prerequisites).
 
 Shape (decision EPOCH = one closed-candle boundary for the bot's timeframe)::
 
@@ -43,7 +46,12 @@ _epochs: Dict[str, Dict[str, Any]] = {}  # bot_instance_id -> {"epoch": int, "ke
 
 
 def is_enabled() -> bool:
-    return os.environ.get(ENV_FLAG, "").strip().lower() in ("1", "true", "yes", "on")
+    """AUTO_ACTIVE_IF_ELIGIBLE (app.activation.cati.cycle_shadow): active unless an operator set
+    ``CATI_CYCLE_SHADOW_ENABLED`` to an explicit off value. Evidence only; never execution."""
+    from app.activation.cati import cycle_shadow
+    from app.activation.transitions import observe
+
+    return observe(cycle_shadow()).active
 
 
 def reset_for_tests() -> None:
@@ -245,6 +253,7 @@ def _portfolio_stage(runner: Any, result: Any) -> None:
     market_context = build_portfolio_market_context(rows, decision_time, policy, factor_rows=factors,
                                                     asset_classes=classes)
     evaluated = {o.candidate.setup_candidate_id: o for ev in result.evaluations for o in ev.opportunities}
+    _global_market_state_stage(runner, result, decision_time, interval)
     outcome = service.select_and_reserve(
         ranked=result.ranked, broker_account_id=account, bot_instance_id=result.batch.bot_instance_id,
         cycle_id=result.batch.cycle_id, max_open_positions=int(getattr(ctx, "max_open_positions", 0) or 0),
@@ -261,6 +270,45 @@ def _portfolio_stage(runner: Any, result: Any) -> None:
     from app.trading_intelligence.capital.shadow_hook import shadow_capital_routing
 
     shadow_capital_routing(runner, outcome, evaluated)
+
+
+def _global_market_state_stage(runner: Any, result: Any, decision_time: int, timeframe: str) -> Any:
+    """Section 24: the epoch's GlobalMarketState from the MarketStates it already holds -> append-only
+    evidence. Context only (no admission / veto / ranking input). Never raises into the cycle."""
+    try:
+        from app.activation.cati import global_market_state
+        from app.activation.transitions import observe
+
+        if not observe(global_market_state()).active:
+            return None
+        from app.trading_intelligence.market_state.global_state import build_global_market_state
+        from app.trading_intelligence.market_state.global_state_store import GlobalMarketStateStore
+
+        states = [ev.market_state for ev in result.evaluations if getattr(ev, "market_state", None) is not None]
+        states += [o.market_state for ev in result.evaluations if getattr(ev, "market_state", None) is None
+                   for o in ev.opportunities]
+        event_state = None
+        try:
+            from app.trading_intelligence.integration.context_adapters import build_event_risk_context
+
+            ctx = build_event_risk_context(runner.db, decision_time)
+            event_state = getattr(getattr(ctx, "source_state", None), "value", None) or getattr(ctx, "source_state", None)
+        except Exception:
+            event_state = None
+        gms = build_global_market_state(states, decision_time=decision_time, timeframe=timeframe,
+                                        event_source_state=event_state)
+        b = result.batch
+        GlobalMarketStateStore(runner.db).append(gms, cycle_id=b.cycle_id, bot_instance_id=b.bot_instance_id,
+                                                 broker_account_id=b.broker_account_id)
+        rr = gms.component("risk_regime")
+        logger.info("[CATI_GLOBAL_STATE] bot=%s cycle=%s state=%s regime=%s inputs=%d classes=%s",
+                    b.bot_instance_id, b.cycle_id, gms.global_state_id,
+                    rr.label if rr.status == "AVAILABLE" else f"UNAVAILABLE:{rr.reason}",
+                    len(gms.input_market_state_ids), ",".join(gms.asset_classes) or "-")
+        return gms
+    except Exception as exc:
+        _error("cycle_shadow.global_market_state", exc, runner)
+        return None
 
 
 def trade_plan_stage(db: Any, result: Any, outcome: Any, evaluated: Dict[str, Any], now_ms: int) -> list:

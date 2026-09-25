@@ -45,7 +45,7 @@ from app.trading_intelligence.portfolio.selector import select_portfolio
 from app.trading_intelligence.veto.engine import evaluate_veto
 
 _PORTFOLIO_VETO_REASONS = (DUPLICATE_EXPOSURE, ACCOUNT_RESERVATION_CONFLICT, ACCOUNT_CORRELATION_CONFLICT,
-                           COMMON_FACTOR_CONCENTRATION)
+                           COMMON_FACTOR_CONCENTRATION, "CURRENCY_FACTOR_CAP", "ASSET_CLASS_ALLOCATION_CAP")
 
 
 @dataclass(frozen=True)

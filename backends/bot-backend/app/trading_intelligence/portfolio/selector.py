@@ -38,6 +38,7 @@ from app.trading_intelligence.contracts.portfolio_intel import (
 )
 from app.trading_intelligence.contracts.ranking import RankedOpportunity
 from app.trading_intelligence.hashing import stable_hash
+from app.trading_intelligence.portfolio.currency_exposure import STABLECOINS
 from app.trading_intelligence.portfolio.exposure_builder import account_state_fingerprint
 from app.trading_intelligence.portfolio.factors import FactorModel
 from app.trading_intelligence.portfolio.groups import UNKNOWN_GROUP
@@ -199,15 +200,66 @@ class _Scorer:
         return NOT_SELECTED_BY_OBJECTIVE
 
 
-def _valid_subset(subset: Sequence[_Cand], policy: PortfolioPolicy) -> bool:
-    """No two selected candidates may be the same economic instrument."""
+CURRENCY_FACTOR_CAP = "CURRENCY_FACTOR_CAP"
+ASSET_CLASS_ALLOCATION_CAP = "ASSET_CLASS_ALLOCATION_CAP"
+
+
+def currency_legs(key, side: str, unit: float = 1.0) -> Dict[str, float]:
+    """Structural FX legs in PRE_SIZE units (LONG BASE/QUOTE = +BASE, -QUOTE; SHORT flips)."""
+    if getattr(key, "asset_class", None) != "FX":
+        return {}
+    s = unit if str(side).upper() in ("LONG", "BUY") else -unit
+    base = str(key.base_asset).upper()
+    quote = str(key.quote_asset).upper()
+    quote = "USD" if quote in STABLECOINS else quote
+    out: Dict[str, float] = {}
+    out[base] = out.get(base, 0.0) + s
+    out[quote] = out.get(quote, 0.0) - s
+    return out
+
+
+def _net(items, unit: float) -> Dict[str, float]:
+    net: Dict[str, float] = {}
+    for key, side in items:
+        for code, v in currency_legs(key, side, unit).items():
+            net[code] = net.get(code, 0.0) + v
+    return net
+
+
+def _cross_asset_ok(subset: Sequence[_Cand], policy: PortfolioPolicy, existing: Sequence[_Existing]) -> Optional[str]:
+    """None, or the reason the subset breaches a hard cross-asset constraint."""
+    unit = policy.pre_size_unit_weight
+    cap = policy.max_net_currency_units
+    if cap is not None and subset:
+        before = _net([(e.key, e.side) for e in existing], unit)
+        after = _net([(e.key, e.side) for e in existing] + [(c.key, c.side) for c in subset], unit)
+        for code, v in after.items():
+            if abs(v) > cap + 1e-12 and abs(v) > abs(before.get(code, 0.0)) + 1e-12:
+                return f"{CURRENCY_FACTOR_CAP}:{code}"
+    if policy.asset_class_max_positions and subset:
+        limits = dict(policy.asset_class_max_positions)
+        counts: Dict[str, int] = {}
+        for x in list(existing) + list(subset):
+            ac = getattr(x.key, "asset_class", "UNKNOWN")
+            counts[ac] = counts.get(ac, 0) + 1
+        for ac, n in counts.items():
+            if ac in limits and n > limits[ac] and any(getattr(c.key, "asset_class", None) == ac for c in subset):
+                return f"{ASSET_CLASS_ALLOCATION_CAP}:{ac}"
+    return None
+
+
+def _valid_subset(subset: Sequence[_Cand], policy: PortfolioPolicy,
+                  existing: Optional[Sequence[_Existing]] = None) -> bool:
+    """No two selected candidates may be the same economic instrument, and the
+    subset may not breach a hard cross-asset constraint (currency factor cap,
+    logical asset-class allocation) given the account's existing book."""
     seen: Dict[str, str] = {}
     for c in subset:
         prev = seen.get(c.canonical)
         if prev is not None and not (policy.allow_hedge_mode_duplicates and prev != c.side):
             return False
         seen[c.canonical] = c.side
-    return True
+    return _cross_asset_ok(subset, policy, existing or ()) is None
 
 
 def _order_key(item: Tuple[float, Tuple[_Cand, ...]]):
@@ -219,7 +271,7 @@ def _solve_exact(feasible: Sequence[_Cand], slots: int, scorer: _Scorer, policy:
     best = None
     for k in range(0, min(slots, len(feasible)) + 1):
         for subset in itertools.combinations(feasible, k):
-            if not _valid_subset(subset, policy):
+            if not _valid_subset(subset, policy, scorer.existing):
                 continue
             item = (scorer.score(subset)[0], tuple(subset))
             if best is None or _order_key(item) < _order_key(best):
@@ -235,7 +287,7 @@ def _solve_beam(feasible: Sequence[_Cand], slots: int, scorer: _Scorer, policy: 
         for _score, subset, last in beam:
             for idx in range(last + 1, len(feasible)):
                 cand = subset + (feasible[idx],)
-                if _valid_subset(cand, policy):
+                if _valid_subset(cand, policy, scorer.existing):
                     nxt.append((scorer.score(cand)[0], cand, idx))
         if not nxt:
             break
@@ -264,6 +316,15 @@ def select_portfolio(
     cands = [_Cand(r, context) for r in ordered]
     existing = [_Existing(r, context) for r in exposure.all_exposures]
     feasible, rejected = duplicate_findings(cands, existing, policy)
+    # a candidate that alone breaches a hard cross-asset cap is never feasible
+    capped = []
+    for c in feasible:
+        why = _cross_asset_ok((c,), policy, existing)
+        if why is not None:
+            rejected.append(RejectedCandidate(c.ranked.ranked_opportunity_id, c.cid, why.split(":", 1)[0], why))
+        else:
+            capped.append(c)
+    feasible = capped
     scorer = _Scorer(existing, context, policy)
 
     reason_codes: List[str] = []

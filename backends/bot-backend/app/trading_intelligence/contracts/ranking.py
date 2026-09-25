@@ -68,6 +68,9 @@ class SymbolEvaluation:
     #: The pinned snapshot's closed candles, carried so the cycle-level
     #: portfolio stage can build causal return histories without refetching.
     candle_rows: Tuple[Any, ...] = ()
+    #: The instrument's MarketState (EVALUATED / NO_CANDIDATES), carried so the
+    #: cycle can build the Section 24 GlobalMarketState without recomputation.
+    market_state: Any = None
 
 
 BATCH_INCOMPLETE = "BATCH_INCOMPLETE"

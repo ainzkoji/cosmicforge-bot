@@ -6,9 +6,11 @@ CapitalAllocationPlanner and persist the decision (plus a simulated transfer
 outcome) as append-only evidence. Nothing is submitted and no order is
 placed -- a transfer proposal is never handed to the transfer service here.
 
-Enabled only by ``CATI_CAPITAL_ROUTING_SHADOW_ENABLED`` (default OFF). It is
-not ``CATI_ACTIVE_EXECUTION_ENABLED`` and never implies it. Every failure is
-recorded and swallowed: shadow evidence can never block the runtime.
+AUTO_ACTIVE_IF_ELIGIBLE (``app.activation.cati.capital_routing_shadow``):
+active whenever the cycle shadow is; ``CATI_CAPITAL_ROUTING_SHADOW_ENABLED``
+set to an explicit off value is an operator override that switches it OFF.
+It grants no execution authority and never submits a transfer. Every failure
+is recorded and swallowed: shadow evidence can never block the runtime.
 """
 from __future__ import annotations
 
@@ -20,11 +22,15 @@ from typing import Any, Dict, Optional
 logger = logging.getLogger(__name__)
 ENV_FLAG = "CATI_CAPITAL_ROUTING_SHADOW_ENABLED"
 _TRUE = ("1", "true", "yes", "on")
-_PRODUCT = {"CRYPTO": "CRYPTO_PERPETUAL", "FX": "FX_PERPETUAL"}
+_PRODUCT = {"CRYPTO": "CRYPTO_PERPETUAL", "FX": "FX_PERPETUAL", "COMMODITIES": "TRADFI_PERPETUAL",
+            "STOCK": "TRADFI_PERPETUAL", "INDEX": "TRADFI_PERPETUAL", "FUTURES": "TRADFI_PERPETUAL"}
 
 
 def is_enabled() -> bool:
-    return os.environ.get(ENV_FLAG, "").strip().lower() in _TRUE
+    from app.activation.cati import capital_routing_shadow
+    from app.activation.transitions import observe
+
+    return observe(capital_routing_shadow()).active
 
 
 def account_capital_state(db: Any, *, user_id: str, broker_account_id: str, asset: str = "USDT",

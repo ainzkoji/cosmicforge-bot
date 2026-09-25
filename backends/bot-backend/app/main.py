@@ -410,6 +410,13 @@ from app.api.broker_transfers import router as broker_transfers_router
 
 app.include_router(broker_transfers_router, prefix="/api/v1/brokers", tags=["Broker Internal Transfers"])
 
+# Multi-asset market / capability status (user-scoped) + CATI auto-activation status (admin)
+from app.api.multi_asset_status import admin_router as capability_admin_router
+from app.api.multi_asset_status import router as multi_asset_status_router
+
+app.include_router(multi_asset_status_router, prefix="/api/v1/brokers", tags=["Broker Market Status"])
+app.include_router(capability_admin_router, prefix="/api/v1/capabilities", tags=["Capability Activation"])
+
 # Register IBKR Connect API router
 from app.api.ibkr import router as ibkr_router
 

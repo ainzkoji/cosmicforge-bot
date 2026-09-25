@@ -18,9 +18,14 @@ RESPONSIBILITY_MAP: Mapping[str, Tuple[Tuple[str, ...], str, str]] = {
     "contracts.instrument": ((f"{_TI}/contracts/instrument.py",), PRESENT, ""),
     "contracts.data_quality": ((f"{_TI}/contracts/data_quality.py",), PRESENT, ""),
     "contracts.market_state": ((f"{_TI}/contracts/market_state.py",), PRESENT, ""),
-    "contracts.global_market_state": ((f"{_TI}/contracts/factors.py",), PARTIAL,
-                                      "cross-asset factor sets exist for portfolio correlation; no dedicated "
-                                      "global market-state contract feeds the decision path"),
+    "contracts.global_market_state": ((f"{_TI}/contracts/global_market_state.py",
+                                       f"{_TI}/market_state/global_state.py",
+                                       f"{_TI}/market_state/global_state_store.py"), PRESENT,
+                                      "canonical causal, versioned, hashed, tenant/broker-neutral GlobalMarketState "
+                                      "built each decision epoch from the epoch's MarketStates "
+                                      "(integration/cycle_shadow._global_market_state_stage) with append-only "
+                                      "evidence; context only -- consuming it in admission/veto is a governed "
+                                      "policy-version change"),
     "contracts.regime": ((f"{_TI}/regime/contracts.py",), PRESENT, ""),
     "contracts.setup": ((f"{_TI}/contracts/setup.py",), PRESENT, ""),
     "contracts.forecast": ((f"{_TI}/contracts/forecast.py",), PRESENT, ""),
@@ -37,8 +42,11 @@ RESPONSIBILITY_MAP: Mapping[str, Tuple[Tuple[str, ...], str, str]] = {
                              f"{_TI}/market_state/participation.py", f"{_TI}/market_state/derivatives.py",
                              f"{_TI}/market_state/multi_timeframe.py", f"{_TI}/market_state/uncertainty.py"),
                             PRESENT, ""),
-    "global_context": ((f"{_TI}/portfolio/factors.py", f"{_TI}/contracts/events.py"), PARTIAL,
-                       "event-risk context and cross-asset factors exist; the event calendar source is stale"),
+    "global_context": ((f"{_TI}/portfolio/factors.py", f"{_TI}/contracts/events.py",
+                        f"{_TI}/market_state/global_state.py"), PRESENT,
+                       "event-risk context, cross-asset factors and the GlobalMarketState exist; calendar DATA "
+                       "freshness is operational (the synced economic_events feed ends 2026-05-29 in the canonical "
+                       "DB) and is surfaced explicitly as STALE/UNAVAILABLE, never as 'no event risk'"),
     "regimes": ((f"{_TI}/regime/engine.py", f"{_TI}/regime/policy.py", f"{_TI}/regime/calibration.py"), PRESENT, ""),
     "setups.trend_pullback": ((f"{_TI}/setups/trend_pullback.py",), PRESENT, ""),
     "setups.breakout_expansion": ((f"{_TI}/setups/breakout_expansion.py",), PRESENT, ""),

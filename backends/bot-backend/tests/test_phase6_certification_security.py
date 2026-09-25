@@ -144,7 +144,14 @@ def test_cati_execution_remains_disabled_and_phases_do_not_auto_advance(monkeypa
     from app.trading_intelligence.execution.config import CATIExecutionConfig, is_active_execution_enabled
 
     monkeypatch.delenv("CATI_ACTIVE_EXECUTION_ENABLED", raising=False)
-    assert not is_active_execution_enabled() and CATIExecutionConfig().active_execution_enabled is False
+    # AUTO: the switch no longer needs remembering -- governance is the authority, and at M0 it refuses
+    from app.activation import cati as act
+
+    assert CATIExecutionConfig().active_execution_enabled is False
+    assert is_active_execution_enabled()  # operator has not switched it off
+    assert not act.active_execution(None, environment="DEMO").active
+    monkeypatch.setenv("CATI_ACTIVE_EXECUTION_ENABLED", "false")
+    assert not is_active_execution_enabled()
     new_code = "\n".join(p.read_text() for p in [
         *(ROOT / "app/transfers").glob("*.py"), *(ROOT / "app/market_data").glob("*.py"),
         *(ROOT / "app/trading_intelligence/capital").glob("*.py"), ROOT / "app/trading_intelligence/fx/context.py",
@@ -247,9 +254,12 @@ def test_capital_routing_shadow_hook_is_off_by_default_and_evidence_only(db, mon
                                bot_instance_id="bot1")
     runner = SimpleNamespace(db=db, context=SimpleNamespace(user_id="alice", trade_usdt_per_order=500, max_leverage=5,
                                                              broker_type="binance"))
+    monkeypatch.setenv(sh.ENV_FLAG, "off")  # operator override: OFF
+    assert sh.shadow_capital_routing(runner, SimpleNamespace(decision=decision), {}) == []
+    monkeypatch.setenv("CATI_CYCLE_SHADOW_ENABLED", "off")  # the parent evidence stage off -> child off
     monkeypatch.delenv(sh.ENV_FLAG, raising=False)
     assert sh.shadow_capital_routing(runner, SimpleNamespace(decision=decision), {}) == []
-    monkeypatch.setenv(sh.ENV_FLAG, "1")
+    monkeypatch.delenv("CATI_CYCLE_SHADOW_ENABLED", raising=False)  # AUTO: active (evidence only)
     adapter = MagicMock()
     adapter.topology.return_value = topology_for("binance")
     adapter.transferable.side_effect = lambda w, a: {"UMFUTURE": Decimal("10"), "FUNDING": Decimal("1000")}.get(w.native_type)

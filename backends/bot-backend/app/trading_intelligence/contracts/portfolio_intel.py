@@ -89,6 +89,20 @@ class PortfolioPolicy:
     #: duplicates are explicitly permitted.
     allow_hedge_mode_duplicates: bool = False
 
+    #: HARD cross-asset currency-factor cap (multi-asset closure). Every FX
+    #: position / reservation / candidate contributes its structural legs
+    #: (LONG EURUSD = +EUR, -USD; stablecoin quotes fold into USD) in the same
+    #: PRE_SIZE unit as the factor model; the account's |net units| per currency
+    #: may not exceed this after selection unless the subset does not worsen it.
+    #: EURUSD + EURGBP + EURJPY long = EUR +3 -> the third is refused at 2.0.
+    #: None disables the hard cap (the soft factor penalty remains).
+    max_net_currency_units: Optional[float] = 2.0
+    #: LOGICAL asset-class allocations (risk budgets, not wallets): max number of
+    #: open + reserved + selected positions per asset class on the account, e.g.
+    #: (("FX", 3),). Empty = the account's slots are the only limit. Hard
+    #: account risk (daily loss, margin, slots) stays superior either way.
+    asset_class_max_positions: Tuple[Tuple[str, int], ...] = ()
+
     reservation_ttl_seconds: int = 900
 
     @property

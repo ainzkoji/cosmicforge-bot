@@ -425,6 +425,34 @@ _EVIDENCE_TRIGGERS = (
     + _append_only_triggers(CATI_GOVERNANCE_CONTROL_TABLE, "cati_ctrl")
 )
 
+#: Section 24 -- append-only GlobalMarketState evidence. The state itself is
+#: tenant-neutral; cycle / bot / account columns are LINEAGE (which decision
+#: epoch saw it), never inputs to it.
+CATI_GLOBAL_MARKET_STATE_TABLE = "cati_global_market_states"
+_CREATE_GLOBAL_MARKET_STATE = f"""
+CREATE TABLE IF NOT EXISTS {CATI_GLOBAL_MARKET_STATE_TABLE} (
+    evidence_id TEXT PRIMARY KEY,
+    global_state_id TEXT NOT NULL,
+    state_hash TEXT NOT NULL,
+    decision_time INTEGER NOT NULL,
+    timeframe TEXT NOT NULL,
+    asset_classes TEXT NOT NULL,
+    risk_regime TEXT,
+    input_count INTEGER NOT NULL,
+    cycle_id TEXT,
+    bot_instance_id TEXT,
+    broker_account_id TEXT,
+    schema_version TEXT NOT NULL,
+    payload TEXT NOT NULL,
+    recorded_at INTEGER NOT NULL
+)
+"""
+_GLOBAL_MARKET_STATE_DDL = (
+    _CREATE_GLOBAL_MARKET_STATE,
+    f"CREATE INDEX IF NOT EXISTS idx_cati_gms_time ON {CATI_GLOBAL_MARKET_STATE_TABLE}(decision_time, timeframe)",
+    f"CREATE INDEX IF NOT EXISTS idx_cati_gms_state ON {CATI_GLOBAL_MARKET_STATE_TABLE}(global_state_id)",
+) + _append_only_triggers(CATI_GLOBAL_MARKET_STATE_TABLE, "cati_gms")
+
 CATI_CERTIFICATION_TABLES = (CATI_CERTIFICATION_RUN_TABLE, CATI_CERTIFICATION_STAGE_TABLE, CATI_EXPERIMENT_TABLE,
                              CATI_HOLDOUT_TABLE)
 
@@ -446,7 +474,7 @@ def ensure_cati_schema_on_connection(conn: Any) -> None:
     for ddl in _TRADE_PLAN_INDEXES + _TRADE_PLAN_TRIGGERS:
         conn.execute(ddl)
     for ddl in _CREATE_EVIDENCE + _CREATE_CERTIFICATION + _CREATE_ML_GOVERNANCE + _EVIDENCE_INDEXES \
-            + _CERTIFICATION_INDEXES + _ML_GOVERNANCE_INDEXES + _EVIDENCE_TRIGGERS:
+            + _CERTIFICATION_INDEXES + _ML_GOVERNANCE_INDEXES + _EVIDENCE_TRIGGERS + _GLOBAL_MARKET_STATE_DDL:
         conn.execute(ddl)
 
 
@@ -461,4 +489,5 @@ __all__ = ["CATI_RESERVATION_TABLE", "CATI_TRADE_PLAN_TABLE", "CATI_EVIDENCE_TAB
            "CATI_CERTIFICATION_RUN_TABLE", "CATI_CERTIFICATION_STAGE_TABLE", "CATI_EXPERIMENT_TABLE",
            "CATI_HOLDOUT_TABLE", "CATI_ML_MODEL_TABLE", "CATI_ML_MODEL_EVENT_TABLE", "CATI_ML_SHADOW_TABLE",
            "CATI_PHASE_HISTORY_TABLE", "CATI_PROMOTION_SCOPE_TABLE", "CATI_GOVERNANCE_CONTROL_TABLE",
+           "CATI_GLOBAL_MARKET_STATE_TABLE",
            "ensure_cati_schema", "ensure_cati_schema_on_connection"]
