@@ -257,6 +257,10 @@ def _portfolio_stage(runner: Any, result: Any) -> None:
         d.available_slots, d.portfolio_score, d.solver, d.reservation_id, d.reservation_status, ",".join(d.reason_codes) or "-",
     )
     trade_plan_stage(db, result, outcome, evaluated, now_ms)
+    # Phase 5E/6F: SHADOW capital routing (flag-gated, evidence only, no transfer).
+    from app.trading_intelligence.capital.shadow_hook import shadow_capital_routing
+
+    shadow_capital_routing(runner, outcome, evaluated)
 
 
 def trade_plan_stage(db: Any, result: Any, outcome: Any, evaluated: Dict[str, Any], now_ms: int) -> list:

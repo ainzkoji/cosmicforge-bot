@@ -68,6 +68,12 @@ class Validation:
     transferable: Optional[Decimal] = None
 
 
+def _metric(venue: str, status: str, reason: Optional[str]) -> None:
+    from app.ops import multi_asset_metrics
+
+    multi_asset_metrics.transfer(venue, status, reason)
+
+
 def _dec(v: Any) -> Optional[Decimal]:
     try:
         return Decimal(str(v)) if v not in (None, "") else None
@@ -287,6 +293,7 @@ class InternalTransferService:
             self.store.transition(tid, expect=S.VALIDATING, to=S.BLOCKED, event="BLOCKED",
                                   detail={"reason": v.reason, "detail": v.detail}, failure_reason=v.reason)
             logger.info("internal_transfer_blocked id=%s account=%s reason=%s", tid, auth.account_id, v.reason)
+            _metric(auth.broker_type, "BLOCKED", v.reason)
             return self.store.get_any(tid)
 
         meta = dict(row.get("metadata") or {})
@@ -310,6 +317,7 @@ class InternalTransferService:
             # The broker answered and refused: nothing moved.
             self.store.transition(tid, expect=S.SUBMITTING, to=S.FAILED, event="BROKER_REJECTED",
                                   detail={"error": redact_exception(exc)[:200]}, failure_reason="BROKER_REJECTED")
+            _metric(auth.broker_type, "FAILED", "BROKER_REJECTED")
             return self.store.get_any(tid)
         except Exception as exc:
             # Dispatched and no answer (timeout, connection reset, 5xx): the
@@ -318,6 +326,7 @@ class InternalTransferService:
                                   detail={"error": redact_exception(exc)[:200], "dispatched": dispatched},
                                   failure_reason="SUBMIT_OUTCOME_UNKNOWN")
             logger.warning("internal_transfer_unknown id=%s account=%s", tid, auth.account_id)
+            _metric(auth.broker_type, "UNKNOWN", "SUBMIT_OUTCOME_UNKNOWN")
             return self.store.get_any(tid)
         fields: Dict[str, Any] = {"broker_transfer_id": outcome.broker_transfer_id}
         if outcome.status == S.COMPLETED:
@@ -326,6 +335,7 @@ class InternalTransferService:
             fields["failure_reason"] = f"BROKER_STATUS_{outcome.raw_status or 'FAILED'}"
         self.store.transition(tid, expect=S.SUBMITTING, to=outcome.status, event="SUBMITTED",
                               detail={"raw_status": outcome.raw_status, "detail": outcome.detail}, **fields)
+        _metric(auth.broker_type, outcome.status.value, outcome.raw_status)
         return self.store.get_any(tid)
 
 

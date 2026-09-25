@@ -135,6 +135,9 @@ class TransferReconciler:
             summary["errors"].append(f"history: {redact_exception(exc)[:160]}")
         if summary["still_unresolved"]:
             summary["status"] = "UNRESOLVED_REMAIN"
+        from app.ops import multi_asset_metrics
+
+        multi_asset_metrics.transfer_reconcile(auth.broker_type, summary["status"])
         return self._record(user_id, broker_account_id, auth.broker_type, summary)
 
     def _cache_history(self, user_id: str, auth: BrokerAuth, rows) -> None:

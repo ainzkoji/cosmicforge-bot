@@ -673,6 +673,8 @@ class MultiBotRunner:
                     _perms = None
                 _readiness = execution_readiness(auth.broker_type, auth.environment, permissions=_perms)
                 if not _readiness.permitted:
+                    from app.ops import multi_asset_metrics as _mam
+                    _mam.capability_block(auth.broker_type, _readiness.reason_code)
                     logger.error(
                         "bot_execution_capability_refused bot_id=%s broker=%s env=%s reason=%s missing=%s",
                         instance.id, auth.broker_type, auth.environment.value,

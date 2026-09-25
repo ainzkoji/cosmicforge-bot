@@ -13,6 +13,7 @@ Additive and idempotent, called from ``migrations.migrate()``.
 * ``broker_transfer_events`` -- append-only state history.
 * ``broker_transfer_reconciliations`` -- one row per reconciliation run.
 * ``broker_transfer_settings`` -- per-account transfer mode and user limits.
+* ``cati_capital_plan_evidence`` -- append-only SHADOW capital-routing decisions.
 * ``broker_transfers_cache`` gains ``classification`` / ``direction`` /
   wallet columns so INTERNAL_TRANSFER is never conflated with DEPOSIT or
   WITHDRAWAL.
@@ -109,6 +110,24 @@ CREATE TABLE IF NOT EXISTS broker_transfer_settings (
 """
 
 
+_CAPITAL_PLAN_EVIDENCE = """
+CREATE TABLE IF NOT EXISTS cati_capital_plan_evidence (
+    evidence_id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    broker_account_id TEXT NOT NULL,
+    bot_instance_id TEXT,
+    cycle_id TEXT,
+    opportunity_id TEXT,
+    mode TEXT NOT NULL DEFAULT 'SHADOW',
+    outcome TEXT NOT NULL,
+    product TEXT NOT NULL,
+    plan_json TEXT NOT NULL,
+    simulated_transfer_json TEXT,
+    created_at INTEGER NOT NULL
+)
+"""
+
+
 def _cols(conn: Any, table: str) -> set:
     return {r[1] for r in conn.execute(f"PRAGMA table_info({table})").fetchall()}
 
@@ -126,6 +145,11 @@ def ensure_broker_schema(db: Any) -> None:
         conn.execute(_TRANSFER_EVENTS)
         conn.execute(_RECONCILIATIONS)
         conn.execute(_SETTINGS)
+        conn.execute(_CAPITAL_PLAN_EVIDENCE)
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_ccpe_account ON cati_capital_plan_evidence(broker_account_id, created_at)")
+        for trig, op in (("no_update", "UPDATE"), ("no_delete", "DELETE")):
+            conn.execute(f"""CREATE TRIGGER IF NOT EXISTS trg_ccpe_{trig} BEFORE {op} ON cati_capital_plan_evidence
+                             BEGIN SELECT RAISE(ABORT, 'cati_capital_plan_evidence is append-only'); END""")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_btr_account_status ON broker_transfer_requests(broker_account_id, status)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_btr_user ON broker_transfer_requests(user_id, requested_at)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_bte_transfer ON broker_transfer_events(transfer_id, id)")
