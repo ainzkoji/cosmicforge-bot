@@ -5751,7 +5751,15 @@ class PaperRunner:
         capital = float(getattr(self.context, "capital_budget", 0.0) or 0.0)
         leverage = float(getattr(self.context, "max_leverage", 0.0) or 0.0)
         cap = capital * leverage if capital > 0 and leverage > 0 else None
-        engine = UniverseEngine(adapter, UniverseConfig.from_settings(settings, max_position_notional=cap))
+        config = UniverseConfig.from_settings(settings, max_position_notional=cap)
+        allowed = tuple(getattr(self.context, "allowed_asset_classes", ()) or ())
+        if allowed and allowed != ("CRYPTO",):
+            # Multi-asset bot: widen the underlying types to the allowed classes
+            # (a crypto-only bot keeps the configured default, unchanged).
+            from dataclasses import replace as _replace
+            from app.universe.adapters import underlying_types_for
+            config = _replace(config, allowed_underlying_types=underlying_types_for(allowed))
+        engine = UniverseEngine(adapter, config)
         return UniverseRuntime(
             engine=engine,
             broker_account_id=self.context.broker_account_id,

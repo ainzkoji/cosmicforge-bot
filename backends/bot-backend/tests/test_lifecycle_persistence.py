@@ -320,25 +320,17 @@ def test_reduce_only_on_sl_tp_orders():
 
 def test_update_protection_cancel_replace_bybit():
     """
-    BybitClient.update_protection() cancels old order then places new SL/TP.
+    BybitClient.update_protection() amends the position-attached SL/TP IN PLACE
+    (/v5/position/trading-stop). Phase 3 replaced the old cancel-then-replace
+    flow: there is no cancel step, so no window in which the position has no
+    stop-loss.
     """
     from app.models.unified_trading import ProtectionUpdateRequest
 
-    cancelled = []
-    placed = []
-
-    client = MagicMock()
-    client._request_v5.side_effect = lambda method, path, *args, **kwargs: (
-        cancelled.append(path) or {}
-    ) if "cancel" in path else {}
-    client.place_stop_market.return_value = {"orderId": "NEW_SL_001"}
-    client.place_take_profit_market.return_value = {"orderId": "NEW_TP_001"}
-
+    calls = []
     from app.exchange.bybit.client import BybitClient
     bc = BybitClient.__new__(BybitClient)
-    bc._request_v5 = client._request_v5
-    bc.place_stop_market = client.place_stop_market
-    bc.place_take_profit_market = client.place_take_profit_market
+    bc._request_v5 = lambda method, path, payload=None: calls.append((path, dict(payload or {}))) or {"retCode": 0}
 
     req = ProtectionUpdateRequest(
         symbol="BTCUSDT",
@@ -353,33 +345,28 @@ def test_update_protection_cancel_replace_bybit():
     result = bc.update_protection(req)
 
     assert result["status"] == "OK"
-    assert result["sl_order_id"] == "NEW_SL_001"
-    assert result["tp_order_id"] == "NEW_TP_001"
-    client.place_stop_market.assert_called_once()
-    client.place_take_profit_market.assert_called_once()
+    assert result["sl_order_id"] == "POSITION_SL:BTCUSDT"
+    assert result["tp_order_id"] == "POSITION_TP:BTCUSDT"
+    assert [c[0] for c in calls] == ["/v5/position/trading-stop"]
+    assert calls[0][1]["stopLoss"] == "48000" and calls[0][1]["takeProfit"] == "55000"
 
 
 # ──────────────────────────────────────────────────────────────────────────────
-# 9. Cancel succeeds, replace fails (partial failure)
+# 9. Amend fails -> fail closed, existing stop untouched
 # ──────────────────────────────────────────────────────────────────────────────
 
 def test_cancel_replace_partial_failure_handling():
     """
-    When cancel succeeds but SL replace fails, update_protection returns
-    status=REPLACE_PARTIAL_FAILURE and error is non-None.
+    When the in-place amend is rejected, update_protection raises (the same
+    fail-closed contract as the Binance client) and nothing was cancelled, so
+    the position keeps its previous stop-loss.
     """
     from app.models.unified_trading import ProtectionUpdateRequest
 
-    client = MagicMock()
-    client._request_v5.return_value = {}  # cancel succeeds
-    client.place_stop_market.side_effect = RuntimeError("Exchange rejected: insufficient margin")
-    client.place_take_profit_market.return_value = {"orderId": "TP_OK"}
-
+    calls = []
     from app.exchange.bybit.client import BybitClient
     bc = BybitClient.__new__(BybitClient)
-    bc._request_v5 = client._request_v5
-    bc.place_stop_market = client.place_stop_market
-    bc.place_take_profit_market = client.place_take_profit_market
+    bc._request_v5 = lambda method, path, payload=None: calls.append(path) or {"retCode": 10001, "retMsg": "rejected"}
 
     req = ProtectionUpdateRequest(
         symbol="BTCUSDT",
@@ -390,11 +377,9 @@ def test_cancel_replace_partial_failure_handling():
         old_sl_order_id="OLD_SL",
         reason="BREAK_EVEN",
     )
-    result = bc.update_protection(req)
-
-    assert result["status"] == "REPLACE_PARTIAL_FAILURE"
-    assert result["error"] is not None
-    assert "SL_PLACE_FAILED" in result["error"]
+    with pytest.raises(RuntimeError, match="SEV1-S5"):
+        bc.update_protection(req)
+    assert calls == ["/v5/position/trading-stop"]  # no cancel was ever sent
 
 
 # ──────────────────────────────────────────────────────────────────────────────

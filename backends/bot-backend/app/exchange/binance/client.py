@@ -1167,3 +1167,65 @@ class BinanceFuturesClient:
                 return {"success": False, "error": "Server time synchronization issue"}
             else:
                 return {"success": False, "error": f"Connection failed: {error_msg}"}
+
+    # ================== CANONICAL CONTRACT (aliases; behaviour unchanged) ==================
+
+    def cancel_order(self, symbol: str, order_id) -> bool:
+        try:
+            self._signed_delete("/fapi/v1/order", {"symbol": symbol.upper(), "orderId": int(order_id)})
+            return True
+        except Exception:
+            return False
+
+    def get_open_orders(self, symbol: str | None = None) -> list:
+        data = self.open_orders(symbol)
+        return data if isinstance(data, list) else []
+
+    def cancel_all(self, symbol: str) -> dict:
+        return self.cancel_all_orders(symbol)
+
+    def get_balance(self) -> dict:
+        a = self.account()
+        return {"wallet": Decimal(str(a.get("totalWalletBalance", 0))),
+                "equity": Decimal(str(a.get("totalMarginBalance", 0))),
+                "available": Decimal(str(a.get("availableBalance", 0)))}
+
+    def discover_instruments(self) -> list:
+        """Every exchangeInfo symbol as a canonical DiscoveredInstrument."""
+        from app.exchange.instruments import parse_binance_symbol
+
+        return [i for i in (parse_binance_symbol(s) for s in self.exchange_info_cached().get("symbols", [])) if i]
+
+    def get_instrument(self, symbol: str):
+        return next((i for i in self.discover_instruments() if i.venue_symbol == symbol.upper()), None)
+
+    def get_ticker(self, symbol: str) -> dict:
+        book = self.book_ticker(symbol)
+        return {"symbol": symbol.upper(), "lastPrice": self.last_price(symbol), "bidPrice": book.get("bidPrice"),
+                "askPrice": book.get("askPrice")}
+
+    def get_orderbook(self, symbol: str, limit: int = 50) -> dict:
+        d = self.depth(symbol, limit=limit)
+        return {"bids": [[float(p), float(q)] for p, q in d.get("bids", [])],
+                "asks": [[float(p), float(q)] for p, q in d.get("asks", [])], "time": int(d.get("T") or d.get("E") or 0)}
+
+    def get_funding(self, symbol: str) -> dict:
+        m = self.mark_price(symbol)
+        return {"symbol": symbol.upper(), "fundingRate": m.get("lastFundingRate"),
+                "nextFundingTime": m.get("nextFundingTime"), "markPrice": m.get("markPrice"),
+                "indexPrice": m.get("indexPrice")}
+
+    def get_account_permissions(self) -> dict:
+        """Needs a client on the SAPI host (see shared_lib.broker.permission_probe);
+        on the fapi host the endpoint does not exist -> UNVERIFIED."""
+        from shared_lib.broker.permissions import normalize_binance_api_restrictions, unverified
+
+        try:
+            return normalize_binance_api_restrictions(self.api_restrictions()).to_dict()
+        except Exception:
+            return unverified("binance", "binance:/sapi/v1/account/apiRestrictions").to_dict()
+
+    def get_account_capabilities(self, environment: str = "live") -> dict:
+        from shared_lib.broker.capabilities import declared_profile
+
+        return declared_profile("binance").for_account(self.get_account_permissions().get("permissions")).to_dict()

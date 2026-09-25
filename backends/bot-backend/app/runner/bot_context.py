@@ -94,6 +94,16 @@ class BotRunContext:
         self.symbols = [s.upper() for s in self.symbols]
         self.market_type = str(self.market_type or "UNKNOWN").upper()
     
+    @property
+    def allowed_asset_classes(self) -> tuple:
+        """CATI asset classes this bot may consider (market_type parsed);
+        unknown market types fall back to crypto-only, never to 'everything'."""
+        from app.universe.asset_classes import parse_allowed_asset_classes
+        try:
+            return parse_allowed_asset_classes(self.market_type) or ("CRYPTO",)
+        except ValueError:
+            return ("CRYPTO",)
+
     @classmethod
     def from_bot_instance(
         cls,

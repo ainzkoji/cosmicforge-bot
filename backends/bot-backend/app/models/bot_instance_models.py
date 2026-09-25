@@ -296,8 +296,9 @@ class CreateBotInstanceRequest:
         if not self.broker_account_id:
             errors.append("broker_account_id is required")
         
-        if self.market_type not in ["CRYPTO", "FOREX"]:
-            errors.append("market_type must be CRYPTO or FOREX")
+        from app.universe.asset_classes import is_valid_market_type
+        if not is_valid_market_type(self.market_type):
+            errors.append("market_type must be CRYPTO, FOREX, a comma-separated set of them, or MULTI_ASSET")
         
         if not self.strategy_id:
             errors.append("strategy_id is required")

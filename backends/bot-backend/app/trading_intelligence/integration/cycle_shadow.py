@@ -104,17 +104,34 @@ def _error(component: str, exc: BaseException, runner: Any, *, symbol: Optional[
 _ASSET_CLASS = {"CRYPTO": "CRYPTO", "FOREX": "FX", "FX": "FX", "FUTURES": "FUTURES", "EQUITY": "EQUITY"}
 
 
-def _asset_class(runner: Any) -> str:
+def _asset_class(runner: Any, symbol: Optional[str] = None) -> str:
+    """Per-INSTRUMENT asset class when the broker universe knows the symbol
+    (multi-asset bots: one bot, CRYPTO + FX); otherwise the bot-level class
+    exactly as before."""
     ctx = getattr(runner, "context", None)
-    return _ASSET_CLASS.get(str(getattr(ctx, "market_type", "CRYPTO") or "CRYPTO").upper(), "CRYPTO")
+    if symbol is not None:
+        runtime = getattr(runner, "_universe_runtime", None)
+        engine = getattr(runtime, "engine", None)
+        meta = engine.instrument(symbol) if engine is not None and hasattr(engine, "instrument") else None
+        if meta is not None:
+            from app.universe.asset_classes import UNDERLYING_TO_CATI
+
+            ut = str(getattr(meta, "underlying_type", None) or "COIN").upper()
+            if ut in UNDERLYING_TO_CATI:
+                return UNDERLYING_TO_CATI[ut]
+    market_type = str(getattr(ctx, "market_type", "CRYPTO") or "CRYPTO").upper()
+    if market_type not in _ASSET_CLASS:
+        allowed = tuple(getattr(ctx, "allowed_asset_classes", ()) or ())
+        return allowed[0] if len(allowed) == 1 else "CRYPTO"
+    return _ASSET_CLASS[market_type]
 
 
-def _session_open(runner: Any, now_ms: int) -> bool:
+def _session_open(runner: Any, now_ms: int, asset_class: Optional[str] = None) -> bool:
     """Reuses the runtime's canonical session guard (the one PolicyEngine
     uses). A closed session opens no batch -- crypto is always open; FX
     weekends/rollover are not; unknown asset classes are not assumed 24/7
     and simply follow the guard's own default."""
-    asset_class = _asset_class(runner)
+    asset_class = asset_class or _asset_class(runner)
     if asset_class == "CRYPTO":
         return True
     try:
@@ -217,14 +234,16 @@ def _portfolio_stage(runner: Any, result: Any) -> None:
 
     # Only the factors the policy's FactorSet for THIS bot's asset class defines
     # (crypto: configured BTC/ETH series; FX: structural legs need no series).
-    asset_class = _asset_class(runner)
+    classes = {sym: _asset_class(runner, sym) for sym in rows}
     model = FactorModel.from_policy(policy)
-    fs = model.factor_set(asset_class)
-    refs = {d.factor_id: d.canonical_reference for d in (fs.definitions if fs else ()) if d.canonical_reference}
+    refs = {}
+    for asset_class in sorted(set(classes.values()) or {_asset_class(runner)}):
+        fs = model.factor_set(asset_class)
+        refs.update({d.factor_id: d.canonical_reference for d in (fs.definitions if fs else ()) if d.canonical_reference})
     factors = {fid: (rows.get(ref) or load(ref)) for fid, ref in refs.items()}
     decision_time = max((int(r[6]) for rs in rows.values() if rs for r in rs), default=now_ms)
     market_context = build_portfolio_market_context(rows, decision_time, policy, factor_rows=factors,
-                                                    asset_classes={sym: asset_class for sym in rows})
+                                                    asset_classes=classes)
     evaluated = {o.candidate.setup_candidate_id: o for ev in result.evaluations for o in ev.opportunities}
     outcome = service.select_and_reserve(
         ranked=result.ranked, broker_account_id=account, bot_instance_id=result.batch.bot_instance_id,
@@ -310,10 +329,22 @@ def on_cycle_start(runner: Any) -> None:
                 _finalize_epoch(runner, bot, "EPOCH_ROLLED_OVER")
                 info = None
             coordinator = _get_coordinator()
-            if info is None and not _session_open(runner, now_ms):
-                logger.info("[CATI_BATCH] bot=%s session closed for %s: no batch opened", bot, _asset_class(runner))
+            # Per-instrument session gating: a multi-asset bot keeps evaluating
+            # crypto while FX is closed; a single-class bot behaves as before.
+            candidates = _expected_symbols(runner)
+            open_cache: Dict[str, bool] = {}
+
+            def _open(sym: str) -> bool:
+                ac = _asset_class(runner, sym)
+                if ac not in open_cache:
+                    open_cache[ac] = _session_open(runner, now_ms, ac)
+                return open_cache[ac]
+
+            expected = {s for s in candidates if _open(s)}
+            if info is None and not expected and (candidates or not _session_open(runner, now_ms)):
+                logger.info("[CATI_BATCH] bot=%s session closed for %s: no batch opened", bot,
+                            ",".join(sorted(open_cache)) or _asset_class(runner))
                 return
-            expected = _expected_symbols(runner)
             if info is None:
                 ctx = runner.context
                 key = coordinator.begin_bot_cycle(
@@ -351,7 +382,7 @@ def record_symbol(runner: Any, snapshot: Any, symbol: str, *, venue: str, source
         # scoped to this bot's broker account -- never left UNKNOWN by omission.
         system_context = system_context_from_runner(runner, now_ms=now_ms)
         evaluation = _get_controller().evaluate_symbol(
-            snapshot=snapshot, venue=venue, source=source, asset_class=_asset_class(runner),
+            snapshot=snapshot, venue=venue, source=source, asset_class=_asset_class(runner, str(symbol)),
             event_context=build_event_risk_context(runner.db, now_ms, venue=venue),
             system_context=system_context,
             user_id=getattr(ctx, "user_id", None), broker_account_id=getattr(ctx, "broker_account_id", None),

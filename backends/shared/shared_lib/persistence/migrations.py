@@ -2749,6 +2749,13 @@ def migrate(db_path: str | DB = None):
     from shared_lib.persistence.broker_schema import ensure_broker_schema
     ensure_broker_schema(db)
 
+    # 48f) Venue-aware market-data schema: discovered venue instruments,
+    # venue-keyed candles, feature observations (UNAVAILABLE != 0), FX
+    # reference quotes and immutable dataset/universe manifests. Additive;
+    # historical_candles is untouched (Section 22 dataset hashes depend on it).
+    from shared_lib.persistence.market_data_schema import ensure_market_data_schema
+    ensure_market_data_schema(db)
+
     # 47) Event/News automatic runtime mode controller.
     # Keep this after the main migration connection closes so the helper can
     # self-heal temporary test databases through the normal DB context manager.

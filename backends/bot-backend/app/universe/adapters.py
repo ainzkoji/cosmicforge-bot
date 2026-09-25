@@ -181,9 +181,105 @@ class BinanceUsdmUniverseAdapter:
         return RequestBudget(used=int(used) if used is not None else None, limit=self._weight_limit)
 
 
+#: canonical asset class -> universe ``underlying_type`` vocabulary
+ASSET_CLASS_UNDERLYING = {"CRYPTO": "COIN", "FX": "FX", "COMMODITIES": "COMMODITY", "STOCK": "EQUITY",
+                          "INDEX": "INDEX"}
+
+
+def underlying_types_for(asset_classes) -> tuple[str, ...]:
+    """Universe underlying types a bot restricted to ``asset_classes`` may trade."""
+    out = []
+    for ac in asset_classes:
+        ut = ASSET_CLASS_UNDERLYING.get(str(ac).upper())
+        if ut and ut not in out:
+            out.append(ut)
+    return tuple(out)
+
+
+class _DiscoveryUniverseAdapter:
+    """Shared shape for venues whose client exposes ``discover_instruments()``
+    (canonical DiscoveredInstrument) and a batched ticker endpoint."""
+
+    venue = ""
+
+    def __init__(self, client: Any) -> None:
+        self._client = client
+
+    def capabilities(self) -> Mapping[str, bool]:
+        return {"quote_volume_24h": True, "trade_count_24h": False, "last_price": True, "spread_bps": True,
+                "listing_age": True, "open_interest": False, "order_book_depth": False, "volatility": False,
+                "price_continuity": False}
+
+    def instruments(self) -> list[InstrumentMeta]:
+        out: list[InstrumentMeta] = []
+        for ins in self._client.discover_instruments():
+            runtime_symbol = ins.venue_symbol.replace("-", "")
+            product = {"PERPETUAL": Product.PERPETUAL, "FX_PERPETUAL": Product.PERPETUAL,
+                       "TRADFI_PERPETUAL": Product.PERPETUAL, "DELIVERY": Product.DELIVERY,
+                       "SPOT": Product.SPOT}.get(ins.product_type, Product.OTHER)
+            kind = PERP if ins.contract_type == "PERPETUAL" else FUTURE
+            out.append(InstrumentMeta(
+                venue=self.venue, venue_symbol=runtime_symbol,
+                canonical=canonical_instrument(ins.base_currency, ins.settlement_asset, kind),
+                status=ins.status, tradable=ins.api_tradable, product=product,
+                # asset class travels as the underlying type (Binance vocabulary:
+                # COIN for crypto) so the engine's crypto-only default excludes
+                # FX/TradFi unless the bot's allowed asset classes include them
+                underlying_type=ASSET_CLASS_UNDERLYING.get(ins.asset_class, ins.asset_class),
+                quote_asset=ins.settlement_asset, margin_asset=ins.settlement_asset,
+                tick_size=ins.tick_size, step_size=ins.qty_step, min_qty=ins.min_qty, min_notional=ins.min_notional,
+                listed_at_ms=ins.listed_at_ms, expires_at_ms=ins.expiry_ms,
+            ))
+        return out
+
+    def request_budget(self) -> RequestBudget:
+        return RequestBudget(used=None, limit=None)
+
+
+class BybitLinearUniverseAdapter(_DiscoveryUniverseAdapter):
+    venue = "bybit_linear"
+
+    def market_stats(self) -> dict[str, MarketStats]:
+        data = self._client._request_v5("GET", "/v5/market/tickers", {"category": "linear"})
+        out: dict[str, MarketStats] = {}
+        if (data or {}).get("retCode") != 0:
+            return out
+        for t in (data.get("result") or {}).get("list") or []:
+            bid, ask = _positive(t.get("bid1Price")), _positive(t.get("ask1Price"))
+            spread = (ask - bid) / ((ask + bid) / 2.0) * 10_000.0 if bid and ask and ask >= bid else None
+            try:
+                qv = float(t["turnover24h"]) if t.get("turnover24h") not in (None, "") else None
+            except (TypeError, ValueError):
+                qv = None
+            out[str(t.get("symbol") or "").upper()] = MarketStats(
+                quote_volume_24h=qv, last_price=_positive(t.get("lastPrice")), spread_bps=spread,
+                open_interest=_positive(t.get("openInterest")))
+        return out
+
+
+class BingXSwapUniverseAdapter(_DiscoveryUniverseAdapter):
+    venue = "bingx_swap"
+
+    def market_stats(self) -> dict[str, MarketStats]:
+        data = self._client._request("GET", "/openApi/swap/v2/quote/ticker", {})
+        out: dict[str, MarketStats] = {}
+        for t in data.get("data") or []:
+            bid, ask = _positive(t.get("bidPrice")), _positive(t.get("askPrice"))
+            spread = (ask - bid) / ((ask + bid) / 2.0) * 10_000.0 if bid and ask and ask >= bid else None
+            try:
+                qv = float(t["quoteVolume"]) if t.get("quoteVolume") not in (None, "") else None
+            except (TypeError, ValueError):
+                qv = None
+            out[str(t.get("symbol") or "").upper().replace("-", "")] = MarketStats(
+                quote_volume_24h=qv, last_price=_positive(t.get("lastPrice")), spread_bps=spread)
+        return out
+
+
 #: broker_type -> adapter factory. The registry is the only place a broker is named.
 _ADAPTERS: dict[str, Callable[[Any], UniverseAdapter]] = {
     "binance": BinanceUsdmUniverseAdapter,
+    "bybit": BybitLinearUniverseAdapter,
+    "bingx": BingXSwapUniverseAdapter,
 }
 
 
@@ -202,6 +298,8 @@ def adapter_for(broker_type: str, client: Any) -> UniverseAdapter:
 
 __all__ = [
     "BinanceUsdmUniverseAdapter",
+    "BingXSwapUniverseAdapter",
+    "BybitLinearUniverseAdapter",
     "RequestBudget",
     "UniverseAdapter",
     "UniverseAdapterUnavailable",

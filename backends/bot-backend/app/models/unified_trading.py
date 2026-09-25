@@ -15,6 +15,8 @@ class AssetClass(str, Enum):
     FOREX_CFD = "forex_cfd"       # OANDA V20
     EQUITY_CFD = "equity_cfd"
     COMMODITY_CFD = "commodity_cfd"
+    FOREX_PERP = "forex_perp"     # exchange-listed FX perpetual (e.g. Bybit V5, if listed)
+    TRADFI_PERP = "tradfi_perp"   # exchange-listed commodity/equity/index perpetual
 
 class PositionMode(str, Enum):
     ONE_WAY = "one_way"   # Net Position (Standard Crypto)

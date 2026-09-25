@@ -50,6 +50,11 @@ class TestBybitIntegration:
                 "list": [
                     {
                         "symbol": "BTCUSDT",
+                        # V5 always returns status; discovery no longer filters
+                        # server-side, so non-trading instruments are visible
+                        # and excluded explicitly.
+                        "status": "Trading",
+                        "contractType": "LinearPerpetual",
                         "baseCoin": "BTC",
                         "quoteCoin": "USDT",
                         "priceFilter": {"tickSize": "0.10"},

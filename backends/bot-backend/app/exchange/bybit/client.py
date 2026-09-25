@@ -260,51 +260,27 @@ class BybitClient:
             return SymbolFilters()
 
     def exchange_info_cached(self) -> dict:
-        """
-        Get exchange info (instruments).
-        Returns Binance-compatible structure: { "symbols": [ { "symbol": "...", "filters": [...] } ] }
-        """
-        data = self._request_v5("GET", "/v5/market/instruments-info", {"category": "linear", "status": "Trading"})
-        if data["retCode"] != 0:
-            return {"symbols": []}
-            
+        """Binance-shaped instrument filters for EVERY linear instrument
+        (cursor-paginated via discover_instruments), cached for 5 minutes.
+        (The previous version read one unpaginated page and USDT only.)"""
+        cache = getattr(self, "_ei_cache", None)
+        if cache is not None and time.time() - cache[0] < 300:
+            return cache[1]
         symbols = []
-        for inst in data["result"]["list"]:
-            if inst["quoteCoin"] != "USDT": continue
-            
-            # Map Bybit filters to Binance filters
-            price_filter = inst.get("priceFilter", {})
-            lot_filter = inst.get("lotSizeFilter", {})
-            
-            # Extract real minNotional (default to 5.0 if missing)
-            min_notional = lot_filter.get("minNotionalValue", "5.0")
-            
-            bin_filters = [
-                {
-                    "filterType": "PRICE_FILTER",
-                    "tickSize": price_filter.get("tickSize", "0.01")
-                },
-                {
-                    "filterType": "LOT_SIZE",
-                    "stepSize": lot_filter.get("qtyStep", "0.001"),
-                    "minQty": lot_filter.get("minOrderQty", "0.001"),
-                    "maxQty": lot_filter.get("maxOrderQty", "1000000")
-                },
-                {
-                    "filterType": "MIN_NOTIONAL",
-                    "notional": str(min_notional)
-                }
-            ]
-            
-            symbols.append({
-                "symbol": inst["symbol"],
-                "filters": bin_filters,
-                "status": "TRADING",
-                "baseAsset": inst.get("baseCoin", ""),
-                "quoteAsset": inst.get("quoteCoin", "")
-            })
-            
-        return {"symbols": symbols}
+        for ins in self.discover_instruments("linear"):
+            if not ins.api_tradable:
+                continue
+            raw = dict(ins.venue_metadata.get("raw_filters") or {})
+            filters = [{"filterType": "PRICE_FILTER", "tickSize": raw.get("tickSize") or "0"},
+                       {"filterType": "LOT_SIZE", "stepSize": raw.get("qtyStep") or "0",
+                        "minQty": raw.get("minOrderQty") or "0", "maxQty": raw.get("maxOrderQty") or "0"}]
+            if raw.get("minNotionalValue"):
+                filters.append({"filterType": "MIN_NOTIONAL", "notional": raw["minNotionalValue"]})
+            symbols.append({"symbol": ins.venue_symbol, "filters": filters, "status": "TRADING",
+                            "baseAsset": ins.base_currency, "quoteAsset": ins.settlement_asset})
+        info = {"symbols": symbols}
+        self._ei_cache = (time.time(), info)
+        return info
 
     def klines(self, symbol: str, interval: str = "1m", limit: int = 100) -> list:
         """
@@ -518,84 +494,6 @@ class BybitClient:
             "stopPrice": float(stop_price)
         }
 
-    def update_protection(self, req) -> dict:
-        """
-        Cancel-replace SL/TP orders via Bybit V5.
-        req: ProtectionUpdateRequest instance.
-
-        Steps:
-        1. Cancel old SL/TP orders (by orderId if provided, else cancel-all for symbol).
-        2. Place new STOP_MARKET with reduce_only=True.
-        3. Place new TAKE_PROFIT_MARKET with reduce_only=True.
-        Returns ProtectionResult-compatible dict.
-        """
-        import logging
-        _log = logging.getLogger(__name__)
-        symbol = req.symbol.upper()
-        new_sl_id = None
-        new_tp_id = None
-        cancel_error = None
-        replace_error = None
-
-        is_long = str(getattr(req, "position_side", "LONG")).upper() == "LONG"
-        sl_side = "Sell" if is_long else "Buy"
-        tp_side = "Sell" if is_long else "Buy"
-
-        # ---- Cancel old orders ----
-        try:
-            sl_oid = getattr(req, "old_sl_order_id", None)
-            tp_oid = getattr(req, "old_tp_order_id", None)
-            if sl_oid or tp_oid:
-                for oid in [sl_oid, tp_oid]:
-                    if oid:
-                        try:
-                            self._request_v5("POST", "/v5/order/cancel", {
-                                "category": "linear",
-                                "symbol": symbol,
-                                "orderId": oid,
-                            })
-                        except Exception as ce:
-                            _log.warning(
-                                f"[UPDATE_PROTECTION] {symbol}: cancel orderId={oid} "
-                                f"failed (may already be gone): {ce}"
-                            )
-            else:
-                self.cancel_all_orders(symbol)
-        except Exception as e:
-            cancel_error = str(e)
-            _log.error(f"[UPDATE_PROTECTION] {symbol}: cancel phase failed: {e}")
-
-        # ---- Place new SL ----
-        if getattr(req, "new_sl_price", None) is not None:
-            try:
-                sl_res = self.place_stop_market(symbol, sl_side, float(req.new_sl_price), reduce_only=True)
-                new_sl_id = sl_res.get("orderId") or sl_res.get("bybit_link_id")
-                _log.info(f"[UPDATE_PROTECTION] {symbol}: new SL={req.new_sl_price} reason={req.reason}")
-            except Exception as e:
-                replace_error = f"SL_PLACE_FAILED: {e}"
-                _log.error(
-                    f"[UPDATE_PROTECTION] {symbol}: CRITICAL — SL replace FAILED after cancel. "
-                    f"Position now has no stop-loss. Trigger ensure_protection. Error: {e}"
-                )
-
-        # ---- Place new TP ----
-        if getattr(req, "new_tp_price", None) is not None:
-            try:
-                tp_res = self.place_take_profit_market(symbol, tp_side, float(req.new_tp_price))
-                new_tp_id = tp_res.get("orderId")
-                _log.info(f"[UPDATE_PROTECTION] {symbol}: new TP={req.new_tp_price} reason={req.reason}")
-            except Exception as e:
-                replace_error = (replace_error or "") + f" TP_PLACE_FAILED: {e}"
-                _log.error(f"[UPDATE_PROTECTION] {symbol}: TP replace failed: {e}")
-
-        status = "REPLACE_PARTIAL_FAILURE" if replace_error else "OK"
-        return {
-            "sl_order_id": new_sl_id,
-            "tp_order_id": new_tp_id,
-            "status": status,
-            "error": replace_error or cancel_error,
-        }
-
     def ping(self) -> bool:
         try:
              self._request_v5("GET", "/v5/market/time")
@@ -617,3 +515,290 @@ class BybitClient:
     def sync_time(self):
         # Bybit auto-handles time offset mostly, but we can implement if needed.
         pass
+
+    # ================== EXECUTION PARITY (canonical contract) ==================
+    # Binance-shaped responses so the existing executor / fill resolution /
+    # protection checks work unchanged. Order identity: our client_order_id
+    # is sent as ``orderLinkId`` (broker-side idempotency + lookup key).
+
+    _STATUS_MAP = {
+        "New": "NEW", "PartiallyFilled": "PARTIALLY_FILLED", "Filled": "FILLED", "Cancelled": "CANCELED",
+        "PartiallyFilledCanceled": "CANCELED", "Rejected": "REJECTED", "Deactivated": "CANCELED",
+        "Untriggered": "NEW", "Triggered": "NEW", "Active": "NEW",
+    }
+
+    def _ok(self, res: dict, what: str) -> dict:
+        if (res or {}).get("retCode") != 0:
+            raise RuntimeError(f"Bybit {what} failed: retCode={res.get('retCode')} {res.get('retMsg')}")
+        return res.get("result") or {}
+
+    def _category_for(self, symbol: str) -> str:
+        return "linear"
+
+    def _fmt_qty(self, symbol: str, qty) -> str:
+        """Round DOWN to the instrument qty step (never str(float) -> '1e-05')."""
+        from decimal import Decimal, ROUND_DOWN
+        q = Decimal(str(qty))
+        try:
+            step = Decimal(str(self.get_symbol_filters(symbol).step_size or 0))
+        except Exception:
+            step = Decimal("0")
+        if step > 0:
+            q = (q / step).to_integral_value(rounding=ROUND_DOWN) * step
+        return format(q.normalize(), "f")
+
+    def _order_view(self, o: dict) -> dict:
+        status = self._STATUS_MAP.get(str(o.get("orderStatus", "")), None)
+        otype = str(o.get("orderType", "")).upper()
+        stop_type = str(o.get("stopOrderType", ""))
+        if stop_type in ("StopLoss", "Stop", "PartialStopLoss", "TrailingStop"):
+            otype = "STOP_MARKET"
+        elif stop_type in ("TakeProfit", "PartialTakeProfit"):
+            otype = "TAKE_PROFIT_MARKET"
+        return {
+            "symbol": o.get("symbol"), "orderId": o.get("orderId"), "clientOrderId": o.get("orderLinkId") or None,
+            "status": status, "executedQty": o.get("cumExecQty") or "0", "origQty": o.get("qty"),
+            "avgPrice": o.get("avgPrice") or "0", "side": str(o.get("side", "")).upper(), "type": otype,
+            "stopPrice": o.get("triggerPrice") or o.get("stopLoss") or o.get("takeProfit") or None,
+            "reduceOnly": bool(o.get("reduceOnly")), "updateTime": int(o.get("updatedTime") or 0),
+            "bybit_stop_order_type": stop_type or None,
+        }
+
+    def place_order(self, req):
+        """Canonical OrderRequest -> UnifiedOrder (MARKET / LIMIT, reduce-only aware)."""
+        from decimal import Decimal
+        from app.models.unified_trading import OrderStatus, UnifiedOrder
+        if req.leverage:
+            self.set_leverage(req.symbol, int(req.leverage))
+        payload = {
+            "category": self._category_for(req.symbol), "symbol": req.symbol.upper(),
+            "side": "Buy" if req.side.value.lower() == "buy" else "Sell",
+            "orderType": "Market" if str(req.type.value if hasattr(req.type, "value") else req.type).upper() == "MARKET" else "Limit",
+            "qty": self._fmt_qty(req.symbol, req.qty), "positionIdx": 0,
+        }
+        if payload["orderType"] == "Limit":
+            payload["price"] = str(req.price)
+            payload["timeInForce"] = "GTC"
+        if getattr(req, "client_order_id", None):
+            payload["orderLinkId"] = str(req.client_order_id)[:36]
+        if req.reduce_only:
+            payload["reduceOnly"] = True
+        res = self._ok(self._request_v5("POST", "/v5/order/create", payload), "order create")
+        # Bybit acknowledges asynchronously: the fill is resolved by
+        # fill_resolution through get_order / user_trades (never assumed).
+        return UnifiedOrder(
+            client_order_id=str(res.get("orderLinkId") or payload.get("orderLinkId") or ""),
+            broker_order_id=str(res.get("orderId", "")), symbol=req.symbol, side=req.side, type=req.type,
+            qty_ordered=req.qty, qty_filled=Decimal("0"), avg_fill_price=Decimal("0"), status=OrderStatus.NEW,
+            timestamp=int(time.time() * 1000), reduce_only=req.reduce_only,
+        )
+
+    def _find_order(self, symbol: str, **ident) -> dict:
+        params = {"category": self._category_for(symbol), "symbol": symbol.upper(), **ident}
+        for path in ("/v5/order/realtime", "/v5/order/history"):
+            res = self._ok(self._request_v5("GET", path, params), "order query")
+            rows = res.get("list") or []
+            if rows:
+                return self._order_view(rows[0])
+        return {}
+
+    def get_order(self, symbol: str, order_id) -> dict:
+        return self._find_order(symbol, orderId=str(order_id))
+
+    def get_order_by_client_order_id(self, symbol: str, client_order_id: str) -> dict:
+        return self._find_order(symbol, orderLinkId=str(client_order_id))
+
+    def open_orders(self, symbol: str | None = None) -> list:
+        """Active orders incl. conditional and position TP/SL, Binance-typed."""
+        out = []
+        for flt in ("Order", "StopOrder", "tpslOrder"):
+            params = {"category": "linear", "orderFilter": flt}
+            if symbol:
+                params["symbol"] = symbol.upper()
+            else:
+                params["settleCoin"] = "USDT"
+            res = self._ok(self._request_v5("GET", "/v5/order/realtime", params), "open orders")
+            out.extend(self._order_view(o) for o in res.get("list") or [])
+        return out
+
+    def get_open_orders(self, symbol: str | None = None) -> list:
+        return self.open_orders(symbol)
+
+    def get_algo_orders(self, symbol: str, raise_on_error: bool = False) -> list:
+        """Bybit has no separate algo book: conditional + TP/SL orders are
+        already returned by open_orders(); nothing extra to report."""
+        return []
+
+    def cancel_order(self, symbol: str, order_id) -> bool:
+        res = self._request_v5("POST", "/v5/order/cancel", {"category": "linear", "symbol": symbol.upper(),
+                                                              "orderId": str(order_id)})
+        return (res or {}).get("retCode") == 0
+
+    def cancel_all(self, symbol: str) -> dict:
+        return self.cancel_all_orders(symbol)
+
+    def user_trades(self, symbol: str, start_time_ms: int | None = None, end_time_ms: int | None = None,
+                    limit: int = 100) -> list:
+        """Executions in Binance userTrades shape (orderId, qty, price, commission)."""
+        params = {"category": "linear", "symbol": symbol.upper(), "limit": min(int(limit), 100),
+                  "startTime": start_time_ms, "endTime": end_time_ms}
+        res = self._ok(self._request_v5("GET", "/v5/execution/list", params), "executions")
+        return [{"symbol": e.get("symbol"), "orderId": e.get("orderId"), "id": e.get("execId"),
+                 "qty": e.get("execQty"), "price": e.get("execPrice"), "commission": e.get("execFee"),
+                 "commissionAsset": e.get("feeCurrency") or "USDT", "time": int(e.get("execTime") or 0),
+                 "side": str(e.get("side", "")).upper()} for e in res.get("list") or []]
+
+    def position_risk_all(self) -> list:
+        return self.position_risk()
+
+    def get_positions(self):
+        from decimal import Decimal
+        from app.models.unified_trading import PositionMode, Side, UnifiedPosition
+        out = []
+        for p in self.position_risk():
+            amt = Decimal(str(p.get("positionAmt") or 0))
+            if amt == 0:
+                continue
+            out.append(UnifiedPosition(
+                symbol=p["symbol"], broker_id="bybit", side=Side.BUY if amt > 0 else Side.SELL, quantity=abs(amt),
+                entry_price=Decimal(str(p.get("entryPrice") or 0)), current_price=Decimal(str(p.get("entryPrice") or 0)),
+                unrealized_pnl=Decimal(str(p.get("unRealizedProfit") or 0)), realized_pnl=Decimal("0"),
+                margin_used=Decimal("0"), leverage=Decimal(str(p.get("leverage") or 1)), mode=PositionMode.ONE_WAY,
+                timestamp=int(time.time() * 1000)))
+        return out
+
+    def get_position_stop(self, symbol: str) -> float:
+        res = self._ok(self._request_v5("GET", "/v5/position/list", {"category": "linear", "symbol": symbol.upper()}),
+                       "position")
+        for p in res.get("list") or []:
+            if float(p.get("size") or 0) > 0:
+                return float(p.get("stopLoss") or 0)
+        return 0.0
+
+    def place_protection(self, req):
+        """Position-attached SL/TP via /v5/position/trading-stop (tpslMode=Full):
+        closes the whole position, is atomic per call, and is amended in place
+        by update_protection (no cancel-then-replace window without a stop)."""
+        from app.models.unified_trading import ProtectionResult
+        result = ProtectionResult(status="initiated")
+        payload = {"category": "linear", "symbol": req.symbol.upper(), "tpslMode": "Full", "positionIdx": 0}
+        if req.sl_price:
+            payload["stopLoss"] = self._px(req.sl_price)
+            payload["slTriggerBy"] = "LastPrice"
+        if req.tp_price:
+            payload["takeProfit"] = self._px(req.tp_price)
+            payload["tpTriggerBy"] = "LastPrice"
+        try:
+            self._ok(self._request_v5("POST", "/v5/position/trading-stop", payload), "trading-stop")
+            if req.sl_price:
+                result.sl_order_id = f"POSITION_SL:{req.symbol.upper()}"
+            if req.tp_price:
+                result.tp_order_id = f"POSITION_TP:{req.symbol.upper()}"
+            result.status = "success"
+        except Exception as e:
+            result.status = "failed"
+            result.error = str(e)
+        return result
+
+    def get_prices(self, symbols: List[str]) -> Dict[str, float]:
+        res = self._ok(self._request_v5("GET", "/v5/market/tickers", {"category": "linear"}), "tickers")
+        wanted = {s.upper() for s in symbols} if symbols else None
+        return {t["symbol"]: float(t["lastPrice"]) for t in res.get("list") or []
+                if t.get("lastPrice") and (wanted is None or t["symbol"] in wanted)}
+
+    def get_ticker(self, symbol: str) -> dict:
+        res = self._ok(self._request_v5("GET", "/v5/market/tickers", {"category": "linear", "symbol": symbol.upper()}),
+                       "ticker")
+        t = (res.get("list") or [{}])[0]
+        return {"symbol": symbol.upper(), "lastPrice": t.get("lastPrice"), "bidPrice": t.get("bid1Price"),
+                "askPrice": t.get("ask1Price"), "markPrice": t.get("markPrice"), "indexPrice": t.get("indexPrice"),
+                "volume24h": t.get("volume24h"), "turnover24h": t.get("turnover24h"),
+                "openInterest": t.get("openInterest")}
+
+    def get_orderbook(self, symbol: str, limit: int = 50) -> dict:
+        res = self._ok(self._request_v5("GET", "/v5/market/orderbook", {"category": "linear", "symbol": symbol.upper(),
+                                                                          "limit": limit}), "orderbook")
+        return {"bids": [[float(p), float(q)] for p, q in res.get("b") or []],
+                "asks": [[float(p), float(q)] for p, q in res.get("a") or []], "time": int(res.get("ts") or 0)}
+
+    def get_funding(self, symbol: str) -> dict:
+        t = self.get_ticker(symbol)
+        res = self._ok(self._request_v5("GET", "/v5/market/tickers", {"category": "linear", "symbol": symbol.upper()}),
+                       "funding")
+        row = (res.get("list") or [{}])[0]
+        return {"symbol": symbol.upper(), "fundingRate": row.get("fundingRate"),
+                "nextFundingTime": row.get("nextFundingTime"), "markPrice": t.get("markPrice")}
+
+    def exchange_info(self) -> dict:
+        return self.exchange_info_cached()
+
+    def _instruments_page(self, category: str, cursor: str | None) -> dict:
+        return self._ok(self._request_v5("GET", "/v5/market/instruments-info",
+                                         {"category": category, "limit": 1000, "cursor": cursor}), "instruments")
+
+    def discover_instruments(self, category: str = "linear") -> list:
+        """Every instrument V5 lists for ``category`` (cursor-paginated)."""
+        from app.exchange.instruments import parse_bybit_instrument
+        out, cursor = [], None
+        for _ in range(50):
+            res = self._instruments_page(category, cursor)
+            for r in res.get("list") or []:
+                ins = parse_bybit_instrument(r, category=category)
+                if ins is not None:
+                    out.append(ins)
+            cursor = res.get("nextPageCursor") or None
+            if not cursor:
+                break
+        return out
+
+    def list_instruments(self):
+        return [i.to_instrument_spec("bybit") for i in self.discover_instruments()]
+
+    def get_instrument(self, symbol: str):
+        for i in self.discover_instruments():
+            if i.venue_symbol == symbol.upper():
+                return i
+        return None
+
+    def get_balance(self) -> dict:
+        from decimal import Decimal
+        a = self.account()
+        return {"wallet": Decimal(str(a["totalWalletBalance"])), "equity": Decimal(str(a["totalMarginBalance"])),
+                "available": Decimal(str(a["availableBalance"]))}
+
+    def get_account_permissions(self) -> dict:
+        from shared_lib.broker.permissions import normalize_bybit_query_api, unverified
+        data = self.query_api_key()
+        if (data or {}).get("retCode") != 0:
+            return unverified("bybit", "bybit:/v5/user/query-api").to_dict()
+        return normalize_bybit_query_api(data.get("result") or {}).to_dict()
+
+    def get_account_capabilities(self, environment: str = "live") -> dict:
+        from shared_lib.broker.capabilities import declared_profile
+        perms = self.get_account_permissions().get("permissions")
+        return declared_profile("bybit").for_account(perms).to_dict()
+
+    @staticmethod
+    def _px(v) -> str:
+        from decimal import Decimal
+        return format(Decimal(str(v)).normalize(), "f")
+
+    def update_protection(self, req) -> dict:
+        """Amend the position-attached SL/TP IN PLACE (trading-stop). There is
+        no cancel step, so no window in which the position has no stop. A TP
+        of None leaves the existing TP untouched. Raises on failure (same
+        fail-closed contract as the Binance client)."""
+        payload = {"category": "linear", "symbol": req.symbol.upper(), "tpslMode": "Full", "positionIdx": 0}
+        if getattr(req, "new_sl_price", None) is not None:
+            payload["stopLoss"] = self._px(req.new_sl_price)
+            payload["slTriggerBy"] = "LastPrice"
+        if getattr(req, "new_tp_price", None) is not None:
+            payload["takeProfit"] = self._px(req.new_tp_price)
+            payload["tpTriggerBy"] = "LastPrice"
+        res = self._request_v5("POST", "/v5/position/trading-stop", payload)
+        if (res or {}).get("retCode") not in (0, 34040):  # 34040 = not modified (already at that level)
+            raise RuntimeError(f"[SEV1-S5] update_protection failed for {req.symbol}: {res.get('retMsg')}")
+        sym = req.symbol.upper()
+        return {"sl_order_id": f"POSITION_SL:{sym}" if "stopLoss" in payload else getattr(req, "old_sl_order_id", None),
+                "tp_order_id": f"POSITION_TP:{sym}" if "takeProfit" in payload else getattr(req, "old_tp_order_id", None),
+                "status": "OK", "error": None}

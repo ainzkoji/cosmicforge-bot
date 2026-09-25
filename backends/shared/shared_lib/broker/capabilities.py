@@ -208,9 +208,10 @@ def _profile(broker: str, entries: Mapping[Capability, CapabilityEntry]) -> Brok
 
 # ── Declared profiles ────────────────────────────────────────────────────────
 # Binance USD-M futures is the validated production path (demo-fapi verified;
-# see trading_intelligence/venue/registry.py). Bybit / BingX clients do not
-# yet satisfy the executor contract (no order lookup / fills / protection /
-# instrument discovery) -> UNSUPPORTED, so bots on them refuse to start.
+# see trading_intelligence/venue/registry.py). Bybit / BingX now implement the
+# full executor contract (app/exchange/contract.py) but have not passed a
+# demo validation run -> UNVALIDATED: usable on DEMO, refused on LIVE
+# (BROKER_EXECUTION_UNVALIDATED_FOR_LIVE) until promoted here with evidence.
 
 _BINANCE = _profile("binance", {
     Capability.MARKET_DATA: _e(S),
@@ -236,7 +237,7 @@ _BINANCE = _profile("binance", {
 
 _BYBIT = _profile("bybit", {
     Capability.MARKET_DATA: _e(V, REASON_NOT_VALIDATED),
-    Capability.INSTRUMENT_DISCOVERY: _e(U, REASON_NOT_IMPLEMENTED, "executor contract method missing"),
+    Capability.INSTRUMENT_DISCOVERY: _e(V, REASON_NOT_VALIDATED, "implemented; no demo validation run yet"),
     Capability.SPOT_TRADING: _e(U, REASON_NOT_IMPLEMENTED),
     Capability.CRYPTO_PERPETUALS: _e(V, REASON_NOT_VALIDATED, "linear USDT/USDC perpetuals"),
     Capability.FX_PERPETUALS: _e(V, REASON_PRODUCT_FROM_DISCOVERY,
@@ -246,9 +247,9 @@ _BYBIT = _profile("bybit", {
     Capability.ACCOUNT_BALANCE: _e(V, REASON_NOT_VALIDATED),
     Capability.POSITIONS: _e(V, REASON_NOT_VALIDATED),
     Capability.ORDERS: _e(V, REASON_NOT_VALIDATED),
-    Capability.PROTECTION_ORDERS: _e(U, REASON_NOT_IMPLEMENTED, "executor contract method missing"),
-    Capability.ORDER_LOOKUP: _e(U, REASON_NOT_IMPLEMENTED, "executor contract method missing"),
-    Capability.FILLS: _e(U, REASON_NOT_IMPLEMENTED, "executor contract method missing"),
+    Capability.PROTECTION_ORDERS: _e(V, REASON_NOT_VALIDATED, "implemented; no demo validation run yet"),
+    Capability.ORDER_LOOKUP: _e(V, REASON_NOT_VALIDATED, "implemented; no demo validation run yet"),
+    Capability.FILLS: _e(V, REASON_NOT_VALIDATED, "implemented; no demo validation run yet"),
     Capability.PERMISSION_INSPECTION: _e(V, REASON_NOT_VALIDATED, "GET /v5/user/query-api"),
     Capability.INTERNAL_TRANSFER: _e(V, REASON_NOT_VALIDATED, "POST /v5/asset/transfer/inter-transfer"),
     Capability.TRANSFER_HISTORY: _e(V, REASON_NOT_VALIDATED, "GET /v5/asset/transfer/query-inter-transfer-list"),
@@ -258,7 +259,7 @@ _BYBIT = _profile("bybit", {
 
 _BINGX = _profile("bingx", {
     Capability.MARKET_DATA: _e(V, REASON_NOT_VALIDATED),
-    Capability.INSTRUMENT_DISCOVERY: _e(U, REASON_NOT_IMPLEMENTED, "executor contract method missing"),
+    Capability.INSTRUMENT_DISCOVERY: _e(V, REASON_NOT_VALIDATED, "implemented; no demo validation run yet"),
     Capability.SPOT_TRADING: _e(U, REASON_NOT_IMPLEMENTED),
     Capability.CRYPTO_PERPETUALS: _e(V, REASON_NOT_VALIDATED, "USDT-M perpetual swap"),
     Capability.FX_PERPETUALS: _e(X, REASON_VENUE_API,
@@ -268,9 +269,9 @@ _BINGX = _profile("bingx", {
     Capability.ACCOUNT_BALANCE: _e(V, REASON_NOT_VALIDATED),
     Capability.POSITIONS: _e(V, REASON_NOT_VALIDATED),
     Capability.ORDERS: _e(V, REASON_NOT_VALIDATED),
-    Capability.PROTECTION_ORDERS: _e(U, REASON_NOT_IMPLEMENTED, "executor contract method missing"),
-    Capability.ORDER_LOOKUP: _e(U, REASON_NOT_IMPLEMENTED, "executor contract method missing"),
-    Capability.FILLS: _e(U, REASON_NOT_IMPLEMENTED, "executor contract method missing"),
+    Capability.PROTECTION_ORDERS: _e(V, REASON_NOT_VALIDATED, "implemented; no demo validation run yet"),
+    Capability.ORDER_LOOKUP: _e(V, REASON_NOT_VALIDATED, "implemented; no demo validation run yet"),
+    Capability.FILLS: _e(V, REASON_NOT_VALIDATED, "implemented; no demo validation run yet"),
     Capability.PERMISSION_INSPECTION: _e(U, REASON_NOT_IMPLEMENTED,
                                          "no verified BingX API-key permission endpoint"),
     Capability.INTERNAL_TRANSFER: _e(V, REASON_NOT_VALIDATED, "asset transfer endpoint"),

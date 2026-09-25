@@ -63,12 +63,14 @@ def test_position_risk_normalization(bingx_client):
     assert len(positions) == 2
     
     # Check Long
-    btc = next(p for p in positions if p["symbol"] == "BTC-USDT")
+    # Positions come back in the RUNTIME symbol namespace (BTCUSDT) so position
+    # reconciliation can match them; BTC-USDT never leaves the client.
+    btc = next(p for p in positions if p["symbol"] == "BTCUSDT")
     assert btc["positionAmt"] == 0.5  # Positive
     assert btc["bingx_side"] == "LONG"
     
     # Check Short
-    eth = next(p for p in positions if p["symbol"] == "ETH-USDT")
+    eth = next(p for p in positions if p["symbol"] == "ETHUSDT")
     assert eth["positionAmt"] == -2.0 # Negative
     assert eth["bingx_side"] == "SHORT"
 
