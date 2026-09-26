@@ -87,6 +87,31 @@ class BlockReason(str, Enum):
     TRANSFER_IN_FLIGHT = "TRANSFER_IN_FLIGHT"
     ACCOUNT_MODE_UNKNOWN = "ACCOUNT_MODE_UNKNOWN"
     AUTOMATION_NOT_AUTHORIZED = "AUTOMATION_NOT_AUTHORIZED"
+    # Auto Capital Routing policy (Section 9.8) -- automated origins only unless noted
+    AUTOMATION_DISABLED = "AUTOMATION_DISABLED"
+    AUTOMATION_EMERGENCY_DISABLED = "AUTOMATION_EMERGENCY_DISABLED"
+    CATI_KILL_SWITCH_ACTIVE = "CATI_KILL_SWITCH_ACTIVE"
+    GOVERNANCE_STATE_UNAVAILABLE = "GOVERNANCE_STATE_UNAVAILABLE"
+    TRANSFER_PRECONDITIONS_NOT_ESTABLISHED = "TRANSFER_PRECONDITIONS_NOT_ESTABLISHED"
+    MANUAL_APPROVAL_REQUIRED = "MANUAL_APPROVAL_REQUIRED"
+    # user limits (every origin)
+    ROUTE_NOT_ALLOWED = "ROUTE_NOT_ALLOWED"
+    MAX_TRANSFER_PCT_EXCEEDED = "MAX_TRANSFER_PCT_EXCEEDED"
+    DESTINATION_BALANCE_UNAVAILABLE = "DESTINATION_BALANCE_UNAVAILABLE"
+    DESTINATION_CAP_EXCEEDED = "DESTINATION_CAP_EXCEEDED"
+
+
+#: What an AUTOMATED (capital-planner) transfer must carry as positively established facts before the
+#: service will even validate the move (Section 9.5): capital routing funds an AUTHORISED plan, it never
+#: creates risk authority and never chases losses -- there is no transfer without an admitted opportunity.
+TRANSFER_PRECONDITIONS = (
+    "instrument_eligible",        # venue instrument active + API-executable
+    "account_eligible",           # this account may trade it
+    "cati_admitted",              # CATI admission accepted the opportunity
+    "portfolio_accepts",          # portfolio constraints passed
+    "hard_risk_accepts",          # existing hard risk passed (daily loss, margin, slots, leverage, halt)
+    "capital_requirement_known",  # the required collateral is a known positive amount
+)
 
 
 class IdempotencyConflict(ValueError):
@@ -143,4 +168,5 @@ class HistoryRow:
 
 
 __all__ = ["ALLOWED_TRANSITIONS", "BlockReason", "HistoryRow", "IN_FLIGHT", "IdempotencyConflict", "LookupOutcome",
-           "RECONCILABLE", "SubmitOutcome", "TERMINAL", "TransferIntent", "TransferOrigin", "TransferStatus"]
+           "RECONCILABLE", "SubmitOutcome", "TERMINAL", "TRANSFER_PRECONDITIONS", "TransferIntent", "TransferOrigin",
+           "TransferStatus"]

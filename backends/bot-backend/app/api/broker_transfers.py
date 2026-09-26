@@ -54,6 +54,12 @@ class TransferSettingsUpdate(BaseModel):
     daily_transfer_limit: Optional[str] = None
     asset_allowlist: Optional[List[str]] = None
     wallet_allowlist: Optional[List[str]] = None
+    # Auto Capital Routing policy (Section 9.8)
+    allowed_routes: Optional[List[str]] = Field(None, max_length=32)  # "FUND->CONTRACT" (native or purpose)
+    max_transfer_pct: Optional[str] = None          # (0, 1]
+    max_destination_balance: Optional[str] = None
+    manual_approval_threshold: Optional[str] = None
+    emergency_disabled: Optional[bool] = None       # stops automated routing immediately
 
 
 def _not_found() -> HTTPException:
@@ -118,13 +124,19 @@ def update_transfer_settings(account_id: str, body: TransferSettingsUpdate,
         # Automation moves money without a click: it needs an explicit grant.
         raise HTTPException(status_code=422, detail={"reason_code": "AUTOMATION_AUTHORIZATION_REQUIRED"})
     for key in ("max_transfer_amount", "min_funding_balance", "min_derivatives_reserve", "min_free_margin",
-                "daily_transfer_limit"):
+                "daily_transfer_limit", "max_destination_balance", "manual_approval_threshold", "max_transfer_pct"):
         if key in values:
             try:
-                if Decimal(str(values[key])) < 0:
+                d = Decimal(str(values[key]))
+                if not d.is_finite() or d < 0 or (key == "max_transfer_pct" and not (0 < d <= 1)):
                     raise InvalidOperation
             except (InvalidOperation, ValueError):
                 raise HTTPException(status_code=422, detail=f"invalid {key}")
+    if "allowed_routes" in values:
+        routes = [str(r).strip().upper().replace(" ", "") for r in values["allowed_routes"]]
+        if any(r.count("->") != 1 or r.startswith("->") or r.endswith("->") or len(r) > 64 for r in routes):
+            raise HTTPException(status_code=422, detail={"reason_code": "INVALID_ROUTE"})
+        values["allowed_routes"] = routes
     values.pop("authorize_automated_reallocation", None)
     if mode == "MANUAL_TRANSFER":
         values["auto_rebalance_enabled"] = False

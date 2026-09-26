@@ -6,6 +6,8 @@ that).
     TradePlan
       -> [flag / environment / adapter-support gates]
       -> CATI idempotency (one attempt identity per plan id + hash + account)
+      -> capital readiness (broker-COMPLETED internal transfer, or a valid
+         logical reservation on shared collateral) -- Section 9.14
       -> TradingOrchestrator.process_trade_plan   (EXISTING hard risk / sizing)
       -> ExecutionAdapter.submit_entry            (EXISTING executor: capital,
                                                    slots, margin, idempotency,
@@ -64,6 +66,7 @@ class BoundaryStatus:
     DUPLICATE_PLAN = "DUPLICATE_PLAN_IGNORED"
     RISK_REJECTED = "RISK_REJECTED"
     GOVERNANCE_NOT_AUTHORIZED = "GOVERNANCE_NOT_AUTHORIZED"
+    CAPITAL_NOT_READY = "CAPITAL_NOT_READY"
     EXECUTED = "EXECUTED"
     EXECUTION_REJECTED = "EXECUTION_REJECTED"
     SUBMIT_UNKNOWN = "SUBMIT_UNKNOWN_PENDING_RECONCILIATION"
@@ -131,7 +134,10 @@ class CATIExecutionBoundary:
     def process_trade_plan(self, plan: TradePlan, *, market_reference: Any, broker_health: Any,
                            venue_capabilities: Any, account: AccountState, klines: list = (),
                            atr: Optional[float] = None, runtime_session_id: Optional[str] = None,
-                           now_ms: Optional[int] = None, **risk_kwargs: Any) -> BoundaryResult:
+                           now_ms: Optional[int] = None, capital: Any = None, **risk_kwargs: Any) -> BoundaryResult:
+        """``capital``: ``capital.planner.CapitalReadiness`` for this plan (Section 9.14). Absent or not
+        ready -> CAPITAL_NOT_READY before hard risk and before the broker: a transfer that is only
+        planned/submitted/unknown never funds an entry; a logical allocation needs a valid reservation."""
         now = int(now_ms if now_ms is not None else self._clock())
         ids = dict(cycle_id=plan.cycle_id, user_id=plan.user_id, broker_account_id=plan.broker_account_id,
                    bot_instance_id=plan.bot_instance_id)
@@ -166,6 +172,17 @@ class CATIExecutionBoundary:
         if not adapter_supports(self.adapter, plan.environment):
             return self._fail_before_risk(plan, now, BoundaryStatus.ADAPTER_UNVALIDATED,
                                           f"EXECUTION_SUPPORT:{getattr(self.adapter, 'execution_support_status', None)}")
+
+        if capital is None or not getattr(capital, "ready", False):
+            code = ("CAPITAL_READINESS_NOT_ESTABLISHED" if capital is None
+                    else f"CAPITAL_NOT_READY:{getattr(capital, 'reason', None) or 'UNKNOWN'}")
+            METRICS.inc("cati_execution_boundary_total", status=BoundaryStatus.CAPITAL_NOT_READY)
+            if capital is not None and not getattr(capital, "pending", False):
+                # definitive (transfer failed / unsupported / insufficient): release the plan's reservation
+                return self._fail_before_risk(plan, now, BoundaryStatus.CAPITAL_NOT_READY, code)
+            # pending (transfer in flight / reconciliation): keep the reservation, nothing submitted
+            return BoundaryResult(BoundaryStatus.CAPITAL_NOT_READY, plan.trade_plan_id, (code,),
+                                  reservation_status=self._res_status(plan))
 
         reservation = self.reservations.get(plan.portfolio_reservation_id)
         t0 = time.perf_counter()

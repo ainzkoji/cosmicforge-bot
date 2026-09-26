@@ -173,19 +173,32 @@ class TransferStore:
         return sum((Decimal(r[0]) for r in rows), Decimal("0"))
 
     # -- settings -----------------------------------------------------------------
+    #: Auto Capital Routing policy (Section 9.8). Auto routing is distinct from auto trading: it needs
+    #: mode=AUTOMATED_INTERNAL_REALLOCATION + an explicit authorization + auto_rebalance_enabled, and
+    #: ``emergency_disabled`` stops it immediately (manual transfers stay possible).
+    #: ``allowed_routes``: ["FUND->CONTRACT", ...] (native types or purposes); None = any declared route.
+    #: ``max_transfer_pct``: max share (0-1] of the source's transferable balance per transfer.
+    #: ``max_destination_balance``: the destination's transferable balance may not exceed it afterwards.
+    #: ``manual_approval_threshold``: an AUTOMATED transfer above it is refused (MANUAL_APPROVAL_REQUIRED).
+    DEFAULT_SETTINGS = {"mode": "MANUAL_TRANSFER", "auto_rebalance_enabled": False, "asset_allowlist": None,
+                        "wallet_allowlist": None, "max_transfer_amount": None, "min_funding_balance": None,
+                        "min_derivatives_reserve": None, "min_free_margin": None, "daily_transfer_limit": None,
+                        "authorized_at": None, "allowed_routes": None, "max_transfer_pct": None,
+                        "max_destination_balance": None, "manual_approval_threshold": None,
+                        "emergency_disabled": False}
+
     def settings(self, *, user_id: str, broker_account_id: str) -> Dict[str, Any]:
         with self.db.connect() as conn:
             r = conn.execute("SELECT * FROM broker_transfer_settings WHERE broker_account_id=? AND user_id=?",
                              (broker_account_id, user_id)).fetchone()
         if r is None:
-            return {"mode": "MANUAL_TRANSFER", "auto_rebalance_enabled": False, "asset_allowlist": None,
-                    "wallet_allowlist": None, "max_transfer_amount": None, "min_funding_balance": None,
-                    "min_derivatives_reserve": None, "min_free_margin": None, "daily_transfer_limit": None,
-                    "authorized_at": None}
-        d = dict(r)
+            return dict(self.DEFAULT_SETTINGS)
+        d = {**self.DEFAULT_SETTINGS, **dict(r)}
         d["auto_rebalance_enabled"] = bool(d["auto_rebalance_enabled"])
-        d["asset_allowlist"] = json.loads(d.pop("asset_allowlist_json") or "null")
-        d["wallet_allowlist"] = json.loads(d.pop("wallet_allowlist_json") or "null")
+        d["emergency_disabled"] = bool(d.get("emergency_disabled"))
+        d["asset_allowlist"] = json.loads(d.pop("asset_allowlist_json", None) or "null")
+        d["wallet_allowlist"] = json.loads(d.pop("wallet_allowlist_json", None) or "null")
+        d["allowed_routes"] = json.loads(d.pop("allowed_routes_json", None) or "null")
         return d
 
     def save_settings(self, *, user_id: str, broker_account_id: str, values: Dict[str, Any]) -> Dict[str, Any]:
@@ -199,20 +212,27 @@ class TransferStore:
             conn.execute(
                 """INSERT INTO broker_transfer_settings (broker_account_id, user_id, mode, auto_rebalance_enabled,
                    max_transfer_amount, min_funding_balance, min_derivatives_reserve, min_free_margin,
-                   asset_allowlist_json, wallet_allowlist_json, daily_transfer_limit, authorized_at, updated_at)
-                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
+                   asset_allowlist_json, wallet_allowlist_json, daily_transfer_limit, authorized_at, updated_at,
+                   allowed_routes_json, max_transfer_pct, max_destination_balance, manual_approval_threshold,
+                   emergency_disabled)
+                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
                    ON CONFLICT(broker_account_id) DO UPDATE SET mode=excluded.mode,
                    auto_rebalance_enabled=excluded.auto_rebalance_enabled,
                    max_transfer_amount=excluded.max_transfer_amount, min_funding_balance=excluded.min_funding_balance,
                    min_derivatives_reserve=excluded.min_derivatives_reserve, min_free_margin=excluded.min_free_margin,
                    asset_allowlist_json=excluded.asset_allowlist_json, wallet_allowlist_json=excluded.wallet_allowlist_json,
                    daily_transfer_limit=excluded.daily_transfer_limit, authorized_at=excluded.authorized_at,
-                   updated_at=excluded.updated_at
+                   updated_at=excluded.updated_at, allowed_routes_json=excluded.allowed_routes_json,
+                   max_transfer_pct=excluded.max_transfer_pct, max_destination_balance=excluded.max_destination_balance,
+                   manual_approval_threshold=excluded.manual_approval_threshold,
+                   emergency_disabled=excluded.emergency_disabled
                    WHERE broker_transfer_settings.user_id=excluded.user_id""",
                 (broker_account_id, user_id, cur["mode"], int(bool(cur["auto_rebalance_enabled"])),
                  _s(cur["max_transfer_amount"]), _s(cur["min_funding_balance"]), _s(cur["min_derivatives_reserve"]),
                  _s(cur["min_free_margin"]), json.dumps(cur["asset_allowlist"]), json.dumps(cur["wallet_allowlist"]),
-                 _s(cur["daily_transfer_limit"]), authorized_at, _now()))
+                 _s(cur["daily_transfer_limit"]), authorized_at, _now(), json.dumps(cur["allowed_routes"]),
+                 _s(cur["max_transfer_pct"]), _s(cur["max_destination_balance"]),
+                 _s(cur["manual_approval_threshold"]), int(bool(cur["emergency_disabled"]))))
         return self.settings(user_id=user_id, broker_account_id=broker_account_id)
 
 

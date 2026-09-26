@@ -131,9 +131,13 @@ class Harness:
                                      **kw)
 
     def run(self, boundary=None, plan=None, *, price=None, ref_age=100, health="HEALTHY", now=None, atr=2.0, **kw):
+        from app.trading_intelligence.capital.planner import CapitalReadiness
+
         plan = plan or self.plan
         now = self.now if now is None else now
         caps = self.kw["evaluated"].venue_observation.execution_capabilities
+        # Section 9.14: these tests exercise the boundary on shared collateral with a valid reservation
+        kw.setdefault("capital", CapitalReadiness(True, "LOGICAL"))
         return (boundary or self.boundary()).process_trade_plan(
             plan, market_reference=MarketReference(price or plan.entry_reference, now - ref_age, 1.0),
             broker_health=BrokerHealthContext(plan.broker_account_id, plan.venue, plan.environment, health, now, "t"),

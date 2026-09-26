@@ -41,7 +41,8 @@ class GateResult:
 def admit_to_trade_plan(inputs: Mapping[str, Optional[bool]]) -> GateResult:
     """``internal_transfer_confirmed`` may be True when no transfer is needed
     (the capital planner says NO_ACTION / LOGICAL); the caller must pass
-    ``capital.planner.is_fundable(plan, transfer_status)`` for it."""
+    ``capital.planner.capital_readiness(plan, transfer_status=..., reservation_status=...).ready`` for it
+    (the execution boundary re-checks the same readiness before hard risk)."""
     reasons = tuple(code for key, code in REQUIREMENTS if inputs.get(key) is not True)
     return GateResult(admitted=not reasons, reason_codes=reasons)
 

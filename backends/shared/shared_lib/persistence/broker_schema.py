@@ -12,7 +12,9 @@ Additive and idempotent, called from ``migrations.migrate()``.
   destination column: the schema cannot express an external move.
 * ``broker_transfer_events`` -- append-only state history.
 * ``broker_transfer_reconciliations`` -- one row per reconciliation run.
-* ``broker_transfer_settings`` -- per-account transfer mode and user limits.
+* ``broker_transfer_settings`` -- per-account transfer mode and user limits, incl. the
+  auto-routing policy (allowed routes, % and destination caps, manual-approval
+  threshold, emergency disable).
 * ``cati_capital_plan_evidence`` -- append-only SHADOW capital-routing decisions.
 * ``broker_transfers_cache`` gains ``classification`` / ``direction`` /
   wallet columns so INTERNAL_TRANSFER is never conflated with DEPOSIT or
@@ -158,6 +160,11 @@ def ensure_broker_schema(db: Any) -> None:
         for col, decl in (("classification", "TEXT"), ("direction", "TEXT"), ("source_wallet", "TEXT"),
                           ("destination_wallet", "TEXT"), ("transfer_request_id", "TEXT")):
             _add(conn, "broker_transfers_cache", col, decl)
+        # Auto capital routing policy (Section 9.8), additive; NULL / 0 = not configured for existing rows.
+        for col, decl in (("allowed_routes_json", "TEXT"), ("max_transfer_pct", "TEXT"),
+                          ("max_destination_balance", "TEXT"), ("manual_approval_threshold", "TEXT"),
+                          ("emergency_disabled", "INTEGER NOT NULL DEFAULT 0")):
+            _add(conn, "broker_transfer_settings", col, decl)
         # Append-only: an event row can never be edited or removed.
         conn.execute("""
             CREATE TRIGGER IF NOT EXISTS trg_bte_no_update BEFORE UPDATE ON broker_transfer_events

@@ -48,11 +48,12 @@ def account_capital_state(db: Any, *, user_id: str, broker_account_id: str, asse
     adapter = (adapter_factory or adapter_for)(auth)
     if adapter is None:
         return None
-    topo = adapter.topology()
-    if topo is None:
-        return None
+    try:
+        topo = adapter.topology()
+    except Exception:
+        topo = None  # unreadable account mode: the planner records ACCOUNT_TOPOLOGY_UNKNOWN (never guessed)
     free: Dict[str, Optional[Decimal]] = {}
-    for w in topo.wallets:
+    for w in (topo.wallets if topo is not None else ()):
         try:
             free[w.native_type] = adapter.transferable(w, asset)
         except Exception:

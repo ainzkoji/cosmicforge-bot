@@ -37,7 +37,7 @@ from shared_lib.core.security.redaction import redact_exception
 
 from app.transfers.adapters import BrokerRejected, TransferAdapter, VenueApiUnavailable, adapter_for
 from app.transfers.models import BlockReason as B
-from app.transfers.models import TransferIntent, TransferOrigin, TransferStatus as S
+from app.transfers.models import TRANSFER_PRECONDITIONS, TransferIntent, TransferOrigin, TransferStatus as S
 from app.transfers.store import TransferStore
 
 logger = logging.getLogger(__name__)
@@ -173,9 +173,11 @@ class InternalTransferService:
         if not ok:
             return Validation(False, reason)
 
-        if row["origin"] != TransferOrigin.MANUAL.value and not (
-                settings.get("mode") == "AUTOMATED_INTERNAL_REALLOCATION" and settings.get("authorized_at")):
-            return Validation(False, B.AUTOMATION_NOT_AUTHORIZED.value)
+        automated = row["origin"] != TransferOrigin.MANUAL.value
+        if automated:
+            blocked = self._automation_block(auth, row, settings)
+            if blocked is not None:
+                return blocked
 
         try:
             topo: Optional[BrokerTopology] = adapter.topology()
@@ -195,11 +197,20 @@ class InternalTransferService:
         route = topo.route(src, dst)
         if not route:
             return Validation(False, B.ROUTE_UNSUPPORTED.value, f"{src.native_type}->{dst.native_type}")
+        allowed_routes = settings.get("allowed_routes")
+        if allowed_routes is not None:
+            names = {f"{a}->{b}" for a in (src.native_type, src.purpose.value)
+                     for b in (dst.native_type, dst.purpose.value)}
+            if not names & {str(r).strip().upper().replace(" ", "") for r in allowed_routes}:
+                return Validation(False, B.ROUTE_NOT_ALLOWED.value, f"{src.native_type}->{dst.native_type}")
 
         asset = row["asset"].upper()
         amount = _dec(row["amount"])
         if amount is None or amount <= 0:
             return Validation(False, B.INVALID_AMOUNT.value)
+        threshold = _dec(settings.get("manual_approval_threshold"))
+        if automated and threshold is not None and amount > threshold:
+            return Validation(False, B.MANUAL_APPROVAL_REQUIRED.value, f"{amount} > {threshold}")
         allow_assets = settings.get("asset_allowlist")
         if allow_assets is not None and asset not in {a.upper() for a in allow_assets}:
             return Validation(False, B.ASSET_NOT_ALLOWED.value, asset)
@@ -230,6 +241,19 @@ class InternalTransferService:
         if transferable < amount:
             return Validation(False, B.INSUFFICIENT_TRANSFERABLE_BALANCE.value,
                               f"transferable {transferable} < {amount}", transferable=transferable)
+        max_pct = _dec(settings.get("max_transfer_pct"))
+        if max_pct is not None and amount > transferable * max_pct:
+            return Validation(False, B.MAX_TRANSFER_PCT_EXCEEDED.value, f"{amount} > {max_pct} x {transferable}")
+        dest_cap = _dec(settings.get("max_destination_balance"))
+        if dest_cap is not None:
+            try:
+                dest_now = adapter.transferable(dst, asset)
+            except Exception:
+                dest_now = None
+            if dest_now is None:  # an unknown destination balance never satisfies a cap
+                return Validation(False, B.DESTINATION_BALANCE_UNAVAILABLE.value)
+            if dest_now + amount > dest_cap:
+                return Validation(False, B.DESTINATION_CAP_EXCEEDED.value, f"{dest_now} + {amount} > {dest_cap}")
         remaining = transferable - amount
         min_fund = _dec(settings.get("min_funding_balance"))
         if src.purpose == WalletPurpose.FUNDING and min_fund is not None and remaining < min_fund:
@@ -249,6 +273,32 @@ class InternalTransferService:
                                   f"active bots allocate {required}; {remaining} would remain")
         return Validation(True, route_code=route, source_native=src.native_type, destination_native=dst.native_type,
                           transferable=transferable)
+
+    def _automation_block(self, auth: BrokerAuth, row: Dict[str, Any], settings: Dict[str, Any]) -> Optional[Validation]:
+        """Auto Capital Routing is separate from auto trading and from manual transfers: an automated
+        move needs the user's explicit grant, the switch on, no emergency stop, the CATI new-entry kill
+        switch off, and the admitted opportunity it funds (never a loss, never "more capital")."""
+        if settings.get("emergency_disabled"):
+            return Validation(False, B.AUTOMATION_EMERGENCY_DISABLED.value)
+        if not (settings.get("mode") == "AUTOMATED_INTERNAL_REALLOCATION" and settings.get("authorized_at")):
+            return Validation(False, B.AUTOMATION_NOT_AUTHORIZED.value)
+        if not settings.get("auto_rebalance_enabled"):
+            return Validation(False, B.AUTOMATION_DISABLED.value)
+        try:
+            from app.trading_intelligence.governance.promotion import PromotionGovernance
+
+            kill = PromotionGovernance(self.db).kill_switch_on(scope=auth.account_id)
+        except Exception:
+            kill = None
+        if kill is None:
+            return Validation(False, B.GOVERNANCE_STATE_UNAVAILABLE.value)
+        if kill:
+            return Validation(False, B.CATI_KILL_SWITCH_ACTIVE.value)
+        pre = (row.get("metadata") or {}).get("preconditions")
+        missing = [k for k in TRANSFER_PRECONDITIONS if not (isinstance(pre, dict) and pre.get(k) is True)]
+        if missing:
+            return Validation(False, B.TRANSFER_PRECONDITIONS_NOT_ESTABLISHED.value, ",".join(missing))
+        return None
 
     def _pending_reservations(self, account_id: str) -> int:
         try:
@@ -335,6 +385,10 @@ class InternalTransferService:
             fields["failure_reason"] = f"BROKER_STATUS_{outcome.raw_status or 'FAILED'}"
         self.store.transition(tid, expect=S.SUBMITTING, to=outcome.status, event="SUBMITTED",
                               detail={"raw_status": outcome.raw_status, "detail": outcome.detail}, **fields)
+        # safe metadata only: ids, venue, wallets, asset, state, broker reference -- never credentials/headers
+        logger.info("internal_transfer_submitted id=%s account=%s venue=%s route=%s->%s asset=%s status=%s "
+                    "broker_ref=%s", tid, auth.account_id, auth.broker_type, v.source_native, v.destination_native,
+                    row["asset"], outcome.status.value, outcome.broker_transfer_id)
         _metric(auth.broker_type, outcome.status.value, outcome.raw_status)
         return self.store.get_any(tid)
 

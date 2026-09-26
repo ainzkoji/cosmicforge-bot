@@ -17,8 +17,15 @@ Topology modes (per pair of purposes, for a given account mode):
 * LOGICAL_ALLOCATION_ONLY    -- same wallet; allocation is bookkeeping only.
 * UNSUPPORTED                -- no API route between these wallets.
 
+Account-level class (``TopologyClass``): UNIFIED / SEGMENTED / UNKNOWN /
+UNSUPPORTED. A broker whose wallet structure depends on the live account mode
+(Bybit) is UNKNOWN for a connected account until that mode was read from the
+broker (``topology_for_account``) -- shared collateral is never assumed.
+
 Every declaration here is UNVALIDATED until an internal-transfer contract
-test passes against the venue (see ``capabilities.py``).
+test passes against the venue (see ``capabilities.py``). Route minimum /
+maximum / fee are not published by a verified venue API and are reported
+UNAVAILABLE, never 0.
 """
 from __future__ import annotations
 
@@ -43,6 +50,31 @@ class TopologyMode(str, Enum):
     SHARED_COLLATERAL = "SHARED_COLLATERAL"
     LOGICAL_ALLOCATION_ONLY = "LOGICAL_ALLOCATION_ONLY"
     UNSUPPORTED = "UNSUPPORTED"
+
+
+class TopologyClass(str, Enum):
+    """Account-level classification of how the products this platform trades are collateralised.
+
+    * UNIFIED      a unified account mode: one wallet is shared collateral across purposes
+    * SEGMENTED    separate wallets per purpose (a physical internal move may be needed to fund the
+                   trading wallet; products collateralised by the SAME wallet still need none)
+    * UNKNOWN      the live account mode could not be read -- nothing is assumed
+    * UNSUPPORTED  no declared topology for this broker
+    """
+    UNIFIED = "UNIFIED"
+    SEGMENTED = "SEGMENTED"
+    UNKNOWN = "UNKNOWN"
+    UNSUPPORTED = "UNSUPPORTED"
+
+
+ACCOUNT_TOPOLOGY_UNKNOWN = "ACCOUNT_TOPOLOGY_UNKNOWN"
+
+#: Route facts no venue publishes through an API this platform has verified. They are reported as
+#: UNAVAILABLE -- never as 0 fee / no minimum / instant settlement.
+_ROUTE_FACTS_UNAVAILABLE = {"min_amount": None, "max_amount": None, "fee": None,
+                            "facts_status": "UNAVAILABLE_FROM_VENUE_API",
+                            "permission_required": "INTERNAL_TRANSFER",
+                            "settlement": "BROKER_CONFIRMATION_REQUIRED"}
 
 
 @dataclass(frozen=True)
@@ -100,13 +132,22 @@ class BrokerTopology:
                 return w
         return None
 
+    @property
+    def topology_class(self) -> TopologyClass:
+        # UNIFIED = an account mode whose trading wallet is shared collateral across purposes (Bybit UTA).
+        # A classic account whose derivatives wallet happens to hold several product families is SEGMENTED:
+        # between those families allocation is logical (same wallet), but funding/spot are separate wallets.
+        return TopologyClass.UNIFIED if self.shared_purposes else TopologyClass.SEGMENTED
+
     def to_dict(self) -> dict:
         return {
             "broker": self.broker,
             "account_mode": self.account_mode,
+            "topology_class": self.topology_class.value,
             "validation_status": self.validation_status,
             "wallets": [w.to_dict() for w in self.wallets],
-            "routes": [{"from": a, "to": b, "native_code": c} for (a, b), c in sorted(self.routes.items())],
+            "routes": [{"from": a, "to": b, "native_code": c, **_ROUTE_FACTS_UNAVAILABLE}
+                       for (a, b), c in sorted(self.routes.items())],
             "shared_collateral_groups": [[p.value for p in g] for g in self.shared_purposes],
         }
 
@@ -188,5 +229,27 @@ def trading_wallet_purpose(broker: str, product: str, account_mode: Optional[str
     return wallet.purpose if wallet else None
 
 
-__all__ = ["BrokerTopology", "BrokerWallet", "TopologyMode", "WalletPurpose", "topology_for",
+#: Brokers whose wallet structure depends on the LIVE account mode (Bybit UTA vs classic). For them
+#: ``topology_for``'s default is a declaration, not a fact about a connected account.
+ACCOUNT_MODE_DEPENDENT = frozenset({"bybit"})
+
+
+def topology_for_account(broker: str, account_mode: Optional[str]) -> Optional[BrokerTopology]:
+    """The topology of a CONNECTED account: ``None`` when it depends on an account mode that was not
+    read from the broker (never guessed unified). Brokers with a single account model are unaffected."""
+    b = str(broker or "").strip().lower()
+    if b in ACCOUNT_MODE_DEPENDENT and not str(account_mode or "").strip():
+        return None
+    return topology_for(b, account_mode)
+
+
+def topology_class(broker: str, account_mode: Optional[str]) -> TopologyClass:
+    if topology_for(broker) is None:
+        return TopologyClass.UNSUPPORTED
+    topo = topology_for_account(broker, account_mode)
+    return TopologyClass.UNKNOWN if topo is None else topo.topology_class
+
+
+__all__ = ["ACCOUNT_MODE_DEPENDENT", "ACCOUNT_TOPOLOGY_UNKNOWN", "BrokerTopology", "BrokerWallet", "TopologyClass",
+           "TopologyMode", "WalletPurpose", "topology_class", "topology_for", "topology_for_account",
            "trading_wallet_purpose"]
