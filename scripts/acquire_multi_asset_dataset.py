@@ -6,8 +6,10 @@ Crypto (per venue, venue-aware; never merged across venues):
     2. select a BROAD research universe dynamically (listing age, liquidity,
        status) -> immutable universe manifest (100-150 symbols, 731+ days)
     3. BROAD dataset: 15m bars for every selected symbol
-    4. DEEP dataset: the top ~35 of the broad selection at 1m; 5m/15m/1h/4h
-       derived deterministically (never downloaded separately)
+    4. DEEP dataset: NOT here. The canonical deep subset is a FROZEN
+       historical-liquidity selection acquired in bounded, resumable monthly
+       windows by scripts/acquire_crypto_deep_dataset.py (this script's former
+       top-N-of-a-live-snapshot deep path is refused).
     5. funding / open interest where the venue publishes history; otherwise
        UNAVAILABLE observations with the venue's reason
     6. an immutable dataset manifest (row counts, series hashes, quality)
@@ -16,7 +18,7 @@ FX reference (provider-independent, not an execution venue):
     Dukascopy minute bid/ask for majors + crosses -> fx_reference_quotes
 
     python scripts/acquire_multi_asset_dataset.py --db data/research/multi_asset.db \\
-        --venue binance_usdm --days 731 --broad 150 --deep 35
+        --venue binance_usdm --days 731 --broad 150
     python scripts/acquire_multi_asset_dataset.py --db ... --fx --fx-days 731
     python scripts/acquire_multi_asset_dataset.py --db ... --plan-only     # discovery + manifest only
 
@@ -84,20 +86,24 @@ def main() -> int:
     ap.add_argument("--venue", default="binance_usdm", choices=["binance_usdm", "bybit_linear"])
     ap.add_argument("--days", type=int, default=731)
     ap.add_argument("--broad", type=int, default=150)
-    ap.add_argument("--deep", type=int, default=35)
+    ap.add_argument("--deep", type=int, default=0,
+                    help="refused: use scripts/acquire_crypto_deep_dataset.py (frozen historical-liquidity subset)")
     ap.add_argument("--plan-only", action="store_true")
     ap.add_argument("--fx", action="store_true")
     ap.add_argument("--fx-days", type=int, default=731)
     args = ap.parse_args()
+    if args.deep:
+        raise SystemExit("--deep is refused: the deep subset must be a frozen historical-liquidity selection "
+                         "(scripts/acquire_crypto_deep_dataset.py), not the top-N of a live snapshot")
 
     from app.exchange.instruments import InstrumentCatalog
     from app.market_data import fx_reference as fx
     from app.market_data import venue_history as vh
     from app.market_data.quality import check_series
-    from app.market_data.resample import resample_all, series_hash
+    from app.market_data.resample import series_hash
     from app.market_data.store import MarketDataStore, SeriesId
-    from app.market_data.universe import (SelectionCriteria, deep_subset, persist_dataset_manifest,
-                                          persist_universe_manifest, select_universe)
+    from app.market_data.universe import (SelectionCriteria, persist_dataset_manifest, persist_universe_manifest,
+                                          select_universe)
 
     db = DB(path=args.db)
     ensure_market_data_schema(db)
@@ -118,9 +124,8 @@ def main() -> int:
     InstrumentCatalog(db).upsert(args.venue, "REAL", instruments, now)
     broad = select_universe(instruments, stats, venue=args.venue, as_of_ms=now,
                             criteria=SelectionCriteria(target_size=args.broad, min_listing_age_days=args.days))
-    deep = deep_subset(broad, args.deep)
     persist_universe_manifest(db, broad)
-    print(json.dumps({"broad": len(broad.selected), "deep": len(deep.selected), "shortfall": broad.shortfall,
+    print(json.dumps({"broad": len(broad.selected), "shortfall": broad.shortfall,
                       "universe_manifest": broad.manifest_hash}))
     if args.plan_only:
         return 0
@@ -133,12 +138,8 @@ def main() -> int:
         ins = by_sym[sym]
         sid = SeriesId(args.venue, sym, ins.canonical_symbol, ins.asset_class, ins.product_type, "public_klines")
         tfs = {"15m": fetch["klines"](get, sym, "15m", start, end)}
-        if sym in deep.selected:
-            one = fetch["klines"](get, sym, "1m", start, end)
-            derived = resample_all(one, ["1m", "5m", "15m", "1h", "4h"])
-            tfs = {tf: d["rows"] for tf, d in derived.items()}
         for tf, rows in tfs.items():
-            store.write_candles(sid, tf, rows, derived_from="1m" if (sym in deep.selected and tf != "1m") else None)
+            store.write_candles(sid, tf, rows)
             q = check_series(rows, symbol=sym, timeframe=tf, listed_at_ms=ins.listed_at_ms)
             manifest["series"][f"{sym}:{tf}"] = {"rows": len(rows), "hash": series_hash(rows), "quality": q.to_dict()}
         for feat in ("funding", "open_interest"):

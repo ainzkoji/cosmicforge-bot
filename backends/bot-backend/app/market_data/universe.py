@@ -36,10 +36,16 @@ class SelectionCriteria:
     target_size: int = 150
     min_size: int = 100
     require_history_days: Optional[int] = None
+    #: EXCLUDE (v1 behaviour): younger than ``min_listing_age_days`` -> LISTING_TOO_RECENT.
+    #: INCLUDE_INSUFFICIENT_HISTORY (Section 11.4, new universe versions): an otherwise eligible younger symbol
+    #: is selected on its merits, ingested from its listing time, and marked INSUFFICIENT_HISTORY -- never padded.
+    young_symbol_policy: str = "EXCLUDE"
 
     def to_dict(self) -> Dict[str, Any]:
         d = asdict(self)
         d["product_types"], d["quote_assets"] = list(self.product_types), list(self.quote_assets)
+        if d["young_symbol_policy"] == "EXCLUDE":
+            d.pop("young_symbol_policy")  # v1 criteria (and every v1 hash) stay byte-identical
         return d
 
 
@@ -55,19 +61,26 @@ class UniverseSelection:
     ranking: Tuple[Tuple[str, Optional[float]], ...]
     shortfall: Optional[str] = None
     rule_version: str = SELECTION_RULE_VERSION
+    #: symbol -> INSUFFICIENT_HISTORY for selected symbols younger than the target history (empty in v1)
+    history_status: Mapping[str, str] = field(default_factory=dict)
 
     @property
     def manifest_hash(self) -> str:
-        body = json.dumps({"role": self.role, "venue": self.venue, "asset_class": self.asset_class,
-                           "as_of_ms": self.as_of_ms, "criteria": self.criteria, "selected": list(self.selected),
-                           "rule_version": self.rule_version}, sort_keys=True)
-        return hashlib.sha256(body.encode()).hexdigest()
+        body = {"role": self.role, "venue": self.venue, "asset_class": self.asset_class,
+                "as_of_ms": self.as_of_ms, "criteria": self.criteria, "selected": list(self.selected),
+                "rule_version": self.rule_version}
+        if self.history_status:
+            body["history_status"] = dict(sorted(self.history_status.items()))
+        return hashlib.sha256(json.dumps(body, sort_keys=True).encode()).hexdigest()
 
     def to_dict(self) -> Dict[str, Any]:
-        return {"role": self.role, "venue": self.venue, "asset_class": self.asset_class, "as_of_ms": self.as_of_ms,
-                "criteria": dict(self.criteria), "selected": list(self.selected), "excluded": dict(self.excluded),
-                "ranking": [list(r) for r in self.ranking], "shortfall": self.shortfall,
-                "rule_version": self.rule_version, "manifest_hash": self.manifest_hash}
+        d = {"role": self.role, "venue": self.venue, "asset_class": self.asset_class, "as_of_ms": self.as_of_ms,
+             "criteria": dict(self.criteria), "selected": list(self.selected), "excluded": dict(self.excluded),
+             "ranking": [list(r) for r in self.ranking], "shortfall": self.shortfall,
+             "rule_version": self.rule_version, "manifest_hash": self.manifest_hash}
+        if self.history_status:
+            d["history_status"] = dict(sorted(self.history_status.items()))
+        return d
 
 
 def select_universe(instruments: Sequence[Any], stats: Mapping[str, Any], *, venue: str, as_of_ms: int,
@@ -79,6 +92,8 @@ def select_universe(instruments: Sequence[Any], stats: Mapping[str, Any], *, ven
         raise ValueError(role)
     excluded: Dict[str, str] = {}
     ranked: List[Tuple[str, float]] = []
+    young: Dict[str, str] = {}
+    include_young = criteria.young_symbol_policy == "INCLUDE_INSUFFICIENT_HISTORY"
     for ins in instruments:
         sym = ins.venue_symbol
         if ins.asset_class != criteria.asset_class:
@@ -96,9 +111,14 @@ def select_universe(instruments: Sequence[Any], stats: Mapping[str, Any], *, ven
         if ins.listed_at_ms is None:
             excluded[sym] = "LISTING_TIME_UNKNOWN"
             continue
-        if (as_of_ms - ins.listed_at_ms) < criteria.min_listing_age_days * DAY_MS:
-            excluded[sym] = "LISTING_TOO_RECENT"
+        if include_young and ins.listed_at_ms > as_of_ms:  # not yet listed at the cutoff: no history at all
+            excluded[sym] = "LISTED_AFTER_SELECTION_CUTOFF"
             continue
+        if (as_of_ms - ins.listed_at_ms) < criteria.min_listing_age_days * DAY_MS:
+            if not include_young:
+                excluded[sym] = "LISTING_TOO_RECENT"
+                continue
+            young[sym] = "INSUFFICIENT_HISTORY"
         st = stats.get(sym)
         qv = getattr(st, "quote_volume_24h", None) if st is not None else None
         spread = getattr(st, "spread_bps", None) if st is not None else None
@@ -112,7 +132,7 @@ def select_universe(instruments: Sequence[Any], stats: Mapping[str, Any], *, ven
         if criteria.max_spread_bps is not None and spread is not None and spread > criteria.max_spread_bps:
             excluded[sym] = "SPREAD_TOO_WIDE"
             continue
-        if criteria.require_history_days is not None:
+        if criteria.require_history_days is not None and sym not in young:
             have = (history_days or {}).get(sym)
             if have is None or have < criteria.require_history_days:
                 excluded[sym] = "INSUFFICIENT_HISTORY"
@@ -123,9 +143,11 @@ def select_universe(instruments: Sequence[Any], stats: Mapping[str, Any], *, ven
     for sym, _ in ranked[criteria.target_size:]:
         excluded[sym] = "RANK_BELOW_TARGET"
     shortfall = None if len(chosen) >= criteria.min_size else f"ONLY_{len(chosen)}_OF_MIN_{criteria.min_size}"
+    chosen_syms = {s for s, _ in chosen}
     return UniverseSelection(role=role, venue=venue, asset_class=criteria.asset_class, as_of_ms=as_of_ms,
                              criteria=criteria.to_dict(), selected=tuple(s for s, _ in chosen),
-                             excluded=dict(sorted(excluded.items())), ranking=tuple(chosen), shortfall=shortfall)
+                             excluded=dict(sorted(excluded.items())), ranking=tuple(chosen), shortfall=shortfall,
+                             history_status={s: v for s, v in sorted(young.items()) if s in chosen_syms})
 
 
 def deep_subset(selection: UniverseSelection, size: int = 35) -> UniverseSelection:
@@ -255,11 +277,16 @@ def build_frozen_universe_manifest(selection: UniverseSelection, instruments: Se
     for sym in selection.selected:
         ins = by_sym[sym]
         liq = (liquidity or {}).get(sym)
-        members.append({"venue_symbol": sym, "canonical_instrument_id": ins.canonical_symbol,
-                        "asset_class": ins.asset_class, "product_type": ins.product_type,
-                        "base_asset": ins.base_currency, "quote_asset": ins.quote_currency,
-                        "settlement_asset": ins.settlement_asset, "listed_at_ms": ins.listed_at_ms,
-                        "median_daily_quote_volume": liq.quote_volume_24h if liq else None})
+        member = {"venue_symbol": sym, "canonical_instrument_id": ins.canonical_symbol,
+                  "asset_class": ins.asset_class, "product_type": ins.product_type,
+                  "base_asset": ins.base_currency, "quote_asset": ins.quote_currency,
+                  "settlement_asset": ins.settlement_asset, "listed_at_ms": ins.listed_at_ms,
+                  "median_daily_quote_volume": liq.quote_volume_24h if liq else None}
+        if selection.history_status:  # new universe versions only: v1 members are byte-identical
+            young = sym in selection.history_status
+            member["history_status"] = selection.history_status.get(sym, "TARGET_HISTORY_AVAILABLE")
+            member["requested_start_ms"] = max(int(window_start_ms), int(ins.listed_at_ms)) if young                 else int(window_start_ms)
+        members.append(member)
     identity = {
         "schema_version": FROZEN_UNIVERSE_SCHEMA_VERSION, "role": role, "source_venue": selection.venue,
         "source_provider": source_provider, "asset_class": selection.asset_class,
@@ -299,9 +326,93 @@ def load_frozen_universe(path: str) -> Dict[str, Any]:
     return manifest
 
 
+# ── Frozen DEEP subset (Section 10.4 / 11.6) ─────────────────────────────────
+#
+# 30-40 of the most liquid members of a frozen parent universe, for 1m/5m
+# microstructure, slippage and execution-cost research. Membership is ranked
+# on HISTORICAL liquidity measured over a predetermined window (never a live
+# snapshot, never strategy results) and frozen with its own hash. It never
+# replaces or edits the parent certification universe.
+
+DEEP_UNIVERSE_SCHEMA_VERSION = "frozen-deep-universe-manifest-v1"
+DEEP_SELECTION_RULE_VERSION = "deep-subset-historical-liquidity-v1"
+_DEEP_IDENTITY_KEYS = ("schema_version", "role", "source_venue", "source_provider", "asset_class",
+                       "selection_rule_version", "parent_universe_hash", "liquidity_metric", "liquidity_source",
+                       "liquidity_window_start_ms", "liquidity_window_end_ms", "size", "target_history_days",
+                       "window_end_ms", "timeframes", "members")
+
+
+def rank_deep_subset(scores: Mapping[str, Optional[float]], *, size: int = 35) -> List[Tuple[str, float]]:
+    """Deterministic: score desc, symbol asc; unknown liquidity is never ranked."""
+    ranked = sorted(((s, float(v)) for s, v in scores.items() if v is not None), key=lambda x: (-x[1], x[0]))
+    return ranked[:size]
+
+
+def build_deep_universe_manifest(parent: Mapping[str, Any], scores: Mapping[str, Optional[float]], *,
+                                 days_observed: Mapping[str, int], liquidity_window_start_ms: int,
+                                 liquidity_window_end_ms: int, liquidity_source: str, generated_at: str,
+                                 code_commit: Optional[str], size: int = 35, target_history_days: int = 1826,
+                                 timeframes: Sequence[str] = ("1m", "5m")) -> Dict[str, Any]:
+    """``parent``: the verified frozen parent manifest; ``scores``: venue_symbol -> median daily quote volume."""
+    verify_frozen_universe(parent)
+    if not 30 <= size <= 40:
+        raise ValueError("the deep subset is 30-40 instruments")
+    by_sym = {m["venue_symbol"]: m for m in parent["members"]}
+    unknown = sorted(set(scores) - set(by_sym))
+    if unknown:
+        raise ValueError(f"scores for non-members of the parent universe: {unknown[:5]}")
+    end = int(parent["window_end_ms"])
+    requested = end - target_history_days * DAY_MS
+    members = []
+    for rank, (sym, score) in enumerate(rank_deep_subset(scores, size=size), start=1):
+        m = by_sym[sym]
+        listed = m.get("listed_at_ms")
+        young = listed is None or int(listed) > requested
+        members.append({"rank": rank, "venue_symbol": sym, "canonical_instrument_id": m["canonical_instrument_id"],
+                        "asset_class": m["asset_class"], "product_type": m["product_type"], "listed_at_ms": listed,
+                        "median_daily_quote_volume": score, "liquidity_days_observed": int(days_observed.get(sym, 0)),
+                        "requested_start_ms": max(requested, int(listed)) if listed is not None else None,
+                        "history_status": "INSUFFICIENT_HISTORY" if young else "TARGET_HISTORY_AVAILABLE"})
+    identity = {
+        "schema_version": DEEP_UNIVERSE_SCHEMA_VERSION, "role": RESEARCH, "source_venue": parent["source_venue"],
+        "source_provider": parent["source_provider"], "asset_class": parent["asset_class"],
+        "selection_rule_version": DEEP_SELECTION_RULE_VERSION, "parent_universe_hash": parent["universe_hash"],
+        "liquidity_metric": "median_utc_daily_quote_volume_complete_days",
+        "liquidity_source": liquidity_source, "liquidity_window_start_ms": int(liquidity_window_start_ms),
+        "liquidity_window_end_ms": int(liquidity_window_end_ms), "size": size,
+        "target_history_days": target_history_days, "window_end_ms": end, "timeframes": list(timeframes),
+        "members": members,
+    }
+    h = hashlib.sha256(json.dumps(identity, sort_keys=True, default=str).encode()).hexdigest()
+    return {**identity, "universe_id": f"deep_{parent['source_venue']}_{h[:12]}", "universe_hash": h,
+            "generated_at": generated_at, "code_commit": code_commit, "execution_authorized": False,
+            "note": "deep research subset (microstructure / slippage / cost calibration); never replaces the "
+                    "parent certification universe and never authorizes execution"}
+
+
+def verify_deep_universe(manifest: Mapping[str, Any]) -> str:
+    missing = [k for k in _DEEP_IDENTITY_KEYS if k not in manifest]
+    if missing:
+        raise FrozenUniverseError(f"deep universe manifest missing {missing}")
+    h = hashlib.sha256(json.dumps({k: manifest[k] for k in _DEEP_IDENTITY_KEYS}, sort_keys=True,
+                                  default=str).encode()).hexdigest()
+    if h != manifest.get("universe_hash"):
+        raise FrozenUniverseError(f"deep universe hash mismatch: recorded {manifest.get('universe_hash')} computed {h}")
+    return h
+
+
+def load_deep_universe(path: str) -> Dict[str, Any]:
+    with open(path, "r", encoding="utf-8") as fh:
+        m = json.load(fh)
+    verify_deep_universe(m)
+    return m
+
+
 __all__ = ["CERTIFICATION", "EXECUTION", "EXECUTION_REQUIREMENTS", "FROZEN_UNIVERSE_SCHEMA_VERSION",
            "FrozenUniverseError", "HISTORICAL_SELECTION_RULE_VERSION", "HistoricalLiquidity", "RESEARCH", "ROLES",
            "STABLE_BASES", "SelectionCriteria", "TRAINING", "UniverseSelection", "build_frozen_universe_manifest",
+           "DEEP_SELECTION_RULE_VERSION", "DEEP_UNIVERSE_SCHEMA_VERSION", "build_deep_universe_manifest",
+           "load_deep_universe", "rank_deep_subset", "verify_deep_universe",
            "deep_subset", "exclude_stable_bases", "execution_eligibility", "historical_liquidity",
            "load_frozen_universe", "persist_dataset_manifest", "persist_universe_manifest", "select_universe",
            "verify_frozen_universe"]
