@@ -117,9 +117,21 @@ def test_venue_context_reads_only_safe_fields_and_canonical_environment():
 
 def test_unsupported_broker_context_fails_closed():
     r = _Runner()
-    r.context.broker_type = "bybit"
+    r.context.broker_type = "oanda"
     ctx = venue_context_from_runner(r, "BTCUSDT", now_ms=1)
     assert ctx.adapter.adapter_id == "unsupported" and ctx.raw.payloads == {}
+
+
+def test_bybit_context_uses_the_versioned_policy_and_stays_unvalidated():
+    # Sections 13-16: Bybit gained an economics adapter -- under its own versioned policy, never the frozen default,
+    # and without validation evidence it remains UNVALIDATED (costs NOT_VIABLE, nothing admitted).
+    from app.trading_intelligence.venue.policy import default_venue_cost_policy
+    r = _Runner()
+    r.context.broker_type = "bybit"
+    ctx = venue_context_from_runner(r, "BTCUSDT", now_ms=1)
+    assert ctx.adapter.adapter_id == "bybit_linear" and ctx.adapter.status_for("DEMO") == "UNVALIDATED"
+    assert ctx.cost_policy.strict_required_components
+    assert ctx.cost_policy.policy_hash != default_venue_cost_policy().policy_hash
 
 
 # -- controller: Section 17 feeds the unchanged Section 13 engine ------------------------------

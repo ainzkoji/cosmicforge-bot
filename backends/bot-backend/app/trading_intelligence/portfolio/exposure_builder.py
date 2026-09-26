@@ -31,6 +31,7 @@ Canonical economic-position identity
 from __future__ import annotations
 
 import dataclasses
+import math
 from typing import Any, List, Optional, Sequence, Tuple
 
 from app.trading_intelligence.contracts.exposure import (
@@ -110,7 +111,11 @@ def load_open_and_pending(conn: Any, broker_account_id: str) -> Tuple[List[Expos
     merged: dict = {}
     for bot, symbol, side, qty, entry in _rows(conn, _OPEN_SQL, (broker_account_id,)):
         s = _side(side)
-        q, px = float(qty or 0.0), float(entry or 0.0)
+        # unknown size is never zero exposure (it could hide concentration); a signed quantity counts by magnitude
+        if (qty is None or entry is None or not all(math.isfinite(float(v)) for v in (qty, entry))
+                or float(qty) == 0 or float(entry) <= 0):
+            raise PortfolioDataError("CURRENCY_EXPOSURE_NOTIONAL_UNKNOWN")
+        q, px = float(qty), float(entry)
         rec = ExposureRecord(str(bot), _key(venue, symbol, classes.get(str(bot), "CRYPTO")), s, q, abs(q * px), px,
                              ExposureStatus.OPEN.value)
         ident = economic_identity(rec)

@@ -479,7 +479,7 @@ def test_unvalidated_adapter_fails_closed():
     assert NOT_VIABLE in build_venue_cost_estimate(cand(fx_key(), FX_OPEN_MS, entry=1.1), obs).reason_codes
 
 
-@pytest.mark.parametrize("broker", ["bybit", "bingx", "oanda", "ibkr", "mt5", None])
+@pytest.mark.parametrize("broker", [ "oanda", "ibkr", "mt5", None])
 def test_unsupported_venue_fails_closed(broker):
     adapter, collector = resolve_adapter(broker)
     assert isinstance(adapter, UnsupportedVenueAdapter) and collector is None

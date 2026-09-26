@@ -125,3 +125,16 @@ def default_venue_cost_policy() -> VenueCostPolicy:
 
 
 __all__ = ["VenueCostPolicy", "default_venue_cost_policy"]
+
+
+@dataclass(frozen=True)
+class MultiAssetVenueCostPolicy(VenueCostPolicy):
+    """New, shadow-only policy. Never replaces the frozen research defaults."""
+    schema_version: str = "multi-asset-venue-cost-policy-v1"
+    max_fee_age_ms: int = 300_000
+    strict_required_components: bool = True
+    fallback_fee_rates: Mapping[str, Tuple[float, float]] = field(default_factory=dict)
+    fallback_spread_bps: Mapping[str, float] = field(default_factory=dict)
+    liquidity_bucket_spread_bps: Mapping[str, float] = field(default_factory=dict)
+    venue_class_slippage_bps: Mapping[str, float] = field(default_factory=dict)
+    liquidity_bucket_slippage_bps: Mapping[str, float] = field(default_factory=dict)

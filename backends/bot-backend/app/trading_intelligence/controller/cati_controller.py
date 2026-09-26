@@ -143,7 +143,7 @@ class CATIController:
                 if observation is not None:
                     # THE canonical CATI economics (economics/canonical.py)
                     cost, opportunity = canonical_economics(
-                        candidate, market_state, forecast, observation, venue_policy=venue_context.cost_policy,
+                        candidate, market_state, forecast, observation, venue_policy=venue_context.cost_policy, transfer_economics=venue_context.transfer_economics,
                         reference_notional=venue_context.reference_notional, admission_policy=self._admission_policy,
                         user_id=user_id, broker_account_id=broker_account_id, bot_instance_id=bot_instance_id,
                         run_id=run_id, cycle_id=cycle_id)

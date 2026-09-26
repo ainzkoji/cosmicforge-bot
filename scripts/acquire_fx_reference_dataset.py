@@ -286,29 +286,37 @@ def ingest_period(db, f, store, pair, tf, period, *, start_ms, end_ms, url_for, 
     written = removed = 0
     if ok:
         merged = fx.merge_sides(sides["BID"], sides["ASK"], pair=pair)
-        with db.connect() as conn:
-            if replace:
-                old = {s: _logged(conn, pair, tf, period, s)[0] for s in ("BID", "ASK")}
-                removed = conn.execute("DELETE FROM fx_reference_quotes WHERE provider=? AND pair=? AND timeframe=? "
-                                       "AND open_time>=? AND open_time<?",
-                                       (PROVIDER, pair, tf, start_ms, end_ms)).rowcount
-            written = store.write_fx_quotes(PROVIDER, pair, base, quote, tf, merged, source_version=source_version,
-                                            conn=conn)
-            if replace:
-                validation = _validate_period(conn, pair, tf, start_ms, end_ms, available)
-                conn.execute(
-                    "INSERT INTO fx_reference_repairs (repair_id, provider, pair, timeframe, period, old_status, "
-                    "reason, algorithm_version, source_evidence_json, rows_removed, rows_inserted, validation_json, "
-                    "recorded_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
-                    (f"rep_{PROVIDER}_{pair}_{tf}_{period}_{int(time.time())}", PROVIDER, pair, tf, period,
-                     json.dumps(old), repair_reason or "SCALE_BREAK", REPAIR_VERSION,
-                     json.dumps(evidence, sort_keys=True), removed, written, json.dumps(validation, sort_keys=True),
-                     int(time.time() * 1000)))
-            for side in ("BID", "ASK"):
-                st, n, why = statuses[side]
-                _log(conn, pair, tf, period, side, st, n,
-                     (f"REPAIRED:{REPAIR_VERSION};" + (why or "")) if replace and st == "FETCHED" else why)
-    else:
+        try:
+            with db.connect() as conn:
+                if replace:
+                    old = {s: _logged(conn, pair, tf, period, s)[0] for s in ("BID", "ASK")}
+                    removed = conn.execute("DELETE FROM fx_reference_quotes WHERE provider=? AND pair=? AND "
+                                           "timeframe=? AND open_time>=? AND open_time<?",
+                                           (PROVIDER, pair, tf, start_ms, end_ms)).rowcount
+                written = store.write_fx_quotes(PROVIDER, pair, base, quote, tf, merged,
+                                                source_version=source_version, conn=conn)
+                if replace:
+                    validation = _validate_period(conn, pair, tf, start_ms, end_ms, available)
+                    conn.execute(
+                        "INSERT INTO fx_reference_repairs (repair_id, provider, pair, timeframe, period, old_status, "
+                        "reason, algorithm_version, source_evidence_json, rows_removed, rows_inserted, "
+                        "validation_json, recorded_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                        (f"rep_{PROVIDER}_{pair}_{tf}_{period}_{int(time.time())}", PROVIDER, pair, tf, period,
+                         json.dumps(old), repair_reason or "SCALE_BREAK", REPAIR_VERSION,
+                         json.dumps(evidence, sort_keys=True), removed, written,
+                         json.dumps(validation, sort_keys=True), int(time.time() * 1000)))
+                for side in ("BID", "ASK"):
+                    st, n, why = statuses[side]
+                    _log(conn, pair, tf, period, side, st, n,
+                         (f"REPAIRED:{REPAIR_VERSION};" + (why or "")) if replace and st == "FETCHED" else why)
+        except ValueError as exc:
+            if not str(exc).startswith("FX_"):
+                raise
+            # the store rejected the period (invalid OHLC / crossed sides / out of order): the transaction rolled
+            # back, nothing was written or deleted, and both sides stay retryable with the rejection recorded
+            ok, written, removed = False, 0, 0
+            statuses = {s: ("FAILED", 0, f"QUALITY_REJECTED:{exc}") for s in statuses}
+    if not ok:
         with db.connect() as conn:
             for side in ("BID", "ASK"):
                 st, n, why = statuses[side]

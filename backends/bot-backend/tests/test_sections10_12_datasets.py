@@ -184,6 +184,34 @@ def test_hour_ingest_verifies_scale_per_file_quarantines_the_unverifiable_and_re
     assert json.loads(rep[3])["passed"] is True and "sha256" in json.loads(rep[4])["BID"]
 
 
+def test_store_quality_rejection_fails_the_period_and_rolls_back_a_repair(db):
+    """Section 13.4: a period the store rejects is recorded FAILED (retryable) -- the worker never crashes, and a
+    controlled replace is rolled back as a whole (the old rows are not deleted without their replacement)."""
+    s = _script("acquire_fx_reference_dataset")
+    aug = _ms(2024, 8, 1)
+    _legs(db, aug)
+    _avail(db, ["EURUSD", "USDZAR", "EURZAR"])
+    url = lambda side: fx.DUKASCOPY_HOUR_URL.format(pair="EURZAR", y=2024, m=7, side=side)  # noqa: E731
+    six = {url("BID"): _bi5([19.8] * 24, point=1e6), url("ASK"): _bi5([19.81] * 24, point=1e6)}
+    store = MarketDataStore(db)
+    old = [{"open_time": aug + i * H, **{f"bid_{k}": 19.8 for k in ("open", "high", "low", "close")},
+            **{f"ask_{k}": 19.81 for k in ("open", "high", "low", "close")}} for i in range(24)]
+    store.write_fx_quotes("dukascopy", "EURZAR", "EUR", "ZAR", "1h", old, source_version="t")
+
+    def reject(*a, **k):
+        raise ValueError("FX_QUOTE_QUALITY_REJECTED")
+
+    store.write_fx_quotes = reject
+    res = s._hour_period(db, FakeFetcher(six), store, "EURZAR", 2024, 8, ["EURUSD", "USDZAR", "EURZAR"],
+                         replace=True, repair_reason="QUARANTINED_PERIOD_REINGEST")
+    assert not res["ok"] and res["written"] == res["removed"] == 0
+    with db.connect() as c:
+        assert c.execute("SELECT COUNT(*) FROM fx_reference_quotes WHERE pair='EURZAR'").fetchone()[0] == 24
+        assert c.execute("SELECT COUNT(*) FROM fx_reference_repairs").fetchone()[0] == 0
+        log = c.execute("SELECT status, reason FROM fx_reference_ingest_log WHERE pair='EURZAR'").fetchall()
+    assert {st for st, _ in log} == {"FAILED"} and all("QUALITY_REJECTED" in why for _, why in log)
+
+
 def test_minute_acquisition_is_resumable_bounded_and_marks_saturdays(db):
     s = _script("acquire_fx_reference_dataset")
     _avail(db, ["EURUSD"])
@@ -249,7 +277,9 @@ def _minutes(start, n, bid=1.1):
 def test_bid_and_ask_resample_separately_and_deterministically(factor):
     q = _minutes(_ms(2025, 3, 10), 480)
     out = fx.resample_quotes(q, factor)
-    assert len(out) == 480 // factor and out == fx.resample_quotes(list(reversed(q)), factor)
+    assert len(out) == 480 // factor and out == fx.resample_quotes(q, factor)
+    with pytest.raises(ValueError, match="INVALID_SOURCE"):
+        fx.resample_quotes(list(reversed(q)), factor)
     first = q[:factor]
     b = out[0]
     assert b["bid_open"] == first[0]["bid_open"] and b["bid_close"] == first[-1]["bid_close"]
@@ -266,7 +296,7 @@ def test_derive_command_writes_5m_15m_4h_from_real_1m_with_source_lineage(db):
                           source_version="bi5-candles-min-1:v1")
     out = s.derive(db, "EURUSD")
     assert out == {"5m": 96, "15m": 32, "4h": 2}
-    assert s.derive(db, "EURUSD") == out  # idempotent re-run (INSERT OR IGNORE)
+    assert s.derive(db, "EURUSD") == {"5m": 0, "15m": 0, "4h": 0}  # no newly inserted rows
     with db.connect() as c:
         tags = dict(c.execute("SELECT timeframe, source_version FROM fx_reference_quotes GROUP BY timeframe"))
         assert c.execute("SELECT COUNT(*) FROM fx_reference_quotes WHERE timeframe='4h'").fetchone()[0] == 2
@@ -280,7 +310,8 @@ def test_missing_side_is_never_zero_and_mid_spread_are_explicit_derivations(db):
     store = MarketDataStore(db)
     store.write_fx_quotes("dukascopy", "EURUSD", "EUR", "USD", "1m", merged, source_version="t")
     store.write_fx_quotes("dukascopy", "GBPUSD", "GBP", "USD", "1m",
-                          [{"open_time": 0, "bid_close": 1.25, "ask_close": 1.2502}], source_version="t")
+                          [{"open_time": 0, **{f"bid_{f}": 1.25 for f in ("open", "high", "low", "close")},
+                            **{f"ask_{f}": 1.2502 for f in ("open", "high", "low", "close")}}], source_version="t")
     with db.connect() as c:
         e = c.execute("SELECT bid_close, ask_close, mid_close, spread_close, price_kind FROM fx_reference_quotes "
                       "WHERE pair='EURUSD'").fetchone()
@@ -308,7 +339,7 @@ def test_fx_gap_classification():
     assert gaps.classify_fx_gap(_ms(2025, 7, 15, 21, 0), _ms(2025, 7, 15, 21, 10), MIN) == gaps.SESSION_CLOSED
     tue = _ms(2025, 7, 15, 10)
     assert gaps.classify_fx_gap(tue, tue + 2 * H, H, ingest_status={"2025-07-15": "NO_FILE"}) == gaps.PROVIDER_NO_FILE
-    assert gaps.classify_fx_gap(tue, tue + 2 * H, H, ingest_status={"2025-07-15": "FAILED"}) == gaps.PROVIDER_OUTAGE
+    assert gaps.classify_fx_gap(tue, tue + 2 * H, H, ingest_status={"2025-07-15": "FAILED"}) == gaps.INGEST_FAILURE
     assert gaps.classify_fx_gap(tue, tue + 2 * H, H, ingest_status={"2025-07-15": "FETCHED"}) == gaps.UNKNOWN_GAP
     assert gaps.classify_fx_gap(tue, tue + 2 * H, H, ingest_status={"2025-07": "NO_FILE"},
                                 period_kind="month") == gaps.PROVIDER_NO_FILE

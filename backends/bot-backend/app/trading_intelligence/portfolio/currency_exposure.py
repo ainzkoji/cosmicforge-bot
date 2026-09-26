@@ -24,6 +24,7 @@ Pure and deterministic; an exposure whose notional is unknown is reported in
 """
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass, field
 from typing import Dict, Iterable, List, Mapping, Optional, Tuple
 
@@ -39,6 +40,7 @@ class ExposureItem:
     side: str                # LONG | SHORT
     notional: Optional[float]  # in quote-currency units converted to account currency; None = unknown
     source: str = "POSITION"   # POSITION | RESERVATION | PROPOSED
+    settlement_asset: Optional[str] = None
 
 
 @dataclass(frozen=True)
@@ -49,6 +51,7 @@ class CurrencyExposure:
     by_asset_class: Mapping[str, float]
     unknown_notional: Tuple[str, ...] = ()
     instruments: Tuple[str, ...] = ()
+    settlement_by_code: Mapping[str, float] = field(default_factory=dict)
 
     def share(self, code: str) -> float:
         """|exposure(code)| / gross notional (0 when there is no exposure)."""
@@ -69,16 +72,21 @@ def build_exposure(items: Iterable[ExposureItem], *, stablecoin_as_usd: bool = T
     net: Dict[str, float] = {}
     raw: Dict[str, float] = {}
     by_class: Dict[str, float] = {}
+    settlement: Dict[str, float] = {}
     gross = 0.0
     unknown: List[str] = []
     instruments = set()
     for it in items:
         instruments.add(it.instrument)
-        if it.notional is None:
+        if (it.notional is None or not math.isfinite(float(it.notional)) or float(it.notional) <= 0
+                or not it.base or not it.quote or it.side.upper() not in ("LONG", "SHORT")):
             unknown.append(it.instrument)
             continue
         n = abs(float(it.notional))
         sign = 1.0 if it.side.upper() == "LONG" else -1.0
+        if it.asset_class == "CRYPTO":
+            asset = (it.settlement_asset or it.quote).upper()
+            settlement[asset] = settlement.get(asset, 0.0) + n
         gross += n
         by_class[it.asset_class] = by_class.get(it.asset_class, 0.0) + n
         for code, leg in ((it.base, +1.0), (it.quote, -1.0)):
@@ -90,7 +98,7 @@ def build_exposure(items: Iterable[ExposureItem], *, stablecoin_as_usd: bool = T
             net[key] = net.get(key, 0.0) + sign * leg * n
     return CurrencyExposure(by_code=dict(sorted(net.items())), by_code_raw=dict(sorted(raw.items())), gross=gross,
                             by_asset_class=dict(sorted(by_class.items())), unknown_notional=tuple(sorted(unknown)),
-                            instruments=tuple(sorted(instruments)))
+                            instruments=tuple(sorted(instruments)), settlement_by_code=dict(sorted(settlement.items())))
 
 
 def check_concentration(current: CurrencyExposure, proposed: CurrencyExposure,
@@ -128,3 +136,17 @@ def check_concentration(current: CurrencyExposure, proposed: CurrencyExposure,
 
 __all__ = ["ConcentrationLimits", "CurrencyExposure", "ExposureItem", "STABLECOINS", "build_exposure",
            "check_concentration"]
+
+
+
+def account_currency_exposure(snapshot):
+    """The existing account-scoped snapshot, weighted by its normalized notionals.
+    A pre-size reservation has unknown notional; it is explicitly unavailable,
+    while the existing selection cap continues using governed PRE_SIZE units.
+    """
+    return build_exposure(ExposureItem(
+        r.instrument_key.canonical_symbol, r.instrument_key.asset_class,
+        r.instrument_key.base_asset, r.instrument_key.quote_asset, r.side,
+        r.notional if r.notional is not None and r.notional > 0 else None,
+        r.exposure_status, r.instrument_key.settlement_asset,
+    ) for r in snapshot.all_exposures)

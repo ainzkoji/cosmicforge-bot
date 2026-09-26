@@ -33,16 +33,21 @@ def venue_context_from_runner(runner: Any, symbol: str, *, now_ms: Optional[int]
                               policy: Optional[VenueCostPolicy] = None,
                               broker_health: Any = None) -> VenueEconomicContext:
     now_ms = int(now_ms if now_ms is not None else time.time() * 1000)
-    policy = policy or default_venue_cost_policy()
     ctx = getattr(runner, "context", None)
     safe = {name: getattr(ctx, name, None) for name in SAFE_CONTEXT_FIELDS}
     adapter, collector = resolve_adapter(safe["broker_type"], policy)
+    policy = adapter.policy
     sym = str(symbol).upper()
     raw = VenueRawSnapshot(venue_symbol=sym, payloads={}, captured_at=now_ms)
     client = getattr(runner, "client", None)
     if collector is not None and client is not None:
         try:
-            raw = collector(client, sym)
+            if getattr(policy, "strict_required_components", False):
+                from app.trading_intelligence.integration.context_adapters import canonical_broker_identity
+                _, env = canonical_broker_identity(ctx)
+                raw = collector(client, sym, user_id=safe["user_id"], broker_account_id=safe["broker_account_id"], environment=env)
+            else:
+                raw = collector(client, sym)
         except Exception as exc:  # recorded; the observation then fails closed
             logger.info("[CATI_VENUE] %s: collection failed (%s)", sym, type(exc).__name__)
             raw = VenueRawSnapshot(venue_symbol=sym, payloads={}, captured_at=now_ms,

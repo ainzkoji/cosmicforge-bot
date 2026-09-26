@@ -49,6 +49,10 @@ class MarketDataStore:
 
     # -- candles ------------------------------------------------------------------
     def write_candles(self, sid: SeriesId, timeframe: str, rows: Sequence[Any], *, derived_from: Optional[str] = None) -> int:
+        from app.market_data.quality import check_series
+        report = check_series(rows, symbol=sid.venue_symbol, timeframe=timeframe)
+        if not report.is_usable:
+            raise ValueError(f"CANDLE_QUALITY_REJECTED:{report.to_dict()}")
         now = int(time.time() * 1000)
         n = 0
         with self.db.connect() as conn:
@@ -64,7 +68,7 @@ class MarketDataStore:
                     (sid.venue, sid.venue_symbol, sid.canonical_symbol, sid.asset_class, sid.product_type, timeframe,
                      open_time(r), close_time(r), o, h, low, c, v, qv, trades, sid.source, sid.source_version,
                      sid.environment, derived_from, now))
-                n += 1
+                n += conn.execute("SELECT changes()").fetchone()[0]
         return n
 
     def read_candles(self, *, venue: str, venue_symbol: str, timeframe: str, start_ms: Optional[int] = None,
@@ -83,6 +87,11 @@ class MarketDataStore:
             sql += " AND source=?"
             args.append(source)
         with self.db.connect() as conn:
+            identities = conn.execute("SELECT DISTINCT source, product_type, environment FROM market_candles "
+                "WHERE venue=? AND venue_symbol=? AND timeframe=?" + (" AND source=?" if source else ""),
+                [venue, venue_symbol, timeframe] + ([source] if source else [])).fetchall()
+            if len(identities) > 1:
+                raise ValueError("AMBIGUOUS_CANDLE_SERIES_IDENTITY")
             return [list(r) for r in conn.execute(sql + " ORDER BY open_time", args).fetchall()]
 
     # -- feature observations -------------------------------------------------------
@@ -124,7 +133,16 @@ class MarketDataStore:
                                             source_version=source_version, conn=own)
         now = int(time.time() * 1000)
         n = 0
+        from app.market_data.quality import STRUCTURAL_ONLY, check_fx_quotes
+        previous = None
         for q in quotes:
+            timestamp = int(q["open_time"])
+            if previous is not None and timestamp < previous:
+                raise ValueError("FX_OUT_OF_ORDER")
+            previous = timestamp
+            # structural rejection only: a wide (e.g. rollover) spread is stored and flagged by QA, never dropped
+            if not check_fx_quotes([q], pair=pair, timeframe=timeframe, max_spread_bps=STRUCTURAL_ONLY).is_usable:
+                raise ValueError("FX_QUOTE_QUALITY_REJECTED")
             bid, ask = q.get("bid_close"), q.get("ask_close")
             mid = q.get("mid_close")
             if mid is None and bid is not None and ask is not None:
@@ -138,7 +156,7 @@ class MarketDataStore:
                 (provider, pair, base, quote, timeframe, int(q["open_time"]), q.get("bid_open"), q.get("bid_high"),
                  q.get("bid_low"), bid, q.get("ask_open"), q.get("ask_high"), q.get("ask_low"), ask, mid, spread,
                  q.get("volume"), q.get("session"), REFERENCE_MARKET_PRICE, source_version, now))
-            n += 1
+            n += conn.execute("SELECT changes()").fetchone()[0]
         return n
 
     def fx_reference_at(self, *, pair: str, timeframe: str, as_of_ms: int, provider: Optional[str] = None
@@ -153,6 +171,10 @@ class MarketDataStore:
             sql += " AND provider=?"
             args.append(provider)
         with self.db.connect() as conn:
+            if not provider:
+                providers = conn.execute("SELECT DISTINCT provider FROM fx_reference_quotes WHERE pair=? AND timeframe=?", (pair, timeframe)).fetchall()
+                if len(providers) > 1:
+                    raise ValueError("FX_REFERENCE_PROVIDER_REQUIRED")
             r = conn.execute(sql + " ORDER BY open_time DESC LIMIT 1", args).fetchone()
         return dict(r) if r else None
 

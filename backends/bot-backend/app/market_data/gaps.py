@@ -30,7 +30,7 @@ from datetime import datetime, timezone
 from typing import Any, Dict, Iterable, List, Mapping, Optional, Sequence, Tuple
 from zoneinfo import ZoneInfo
 
-GAP_POLICY_VERSION = "gap-classification-v1"
+GAP_POLICY_VERSION = "gap-classification-v2"
 MINUTE_MS = 60_000
 NY = ZoneInfo("America/New_York")
 
@@ -41,6 +41,7 @@ PROVIDER_NO_FILE = "PROVIDER_NO_FILE"
 PROVIDER_OUTAGE = "PROVIDER_OUTAGE"
 LISTING_AGE = "LISTING_AGE"
 PROVIDER_FAILURE = "PROVIDER_FAILURE"
+INGEST_FAILURE = "INGEST_FAILURE"
 VENUE_OUTAGE = "VENUE_OUTAGE"
 MARKET_HALT = "MARKET_HALT"
 UNKNOWN_GAP = "UNKNOWN_GAP"
@@ -118,21 +119,26 @@ def classify_fx_gap(first_ms: int, last_ms: int, step_ms: int, *,
     """Classify one missing run. ``ingest_status``: period -> worst side status in the ingest log."""
     status = ingest_status or {}
     ts = range(first_ms, last_ms + 1, step_ms)
-    open_bars = [t for t in ts if expected_fx_bar(t)]
-    if not open_bars:  # every missing bar is an expected closure: name the dominant one
-        counts = {WEEKEND_CLOSED: sum(1 for t in ts if fx_weekend_closed(t)),
-                  HOLIDAY_CLOSED: sum(1 for t in ts if fx_holiday(t) and not fx_weekend_closed(t)),
-                  SESSION_CLOSED: sum(1 for t in ts if fx_rollover_break(t) and not fx_weekend_closed(t)
-                                      and not fx_holiday(t))}
-        return max((WEEKEND_CLOSED, HOLIDAY_CLOSED, SESSION_CLOSED), key=lambda k: counts[k])
-    periods = {_period_of(t, period_kind) for t in open_bars}
-    states = {status.get(p) for p in periods}
+    counts = {WEEKEND_CLOSED: 0, HOLIDAY_CLOSED: 0, SESSION_CLOSED: 0}
+    states = set()
+    for t in ts:
+        if fx_weekend_closed(t):
+            counts[WEEKEND_CLOSED] += 1
+        elif fx_holiday(t):
+            counts[HOLIDAY_CLOSED] += 1
+        elif fx_rollover_break(t):
+            counts[SESSION_CLOSED] += 1
+        else:
+            states.add(status.get(_period_of(t, period_kind)))
+    if not states:
+        return max(counts, key=counts.get)
     if states == {"NO_FILE"}:
         return PROVIDER_NO_FILE
-    if states & {"FAILED", "QUARANTINED"} or states == {"EMPTY"}:
+    if states == {"PROVIDER_OUTAGE"}:
         return PROVIDER_OUTAGE
-    if "NO_FILE" in states:
-        return PROVIDER_NO_FILE
+    if states <= {"FAILED", "QUARANTINED"}:
+        return INGEST_FAILURE
+    # An empty file or mixed/unknown period statuses do not establish an outage.
     return UNKNOWN_GAP
 
 

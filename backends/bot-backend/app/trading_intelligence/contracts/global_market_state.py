@@ -22,12 +22,13 @@ frozen Section 22 policy hash would change), never a silent one.
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field
+from app.trading_intelligence.contracts.immutable import freeze
 from typing import Any, Dict, Mapping, Optional, Tuple
 
 from app.trading_intelligence.hashing import short_id, stable_hash
 
-GLOBAL_MARKET_STATE_SCHEMA_VERSION = "global-market-state-v1"
-GLOBAL_MARKET_STATE_ENGINE_VERSION = "global-market-state-engine-v1"
+GLOBAL_MARKET_STATE_SCHEMA_VERSION = "global-market-state-v2"
+GLOBAL_MARKET_STATE_ENGINE_VERSION = "global-market-state-engine-v2"
 
 AVAILABLE, UNAVAILABLE = "AVAILABLE", "UNAVAILABLE"
 
@@ -43,6 +44,7 @@ class GlobalComponent:
     detail: Mapping[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
+        object.__setattr__(self, "detail", freeze(self.detail))
         if self.status not in (AVAILABLE, UNAVAILABLE):
             raise ValueError(f"component status {self.status!r}")
         if self.status == UNAVAILABLE and not self.reason:
@@ -76,6 +78,7 @@ class GlobalMarketState:
     engine_version: str = GLOBAL_MARKET_STATE_ENGINE_VERSION
 
     def __post_init__(self) -> None:
+        object.__setattr__(self, "components", freeze(self.components))
         missing = [c for c in COMPONENTS if c not in self.components]
         if missing:
             raise ValueError(f"GlobalMarketState missing components {missing}")

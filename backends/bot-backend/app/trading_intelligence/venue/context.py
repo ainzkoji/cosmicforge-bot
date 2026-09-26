@@ -30,10 +30,11 @@ class VenueEconomicContext:
     policy: Any = None  # VenueCostPolicy
     #: provisional economic size for cost estimation only (never a quantity)
     reference_notional: Optional[float] = None
+    transfer_economics: Any = None
 
     @property
     def cost_policy(self) -> VenueCostPolicy:
-        return self.policy or default_venue_cost_policy()
+        return self.policy or self.adapter.policy
 
     def observe(self, instrument_key: InstrumentKey, market_decision_time: int) -> VenueEconomicObservation:
         request = VenueEconomicRequest(

@@ -19,7 +19,7 @@ from typing import Any, Dict, Mapping, Optional
 from app.market_data.divergence import compute_divergence
 from app.market_data.fx_reference import fx_session
 
-FX_CONTEXT_VERSION = "fx-market-context-v1"
+FX_CONTEXT_VERSION = "fx-market-context-v2"
 USD_CODES = frozenset({"USD", "USDT", "USDC"})
 
 
@@ -46,7 +46,15 @@ class FXMarketContext:
     rate_differential: Optional[float]
     calendar_risk: str                            # CLEAR | ELEVATED | BLACKOUT | UNAVAILABLE
     unavailable: Mapping[str, str] = field(default_factory=dict)
+    reference_provider: Optional[str] = None
+    calendar_observed_at: Optional[int] = None
+    calendar_availability: str = "UNAVAILABLE_WITH_REASON"
     version: str = FX_CONTEXT_VERSION
+
+    def __post_init__(self):
+        from app.trading_intelligence.contracts.immutable import freeze
+        object.__setattr__(self, "unavailable", freeze(self.unavailable))
+        object.__setattr__(self, "currency_exposure_long", freeze(self.currency_exposure_long))
 
     @property
     def context_hash(self) -> str:
@@ -68,6 +76,7 @@ class FXMarketContext:
 def build_fx_context(*, instrument_key: Any, as_of_ms: int, reference: Optional[Mapping[str, Any]],
                      venue_quote: Optional[Mapping[str, Any]] = None, funding_rate: Optional[float] = None,
                      rate_differential: Optional[float] = None, calendar_state: Optional[str] = None,
+                     calendar_observed_at: Optional[int] = None, calendar_max_age_ms: int = 3_600_000,
                      wide_spread_bps: float = 8.0) -> FXMarketContext:
     """``reference``: fx_reference_quotes row closed at/before as_of_ms;
     ``venue_quote``: {"mark", "last", "bid", "ask", "time"} from the execution
@@ -95,7 +104,7 @@ def build_fx_context(*, instrument_key: Any, as_of_ms: int, reference: Optional[
     divergence = div.mid_vs_reference_bps if div.mid_vs_reference_bps is not None else div.mark_vs_reference_bps
     if divergence is None:
         unavailable.setdefault("divergence", div.reason or "DIVERGENCE_UNAVAILABLE")
-    spread = div.venue_spread_bps if div.venue_spread_bps is not None else div.reference_spread_bps
+    spread = div.venue_spread_bps
     spread_state = "UNAVAILABLE" if spread is None else ("WIDE" if spread > wide_spread_bps else "NORMAL")
     if spread is None:
         unavailable["spread"] = "NO_BID_ASK"
@@ -104,8 +113,16 @@ def build_fx_context(*, instrument_key: Any, as_of_ms: int, reference: Optional[
     if rate_differential is None:
         unavailable["rate_differential"] = "NO_RATE_SOURCE"
     cal = calendar_state or "UNAVAILABLE"
-    if cal == "UNAVAILABLE":
-        unavailable["calendar"] = "NO_VALIDATED_CALENDAR_SOURCE"
+    calendar_availability = "AVAILABLE"
+    if cal in ("UNAVAILABLE", "STALE"):
+        calendar_availability = "STALE" if cal == "STALE" else "UNAVAILABLE_WITH_REASON"
+        unavailable["calendar"] = "CALENDAR_STALE" if cal == "STALE" else "NO_VALIDATED_CALENDAR_SOURCE"
+    elif calendar_observed_at is None or calendar_observed_at > as_of_ms:
+        cal, calendar_availability = "UNAVAILABLE", "UNAVAILABLE_WITH_REASON"
+        unavailable["calendar"] = "CALENDAR_TIMESTAMP_UNAVAILABLE_OR_NON_CAUSAL"
+    elif as_of_ms - calendar_observed_at > calendar_max_age_ms:
+        cal, calendar_availability = "STALE", "STALE"
+        unavailable["calendar"] = "CALENDAR_STALE"
     legs = {base: +1, quote: -1}
     usd = (1 if base in USD_CODES else 0) - (1 if quote in USD_CODES else 0)
     return FXMarketContext(
@@ -116,6 +133,8 @@ def build_fx_context(*, instrument_key: Any, as_of_ms: int, reference: Optional[
         reference_spread_bps=div.reference_spread_bps, venue_price=venue_price, venue_spread_bps=div.venue_spread_bps,
         divergence_bps=divergence, spread_state=spread_state, funding_rate=funding_rate,
         rate_differential=rate_differential, calendar_risk=cal, unavailable=dict(sorted(unavailable.items())),
+        reference_provider=reference.get("provider") if reference else None,
+        calendar_observed_at=calendar_observed_at, calendar_availability=calendar_availability,
     )
 
 

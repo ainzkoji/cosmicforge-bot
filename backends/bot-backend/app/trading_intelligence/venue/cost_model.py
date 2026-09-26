@@ -403,6 +403,15 @@ def build_venue_cost_estimate(
     acc = _Acc()
     for code in observation.reason_codes:
         acc.reason(code, fatal=code in FATAL_VENUE_REASONS)
+    if getattr(policy, "strict_required_components", False):
+        if observation.source_quality == "INVALID":
+            acc.reason("ECONOMICS_UNAVAILABLE", fatal=True)
+        if observation.cost_policy_hash != policy.policy_hash:
+            acc.reason("COST_POLICY_MISMATCH", fatal=True)
+        if observation.instrument_key != candidate.instrument_key:
+            acc.reason("INSTRUMENT_MAPPING_MISMATCH", fatal=True)
+        if candidate.valid_until is not None and observation.decision_time >= candidate.valid_until:
+            acc.reason("OPPORTUNITY_EXPIRED", fatal=True)
     key = candidate.instrument_key
     if observation.instrument_key.canonical_symbol != key.canonical_symbol \
             or observation.instrument_key.venue_symbol.upper() != key.venue_symbol.upper():

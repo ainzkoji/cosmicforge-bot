@@ -715,7 +715,7 @@ class BingXClient:
             d = d[0] if d else {}
         return {"symbol": self._runtime_symbol(symbol), "fundingRate": d.get("lastFundingRate"),
                 "nextFundingTime": d.get("nextFundingTime"), "markPrice": d.get("markPrice"),
-                "indexPrice": d.get("indexPrice")}
+                "indexPrice": d.get("indexPrice"), "fundingIntervalHours": d.get("fundingIntervalHours")}
 
     def exchange_info(self) -> dict:
         return self.exchange_info_cached()
@@ -750,3 +750,9 @@ class BingXClient:
     def get_account_capabilities(self, environment: str = "live") -> dict:
         from shared_lib.broker.capabilities import declared_profile
         return declared_profile("bingx").for_account(self.get_account_permissions().get("permissions")).to_dict()
+
+    def get_trading_fee_rates(self, symbol: str) -> dict:
+        """BingX swap account commission; unavailable fields stay None."""
+        data = self._request("GET", "/openApi/swap/v2/user/commissionRate").get("data") or {}
+        rates = data.get("commission") or {}
+        return {"maker": rates.get("makerCommissionRate"), "taker": rates.get("takerCommissionRate")}

@@ -287,19 +287,25 @@ def _global_market_state_stage(runner: Any, result: Any, decision_time: int, tim
         states = [ev.market_state for ev in result.evaluations if getattr(ev, "market_state", None) is not None]
         states += [o.market_state for ev in result.evaluations if getattr(ev, "market_state", None) is None
                    for o in ev.opportunities]
-        event_state = None
+        event_state = event_observed_at = None
         try:
             from app.trading_intelligence.integration.context_adapters import build_event_risk_context
 
             ctx = build_event_risk_context(runner.db, decision_time)
             event_state = getattr(getattr(ctx, "source_state", None), "value", None) or getattr(ctx, "source_state", None)
+            # the calendar read time; sync staleness is already folded into source_state (STALE) upstream
+            event_observed_at = getattr(ctx, "as_of", None)
         except Exception:
-            event_state = None
+            event_state = event_observed_at = None
         gms = build_global_market_state(states, decision_time=decision_time, timeframe=timeframe,
-                                        event_source_state=event_state)
+                                        event_source_state=event_state, event_observed_at=event_observed_at)
+        from app.trading_intelligence.market_state.crypto_context import build_crypto_context
+        contexts = {s.instrument_key.canonical_symbol: build_crypto_context(s, as_of_ms=decision_time).to_dict()
+                    for s in sorted(states, key=lambda x: (x.instrument_key.venue, x.market_state_id))
+                    if s.instrument_key.asset_class == "CRYPTO"}
         b = result.batch
         GlobalMarketStateStore(runner.db).append(gms, cycle_id=b.cycle_id, bot_instance_id=b.bot_instance_id,
-                                                 broker_account_id=b.broker_account_id)
+                                                 broker_account_id=b.broker_account_id, asset_contexts=contexts)
         rr = gms.component("risk_regime")
         logger.info("[CATI_GLOBAL_STATE] bot=%s cycle=%s state=%s regime=%s inputs=%d classes=%s",
                     b.bot_instance_id, b.cycle_id, gms.global_state_id,

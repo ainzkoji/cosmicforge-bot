@@ -203,6 +203,11 @@ def ingest(provider: FXReferenceProvider, store, pairs: Iterable[str], start: da
 
 def resample_quotes(quotes: Sequence[Dict], factor: int) -> List[Dict]:
     """Deterministic whole-window aggregation of 1m reference quotes (both sides)."""
+    from app.market_data.quality import STRUCTURAL_ONLY, check_fx_quotes
+    # structural gate only (order, OHLC per side, crossed bid/ask); a WIDE spread is a market fact, flagged by QA
+    if factor <= 0 or not check_fx_quotes(quotes, pair="DERIVATION", timeframe="1m",
+                                          max_spread_bps=STRUCTURAL_ONLY).is_usable:
+        raise ValueError("FX_DERIVATION_INVALID_SOURCE")
     step = MINUTE_MS * factor
     buckets: Dict[int, List[Dict]] = {}
     for q in quotes:
@@ -210,7 +215,7 @@ def resample_quotes(quotes: Sequence[Dict], factor: int) -> List[Dict]:
     out = []
     for t in sorted(buckets):
         g = sorted(buckets[t], key=lambda q: q["open_time"])
-        if len(g) != factor or g[0]["open_time"] != t:
+        if len(g) != factor or any(q["open_time"] != t + i * MINUTE_MS for i, q in enumerate(g)):
             continue  # incomplete window: dropped, never approximated
         row = {"open_time": t, "session": fx_session(t), "volume": sum((q.get("volume") or 0) for q in g)}
         for side in ("bid", "ask"):

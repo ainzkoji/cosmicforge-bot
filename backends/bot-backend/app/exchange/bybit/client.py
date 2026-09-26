@@ -799,3 +799,10 @@ class BybitClient:
         return {"sl_order_id": f"POSITION_SL:{sym}" if "stopLoss" in payload else getattr(req, "old_sl_order_id", None),
                 "tp_order_id": f"POSITION_TP:{sym}" if "takeProfit" in payload else getattr(req, "old_tp_order_id", None),
                 "status": "OK", "error": None}
+
+    def get_trading_fee_rates(self, symbol: str) -> dict:
+        """Account-specific rates; no private response retained by CATI."""
+        result = self._ok(self._request_v5("GET", "/v5/account/fee-rate",
+                          {"category": "linear", "symbol": symbol.upper()}), "fee rates")
+        row = next((r for r in result.get("list", []) if r.get("symbol") == symbol.upper()), {})
+        return {"maker": row.get("makerFeeRate"), "taker": row.get("takerFeeRate")}

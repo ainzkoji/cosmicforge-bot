@@ -23,6 +23,7 @@ separation gets lost later.
 """
 from __future__ import annotations
 
+import math
 import hashlib
 import json
 import logging
@@ -545,7 +546,7 @@ def assess_quality(
                 out_of_order += 1
             else:
                 delta = start - previous_open
-                if delta != step:
+                if delta > 0 and delta != step:
                     if delta % step:
                         inconsistent += 1
                     else:
@@ -560,7 +561,7 @@ def assess_quality(
             inconsistent += 1
 
         o, h, low, c, volume = ohlcv(row)
-        if min(o, h, low, c) <= 0:
+        if not all(math.isfinite(x) for x in (o, h, low, c, volume)) or min(o, h, low, c) <= 0:
             non_positive += 1
         if volume < 0:
             negative_volume += 1

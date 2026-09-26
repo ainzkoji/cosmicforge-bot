@@ -34,13 +34,18 @@ def canonical_economics(candidate: Any, market_state: Any, forecast: Any, observ
                         venue_policy: Any = None, reference_notional: Optional[float] = None,
                         admission_policy: Any = None, user_id: Optional[str] = None,
                         broker_account_id: Optional[str] = None, bot_instance_id: Optional[str] = None,
-                        run_id: Optional[str] = None, cycle_id: Optional[str] = None) -> Tuple[Any, Any]:
+                        run_id: Optional[str] = None, cycle_id: Optional[str] = None, transfer_economics: Any = None) -> Tuple[Any, Any]:
     """(CostEstimate, EconomicOpportunity) from ONE Section 17 observation.
     Costs are subtracted exactly once, inside the Section 13 engine."""
     if observation is None:
         raise ValueError("canonical economics requires a Section 17 VenueEconomicObservation")
+    if observation.adapter_id in ("bybit_linear", "bingx_swap") and not getattr(venue_policy, "strict_required_components", False):
+        raise ValueError("MULTI_ASSET_VERSIONED_POLICY_REQUIRED")
     cost = build_venue_cost_estimate(candidate, observation, forecast=forecast, policy=venue_policy,
                                      reference_notional=reference_notional)
+    if getattr(venue_policy, "strict_required_components", False):
+        from app.trading_intelligence.economics.transfer import attach_multi_asset_economics
+        cost = attach_multi_asset_economics(cost, candidate, observation, transfer_economics)
     opportunity = evaluate_economic_opportunity(
         candidate, market_state, forecast, cost, policy=admission_policy, user_id=user_id,
         broker_account_id=broker_account_id, bot_instance_id=bot_instance_id, run_id=run_id, cycle_id=cycle_id)

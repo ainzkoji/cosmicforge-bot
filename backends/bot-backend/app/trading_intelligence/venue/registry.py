@@ -38,8 +38,18 @@ def _binance():
     return BinanceUsdmEconomicAdapter, collect_binance_raw
 
 
+def _bybit():
+    from app.trading_intelligence.venue.perpetual import BybitEconomicAdapter, collect_perpetual_raw
+    return BybitEconomicAdapter, collect_perpetual_raw
+
+
+def _bingx():
+    from app.trading_intelligence.venue.perpetual import BingXEconomicAdapter, collect_perpetual_raw
+    return BingXEconomicAdapter, collect_perpetual_raw
+
+
 #: broker_type (BotRunContext / broker_accounts) -> (adapter class, raw collector) factory
-_BROKER_ADAPTERS: Dict[str, Callable[[], Tuple[type, Callable[..., Any]]]] = {"binance": _binance}
+_BROKER_ADAPTERS: Dict[str, Callable[[], Tuple[type, Callable[..., Any]]]] = {"binance": _binance, "bybit": _bybit, "bingx": _bingx}
 
 
 def resolve_adapter(broker_type: Optional[str], policy: Optional[VenueCostPolicy] = None

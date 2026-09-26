@@ -416,3 +416,68 @@ __all__ = ["CERTIFICATION", "EXECUTION", "EXECUTION_REQUIREMENTS", "FROZEN_UNIVE
            "deep_subset", "exclude_stable_bases", "execution_eligibility", "historical_liquidity",
            "load_frozen_universe", "persist_dataset_manifest", "persist_universe_manifest", "select_universe",
            "verify_frozen_universe"]
+
+
+DATASET_LINEAGE_VERSION = "dataset-manifest-lineage-v2"
+
+
+def freeze_dataset_payload(*, universe, partitions, metadata_hash, code_commit,
+                           product_type, base_interval, resampling_policy_version, gap_policy_version,
+                           created_at):
+    """Extend the EXISTING dataset_manifests payload with frozen lineage.
+    Does not modify universe membership, certification v1 hashes or databases.
+    No final deep/FX manifest can be frozen while any partition is acquiring.
+    """
+    from app.market_data.quality import QUALITY_POLICY_VERSION
+    schema = universe.get("schema_version")
+    if schema == FROZEN_UNIVERSE_SCHEMA_VERSION:
+        verify_frozen_universe(universe)
+        symbols = set(universe["selected_symbols"])
+    elif schema == DEEP_UNIVERSE_SCHEMA_VERSION:
+        verify_deep_universe(universe)
+        symbols = {m["venue_symbol"] for m in universe["members"]}
+    else:
+        from app.market_data.fx_universe import verify_fx_universe
+        verify_fx_universe(universe)
+        symbols = {m["pair"] for m in universe["members"]}
+    if not partitions or not all((metadata_hash, code_commit, product_type, base_interval,
+                                 resampling_policy_version, gap_policy_version)):
+        raise ValueError("DATASET_LINEAGE_REQUIRED")
+    if set(p["symbol"] for p in partitions) != symbols:
+        raise ValueError("FROZEN_MEMBERSHIP_MISMATCH")
+    identities = [(p["symbol"], p["timeframe"], p["source"], p.get("venue")) for p in partitions]
+    if len(identities) != len(set(identities)):
+        raise ValueError("DUPLICATE_PARTITION")
+    expected_source = universe.get("source_provider") or universe.get("provider")
+    expected_venue = universe.get("source_venue")
+    for symbol in symbols:
+        if not any(p["symbol"] == symbol and p["timeframe"] == base_interval for p in partitions):
+            raise ValueError("BASE_PARTITION_REQUIRED")
+    for p in partitions:
+        if p["source"] != expected_source or (expected_venue and p.get("venue") != expected_venue):
+            raise ValueError("DATASET_SOURCE_SUBSTITUTION")
+        if not p.get("source_version"):
+            raise ValueError("SOURCE_VERSION_REQUIRED")
+        if (p.get("status") != "COMPLETE" or p.get("invalid_rows") != 0 or p.get("duplicate_rows") != 0
+                or p.get("out_of_order") != 0 or not p.get("partition_hash")
+                or any(g["reason"] not in ("WEEKEND_CLOSED", "HOLIDAY_CLOSED", "SESSION_CLOSED", "LISTING_AGE") for g in p.get("missing_ranges", []))
+                or p.get("rows", 0) <= 0 or p.get("rows") != p.get("expected_rows")):
+            raise ValueError("INCOMPLETE_DATASET_CANNOT_FREEZE")
+    body = {"schema_version": DATASET_LINEAGE_VERSION, "status": "FROZEN",
+            "universe_hash": universe["universe_hash"], "symbols": sorted(symbols),
+            "partitions": sorted(partitions, key=lambda p: (p["symbol"], p["timeframe"], p["source"])),
+            "metadata_hash": metadata_hash, "code_commit": code_commit, "product_type": product_type,
+            "base_interval": base_interval, "quality_policy_version": QUALITY_POLICY_VERSION,
+            "resampling_policy_version": resampling_policy_version, "gap_policy_version": gap_policy_version}
+    from app.trading_intelligence.hashing import stable_hash
+    return {**body, "manifest_hash": stable_hash(body), "metadata": {"created_at": created_at}}
+
+
+def verify_dataset_payload(payload):
+    from app.trading_intelligence.hashing import stable_hash
+    if payload.get("schema_version") != DATASET_LINEAGE_VERSION or payload.get("status") != "FROZEN":
+        raise FrozenUniverseError("FROZEN_DATASET_REQUIRED")
+    identity = {k: v for k, v in payload.items() if k not in ("manifest_hash", "metadata")}
+    if stable_hash(identity) != payload.get("manifest_hash"):
+        raise FrozenUniverseError("DATASET_MANIFEST_TAMPERED")
+    return payload["manifest_hash"]

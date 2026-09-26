@@ -44,7 +44,7 @@ def _dedupe(states: Iterable[Any], decision_time: int) -> Tuple[List[Any], Dict[
     for ms in states:
         if ms is None:
             continue
-        if int(ms.latest_closed_candle_time) > int(decision_time):
+        if int(ms.latest_closed_candle_time) > int(decision_time) or int(ms.decision_time) > int(decision_time):
             excluded["future_candle"] += 1          # causal: nothing after the decision boundary
             continue
         if not ms.is_usable:
@@ -198,17 +198,22 @@ def _risk_regime(crypto: GlobalComponent, breadth: GlobalComponent, stress: Glob
                                    "stress": stress.label if stress.status == AVAILABLE else "UNAVAILABLE"})
 
 
-def _event(event_source_state: Optional[str]) -> GlobalComponent:
+def _event(event_source_state: Optional[str], observed_at: Optional[int], decision_time: int, max_age_ms: int) -> GlobalComponent:
     if not event_source_state:
         return GlobalComponent.unavailable("event_risk", "EVENT_CONTEXT_NOT_SUPPLIED")
     s = str(event_source_state).upper()
     if s != "AVAILABLE":
         return GlobalComponent.unavailable("event_risk", f"EVENT_CALENDAR_{s}")
+    if observed_at is None or observed_at > decision_time:
+        return GlobalComponent.unavailable("event_risk", "CALENDAR_TIMESTAMP_UNAVAILABLE_OR_NON_CAUSAL")
+    if decision_time - observed_at > max_age_ms:
+        return GlobalComponent.unavailable("event_risk", "EVENT_CALENDAR_STALE")
     return GlobalComponent("event_risk", AVAILABLE, label="CALENDAR_AVAILABLE", inputs=1)
 
 
 def build_global_market_state(market_states: Iterable[Any], *, decision_time: int, timeframe: str,
-                              event_source_state: Optional[str] = None) -> GlobalMarketState:
+                              event_source_state: Optional[str] = None, event_observed_at: Optional[int] = None,
+                              event_max_age_ms: int = 3_600_000) -> GlobalMarketState:
     raw = [m for m in market_states if m is not None]
     states, excluded = _dedupe(raw, decision_time)
     crypto = _crypto(states)
@@ -227,7 +232,7 @@ def build_global_market_state(market_states: Iterable[Any], *, decision_time: in
         "currency_factors": cur, "cross_asset_stress": stress,
         "risk_regime": _risk_regime(crypto, breadth, stress),
         "correlation": GlobalComponent.unavailable("correlation", "NOT_COMPUTED_IN_CYCLE"),
-        "event_risk": _event(event_source_state), "data_quality": dq,
+        "event_risk": _event(event_source_state, event_observed_at, decision_time, event_max_age_ms), "data_quality": dq,
     }
     inputs = sorted((f"{s.instrument_key.asset_class}:{s.instrument_key.canonical_symbol}", s.market_state_id,
                      s.data_hash) for s in states)

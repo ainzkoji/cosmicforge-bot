@@ -100,6 +100,11 @@ class AccountExposureSnapshot:
     def all_exposures(self) -> Tuple[ExposureRecord, ...]:
         return self.open_exposures + self.pending_exposures + self.reservation_exposures
 
+    @property
+    def currency_exposure(self):
+        from app.trading_intelligence.portfolio.currency_exposure import account_currency_exposure
+        return account_currency_exposure(self)
+
     def duplicate_instruments(self) -> Tuple[str, ...]:
         """Canonical instruments held/intended by MORE THAN ONE bot on this
         account (separate attributable exposures, surfaced -- not merged)."""

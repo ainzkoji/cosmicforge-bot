@@ -130,7 +130,7 @@ def test_fx_sessions_and_quote_resampling():
     assert fx.fx_session(T0 + 13 * 3_600_000) == "LONDON_NY_OVERLAP"
     assert fx.fx_session(int(datetime(2026, 1, 10, 12, tzinfo=timezone.utc).timestamp() * 1000)) == "CLOSED"
     q = [{"open_time": T0 + i * M, "bid_open": 1, "bid_high": 1 + i, "bid_low": 1, "bid_close": 1 + i / 10,
-          "ask_open": 1, "ask_high": 1 + i, "ask_low": 1, "ask_close": 1.1 + i / 10, "volume": 1} for i in range(5)]
+          "ask_open": 1, "ask_high": 1.1 + i, "ask_low": 1, "ask_close": 1.1 + i / 10, "volume": 1} for i in range(5)]
     out = fx.resample_quotes(q, 5)
     assert len(out) == 1 and out[0]["bid_high"] == 5 and out[0]["mid_close"] == pytest.approx((1.4 + 1.5) / 2)
     assert fx.resample_quotes(q[:4], 5) == []
