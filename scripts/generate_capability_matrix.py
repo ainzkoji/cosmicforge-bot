@@ -99,11 +99,17 @@ def main() -> int:
             st = account_market_status(broker=broker, environment=env, permissions=TRADE_ONLY_KEY, instruments=ins,
                                        transfers_in_flight=0)
             matrix["account_capabilities"][f"{broker}:{env}"] = {
+                # the account mode is not read here (no key): mode-dependent brokers show UNKNOWN topology
+                "topology_class": st["topology_class"],
                 "capabilities": {k: {"state": v["state"], "status": v["status"], "reason": v["reason"]}
                                  for k, v in st["capabilities"].items()},
                 "markets": {f: {k: m[k] for k in ("markets_available", "markets_api_tradable",
-                                                  "markets_cati_eligible")} | {"cati_status": m["cati"]["status"],
-                                                                               "cati_reason": m["cati"]["reason"]}
+                                                  "markets_cati_eligible", "blocked_reasons")}
+                            | {"execution_status": m["execution"]["status"],
+                               "execution_reason": m["execution"]["reason"],
+                               "execution_reason_class": m["execution"]["reason_class"],
+                               "cati_status": m["cati"]["status"], "cati_reason": m["cati"]["reason"],
+                               "cati_reason_class": m["cati"]["reason_class"]}
                             for f, m in st["markets"].items()}}
     if discovered:
         matrix["canonical_registry"] = build_registry([i for v in discovered.values() for i in v]).summary()

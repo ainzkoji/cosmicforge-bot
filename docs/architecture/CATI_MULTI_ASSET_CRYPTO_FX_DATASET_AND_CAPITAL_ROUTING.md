@@ -381,7 +381,8 @@ refuses at M0 with `GOVERNANCE_NOT_AUTHORIZED`). The deprecated per-symbol diagn
 
 ## 25. APIs / services / workers
 
-* `GET  /api/v1/brokers/{account_id}/market-status[?include_balances=true]` — user-scoped.
+* `GET  /api/v1/brokers/{account_id}/market-status[?include_balances=true][&instruments_family=FX]` — user-scoped;
+  `include_balances` also reads the account mode (topology) from the broker; a stale catalog is refreshed (throttled).
 * `POST /api/v1/brokers/{account_id}/market-discovery/sync` — refresh the venue catalog (public metadata).
 * `GET  /api/v1/capabilities/cati` — admin; every CATI capability state + reasons.
 * Existing: `/api/v1/brokers/{id}/transfer-capabilities|wallets|transfer-settings|internal-transfers…`.
@@ -440,8 +441,8 @@ OneDrive path, so run with `PYTHONPATH=<repo>/backends/shared;<repo>/backends/bo
 | Crypto execution | ACTIVE | ACTIVE | ACTIVE | ACCOUNT_NOT_ELIGIBLE (unvalidated for live) | ACTIVE | ACCOUNT_NOT_ELIGIBLE |
 | FX execution | ACTIVE* | ACCOUNT_NOT_ELIGIBLE | ACTIVE | ACCOUNT_NOT_ELIGIBLE | ACTIVE** | ACCOUNT_NOT_ELIGIBLE |
 | TradFi execution | ACTIVE* | ACCOUNT_NOT_ELIGIBLE | ACTIVE | ACCOUNT_NOT_ELIGIBLE | ACTIVE** | ACCOUNT_NOT_ELIGIBLE |
-| Internal transfer | VENUE_API_NOT_SUPPORTED (no demo wallet host) | BLOCKED (not validated) | ACTIVE | BLOCKED (not validated) | VENUE_API_NOT_SUPPORTED | BLOCKED |
-| Unified collateral | n/a (classic) | n/a | AVAILABLE (UTA) | AVAILABLE | ACCOUNT_MODE_NOT_UNIFIED | same |
+| Internal transfer | VENUE_API_NOT_SUPPORTED (no demo wallet host) | BLOCKED (not validated) | ACTIVE once the account mode is read (else ACCOUNT_TOPOLOGY_UNKNOWN) | BLOCKED (not validated) | VENUE_API_NOT_SUPPORTED | BLOCKED |
+| Unified collateral | n/a (classic, SEGMENTED) | n/a | AVAILABLE only when the broker reports UTA; unread -> ACCOUNT_TOPOLOGY_UNKNOWN | same | ACCOUNT_MODE_NOT_UNIFIED (SEGMENTED) | same |
 | Position / margin mode | UNSUPPORTED (platform) | | | | | |
 | CATI eligible (any family) | CERTIFICATION_NOT_READY everywhere | | | | | |
 
@@ -485,3 +486,51 @@ only contracts with `apiStateOpen=true` and status 1 (1 FX contract at the Satur
 | Governance intact; holdout unopened | DONE |
 | Pre-holdout certification over the 136-member universe | NOT RUN (memory; see section 21) |
 | Tests pass; no secrets/data committed | DONE (0 failures; only code, docs and the frozen manifest committed) |
+
+## 33. Sections 7–9 closure (Implementation Guide v1.0, audited 2026-09-26 on `679b7afc`)
+
+Audit first, then only real gaps. Nothing new was built in parallel: the same clients, `InstrumentCatalog`
+(`venue_instruments`), declared profiles, activation engine, wallet topology, transfer ledger/service/
+reconciliation and capital planner were extended.
+
+**Gaps found and closed**
+
+| Req. | Gap on `679b7afc` | Closed by |
+|---|---|---|
+| 7.2 | Bybit pagination stopped silently after 50 pages / on a repeated cursor -> truncated universe recorded as delistings | `BybitClient.discover_instruments` raises (no partial universe) |
+| 7.2 | `InstrumentCatalog.upsert([])` or a partial response delisted everything | empty upsert refused; `sync_instruments` refuses a refresh that would delist > 50 % of >= 20 known instruments (`DISCOVERY_SUSPECT_PARTIAL`) |
+| 7.5 / 7.10 | no persisted metadata version; delisted identities not queryable | `venue_instruments.metadata_hash` / `metadata_changed_ms` (additive); `record()`, `list(include_delisted=True)`, relist counting; `first_seen_ms` never rewritten |
+| 7.6 / 7.9 | capability dimensions spread across modules; no per-instrument lifecycle | `activation.market.instrument_capabilities`: MARKET_EXISTS, MARKET_DATA, API_EXECUTION, ACCOUNT_ELIGIBLE, ORDER_SUBMISSION/LOOKUP, POSITION, FILL, PROTECTION, TRANSFER, ECONOMICS, CERTIFICATION_READY (certified-universe membership), GOVERNANCE_AUTHORISED + lifecycle DISCOVERED -> RESEARCH_ONLY -> DATA_READY -> CERTIFICATION_READY -> ACCOUNT_ELIGIBLE -> GOVERNANCE_AUTHORISED -> CATI_EXECUTABLE; `GET …/market-status?instruments_family=FX` |
+| 7.11 | refresh only by explicit POST; stale catalogs looked current | `discovery_freshness` (6 h), `refresh_if_stale` on market-status reads (throttled 5 min per venue/env); a stale catalog blocks execution capability (`DISCOVERY_STALE`) |
+| 8.9 | one TRADFI verdict for three families; no per-family "why blocked" | `markets[<family>].execution` {status, reason, `reason_class`} + `blocked_reasons` histogram; reason classes ADAPTER_NOT_VALIDATED, PERMISSION_EVIDENCE_REQUIRED, GOVERNANCE_NOT_READY, CERTIFICATION_NOT_READY, VENUE_API_NOT_SUPPORTED, ACCOUNT_NOT_ELIGIBLE, NOT_LISTED, … (UI status vocabulary unchanged) |
+| 8.10 | – | `permission_health`: VERIFIED / MISSING / UNVERIFIED per permission, WITHDRAW = NEVER_REQUIRED |
+| 9.2 / 9.6 | Bybit topology defaulted to UTA in the status engine (shared collateral assumed without reading the account) | `topology_for_account` / `TopologyClass` (UNIFIED / SEGMENTED / UNKNOWN / UNSUPPORTED); market-status reads the mode from the broker only on a live read (`include_balances=true`); unread -> `ACCOUNT_TOPOLOGY_UNKNOWN` for UNIFIED_COLLATERAL and INTERNAL_TRANSFER |
+| 9.3 | route facts implicit | routes report min/max/fee as `UNAVAILABLE_FROM_VENUE_API` (never 0), permission INTERNAL_TRANSFER, settlement BROKER_CONFIRMATION_REQUIRED |
+| 9.6 / 9.7 | planner reported unknown topology / missing route as "no wallet" / "insufficient capital" | planner reasons `ACCOUNT_TOPOLOGY_UNKNOWN`, `INTERNAL_TRANSFER_ROUTE_UNAVAILABLE`; the shadow hook records an unreadable topology instead of skipping |
+| 9.5 / 9.8 / 9.16 | automated transfers did not need `auto_rebalance_enabled`, had no emergency stop, no route allowlist, no %/destination caps, no manual-approval threshold, and no proof of the admitted opportunity they fund | settings columns (additive) `allowed_routes_json`, `max_transfer_pct`, `max_destination_balance`, `manual_approval_threshold`, `emergency_disabled`; service blocks `AUTOMATION_DISABLED`, `AUTOMATION_EMERGENCY_DISABLED`, `CATI_KILL_SWITCH_ACTIVE`, `GOVERNANCE_STATE_UNAVAILABLE`, `TRANSFER_PRECONDITIONS_NOT_ESTABLISHED` (instrument/account eligible, CATI admitted, portfolio + hard risk accepted, capital requirement known — all positively True), `MANUAL_APPROVAL_REQUIRED`, `ROUTE_NOT_ALLOWED`, `MAX_TRANSFER_PCT_EXCEEDED`, `DESTINATION_BALANCE_UNAVAILABLE`, `DESTINATION_CAP_EXCEEDED`; `submit_if_authorised(…, preconditions=…)` |
+| 9.13 / 9.14 | nothing enforced capital readiness at the execution boundary | `capital.planner.capital_readiness` (PHYSICAL: broker-COMPLETED only; LOGICAL: reservation RESERVED); `CATIExecutionBoundary.process_trade_plan(capital=…)` -> `CAPITAL_NOT_READY` before hard risk and the broker (pending keeps the reservation, definitive releases it) |
+
+**Verified already present (reused, unchanged):** idempotent transfer intents (UNIQUE user+account+key,
+fingerprint conflict), dispatched-without-answer -> `UNKNOWN`, never re-submitted, reconciliation from broker
+history (COMPLETED / FAILED / still pending / NOT_FOUND only for client-id brokers after the settlement window),
+append-only events, one transfer in flight per account, broker-authoritative balances (unknown never 0),
+withdraw-capable keys refused, BingX transfers blocked (`PERMISSION_EVIDENCE_REQUIRED`), 404 ownership on every
+transfer / status route, selector aggregation of all bots on one broker account, the frozen day-open 2.5 %
+hard cap (an intraday internal transfer does not change the budget — tested).
+
+**Governance / authority:** unchanged — phase M0, CATI execution BLOCKED, holdout closed, no ML authority,
+Section 22 policy untouched, Bybit/BingX LIVE `ADAPTER_NOT_VALIDATED`.
+
+**Still requiring external (venue) validation:** DEMO order lifecycle on Bybit/BingX FX + TradFi contracts;
+LIVE validation of Bybit/BingX execution and of every internal-transfer adapter (Binance universal transfer,
+Bybit inter-transfer, BingX asset transfer); Bybit `/v5/user/query-api` and Binance `apiRestrictions` permission
+evidence against real keys; Bybit account-mode read (`unifiedMarginStatus`) against a real account; transfer
+reconciliation against real broker history. BingX key permissions remain not inspectable.
+
+**Tests (PYTHONUTF8=1, PYTHONPATH as in section 27):** new `tests/test_sections7_9_closure.py` (33) and
+`tests/trading_intelligence/test_capital_readiness_boundary.py` (10) — 43 passed; focused multi-asset set
+193 passed; CATI `tests/trading_intelligence` 892 passed; full bot-backend 4,042 passed, 1 skipped, 0 failed;
+user-backend `test_phase2_broker_security.py` 8 passed (`test_broker_flow.py::test_mt_broker_flow` fails
+identically on untouched `679b7afc`: it patches a `decrypt_credentials` attribute `broker_service` does not have).
+The capability matrix was regenerated from live public discovery on 2026-09-26 (1,563 canonical instruments,
+0 conflicts).

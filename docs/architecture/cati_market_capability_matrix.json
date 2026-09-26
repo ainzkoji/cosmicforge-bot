@@ -60,41 +60,72 @@
       },
       "markets": {
         "COMMODITIES": {
+          "blocked_reasons": {},
           "cati_reason": "CERTIFICATION_NOT_COMPLETE",
+          "cati_reason_class": "CERTIFICATION_NOT_READY",
           "cati_status": "CERTIFICATION_NOT_READY",
+          "execution_reason": null,
+          "execution_reason_class": "ACTIVE",
+          "execution_status": "ACTIVE",
           "markets_api_tradable": 8,
           "markets_available": 8,
           "markets_cati_eligible": 0
         },
         "CRYPTO": {
+          "blocked_reasons": {
+            "CONTRACT_TYPE_NOT_SUPPORTED": 4,
+            "INSTRUMENT_NOT_API_TRADABLE": 131
+          },
           "cati_reason": "CERTIFICATION_NOT_COMPLETE",
+          "cati_reason_class": "CERTIFICATION_NOT_READY",
           "cati_status": "CERTIFICATION_NOT_READY",
+          "execution_reason": null,
+          "execution_reason_class": "ACTIVE",
+          "execution_status": "ACTIVE",
           "markets_api_tradable": 568,
           "markets_available": 703,
           "markets_cati_eligible": 0
         },
         "FX": {
+          "blocked_reasons": {},
           "cati_reason": "CERTIFICATION_NOT_COMPLETE",
+          "cati_reason_class": "CERTIFICATION_NOT_READY",
           "cati_status": "CERTIFICATION_NOT_READY",
+          "execution_reason": null,
+          "execution_reason_class": "ACTIVE",
+          "execution_status": "ACTIVE",
           "markets_api_tradable": 1,
           "markets_available": 1,
           "markets_cati_eligible": 0
         },
         "INDEX": {
+          "blocked_reasons": {
+            "INSTRUMENT_NOT_API_TRADABLE": 1
+          },
           "cati_reason": "CERTIFICATION_NOT_COMPLETE",
+          "cati_reason_class": "CERTIFICATION_NOT_READY",
           "cati_status": "CERTIFICATION_NOT_READY",
+          "execution_reason": null,
+          "execution_reason_class": "ACTIVE",
+          "execution_status": "ACTIVE",
           "markets_api_tradable": 2,
           "markets_available": 3,
           "markets_cati_eligible": 0
         },
         "STOCK": {
+          "blocked_reasons": {},
           "cati_reason": "CERTIFICATION_NOT_COMPLETE",
+          "cati_reason_class": "CERTIFICATION_NOT_READY",
           "cati_status": "CERTIFICATION_NOT_READY",
+          "execution_reason": null,
+          "execution_reason_class": "ACTIVE",
+          "execution_status": "ACTIVE",
           "markets_api_tradable": 188,
           "markets_available": 188,
           "markets_cati_eligible": 0
         }
-      }
+      },
+      "topology_class": "SEGMENTED"
     },
     "binance:LIVE": {
       "capabilities": {
@@ -156,41 +187,78 @@
       },
       "markets": {
         "COMMODITIES": {
+          "blocked_reasons": {
+            "BROKER_EXECUTION_UNVALIDATED_FOR_LIVE": 8
+          },
           "cati_reason": "CERTIFICATION_NOT_COMPLETE",
+          "cati_reason_class": "CERTIFICATION_NOT_READY",
           "cati_status": "CERTIFICATION_NOT_READY",
+          "execution_reason": "BROKER_EXECUTION_UNVALIDATED_FOR_LIVE",
+          "execution_reason_class": "ADAPTER_NOT_VALIDATED",
+          "execution_status": "ACCOUNT_NOT_ELIGIBLE",
           "markets_api_tradable": 0,
           "markets_available": 8,
           "markets_cati_eligible": 0
         },
         "CRYPTO": {
+          "blocked_reasons": {
+            "CONTRACT_TYPE_NOT_SUPPORTED": 4,
+            "INSTRUMENT_NOT_API_TRADABLE": 131
+          },
           "cati_reason": "CERTIFICATION_NOT_COMPLETE",
+          "cati_reason_class": "CERTIFICATION_NOT_READY",
           "cati_status": "CERTIFICATION_NOT_READY",
+          "execution_reason": null,
+          "execution_reason_class": "ACTIVE",
+          "execution_status": "ACTIVE",
           "markets_api_tradable": 568,
           "markets_available": 703,
           "markets_cati_eligible": 0
         },
         "FX": {
+          "blocked_reasons": {
+            "BROKER_EXECUTION_UNVALIDATED_FOR_LIVE": 1
+          },
           "cati_reason": "CERTIFICATION_NOT_COMPLETE",
+          "cati_reason_class": "CERTIFICATION_NOT_READY",
           "cati_status": "CERTIFICATION_NOT_READY",
+          "execution_reason": "BROKER_EXECUTION_UNVALIDATED_FOR_LIVE",
+          "execution_reason_class": "ADAPTER_NOT_VALIDATED",
+          "execution_status": "ACCOUNT_NOT_ELIGIBLE",
           "markets_api_tradable": 0,
           "markets_available": 1,
           "markets_cati_eligible": 0
         },
         "INDEX": {
+          "blocked_reasons": {
+            "BROKER_EXECUTION_UNVALIDATED_FOR_LIVE": 3
+          },
           "cati_reason": "CERTIFICATION_NOT_COMPLETE",
+          "cati_reason_class": "CERTIFICATION_NOT_READY",
           "cati_status": "CERTIFICATION_NOT_READY",
+          "execution_reason": "BROKER_EXECUTION_UNVALIDATED_FOR_LIVE",
+          "execution_reason_class": "ADAPTER_NOT_VALIDATED",
+          "execution_status": "ACCOUNT_NOT_ELIGIBLE",
           "markets_api_tradable": 0,
           "markets_available": 3,
           "markets_cati_eligible": 0
         },
         "STOCK": {
+          "blocked_reasons": {
+            "BROKER_EXECUTION_UNVALIDATED_FOR_LIVE": 188
+          },
           "cati_reason": "CERTIFICATION_NOT_COMPLETE",
+          "cati_reason_class": "CERTIFICATION_NOT_READY",
           "cati_status": "CERTIFICATION_NOT_READY",
+          "execution_reason": "BROKER_EXECUTION_UNVALIDATED_FOR_LIVE",
+          "execution_reason_class": "ADAPTER_NOT_VALIDATED",
+          "execution_status": "ACCOUNT_NOT_ELIGIBLE",
           "markets_api_tradable": 0,
           "markets_available": 188,
           "markets_cati_eligible": 0
         }
-      }
+      },
+      "topology_class": "SEGMENTED"
     },
     "bingx:DEMO": {
       "capabilities": {
@@ -252,41 +320,80 @@
       },
       "markets": {
         "COMMODITIES": {
+          "blocked_reasons": {
+            "INSTRUMENT_NOT_API_TRADABLE": 25
+          },
           "cati_reason": "CERTIFICATION_NOT_COMPLETE",
+          "cati_reason_class": "CERTIFICATION_NOT_READY",
           "cati_status": "CERTIFICATION_NOT_READY",
+          "execution_reason": null,
+          "execution_reason_class": "ACTIVE",
+          "execution_status": "ACTIVE",
           "markets_api_tradable": 8,
           "markets_available": 33,
           "markets_cati_eligible": 0
         },
         "CRYPTO": {
+          "blocked_reasons": {
+            "VENUE_API_NOT_SUPPORTED": 14
+          },
           "cati_reason": "CERTIFICATION_NOT_COMPLETE",
+          "cati_reason_class": "CERTIFICATION_NOT_READY",
           "cati_status": "CERTIFICATION_NOT_READY",
+          "execution_reason": null,
+          "execution_reason_class": "ACTIVE",
+          "execution_status": "ACTIVE",
           "markets_api_tradable": 626,
           "markets_available": 640,
           "markets_cati_eligible": 0
         },
         "FX": {
+          "blocked_reasons": {
+            "INSTRUMENT_NOT_API_TRADABLE": 40,
+            "VENUE_API_NOT_SUPPORTED": 1
+          },
           "cati_reason": "CERTIFICATION_NOT_COMPLETE",
+          "cati_reason_class": "CERTIFICATION_NOT_READY",
           "cati_status": "CERTIFICATION_NOT_READY",
+          "execution_reason": null,
+          "execution_reason_class": "ACTIVE",
+          "execution_status": "ACTIVE",
           "markets_api_tradable": 1,
           "markets_available": 42,
           "markets_cati_eligible": 0
         },
         "INDEX": {
+          "blocked_reasons": {
+            "INSTRUMENT_NOT_API_TRADABLE": 8,
+            "VENUE_API_NOT_SUPPORTED": 2
+          },
           "cati_reason": "CERTIFICATION_NOT_COMPLETE",
+          "cati_reason_class": "CERTIFICATION_NOT_READY",
           "cati_status": "CERTIFICATION_NOT_READY",
+          "execution_reason": null,
+          "execution_reason_class": "ACTIVE",
+          "execution_status": "ACTIVE",
           "markets_api_tradable": 8,
           "markets_available": 18,
           "markets_cati_eligible": 0
         },
         "STOCK": {
+          "blocked_reasons": {
+            "INSTRUMENT_NOT_API_TRADABLE": 133,
+            "VENUE_API_NOT_SUPPORTED": 129
+          },
           "cati_reason": "CERTIFICATION_NOT_COMPLETE",
+          "cati_reason_class": "CERTIFICATION_NOT_READY",
           "cati_status": "CERTIFICATION_NOT_READY",
-          "markets_api_tradable": 260,
+          "execution_reason": null,
+          "execution_reason_class": "ACTIVE",
+          "execution_status": "ACTIVE",
+          "markets_api_tradable": 259,
           "markets_available": 521,
           "markets_cati_eligible": 0
         }
-      }
+      },
+      "topology_class": "SEGMENTED"
     },
     "bingx:LIVE": {
       "capabilities": {
@@ -348,41 +455,77 @@
       },
       "markets": {
         "COMMODITIES": {
+          "blocked_reasons": {
+            "BROKER_EXECUTION_UNVALIDATED_FOR_LIVE": 33
+          },
           "cati_reason": "CERTIFICATION_NOT_COMPLETE",
+          "cati_reason_class": "CERTIFICATION_NOT_READY",
           "cati_status": "CERTIFICATION_NOT_READY",
+          "execution_reason": "BROKER_EXECUTION_UNVALIDATED_FOR_LIVE",
+          "execution_reason_class": "ADAPTER_NOT_VALIDATED",
+          "execution_status": "ACCOUNT_NOT_ELIGIBLE",
           "markets_api_tradable": 0,
           "markets_available": 33,
           "markets_cati_eligible": 0
         },
         "CRYPTO": {
+          "blocked_reasons": {
+            "BROKER_EXECUTION_UNVALIDATED_FOR_LIVE": 640
+          },
           "cati_reason": "CERTIFICATION_NOT_COMPLETE",
+          "cati_reason_class": "CERTIFICATION_NOT_READY",
           "cati_status": "CERTIFICATION_NOT_READY",
+          "execution_reason": "BROKER_EXECUTION_UNVALIDATED_FOR_LIVE",
+          "execution_reason_class": "ADAPTER_NOT_VALIDATED",
+          "execution_status": "ACCOUNT_NOT_ELIGIBLE",
           "markets_api_tradable": 0,
           "markets_available": 640,
           "markets_cati_eligible": 0
         },
         "FX": {
+          "blocked_reasons": {
+            "BROKER_EXECUTION_UNVALIDATED_FOR_LIVE": 42
+          },
           "cati_reason": "CERTIFICATION_NOT_COMPLETE",
+          "cati_reason_class": "CERTIFICATION_NOT_READY",
           "cati_status": "CERTIFICATION_NOT_READY",
+          "execution_reason": "BROKER_EXECUTION_UNVALIDATED_FOR_LIVE",
+          "execution_reason_class": "ADAPTER_NOT_VALIDATED",
+          "execution_status": "ACCOUNT_NOT_ELIGIBLE",
           "markets_api_tradable": 0,
           "markets_available": 42,
           "markets_cati_eligible": 0
         },
         "INDEX": {
+          "blocked_reasons": {
+            "BROKER_EXECUTION_UNVALIDATED_FOR_LIVE": 18
+          },
           "cati_reason": "CERTIFICATION_NOT_COMPLETE",
+          "cati_reason_class": "CERTIFICATION_NOT_READY",
           "cati_status": "CERTIFICATION_NOT_READY",
+          "execution_reason": "BROKER_EXECUTION_UNVALIDATED_FOR_LIVE",
+          "execution_reason_class": "ADAPTER_NOT_VALIDATED",
+          "execution_status": "ACCOUNT_NOT_ELIGIBLE",
           "markets_api_tradable": 0,
           "markets_available": 18,
           "markets_cati_eligible": 0
         },
         "STOCK": {
+          "blocked_reasons": {
+            "BROKER_EXECUTION_UNVALIDATED_FOR_LIVE": 521
+          },
           "cati_reason": "CERTIFICATION_NOT_COMPLETE",
+          "cati_reason_class": "CERTIFICATION_NOT_READY",
           "cati_status": "CERTIFICATION_NOT_READY",
+          "execution_reason": "BROKER_EXECUTION_UNVALIDATED_FOR_LIVE",
+          "execution_reason_class": "ADAPTER_NOT_VALIDATED",
+          "execution_status": "ACCOUNT_NOT_ELIGIBLE",
           "markets_api_tradable": 0,
           "markets_available": 521,
           "markets_cati_eligible": 0
         }
-      }
+      },
+      "topology_class": "SEGMENTED"
     },
     "bybit:DEMO": {
       "capabilities": {
@@ -412,9 +555,9 @@
           "status": "AVAILABLE"
         },
         "INTERNAL_TRANSFER": {
-          "reason": null,
-          "state": "ACTIVE",
-          "status": "ACTIVE"
+          "reason": "ACCOUNT_TOPOLOGY_UNKNOWN",
+          "state": "BLOCKED",
+          "status": "ACCOUNT_NOT_ELIGIBLE"
         },
         "MARGIN_MODE": {
           "reason": "PLATFORM_ADAPTER_NOT_IMPLEMENTED",
@@ -437,48 +580,76 @@
           "status": "ACTIVE"
         },
         "UNIFIED_COLLATERAL": {
-          "reason": null,
-          "state": "ACTIVE",
-          "status": "AVAILABLE"
+          "reason": "ACCOUNT_TOPOLOGY_UNKNOWN",
+          "state": "BLOCKED",
+          "status": "ACCOUNT_NOT_ELIGIBLE"
         }
       },
       "markets": {
         "COMMODITIES": {
+          "blocked_reasons": {},
           "cati_reason": "CERTIFICATION_NOT_COMPLETE",
+          "cati_reason_class": "CERTIFICATION_NOT_READY",
           "cati_status": "CERTIFICATION_NOT_READY",
+          "execution_reason": null,
+          "execution_reason_class": "ACTIVE",
+          "execution_status": "ACTIVE",
           "markets_api_tradable": 4,
           "markets_available": 4,
           "markets_cati_eligible": 0
         },
         "CRYPTO": {
+          "blocked_reasons": {
+            "CONTRACT_TYPE_NOT_SUPPORTED": 40
+          },
           "cati_reason": "CERTIFICATION_NOT_COMPLETE",
+          "cati_reason_class": "CERTIFICATION_NOT_READY",
           "cati_status": "CERTIFICATION_NOT_READY",
+          "execution_reason": null,
+          "execution_reason_class": "ACTIVE",
+          "execution_status": "ACTIVE",
           "markets_api_tradable": 588,
           "markets_available": 628,
           "markets_cati_eligible": 0
         },
         "FX": {
+          "blocked_reasons": {},
           "cati_reason": "CERTIFICATION_NOT_COMPLETE",
+          "cati_reason_class": "CERTIFICATION_NOT_READY",
           "cati_status": "CERTIFICATION_NOT_READY",
+          "execution_reason": null,
+          "execution_reason_class": "ACTIVE",
+          "execution_status": "ACTIVE",
           "markets_api_tradable": 3,
           "markets_available": 3,
           "markets_cati_eligible": 0
         },
         "INDEX": {
+          "blocked_reasons": {},
           "cati_reason": "CERTIFICATION_NOT_COMPLETE",
+          "cati_reason_class": "CERTIFICATION_NOT_READY",
           "cati_status": "CERTIFICATION_NOT_READY",
+          "execution_reason": "NOT_LISTED_BY_VENUE",
+          "execution_reason_class": "NOT_LISTED",
+          "execution_status": "BLOCKED",
           "markets_api_tradable": 0,
           "markets_available": 0,
           "markets_cati_eligible": 0
         },
         "STOCK": {
+          "blocked_reasons": {},
           "cati_reason": "CERTIFICATION_NOT_COMPLETE",
+          "cati_reason_class": "CERTIFICATION_NOT_READY",
           "cati_status": "CERTIFICATION_NOT_READY",
+          "execution_reason": null,
+          "execution_reason_class": "ACTIVE",
+          "execution_status": "ACTIVE",
           "markets_api_tradable": 250,
           "markets_available": 250,
           "markets_cati_eligible": 0
         }
-      }
+      },
+      "topology_class": "UNKNOWN"
     },
     "bybit:LIVE": {
       "capabilities": {
@@ -533,48 +704,82 @@
           "status": "ACCOUNT_NOT_ELIGIBLE"
         },
         "UNIFIED_COLLATERAL": {
-          "reason": null,
-          "state": "ACTIVE",
-          "status": "AVAILABLE"
+          "reason": "ACCOUNT_TOPOLOGY_UNKNOWN",
+          "state": "BLOCKED",
+          "status": "ACCOUNT_NOT_ELIGIBLE"
         }
       },
       "markets": {
         "COMMODITIES": {
+          "blocked_reasons": {
+            "BROKER_EXECUTION_UNVALIDATED_FOR_LIVE": 4
+          },
           "cati_reason": "CERTIFICATION_NOT_COMPLETE",
+          "cati_reason_class": "CERTIFICATION_NOT_READY",
           "cati_status": "CERTIFICATION_NOT_READY",
+          "execution_reason": "BROKER_EXECUTION_UNVALIDATED_FOR_LIVE",
+          "execution_reason_class": "ADAPTER_NOT_VALIDATED",
+          "execution_status": "ACCOUNT_NOT_ELIGIBLE",
           "markets_api_tradable": 0,
           "markets_available": 4,
           "markets_cati_eligible": 0
         },
         "CRYPTO": {
+          "blocked_reasons": {
+            "BROKER_EXECUTION_UNVALIDATED_FOR_LIVE": 628
+          },
           "cati_reason": "CERTIFICATION_NOT_COMPLETE",
+          "cati_reason_class": "CERTIFICATION_NOT_READY",
           "cati_status": "CERTIFICATION_NOT_READY",
+          "execution_reason": "BROKER_EXECUTION_UNVALIDATED_FOR_LIVE",
+          "execution_reason_class": "ADAPTER_NOT_VALIDATED",
+          "execution_status": "ACCOUNT_NOT_ELIGIBLE",
           "markets_api_tradable": 0,
           "markets_available": 628,
           "markets_cati_eligible": 0
         },
         "FX": {
+          "blocked_reasons": {
+            "BROKER_EXECUTION_UNVALIDATED_FOR_LIVE": 3
+          },
           "cati_reason": "CERTIFICATION_NOT_COMPLETE",
+          "cati_reason_class": "CERTIFICATION_NOT_READY",
           "cati_status": "CERTIFICATION_NOT_READY",
+          "execution_reason": "BROKER_EXECUTION_UNVALIDATED_FOR_LIVE",
+          "execution_reason_class": "ADAPTER_NOT_VALIDATED",
+          "execution_status": "ACCOUNT_NOT_ELIGIBLE",
           "markets_api_tradable": 0,
           "markets_available": 3,
           "markets_cati_eligible": 0
         },
         "INDEX": {
+          "blocked_reasons": {},
           "cati_reason": "CERTIFICATION_NOT_COMPLETE",
+          "cati_reason_class": "CERTIFICATION_NOT_READY",
           "cati_status": "CERTIFICATION_NOT_READY",
+          "execution_reason": "NOT_LISTED_BY_VENUE",
+          "execution_reason_class": "NOT_LISTED",
+          "execution_status": "BLOCKED",
           "markets_api_tradable": 0,
           "markets_available": 0,
           "markets_cati_eligible": 0
         },
         "STOCK": {
+          "blocked_reasons": {
+            "BROKER_EXECUTION_UNVALIDATED_FOR_LIVE": 250
+          },
           "cati_reason": "CERTIFICATION_NOT_COMPLETE",
+          "cati_reason_class": "CERTIFICATION_NOT_READY",
           "cati_status": "CERTIFICATION_NOT_READY",
+          "execution_reason": "BROKER_EXECUTION_UNVALIDATED_FOR_LIVE",
+          "execution_reason_class": "ADAPTER_NOT_VALIDATED",
+          "execution_status": "ACCOUNT_NOT_ELIGIBLE",
           "markets_api_tradable": 0,
           "markets_available": 250,
           "markets_cati_eligible": 0
         }
-      }
+      },
+      "topology_class": "UNKNOWN"
     }
   },
   "canonical_registry": {
@@ -589,7 +794,7 @@
     "canonical_instruments": 1563,
     "conflicts": 0,
     "listed_on_multiple_venues": 836,
-    "registry_hash": "05700d1b50e18fa0772393e6951a5c68ee57ba4853acd789e3cf05a3d0646563"
+    "registry_hash": "ef70c723ad48af57d96612b1f97a0a9752f7dd89392a8900945d274e8e81bcbf"
   },
   "cati_activation_at_M0": {
     "CATI_ACTIVE_EXECUTION@binance_usdm:DEMO:*": {
@@ -1269,8 +1474,8 @@
         "FX:NOT_TRADABLE": 41,
         "INDEX:API_TRADABLE": 8,
         "INDEX:NOT_TRADABLE": 10,
-        "STOCK:API_TRADABLE": 260,
-        "STOCK:NOT_TRADABLE": 261
+        "STOCK:API_TRADABLE": 259,
+        "STOCK:NOT_TRADABLE": 262
       },
       "instruments": 1254
     },
@@ -1284,7 +1489,7 @@
       "instruments": 885
     }
   },
-  "generated_at": "2026-09-25T22:58:27.541767+00:00",
+  "generated_at": "2026-09-26T08:59:45.236157+00:00",
   "generated_by": "scripts/generate_capability_matrix.py",
   "schema": "cati-market-capability-matrix-v1",
   "withdrawal_permission_required": false,
