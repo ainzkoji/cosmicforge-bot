@@ -225,6 +225,7 @@ def test_discovery_refresh_is_stale_driven_and_throttled(tmp_path, monkeypatch):
     d = DB(path=str(tmp_path / "cat.db"))
     ensure_market_data_schema(d)
     monkeypatch.setattr(st, "_refresh_attempts", {})
+    monkeypatch.setattr("app.exchange.catalog_refresh._pending", {})  # no event requests from other tests
     monkeypatch.setattr("app.ops.multi_asset_metrics.instrument_sync", lambda *a, **k: None)
     calls = []
     client = SimpleNamespace(discover_instruments=lambda: calls.append(1) or [BTC, EUR])

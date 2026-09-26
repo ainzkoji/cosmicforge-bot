@@ -13,16 +13,21 @@ broker-authoritative only when a live read is requested (``include_balances``)
 ACCOUNT_TOPOLOGY_UNKNOWN, never assumed unified.
 
 Discovery freshness (Section 7.11): the venue catalog is refreshed from the
-venue's public discovery API when it is missing or older than
-``DISCOVERY_MAX_AGE_MS`` (``refresh_stale``), at most once per
+venue's public discovery API when it is missing, older than
+``DISCOVERY_MAX_AGE_MS``, or an event requested it since the last sync
+(``app.exchange.catalog_refresh``: an instrument-related venue API error, an
+account-mode change) -- on market-status reads (``refresh_stale``) and in the
+background ``discovery_refresh_loop`` -- at most once per
 ``REFRESH_MIN_INTERVAL_MS`` per venue/environment (no call storms). A catalog
-that stays stale blocks execution capability (DISCOVERY_STALE).
+that stays stale blocks execution capability (DISCOVERY_STALE); a pending
+event request only makes the refresh happen sooner, it changes no decision.
 
 No credentials, keys or secrets appear in the output: permission health is
 abstract (VERIFIED / MISSING / UNVERIFIED).
 """
 from __future__ import annotations
 
+import logging
 import threading
 import time
 from typing import Any, Callable, Dict, List, Optional, Tuple
@@ -32,6 +37,7 @@ DISCOVERY_MAX_AGE_MS = 6 * 3_600_000
 REFRESH_MIN_INTERVAL_MS = 5 * 60_000
 _refresh_attempts: Dict[Tuple[str, str], int] = {}
 _refresh_guard = threading.Lock()
+logger = logging.getLogger(__name__)
 
 
 def _catalog_env(environment: str) -> List[str]:
@@ -90,7 +96,7 @@ def refresh_if_stale(db: Any, auth: Any, *, client_factory: Optional[Callable[[A
     if venue is None:
         return None
     now = int(now_ms if now_ms is not None else time.time() * 1000)
-    if discovery_freshness(db, broker, env, now_ms=now)["status"] == "SYNCED":
+    if not refresh_due(db, broker, env, now_ms=now):
         return None
     with _refresh_guard:
         last_try = _refresh_attempts.get((venue, env))
@@ -98,6 +104,17 @@ def refresh_if_stale(db: Any, auth: Any, *, client_factory: Optional[Callable[[A
             return {"status": "THROTTLED", "venue": venue}
         _refresh_attempts[(venue, env)] = now
     return sync_discovery(db, auth, client_factory=client_factory, now_ms=now)
+
+
+def refresh_due(db: Any, broker: str, environment: str, *, now_ms: Optional[int] = None) -> bool:
+    """Missing / stale catalog, or an event requested a refresh after the last sync."""
+    from app.exchange import catalog_refresh
+
+    fresh = discovery_freshness(db, broker, environment, now_ms=now_ms)
+    if fresh["status"] != "SYNCED":
+        return True
+    req = catalog_refresh.pending(VENUE_KEY.get(broker, ""), environment)
+    return bool(req and req["requested_ms"] > (fresh["last_synced_ms"] or 0))
 
 
 def sync_discovery(db: Any, auth: Any, *, client_factory: Optional[Callable[[Any], Any]] = None,
@@ -113,17 +130,93 @@ def sync_discovery(db: Any, auth: Any, *, client_factory: Optional[Callable[[Any
     if venue is None:
         return {"status": "UNSUPPORTED", "reason": "PLATFORM_ADAPTER_NOT_IMPLEMENTED"}
     client = (client_factory or build_client_from_auth)(auth)
+    env = str(auth.environment.value).upper()
+    synced_ms = int(now_ms or time.time() * 1000)
     try:
-        counts = sync_instruments(client, catalog=InstrumentCatalog(db), venue=venue,
-                                  environment=str(auth.environment.value).upper(),
-                                  now_ms=int(now_ms or time.time() * 1000))
+        counts = sync_instruments(client, catalog=InstrumentCatalog(db), venue=venue, environment=env,
+                                  now_ms=synced_ms)
         mm.instrument_sync(venue, "OK")
+        from app.exchange import catalog_refresh
+
+        catalog_refresh.clear(venue, env, synced_ms=synced_ms)
         return {"status": "SYNCED", "venue": venue, **counts}
     except Exception as exc:
         mm.instrument_sync(venue, "FAILED")
         from shared_lib.core.security.redaction import redact_exception
 
         return {"status": "FAILED", "venue": venue, "reason": "DISCOVERY_FAILED", "detail": redact_exception(exc)}
+
+
+def _connected_pairs(db: Any) -> Dict[tuple, List[tuple]]:
+    """(broker, ENV) -> [(account_id, user_id), ...] of connected accounts (most recently updated first)."""
+    from shared_lib.broker.environment import normalize_environment
+
+    out: Dict[tuple, List[tuple]] = {}
+    with db.connect() as conn:
+        rows = conn.execute("SELECT id, user_id, broker_id, environment FROM broker_accounts "
+                            "ORDER BY updated_at DESC").fetchall()
+    for acc, user, broker, env in rows:
+        b = str(broker or "").lower()
+        if b not in VENUE_KEY:
+            continue
+        try:
+            e = normalize_environment(env).value.upper()
+        except Exception:
+            continue  # an environment we cannot name is never guessed
+        out.setdefault((b, e), []).append((acc, user))
+    return out
+
+
+def refresh_due_catalogs(db: Any, *, resolver: Optional[Callable[..., Any]] = None,
+                         client_factory: Optional[Callable[[Any], Any]] = None,
+                         now_ms: Optional[int] = None, max_candidates: int = 5) -> Dict[str, Any]:
+    """One background pass: refresh every venue/environment catalog that has a connected account AND is
+    missing, stale or event-requested. Venue-global public metadata only; nothing account-scoped is read or
+    written. A catalog that is current costs no venue call and no credential resolution."""
+    from shared_lib.broker import BrokerResolverError, resolve_broker_auth
+
+    resolve = resolver or resolve_broker_auth
+    now = int(now_ms if now_ms is not None else time.time() * 1000)
+    results: Dict[str, Any] = {}
+    for (broker, env), candidates in sorted(_connected_pairs(db).items()):
+        key = f"{VENUE_KEY[broker]}:{env}"
+        if not refresh_due(db, broker, env, now_ms=now):
+            results[key] = {"status": "CURRENT"}
+            continue
+        auth = None
+        for acc, user in candidates[:max_candidates]:
+            try:
+                auth = resolve(acc, user, db)
+                break
+            except BrokerResolverError:
+                continue
+        if auth is None:
+            results[key] = {"status": "NO_USABLE_ACCOUNT"}
+            continue
+        try:
+            results[key] = refresh_if_stale(db, auth, client_factory=client_factory, now_ms=now) or {"status": "CURRENT"}
+        except Exception:
+            results[key] = {"status": "FAILED", "reason": "DISCOVERY_FAILED"}
+    return results
+
+
+async def discovery_refresh_loop(db: Any, *, interval_s: float = 300.0) -> None:
+    """Background worker (Section 7.11): periodic + event-requested venue catalog refresh."""
+    import asyncio
+
+    while True:
+        try:
+            summary = await asyncio.to_thread(refresh_due_catalogs, db)
+            done = {k: v.get("status") for k, v in summary.items() if v.get("status") != "CURRENT"}
+            if done:
+                logger.info("[CATALOG_REFRESH] pass %s", done)
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            from shared_lib.core.security.redaction import redact_exception
+
+            logger.error("[CATALOG_REFRESH] loop error=%s", redact_exception(exc))
+        await asyncio.sleep(interval_s)
 
 
 def _health(db: Any, account_id: str) -> Dict[str, Any]:
@@ -235,4 +328,5 @@ def account_status(db: Any, *, user_id: str, account_id: str, service: Any = Non
 
 
 __all__ = ["DISCOVERY_MAX_AGE_MS", "REFRESH_MIN_INTERVAL_MS", "VENUE_KEY", "account_status", "discovered_instruments",
-           "discovery_freshness", "refresh_if_stale", "sync_discovery"]
+           "discovery_freshness", "discovery_refresh_loop", "refresh_due", "refresh_due_catalogs", "refresh_if_stale",
+           "sync_discovery"]

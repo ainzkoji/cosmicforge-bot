@@ -33,15 +33,16 @@ def discover():
     out = {}
     info = requests.get("https://fapi.binance.com/fapi/v1/exchangeInfo", timeout=30).json()
     out["binance"] = [i for i in (I.parse_binance_symbol(s) for s in info.get("symbols", [])) if i]
-    rows, cursor = [], ""
-    while True:
+    def bybit_page(cursor):
         d = requests.get("https://api.bybit.com/v5/market/instruments-info",
                          params={"category": "linear", "limit": 1000, **({"cursor": cursor} if cursor else {})},
                          timeout=30).json()
-        rows += d["result"]["list"]
-        cursor = d["result"].get("nextPageCursor") or ""
-        if not cursor:
-            break
+        if d.get("retCode") != 0:
+            raise RuntimeError(f"bybit instruments-info retCode={d.get('retCode')}")
+        return d["result"].get("list") or [], d["result"].get("nextPageCursor")
+
+    # the same truncation / repeated-cursor protection as BybitClient.discover_instruments
+    rows = I.collect_cursor_pages(bybit_page, source="bybit instruments-info (matrix)")
     out["bybit"] = [i for i in (I.parse_bybit_instrument(r) for r in rows) if i]
     d = requests.get("https://open-api.bingx.com/openApi/swap/v2/quote/contracts", timeout=30).json()
     out["bingx"] = [i for i in (I.parse_bingx_contract(c) for c in d.get("data") or []) if i]

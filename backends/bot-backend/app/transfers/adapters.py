@@ -196,6 +196,14 @@ class BybitTransferAdapter(TransferAdapter):
             except (TypeError, ValueError):
                 status = None
             self._mode = None if status is None else ("CLASSIC" if status == 1 else "UNIFIED")
+            # Section 7.11: a CHANGED broker-reported mode requests a catalog/capability refresh
+            # (observation only; the mode returned here is unaffected)
+            try:
+                from app.exchange.catalog_refresh import observe_account_mode
+
+                observe_account_mode(self.auth.account_id, "bybit", self.auth.environment, self._mode)
+            except Exception:
+                pass
         return self._mode
 
     def topology(self) -> Optional[BrokerTopology]:

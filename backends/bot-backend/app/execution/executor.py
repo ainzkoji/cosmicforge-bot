@@ -1891,6 +1891,14 @@ class BinanceExecutor:
 
         except Exception as order_err:
             err_str = str(order_err)
+            # Section 7.11: an instrument-related venue rejection (unknown / not-trading symbol, filter
+            # violation) requests a catalog refresh. Observation only -- never alters this order path.
+            try:
+                from app.exchange.catalog_refresh import observe_client_error
+
+                observe_client_error(self.client, order_err)
+            except Exception:
+                pass
             if _place_order_dispatched:
                 if _ep is not None and _ep_lock_acquired:
                     _ep.mark_submit_unknown(

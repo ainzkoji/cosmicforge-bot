@@ -68,6 +68,12 @@ def instrument_sync(venue: str, status: str) -> None:
 
 
 @_safe
+def catalog_refresh_requested(venue: str, trigger: str) -> None:
+    m, _ = _metrics()
+    m.inc("broker_catalog_refresh_requested_total", venue=venue, trigger=trigger)
+
+
+@_safe
 def capital_routing(venue: str, outcome: str) -> None:
     m, _ = _metrics()
     m.inc("capital_routing_decision_total", venue=venue, outcome=outcome)

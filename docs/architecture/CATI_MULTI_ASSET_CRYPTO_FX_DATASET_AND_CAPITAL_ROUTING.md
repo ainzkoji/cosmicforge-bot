@@ -534,3 +534,24 @@ user-backend `test_phase2_broker_security.py` 8 passed (`test_broker_flow.py::te
 identically on untouched `679b7afc`: it patches a `decrypt_credentials` attribute `broker_service` does not have).
 The capability matrix was regenerated from live public discovery on 2026-09-26 (1,563 canonical instruments,
 0 conflicts).
+
+### 33.1 Section 7.11 refresh triggers (follow-up)
+
+* `app/exchange/catalog_refresh.py`: one coalesced refresh request per venue/environment, raised by
+  (a) an instrument-related venue API error on an order (`executor` order-rejection path; Binance codes
+  -1121/-4140/-1111/-4014/-4023/-4003/-4005/-4164, Bybit/BingX unknown-symbol / not-trading / tick / step /
+  minimum-notional messages; transport, auth, balance and rate-limit errors are not instrument errors; the
+  environment comes from the client's registered host, never guessed) and (b) a CHANGE of the broker-reported
+  account mode (`BybitTransferAdapter.account_mode`; first observations and unreadable modes are not changes).
+  Only a bounded reason class is kept — never error text.
+* Requests are consumed by the existing throttled `refresh_if_stale` (one venue call per venue/environment per
+  5 min) on market-status reads and by the startup worker `discovery_refresh_loop` (every 5 min; refreshes
+  only catalogs of venues with a connected account that are missing, older than 6 h or event-requested; a
+  current catalog costs no venue call and no credential resolution; off switch
+  `VENUE_DISCOVERY_REFRESH_ENABLED=0`). A successful sync clears the request; a failed one keeps it.
+* A request changes no capability decision (Section 8/9 behaviour unchanged); an age-stale catalog stays
+  fail-closed (`DISCOVERY_STALE`) until a refresh succeeds.
+* `instruments.collect_cursor_pages`: the one cursor-pagination guard (repeated cursor / non-terminating chain
+  -> error, never a truncated universe), used by `BybitClient.discover_instruments` and by
+  `scripts/generate_capability_matrix.py` (which also refuses a non-zero `retCode`).
+* Request state is in-process (single catalog writer); after a restart the age rule still applies.

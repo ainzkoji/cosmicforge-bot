@@ -564,6 +564,14 @@ async def _startup_run_manager():
 
         asyncio.create_task(reconciliation_loop(_TrDB()))
 
+    # Venue instrument catalog refresh (Section 7.11): missing / stale (6 h) / event-requested catalogs of
+    # venues with a connected account, throttled per venue+environment. Public metadata only.
+    if _os_tr.getenv("VENUE_DISCOVERY_REFRESH_ENABLED", "true").strip().lower() not in ("0", "false", "no", "off"):
+        from shared_lib.persistence.db import DB as _DrDB
+        from app.activation.account_status import discovery_refresh_loop
+
+        asyncio.create_task(discovery_refresh_loop(_DrDB()))
+
 
 @app.on_event("shutdown")
 async def _shutdown_run_manager():

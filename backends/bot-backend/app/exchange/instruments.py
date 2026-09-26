@@ -449,7 +449,8 @@ def from_dict(d: Mapping[str, Any]) -> DiscoveredInstrument:
 
 __all__ = [
     "CRYPTO", "FX", "COMMODITIES", "STOCK", "INDEX", "OTHER", "PERPETUAL", "FX_PERPETUAL", "TRADFI_PERPETUAL",
-    "DELIVERY", "SPOT", "DiscoveredInstrument", "InstrumentCatalog", "bingx_namespace", "classify", "from_dict",
+    "DELIVERY", "SPOT", "DiscoveredInstrument", "InstrumentCatalog", "bingx_namespace", "classify",
+    "collect_cursor_pages", "from_dict",
     "fx_legs",
     "parse_binance_symbol", "parse_bingx_contract", "parse_bybit_instrument",
 ]
@@ -501,6 +502,26 @@ def execution_eligibility(ins: DiscoveredInstrument, *, broker: str, environment
             # VENUE_API_NOT_SUPPORTED); otherwise the account-level reason.
             reasons.append(entry.reason_code if hard and entry.reason_code else (r.reason_code or "NOT_PERMITTED"))
     return (not reasons), tuple(reasons)
+
+
+def collect_cursor_pages(fetch_page: Any, *, source: str, max_pages: int = 50) -> List[Any]:
+    """Every row of a cursor-paginated venue listing, or an exception -- never a truncated list.
+
+    ``fetch_page(cursor)`` -> ``(rows, next_cursor)`` (first call with ``None``). A repeated cursor or a
+    chain that does not end within ``max_pages`` raises: a partial universe would otherwise be recorded
+    as delistings of every instrument on the missing pages."""
+    out: List[Any] = []
+    cursor, seen = None, set()
+    for _ in range(max_pages):
+        rows, cursor = fetch_page(cursor)
+        out.extend(rows or [])
+        cursor = cursor or None
+        if not cursor:
+            return out
+        if cursor in seen:
+            raise RuntimeError(f"{source}: repeated pagination cursor; discovery incomplete")
+        seen.add(cursor)
+    raise RuntimeError(f"{source}: pagination did not terminate; discovery incomplete")
 
 
 #: A refresh that would delist more than this share of a catalog of at least
