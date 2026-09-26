@@ -555,3 +555,62 @@ The capability matrix was regenerated from live public discovery on 2026-09-26 (
   -> error, never a truncated universe), used by `BybitClient.discover_instruments` and by
   `scripts/generate_capability_matrix.py` (which also refuses a non-zero `retCode`).
 * Request state is in-process (single catalog writer); after a restart the age rule still applies.
+
+## 34. Sections 10–12 dataset program (audited and implemented 2026-09-26 on `ea8ed5c8`)
+
+### 34.1 Storage roles (one stack, no duplicates)
+
+| Store | Role | Identity |
+|---|---|---|
+| canonical DB `historical_candles` | CERTIFICATION input (Section 22) — crypto broad 15m | **unchanged** (no schema / row change; provenance kept as a sidecar in the coverage artifact) |
+| research DB `data/research/crypto_deep_binance.db` → `market_candles` | RESEARCH deep 1m + derived 5m, venue-aware (`venue`, `venue_symbol`, `source`, `environment`, `derived_from`) | per venue: Binance / Bybit / BingX `BTCUSDT` never merge |
+| same DB → `market_feature_observations` | supplemental features, AVAILABLE or UNAVAILABLE + reason (CHECK: never a value without availability) | per venue / symbol / feature / source |
+| research DB `data/research/fx_reference_dukascopy.db` → `fx_reference_quotes` | FX REFERENCE_MARKET_PRICE, bid and ask OHLC separately; mid/spread derived | (provider, pair, timeframe, open_time); derived bars carry `derived-from-1m:<n>:v1` |
+| `fx_reference_ingest_log` / `market_ingest_log` | resumable acquisition state per provider period (FETCHED / NO_FILE / EMPTY / NOT_LISTED / UNAVAILABLE / FAILED; quarantine = FAILED `QUARANTINED:*`) | append/replace per period |
+| `fx_reference_repairs` | append-only lineage of controlled re-ingests | one row per repaired period |
+| `docs/research/*.json` | frozen universes (crypto broad v1, crypto deep v1, FX v1), each with its own hash | edits refused on load |
+| `docs/research/coverage/*.coverage.json` | machine-readable coverage evidence, content-hashed, reproducible read-only | — |
+
+Roles: CERTIFICATION (broad crypto v1, FX v1), RESEARCH (deep crypto), EXECUTION stays per account
+(Sections 7–9). Membership never authorizes execution; no manifest records an opened holdout.
+
+### 34.2 FX corruption (EURCNH / EURZAR 2024-08) — root cause and repair
+
+* **Root cause (proven from the raw provider files):** Dukascopy's point is period-dependent. EURCNH and
+  EURZAR files up to and including 2024-08 carry six decimals (EURCNH BID hour file raw close median
+  7,861,033 → 7.861), later files five (2024-09: 786,027 → 7.860). Their USD legs keep five decimals. The
+  decoder applied one fixed point per pair (1e5), storing 2024-08 ten times too high; the minute files of that
+  month carry the same six-decimal encoding. The old validator compared only the latest aligned bar.
+* **Fix:** every provider file's scale is verified against an independent level (triangular level of the USD
+  legs, else adjacent-period continuity) — exactly one power-of-ten candidate must match, otherwise the period
+  is quarantined, never guessed (`fx_scale.infer_point`).
+* **Repair:** full-history QA quarantined both periods; `repair-scale` re-fetched the raw files (SHA-256
+  recorded), verified point 1e6 for BID and ASK against the triangular level (EURCNH 7.8681, EURZAR 19.8641),
+  and replaced 524 + 482 rows in one transaction per period with lineage in `fx_reference_repairs`
+  (post-repair median vs triangular: 3.3e-5 and 1.5e-3). Ingest log: `FETCHED` / `REPAIRED:...`.
+* **QA before → after (32 relations, 406,845 aligned hourly bars):** worst single bar 9.01 (901 %) → 0.033
+  (EURTRY, illiquid hours); worst per-pair median 8.8e-4 (EURTRY) unchanged; failing relations 2 → 0; no
+  scale break in any pair. Bid/ask quality over 634,985 hourly rows: 0 missing sides, 0 negative spreads,
+  0 ask < bid, 0 invalid OHLC, 0 inconsistent mids.
+
+### 34.3 What exists now
+
+* **Crypto broad v1:** unchanged; recomputed coverage artifact (136 × 70,176 = 9,543,936 rows, reconciles to
+  the DB, 0 gaps / invalid / duplicate / misaligned). Provenance limitations of the legacy rows are stated,
+  not guessed.
+* **Crypto deep v1:** frozen (35 members, historical-liquidity rule, hash `a1406b7a…`); 1m acquisition and
+  5m derivation via `scripts/acquire_crypto_deep_dataset.py` (see 34.4 for progress).
+* **Young symbols:** `young_symbol_policy=INCLUDE_INSUFFICIENT_HISTORY` for new universe versions (v1 unchanged
+  byte-for-byte); 12 of the 35 deep members are listing-limited and requested from their listing.
+* **Supplemental features:** funding, mark, index (1h) and derived basis AVAILABLE where served; open interest
+  AVAILABLE for the venue's ~30 days, NO_HISTORICAL_ENDPOINT before; spread / book depth
+  NO_HISTORICAL_ENDPOINT; liquidations NOT_SUPPORTED_BY_PROVIDER — never 0.
+* **FX v1 universe:** frozen (50 pairs, 12 exclusions, window 2024-08-01 → 2026-09-01, base resolution 1m,
+  hash `72427279…`); broad 1m acquisition running through `minute`; 5m / 15m / 4h derived from real 1m bid and
+  ask separately (`derive`); 1h canonical = the provider's hourly file (source-distinct), the 1m-derived 1h is
+  reproducible on demand; nothing finer is ever derived from coarser bars.
+* **FX deep / microstructure:** EURUSD, GBPUSD, USDJPY 1m bid/ask kept (same table, timeframe and source
+  version as the broad 1m tier — one source of truth). True tick history: not acquired (PROVIDER_LIMITATION
+  for this pipeline; 1m bid/ask satisfies "bid/ask or tick").
+* **Gaps:** `app/market_data/gaps.py` (FX weekend by New York time across DST, governed holidays, rollover,
+  NO_FILE, outage, unknown; crypto listing age, provider failure, evidence-only outage/halt, unknown).

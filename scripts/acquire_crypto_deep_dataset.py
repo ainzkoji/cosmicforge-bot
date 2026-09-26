@@ -104,7 +104,7 @@ class BinancePublic:
                 self._fail()
                 time.sleep(float(r.headers.get("Retry-After", 30)))
                 continue
-            if r.status_code >= 500:
+            if r.status_code >= 500 or r.status_code == 408:  # server-side / request timeout: transient
                 self._fail()
                 time.sleep(min(10 * (attempt + 1), 60))
                 continue
