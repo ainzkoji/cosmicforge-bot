@@ -76,11 +76,15 @@ class CanonicalInstrument:
                 "status": self.status, "flags": list(self.flags), "venues": [v.to_dict() for v in self.venues]}
 
 
-def _metadata_version(ins: Any) -> str:
+def metadata_version(ins: Any) -> str:
+    """Hash of the venue's execution metadata (filters + status): a change means stale sizing/precision."""
     raw = ins.venue_metadata.get("raw_filters") if isinstance(ins.venue_metadata, Mapping) else None
     body = {"tick": ins.tick_size, "step": ins.qty_step, "min_qty": ins.min_qty, "min_notional": ins.min_notional,
             "max_qty": ins.max_qty, "lev": ins.max_leverage, "status": ins.status, "raw": raw}
     return hashlib.sha256(json.dumps(body, sort_keys=True, default=str).encode()).hexdigest()[:16]
+
+
+_metadata_version = metadata_version
 
 
 def venue_instrument(ins: Any) -> VenueInstrument:
@@ -159,4 +163,4 @@ def build_registry(discovered: Iterable[Any]) -> RegistryBuild:
 
 
 __all__ = ["CanonicalInstrument", "REGISTRY_VERSION", "RegistryBuild", "VenueInstrument", "build_registry",
-           "venue_instrument"]
+           "metadata_version", "venue_instrument"]

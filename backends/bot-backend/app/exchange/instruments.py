@@ -350,36 +350,85 @@ class InstrumentCatalog:
         self.db = db
 
     def upsert(self, venue: str, environment: str, instruments: Iterable[DiscoveredInstrument], now_ms: int) -> Dict[str, int]:
+        """Idempotent: re-recording identical metadata changes only ``last_seen_ms``. ``first_seen_ms``
+        is never rewritten; a relisted symbol clears ``delisted_at_ms``; a metadata change is stamped."""
+        from app.exchange.canonical_registry import metadata_version
+
+        instruments = list(instruments)
+        if not instruments:
+            # an empty discovery is a venue/transport failure, never "everything was delisted"
+            raise ValueError(f"{venue}/{environment}: empty discovery refused; catalog left unchanged")
         seen = set()
-        counts = {"discovered": 0, "new": 0, "delisted": 0}
+        counts = {"discovered": 0, "new": 0, "delisted": 0, "relisted": 0, "metadata_changed": 0}
         with self.db.connect() as conn:
-            existing = {r[0] for r in conn.execute(
-                "SELECT venue_symbol FROM venue_instruments WHERE venue=? AND environment=? AND delisted_at_ms IS NULL",
-                (venue, environment)).fetchall()}
+            known = {r[0]: (r[1], r[2]) for r in conn.execute(
+                "SELECT venue_symbol, delisted_at_ms, metadata_hash FROM venue_instruments WHERE venue=? AND "
+                "environment=?", (venue, environment)).fetchall()}
+            existing = {s for s, (delisted, _h) in known.items() if delisted is None}
             for ins in instruments:
+                if ins.venue_symbol in seen:
+                    continue  # a venue listing the same symbol twice in one response is recorded once
                 seen.add(ins.venue_symbol)
                 counts["discovered"] += 1
-                if ins.venue_symbol not in existing:
+                mhash = metadata_version(ins)
+                prev = known.get(ins.venue_symbol)
+                if prev is None:
                     counts["new"] += 1
+                elif prev[0] is not None:
+                    counts["relisted"] += 1
+                changed = prev is not None and prev[1] is not None and prev[1] != mhash
+                counts["metadata_changed"] += int(changed)
                 conn.execute(
                     """INSERT INTO venue_instruments (venue, environment, venue_symbol, asset_class, product_type,
-                       canonical_symbol, status, api_tradable, payload_json, first_seen_ms, last_seen_ms, delisted_at_ms)
-                       VALUES (?,?,?,?,?,?,?,?,?,?,?,NULL)
+                       canonical_symbol, status, api_tradable, payload_json, first_seen_ms, last_seen_ms, delisted_at_ms,
+                       metadata_hash, metadata_changed_ms)
+                       VALUES (?,?,?,?,?,?,?,?,?,?,?,NULL,?,NULL)
                        ON CONFLICT(venue, environment, venue_symbol) DO UPDATE SET asset_class=excluded.asset_class,
                        product_type=excluded.product_type, canonical_symbol=excluded.canonical_symbol,
                        status=excluded.status, api_tradable=excluded.api_tradable, payload_json=excluded.payload_json,
-                       last_seen_ms=excluded.last_seen_ms, delisted_at_ms=NULL""",
+                       last_seen_ms=excluded.last_seen_ms, delisted_at_ms=NULL, metadata_hash=excluded.metadata_hash,
+                       metadata_changed_ms=CASE WHEN venue_instruments.metadata_hash IS NOT NULL AND
+                           venue_instruments.metadata_hash != excluded.metadata_hash THEN ?
+                           ELSE venue_instruments.metadata_changed_ms END""",
                     (venue, environment, ins.venue_symbol, ins.asset_class, ins.product_type, ins.canonical_symbol,
-                     ins.status, int(ins.api_tradable), json.dumps(ins.to_dict(), default=str), now_ms, now_ms))
-            for gone in existing - seen:
+                     ins.status, int(ins.api_tradable), json.dumps(ins.to_dict(), default=str), now_ms, now_ms,
+                     mhash, now_ms))
+            for gone in sorted(existing - seen):
                 conn.execute("UPDATE venue_instruments SET delisted_at_ms=?, api_tradable=0 WHERE venue=? AND "
                              "environment=? AND venue_symbol=?", (now_ms, venue, environment, gone))
                 counts["delisted"] += 1
         return counts
 
+    def active_count(self, venue: str, environment: str) -> int:
+        with self.db.connect() as conn:
+            r = conn.execute("SELECT COUNT(*) FROM venue_instruments WHERE venue=? AND environment=? AND "
+                             "delisted_at_ms IS NULL", (venue, environment)).fetchone()
+        return int(r[0] or 0)
+
+    def last_synced_ms(self, venue: str, environment: str) -> Optional[int]:
+        """When this venue/environment catalog was last refreshed (None = never)."""
+        with self.db.connect() as conn:
+            r = conn.execute("SELECT MAX(last_seen_ms) FROM venue_instruments WHERE venue=? AND environment=?",
+                             (venue, environment)).fetchone()
+        return int(r[0]) if r and r[0] is not None else None
+
+    def record(self, venue: str, environment: str, venue_symbol: str) -> Optional[Dict[str, Any]]:
+        """Historical identity of one venue instrument -- delisted ones included (research lineage)."""
+        with self.db.connect() as conn:
+            r = conn.execute("SELECT payload_json, first_seen_ms, last_seen_ms, delisted_at_ms, metadata_hash, "
+                             "metadata_changed_ms FROM venue_instruments WHERE venue=? AND environment=? AND "
+                             "venue_symbol=?", (venue, environment, str(venue_symbol).upper())).fetchone()
+        if r is None:
+            return None
+        return {"instrument": from_dict(json.loads(r[0])), "first_seen_ms": r[1], "last_seen_ms": r[2],
+                "delisted_at_ms": r[3], "metadata_hash": r[4], "metadata_changed_ms": r[5],
+                "state": "DELISTED" if r[3] is not None else "LISTED"}
+
     def list(self, venue: str, environment: str, *, asset_class: Optional[str] = None,
-             tradable_only: bool = True) -> List[DiscoveredInstrument]:
-        sql = "SELECT payload_json FROM venue_instruments WHERE venue=? AND environment=? AND delisted_at_ms IS NULL"
+             tradable_only: bool = True, include_delisted: bool = False) -> List[DiscoveredInstrument]:
+        sql = "SELECT payload_json FROM venue_instruments WHERE venue=? AND environment=?"
+        if not include_delisted:
+            sql += " AND delisted_at_ms IS NULL"
         args: List[Any] = [venue, environment]
         if asset_class:
             sql += " AND asset_class=?"
@@ -454,6 +503,14 @@ def execution_eligibility(ins: DiscoveredInstrument, *, broker: str, environment
     return (not reasons), tuple(reasons)
 
 
+#: A refresh that would delist more than this share of a catalog of at least
+#: ``_MASS_DELIST_MIN_KNOWN`` live instruments is treated as a partial/failed
+#: venue response, not as a mass delisting (venues delist a few symbols at a time).
+MASS_DELIST_MAX_FRACTION = 0.5
+_MASS_DELIST_MIN_KNOWN = 20
+REASON_DISCOVERY_SUSPECT_PARTIAL = "DISCOVERY_SUSPECT_PARTIAL"
+
+
 def sync_instruments(client: Any, *, catalog: "InstrumentCatalog", venue: str, environment: str,
                      now_ms: int) -> Dict[str, int]:
     """Discover from the broker and persist (Phase 3A). Raises on a discovery
@@ -461,4 +518,10 @@ def sync_instruments(client: Any, *, catalog: "InstrumentCatalog", venue: str, e
     instruments = client.discover_instruments()
     if not instruments:
         raise RuntimeError(f"{venue}: discovery returned no instruments; catalog left unchanged")
+    known = catalog.active_count(venue, environment)
+    if known >= _MASS_DELIST_MIN_KNOWN:
+        returned = {i.venue_symbol for i in instruments}
+        if len(returned) < known * (1.0 - MASS_DELIST_MAX_FRACTION):
+            raise RuntimeError(f"{REASON_DISCOVERY_SUSPECT_PARTIAL}: {venue}/{environment} returned {len(returned)} "
+                               f"of {known} known instruments; catalog left unchanged")
     return catalog.upsert(venue, environment, instruments, now_ms)

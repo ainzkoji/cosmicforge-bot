@@ -739,7 +739,7 @@ class BybitClient:
     def discover_instruments(self, category: str = "linear") -> list:
         """Every instrument V5 lists for ``category`` (cursor-paginated)."""
         from app.exchange.instruments import parse_bybit_instrument
-        out, cursor = [], None
+        out, cursor, seen = [], None, set()
         for _ in range(50):
             res = self._instruments_page(category, cursor)
             for r in res.get("list") or []:
@@ -748,8 +748,12 @@ class BybitClient:
                     out.append(ins)
             cursor = res.get("nextPageCursor") or None
             if not cursor:
-                break
-        return out
+                return out
+            if cursor in seen:  # a venue cursor loop would silently truncate the universe
+                raise RuntimeError("bybit instruments-info: repeated pagination cursor; discovery incomplete")
+            seen.add(cursor)
+        # never hand back a truncated universe: the catalog would read the missing pages as delistings
+        raise RuntimeError("bybit instruments-info: pagination did not terminate; discovery incomplete")
 
     def list_instruments(self):
         return [i.to_instrument_spec("bybit") for i in self.discover_instruments()]

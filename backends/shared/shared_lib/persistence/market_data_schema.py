@@ -165,10 +165,21 @@ _INDEXES = (
 _IMMUTABLE = ("dataset_manifests", "universe_manifests")
 
 
+#: additive columns on existing tables (table, column, declaration); NULL for rows written before them
+_ADDED_COLUMNS = (
+    # hash of the venue's execution metadata (filters, status) at last discovery -> detects metadata changes
+    ("venue_instruments", "metadata_hash", "TEXT"),
+    ("venue_instruments", "metadata_changed_ms", "INTEGER"),
+)
+
+
 def ensure_market_data_schema(db: Any) -> None:
     with db.connect() as conn:
         for ddl in _DDL:
             conn.execute(ddl)
+        for table, col, decl in _ADDED_COLUMNS:
+            if col not in {r[1] for r in conn.execute(f"PRAGMA table_info({table})").fetchall()}:
+                conn.execute(f"ALTER TABLE {table} ADD COLUMN {col} {decl}")
         for idx in _INDEXES:
             conn.execute(idx)
         for table in _IMMUTABLE:
