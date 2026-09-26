@@ -12,6 +12,8 @@ No route exposes credentials, and no route can enable anything: states are deriv
 """
 from __future__ import annotations
 
+from typing import Optional
+
 from fastapi import APIRouter, Depends, HTTPException
 
 from shared_lib.broker import BrokerResolverError
@@ -33,12 +35,19 @@ def _not_found() -> HTTPException:
 
 
 @router.get("/{account_id}/market-status")
-def market_status(account_id: str, include_balances: bool = False, user_id: str = Depends(get_current_user_id),
-                  db: DB = Depends(get_db)):
+def market_status(account_id: str, include_balances: bool = False, instruments_family: Optional[str] = None,
+                  user_id: str = Depends(get_current_user_id), db: DB = Depends(get_db)):
+    """``include_balances`` = broker-authoritative reads (balances + account mode / wallet topology).
+    ``instruments_family`` (CRYPTO|FX|COMMODITIES|STOCK|INDEX) adds per-instrument capability dimensions.
+    A missing or stale venue catalog is refreshed from the venue's public discovery API (throttled)."""
     from app.activation.account_status import account_status
 
+    if instruments_family is not None and instruments_family.upper() not in (
+            "CRYPTO", "FX", "COMMODITIES", "STOCK", "INDEX"):
+        raise HTTPException(status_code=422, detail={"reason_code": "INVALID_INSTRUMENTS_FAMILY"})
     try:
-        return account_status(db, user_id=user_id, account_id=account_id, include_balances=include_balances)
+        return account_status(db, user_id=user_id, account_id=account_id, include_balances=include_balances,
+                              refresh_stale=True, instruments_family=instruments_family)
     except TransferAccessError:
         raise _not_found()
     except BrokerResolverError as exc:

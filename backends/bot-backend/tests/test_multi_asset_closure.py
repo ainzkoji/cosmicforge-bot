@@ -183,10 +183,13 @@ def test_one_bybit_connection_exposes_crypto_fx_and_tradfi_dynamically():
 
     ins = [parse_bybit_instrument(p) for p in (BYBIT_BTC, BYBIT_EURUSD, BYBIT_USDJPY, BYBIT_SPY_ETF, BYBIT_XAU)]
     st = account_market_status(broker="bybit", environment="DEMO", permissions=PERMS, instruments=ins,
-                               transfers_in_flight=0, health={"quarantined": False})
+                               transfers_in_flight=0, health={"quarantined": False}, account_mode="UNIFIED")
     caps = {k: v["status"] for k, v in st["capabilities"].items()}
     assert caps["CRYPTO_EXECUTION"] == caps["FX_EXECUTION"] == caps["TRADFI_EXECUTION"] == "ACTIVE"
-    assert caps["UNIFIED_COLLATERAL"] == "AVAILABLE"
+    assert caps["UNIFIED_COLLATERAL"] == "AVAILABLE"  # the account mode READ from the broker says UTA
+    unread = account_market_status(broker="bybit", environment="DEMO", permissions=PERMS, instruments=ins,
+                                   transfers_in_flight=0)
+    assert unread["capabilities"]["UNIFIED_COLLATERAL"]["reason"] == "ACCOUNT_TOPOLOGY_UNKNOWN"  # never guessed
     assert caps["POSITION_MODE"] == "UNSUPPORTED"
     m = st["markets"]
     assert (m["FX"]["markets_available"], m["FX"]["markets_api_tradable"], m["FX"]["markets_cati_eligible"]) == (2, 2, 0)

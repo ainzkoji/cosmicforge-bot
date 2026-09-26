@@ -7,17 +7,31 @@ Connected Broker / Account / environment; Markets Available / API-Tradable /
 CATI-Eligible per family; capability states with UI status + reason; Capital
 Buckets (wallet topology); Transfer capability + current (in-flight)
 transfer; Logical allocation policy; Reserved (CATI portfolio reservations);
-Risk state. Balances are broker-authoritative only when a live read is
-requested (``include_balances``) -- a failed read is UNAVAILABLE, never 0.
+Risk state. Balances and the account mode (wallet topology) are
+broker-authoritative only when a live read is requested (``include_balances``)
+-- a failed read is UNAVAILABLE, never 0, and an unread Bybit account mode is
+ACCOUNT_TOPOLOGY_UNKNOWN, never assumed unified.
 
-No credentials, keys or secrets appear in the output.
+Discovery freshness (Section 7.11): the venue catalog is refreshed from the
+venue's public discovery API when it is missing or older than
+``DISCOVERY_MAX_AGE_MS`` (``refresh_stale``), at most once per
+``REFRESH_MIN_INTERVAL_MS`` per venue/environment (no call storms). A catalog
+that stays stale blocks execution capability (DISCOVERY_STALE).
+
+No credentials, keys or secrets appear in the output: permission health is
+abstract (VERIFIED / MISSING / UNVERIFIED).
 """
 from __future__ import annotations
 
+import threading
 import time
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 VENUE_KEY = {"binance": "binance_usdm", "bybit": "bybit_linear", "bingx": "bingx_swap"}
+DISCOVERY_MAX_AGE_MS = 6 * 3_600_000
+REFRESH_MIN_INTERVAL_MS = 5 * 60_000
+_refresh_attempts: Dict[Tuple[str, str], int] = {}
+_refresh_guard = threading.Lock()
 
 
 def _catalog_env(environment: str) -> List[str]:
@@ -41,6 +55,49 @@ def discovered_instruments(db: Any, broker: str, environment: str) -> Optional[l
     except Exception:
         return None
     return None
+
+
+def discovery_freshness(db: Any, broker: str, environment: str, *, now_ms: Optional[int] = None) -> Dict[str, Any]:
+    """SYNCED / STALE / DATA_NOT_READY for the account environment's catalog (never raises)."""
+    from app.exchange.instruments import InstrumentCatalog
+
+    venue = VENUE_KEY.get(broker)
+    last = None
+    if venue is not None:
+        try:
+            cat = InstrumentCatalog(db)
+            for env in _catalog_env(environment):
+                last = cat.last_synced_ms(venue, env)
+                if last is not None:
+                    break
+        except Exception:
+            last = None
+    now = int(now_ms if now_ms is not None else time.time() * 1000)
+    if last is None:
+        return {"status": "DATA_NOT_READY", "last_synced_ms": None, "age_ms": None, "fresh": None}
+    age = now - last
+    fresh = age <= DISCOVERY_MAX_AGE_MS
+    return {"status": "SYNCED" if fresh else "STALE", "last_synced_ms": last, "age_ms": age, "fresh": fresh,
+            "max_age_ms": DISCOVERY_MAX_AGE_MS}
+
+
+def refresh_if_stale(db: Any, auth: Any, *, client_factory: Optional[Callable[[Any], Any]] = None,
+                     now_ms: Optional[int] = None) -> Optional[Dict[str, Any]]:
+    """Refresh the catalog when missing/stale, throttled per venue+environment. None = nothing attempted."""
+    broker = str(auth.broker_type).lower()
+    env = str(auth.environment.value).upper()
+    venue = VENUE_KEY.get(broker)
+    if venue is None:
+        return None
+    now = int(now_ms if now_ms is not None else time.time() * 1000)
+    if discovery_freshness(db, broker, env, now_ms=now)["status"] == "SYNCED":
+        return None
+    with _refresh_guard:
+        last_try = _refresh_attempts.get((venue, env))
+        if last_try is not None and now - last_try < REFRESH_MIN_INTERVAL_MS:
+            return {"status": "THROTTLED", "venue": venue}
+        _refresh_attempts[(venue, env)] = now
+    return sync_discovery(db, auth, client_factory=client_factory, now_ms=now)
 
 
 def sync_discovery(db: Any, auth: Any, *, client_factory: Optional[Callable[[Any], Any]] = None,
@@ -92,11 +149,22 @@ def _reserved(db: Any, account_id: str) -> Dict[str, Any]:
         return {"status": "UNAVAILABLE", "reason": "RESERVATION_STORE_UNAVAILABLE"}
 
 
-def account_status(db: Any, *, user_id: str, account_id: str, service: Any = None,
-                   include_balances: bool = False) -> Dict[str, Any]:
-    from shared_lib.broker.wallets import topology_for
+def _account_mode(svc: Any, auth: Any) -> Optional[str]:
+    """The account mode READ from the broker (None when not readable -- never guessed)."""
+    try:
+        adapter = svc._adapter_factory(auth)
+        return adapter.account_mode() if adapter is not None else None
+    except Exception:
+        return None
 
-    from app.activation.market import account_market_status
+
+def account_status(db: Any, *, user_id: str, account_id: str, service: Any = None,
+                   include_balances: bool = False, refresh_stale: bool = False,
+                   instruments_family: Optional[str] = None,
+                   client_factory: Optional[Callable[[Any], Any]] = None) -> Dict[str, Any]:
+    from shared_lib.broker.wallets import ACCOUNT_MODE_DEPENDENT, topology_class, topology_for, topology_for_account
+
+    from app.activation.market import FAMILIES, account_market_status, instrument_capabilities
     from app.trading_intelligence.contracts.portfolio_intel import PortfolioPolicy
     from app.transfers.service import InternalTransferService
 
@@ -107,21 +175,40 @@ def account_status(db: Any, *, user_id: str, account_id: str, service: Any = Non
     broker = str(auth.broker_type).lower()
     env = str(auth.environment.value).upper()
     in_flight = svc.store.in_flight(account_id)
+    refresh = None
+    if refresh_stale:
+        try:
+            refresh = refresh_if_stale(db, auth, client_factory=client_factory)
+        except Exception:
+            refresh = {"status": "FAILED", "reason": "DISCOVERY_FAILED"}
+    freshness = discovery_freshness(db, broker, env)
     instruments = discovered_instruments(db, broker, env)
+    account_mode = _account_mode(svc, auth) if include_balances else None
     status = account_market_status(broker=broker, environment=env, permissions=perms, instruments=instruments,
-                                   health=_health(db, account_id), transfers_in_flight=len(in_flight), db=db,
-                                   broker_account_id=account_id)
-    topo = topology_for(broker)
+                                   account_mode=account_mode, health=_health(db, account_id),
+                                   transfers_in_flight=len(in_flight), db=db, broker_account_id=account_id,
+                                   discovery_fresh=freshness["fresh"] if instruments else None)
+    topo = topology_for_account(broker, account_mode)
     policy = PortfolioPolicy()
+    if topo is not None:
+        buckets = {**topo.to_dict(), "account_mode_source": ("BROKER" if broker in ACCOUNT_MODE_DEPENDENT
+                                                             else "SINGLE_ACCOUNT_MODEL")}
+    elif topology_for(broker) is not None:
+        buckets = {"status": "BLOCKED", "reason": "ACCOUNT_TOPOLOGY_UNKNOWN",
+                   "topology_class": topology_class(broker, None).value,
+                   "detail": "account mode not read from the broker; request include_balances=true"}
+    else:
+        buckets = {"status": "UNSUPPORTED", "reason": "TOPOLOGY_UNKNOWN", "topology_class": "UNSUPPORTED"}
     out = {
         "broker_account_id": account_id, "broker": broker, "environment": env,
-        "discovery": {"status": "SYNCED" if instruments else "DATA_NOT_READY",
-                      "instruments": len(instruments or [])},
+        "discovery": {**freshness, "instruments": len(instruments or []),
+                      **({"refresh": refresh} if refresh is not None else {})},
         "permission_evidence": ({"inspected": ev.inspected, "permissions": dict(ev.permissions)}
                                 if ev is not None else {"inspected": False, "reason": "PERMISSION_EVIDENCE_REQUIRED"}),
         **{k: status[k] for k in ("capabilities", "markets", "withdrawal_permission_required",
-                                  "withdrawals_supported_by_platform", "withdraw_permission_present")},
-        "capital_buckets": topo.to_dict() if topo else {"status": "UNSUPPORTED", "reason": "TOPOLOGY_UNKNOWN"},
+                                  "withdrawals_supported_by_platform", "withdraw_permission_present",
+                                  "permission_health", "topology_class")},
+        "capital_buckets": buckets,
         "current_transfers": [{k: t.get(k) for k in ("id", "status", "asset", "amount", "source_wallet",
                                                      "destination_wallet", "created_at")} for t in in_flight],
         "logical_allocation": {"asset_class_max_positions": dict(policy.asset_class_max_positions) or "UNLIMITED",
@@ -136,7 +223,16 @@ def account_status(db: Any, *, user_id: str, account_id: str, service: Any = Non
             out["balances"] = svc.wallets(user_id=user_id, account_id=account_id, assets=["USDT", "USDC"])
         except Exception:
             out["balances"] = {"status": "UNAVAILABLE", "reason": "BALANCE_READ_FAILED"}
+    fam = str(instruments_family or "").upper()
+    if fam in FAMILIES:
+        from app.activation.market import _cati_eligible
+
+        cati = _cati_eligible(fam, broker, env, db, account_id, ())
+        out["instruments"] = [instrument_capabilities(i, broker=broker, environment=env, permissions=perms,
+                                                      cati_decision=cati)
+                              for i in (instruments or []) if i.asset_class == fam]
     return out
 
 
-__all__ = ["VENUE_KEY", "account_status", "discovered_instruments", "sync_discovery"]
+__all__ = ["DISCOVERY_MAX_AGE_MS", "REFRESH_MIN_INTERVAL_MS", "VENUE_KEY", "account_status", "discovered_instruments",
+           "discovery_freshness", "refresh_if_stale", "sync_discovery"]
