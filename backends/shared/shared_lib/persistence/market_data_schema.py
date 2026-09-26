@@ -23,6 +23,10 @@ New research data goes to venue-aware tables instead:
                                side): FETCHED / NO_FILE / EMPTY / FAILED, so a
                                missing provider file is an explicit gap marker
                                and ingestion resumes without re-downloading.
+* ``fx_reference_repairs``     append-only lineage of controlled re-ingests of
+                               provider periods QA proved corrupt.
+* ``market_ingest_log``        resumable per-period acquisition state for venue
+                               datasets (crypto deep candles, features).
 * ``dataset_manifests``        immutable research/certification manifests
                                (content-hashed; a manifest row is never
                                updated or deleted).
@@ -129,6 +133,42 @@ _DDL = (
         PRIMARY KEY (provider, pair, timeframe, period, side)
     )
     """,
+    # Section 12.2 repair lineage: one append-only row per controlled re-ingest of a provider period that QA
+    # proved corrupt (old state, reason, algorithm, raw-source evidence, affected rows, post-repair validation).
+    """
+    CREATE TABLE IF NOT EXISTS fx_reference_repairs (
+        repair_id TEXT PRIMARY KEY,
+        provider TEXT NOT NULL,
+        pair TEXT NOT NULL,
+        timeframe TEXT NOT NULL,
+        period TEXT NOT NULL,
+        old_status TEXT,
+        reason TEXT NOT NULL,
+        algorithm_version TEXT NOT NULL,
+        source_evidence_json TEXT NOT NULL,
+        rows_removed INTEGER NOT NULL,
+        rows_inserted INTEGER NOT NULL,
+        validation_json TEXT,
+        recorded_at INTEGER NOT NULL
+    )
+    """,
+    # Section 10.4/10.5: resumable acquisition state for venue datasets (crypto deep candles, supplemental
+    # features) -- the venue counterpart of fx_reference_ingest_log. One row per (venue, symbol, dataset,
+    # timeframe, period); FAILED periods are retried, FETCHED/EMPTY/NOT_LISTED/UNAVAILABLE are skipped.
+    """
+    CREATE TABLE IF NOT EXISTS market_ingest_log (
+        venue TEXT NOT NULL,
+        venue_symbol TEXT NOT NULL,
+        dataset TEXT NOT NULL,
+        timeframe TEXT NOT NULL,
+        period TEXT NOT NULL,
+        status TEXT NOT NULL CHECK (status IN ('FETCHED', 'EMPTY', 'NOT_LISTED', 'UNAVAILABLE', 'FAILED')),
+        rows INTEGER NOT NULL DEFAULT 0,
+        reason TEXT,
+        recorded_at INTEGER NOT NULL,
+        PRIMARY KEY (venue, venue_symbol, dataset, timeframe, period)
+    )
+    """,
     """
     CREATE TABLE IF NOT EXISTS dataset_manifests (
         manifest_id TEXT PRIMARY KEY,
@@ -162,7 +202,7 @@ _INDEXES = (
     "CREATE INDEX IF NOT EXISTS idx_fxq_pair ON fx_reference_quotes(pair, timeframe, open_time)",
 )
 
-_IMMUTABLE = ("dataset_manifests", "universe_manifests")
+_IMMUTABLE = ("dataset_manifests", "universe_manifests", "fx_reference_repairs")
 
 
 #: additive columns on existing tables (table, column, declaration); NULL for rows written before them

@@ -115,25 +115,30 @@ class MarketDataStore:
 
     # -- FX reference -------------------------------------------------------------
     def write_fx_quotes(self, provider: str, pair: str, base: str, quote: str, timeframe: str,
-                        quotes: Iterable[Mapping[str, Any]], *, source_version: Optional[str] = None) -> int:
+                        quotes: Iterable[Mapping[str, Any]], *, source_version: Optional[str] = None,
+                        conn: Any = None) -> int:
+        """INSERT OR IGNORE (idempotent). ``conn``: write inside the caller's transaction (repairs)."""
+        if conn is None:
+            with self.db.connect() as own:
+                return self.write_fx_quotes(provider, pair, base, quote, timeframe, quotes,
+                                            source_version=source_version, conn=own)
         now = int(time.time() * 1000)
         n = 0
-        with self.db.connect() as conn:
-            for q in quotes:
-                bid, ask = q.get("bid_close"), q.get("ask_close")
-                mid = q.get("mid_close")
-                if mid is None and bid is not None and ask is not None:
-                    mid = (bid + ask) / 2.0
-                spread = (ask - bid) if (bid is not None and ask is not None) else None
-                conn.execute(
-                    """INSERT OR IGNORE INTO fx_reference_quotes (provider, pair, base_currency, quote_currency,
-                       timeframe, open_time, bid_open, bid_high, bid_low, bid_close, ask_open, ask_high, ask_low,
-                       ask_close, mid_close, spread_close, volume, session, price_kind, source_version, ingested_at)
-                       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
-                    (provider, pair, base, quote, timeframe, int(q["open_time"]), q.get("bid_open"), q.get("bid_high"),
-                     q.get("bid_low"), bid, q.get("ask_open"), q.get("ask_high"), q.get("ask_low"), ask, mid, spread,
-                     q.get("volume"), q.get("session"), REFERENCE_MARKET_PRICE, source_version, now))
-                n += 1
+        for q in quotes:
+            bid, ask = q.get("bid_close"), q.get("ask_close")
+            mid = q.get("mid_close")
+            if mid is None and bid is not None and ask is not None:
+                mid = (bid + ask) / 2.0
+            spread = (ask - bid) if (bid is not None and ask is not None) else None
+            conn.execute(
+                """INSERT OR IGNORE INTO fx_reference_quotes (provider, pair, base_currency, quote_currency,
+                   timeframe, open_time, bid_open, bid_high, bid_low, bid_close, ask_open, ask_high, ask_low,
+                   ask_close, mid_close, spread_close, volume, session, price_kind, source_version, ingested_at)
+                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                (provider, pair, base, quote, timeframe, int(q["open_time"]), q.get("bid_open"), q.get("bid_high"),
+                 q.get("bid_low"), bid, q.get("ask_open"), q.get("ask_high"), q.get("ask_low"), ask, mid, spread,
+                 q.get("volume"), q.get("session"), REFERENCE_MARKET_PRICE, source_version, now))
+            n += 1
         return n
 
     def fx_reference_at(self, *, pair: str, timeframe: str, as_of_ms: int, provider: Optional[str] = None

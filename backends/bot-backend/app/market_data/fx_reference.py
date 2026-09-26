@@ -12,9 +12,10 @@ Providers
       https://datafeed.dukascopy.com/datafeed/{PAIR}/{YYYY}/{MM-1:02d}/{DD:02d}/{BID|ASK}_candles_min_1.bi5
 
   Each record is 24 bytes, big-endian ``>IIIIIf``: seconds-from-midnight,
-  open, close, low, high (integer price x point), volume. The point is
-  1e3 for JPY-quoted pairs, 1e5 otherwise. The decoder is exercised against
-  constructed payloads in tests; the live endpoint is UNVALIDATED here.
+  open, close, low, high (integer price x point), volume. ``point_for`` is
+  only the DEFAULT (1e3 JPY-quoted, 1e5 otherwise): the provider's point is
+  period-dependent, so acquisition verifies each file's scale
+  (``raw_closes`` + ``fx_scale.infer_point``).
 * ``CsvFxReferenceProvider`` -- deterministic import of a provider export
   (``timestamp_ms,bid_open,...,ask_close,volume``) with provider name and
   source version recorded.
@@ -72,6 +73,18 @@ class FXReferenceProvider(Protocol):
     version: str
 
     def minute_quotes(self, pair: str, day: date) -> List[Dict]: ...
+
+
+def raw_closes(payload: bytes) -> List[int]:
+    """The integer close prices of one ``.bi5`` candle file, before any point is applied.
+
+    The provider's point is period-dependent (EURCNH / EURZAR files up to 2024-08 carry six decimals, later
+    files five), so callers verify the scale of every file against an independent level
+    (``fx_scale.infer_point``) instead of trusting ``point_for``."""
+    if not payload:
+        return []
+    raw = lzma.decompress(payload)
+    return [_RECORD.unpack_from(raw, i)[2] for i in range(0, len(raw) - len(raw) % _RECORD.size, _RECORD.size)]
 
 
 def decode_bi5_candles(payload: bytes, *, day_start_ms: int, point: float) -> List[Dict]:
@@ -214,6 +227,6 @@ def resample_quotes(quotes: Sequence[Dict], factor: int) -> List[Dict]:
     return out
 
 
-__all__ = ["CsvFxReferenceProvider", "DUKASCOPY_HOUR_URL", "DUKASCOPY_URL", "decode_hour_file",
+__all__ = ["CsvFxReferenceProvider", "DUKASCOPY_HOUR_URL", "DUKASCOPY_URL", "decode_hour_file", "raw_closes",
            "drop_flat_closed_bars", "month_start_ms", "DukascopyProvider", "FXReferenceProvider", "MAJORS",
            "decode_bi5_candles", "fx_session", "ingest", "merge_sides", "point_for", "resample_quotes", "split_pair"]
