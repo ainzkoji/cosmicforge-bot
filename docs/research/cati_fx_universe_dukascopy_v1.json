@@ -1,0 +1,392 @@
+{
+  "asset_class": "FX",
+  "base_resolution": "1m",
+  "bid_ask_required": true,
+  "candidate_rule_version": "fx-candidates-g10-plus-usd-eur-crosses-v1",
+  "code_commit": "ea8ed5c8cfbd64fb186793e8e896efa8bc4d478c",
+  "excluded": {
+    "EURCZK": "UNVALIDATED_PRICE_SCALE",
+    "EURHUF": "UNVALIDATED_PRICE_SCALE",
+    "EURINR": "UNVALIDATED_PRICE_SCALE",
+    "EURKRW": "UNVALIDATED_PRICE_SCALE",
+    "EURRUB": "UNVALIDATED_PRICE_SCALE",
+    "EURTHB": "UNVALIDATED_PRICE_SCALE",
+    "USDCZK": "UNVALIDATED_PRICE_SCALE",
+    "USDHUF": "UNVALIDATED_PRICE_SCALE",
+    "USDINR": "UNVALIDATED_PRICE_SCALE",
+    "USDKRW": "UNVALIDATED_PRICE_SCALE",
+    "USDRUB": "UNVALIDATED_PRICE_SCALE",
+    "USDTHB": "UNVALIDATED_PRICE_SCALE"
+  },
+  "execution_authorized": false,
+  "gap_policy_version": "gap-classification-v1",
+  "generated_at": "2026-09-26T16:22:49.878083+00:00",
+  "holdout_opened": false,
+  "members": [
+    {
+      "base": "AUD",
+      "cross_rate_status": "PASS",
+      "pair": "AUDCAD",
+      "quote": "CAD",
+      "scale_status": "VERIFIED_CROSS_RATE"
+    },
+    {
+      "base": "AUD",
+      "cross_rate_status": "PASS",
+      "pair": "AUDCHF",
+      "quote": "CHF",
+      "scale_status": "VERIFIED_CROSS_RATE"
+    },
+    {
+      "base": "AUD",
+      "cross_rate_status": "PASS",
+      "pair": "AUDJPY",
+      "quote": "JPY",
+      "scale_status": "VERIFIED_CROSS_RATE"
+    },
+    {
+      "base": "AUD",
+      "cross_rate_status": "PASS",
+      "pair": "AUDNZD",
+      "quote": "NZD",
+      "scale_status": "VERIFIED_CROSS_RATE"
+    },
+    {
+      "base": "AUD",
+      "cross_rate_status": "NO_RELATION_USD_LEG",
+      "pair": "AUDUSD",
+      "quote": "USD",
+      "scale_status": "VERIFIED_CONTINUITY"
+    },
+    {
+      "base": "CAD",
+      "cross_rate_status": "PASS",
+      "pair": "CADCHF",
+      "quote": "CHF",
+      "scale_status": "VERIFIED_CROSS_RATE"
+    },
+    {
+      "base": "CAD",
+      "cross_rate_status": "PASS",
+      "pair": "CADJPY",
+      "quote": "JPY",
+      "scale_status": "VERIFIED_CROSS_RATE"
+    },
+    {
+      "base": "CHF",
+      "cross_rate_status": "PASS",
+      "pair": "CHFJPY",
+      "quote": "JPY",
+      "scale_status": "VERIFIED_CROSS_RATE"
+    },
+    {
+      "base": "EUR",
+      "cross_rate_status": "PASS",
+      "pair": "EURAUD",
+      "quote": "AUD",
+      "scale_status": "VERIFIED_CROSS_RATE"
+    },
+    {
+      "base": "EUR",
+      "cross_rate_status": "PASS",
+      "pair": "EURCAD",
+      "quote": "CAD",
+      "scale_status": "VERIFIED_CROSS_RATE"
+    },
+    {
+      "base": "EUR",
+      "cross_rate_status": "PASS",
+      "pair": "EURCHF",
+      "quote": "CHF",
+      "scale_status": "VERIFIED_CROSS_RATE"
+    },
+    {
+      "base": "EUR",
+      "cross_rate_status": "PASS",
+      "pair": "EURCNH",
+      "quote": "CNH",
+      "scale_status": "VERIFIED_CROSS_RATE"
+    },
+    {
+      "base": "EUR",
+      "cross_rate_status": "PASS",
+      "pair": "EURDKK",
+      "quote": "DKK",
+      "scale_status": "VERIFIED_CROSS_RATE"
+    },
+    {
+      "base": "EUR",
+      "cross_rate_status": "PASS",
+      "pair": "EURGBP",
+      "quote": "GBP",
+      "scale_status": "VERIFIED_CROSS_RATE"
+    },
+    {
+      "base": "EUR",
+      "cross_rate_status": "PASS",
+      "pair": "EURHKD",
+      "quote": "HKD",
+      "scale_status": "VERIFIED_CROSS_RATE"
+    },
+    {
+      "base": "EUR",
+      "cross_rate_status": "PASS",
+      "pair": "EURILS",
+      "quote": "ILS",
+      "scale_status": "VERIFIED_CROSS_RATE"
+    },
+    {
+      "base": "EUR",
+      "cross_rate_status": "PASS",
+      "pair": "EURJPY",
+      "quote": "JPY",
+      "scale_status": "VERIFIED_CROSS_RATE"
+    },
+    {
+      "base": "EUR",
+      "cross_rate_status": "PASS",
+      "pair": "EURMXN",
+      "quote": "MXN",
+      "scale_status": "VERIFIED_CROSS_RATE"
+    },
+    {
+      "base": "EUR",
+      "cross_rate_status": "PASS",
+      "pair": "EURNOK",
+      "quote": "NOK",
+      "scale_status": "VERIFIED_CROSS_RATE"
+    },
+    {
+      "base": "EUR",
+      "cross_rate_status": "PASS",
+      "pair": "EURNZD",
+      "quote": "NZD",
+      "scale_status": "VERIFIED_CROSS_RATE"
+    },
+    {
+      "base": "EUR",
+      "cross_rate_status": "PASS",
+      "pair": "EURPLN",
+      "quote": "PLN",
+      "scale_status": "VERIFIED_CROSS_RATE"
+    },
+    {
+      "base": "EUR",
+      "cross_rate_status": "PASS",
+      "pair": "EURSEK",
+      "quote": "SEK",
+      "scale_status": "VERIFIED_CROSS_RATE"
+    },
+    {
+      "base": "EUR",
+      "cross_rate_status": "PASS",
+      "pair": "EURSGD",
+      "quote": "SGD",
+      "scale_status": "VERIFIED_CROSS_RATE"
+    },
+    {
+      "base": "EUR",
+      "cross_rate_status": "PASS",
+      "pair": "EURTRY",
+      "quote": "TRY",
+      "scale_status": "VERIFIED_CROSS_RATE"
+    },
+    {
+      "base": "EUR",
+      "cross_rate_status": "NO_RELATION_USD_LEG",
+      "pair": "EURUSD",
+      "quote": "USD",
+      "scale_status": "VERIFIED_CONTINUITY"
+    },
+    {
+      "base": "EUR",
+      "cross_rate_status": "PASS",
+      "pair": "EURZAR",
+      "quote": "ZAR",
+      "scale_status": "VERIFIED_CROSS_RATE"
+    },
+    {
+      "base": "GBP",
+      "cross_rate_status": "PASS",
+      "pair": "GBPAUD",
+      "quote": "AUD",
+      "scale_status": "VERIFIED_CROSS_RATE"
+    },
+    {
+      "base": "GBP",
+      "cross_rate_status": "PASS",
+      "pair": "GBPCAD",
+      "quote": "CAD",
+      "scale_status": "VERIFIED_CROSS_RATE"
+    },
+    {
+      "base": "GBP",
+      "cross_rate_status": "PASS",
+      "pair": "GBPCHF",
+      "quote": "CHF",
+      "scale_status": "VERIFIED_CROSS_RATE"
+    },
+    {
+      "base": "GBP",
+      "cross_rate_status": "PASS",
+      "pair": "GBPJPY",
+      "quote": "JPY",
+      "scale_status": "VERIFIED_CROSS_RATE"
+    },
+    {
+      "base": "GBP",
+      "cross_rate_status": "PASS",
+      "pair": "GBPNZD",
+      "quote": "NZD",
+      "scale_status": "VERIFIED_CROSS_RATE"
+    },
+    {
+      "base": "GBP",
+      "cross_rate_status": "NO_RELATION_USD_LEG",
+      "pair": "GBPUSD",
+      "quote": "USD",
+      "scale_status": "VERIFIED_CONTINUITY"
+    },
+    {
+      "base": "NZD",
+      "cross_rate_status": "PASS",
+      "pair": "NZDCAD",
+      "quote": "CAD",
+      "scale_status": "VERIFIED_CROSS_RATE"
+    },
+    {
+      "base": "NZD",
+      "cross_rate_status": "PASS",
+      "pair": "NZDCHF",
+      "quote": "CHF",
+      "scale_status": "VERIFIED_CROSS_RATE"
+    },
+    {
+      "base": "NZD",
+      "cross_rate_status": "PASS",
+      "pair": "NZDJPY",
+      "quote": "JPY",
+      "scale_status": "VERIFIED_CROSS_RATE"
+    },
+    {
+      "base": "NZD",
+      "cross_rate_status": "NO_RELATION_USD_LEG",
+      "pair": "NZDUSD",
+      "quote": "USD",
+      "scale_status": "VERIFIED_CONTINUITY"
+    },
+    {
+      "base": "USD",
+      "cross_rate_status": "NO_RELATION_USD_LEG",
+      "pair": "USDCAD",
+      "quote": "CAD",
+      "scale_status": "VERIFIED_CONTINUITY"
+    },
+    {
+      "base": "USD",
+      "cross_rate_status": "NO_RELATION_USD_LEG",
+      "pair": "USDCHF",
+      "quote": "CHF",
+      "scale_status": "VERIFIED_CONTINUITY"
+    },
+    {
+      "base": "USD",
+      "cross_rate_status": "NO_RELATION_USD_LEG",
+      "pair": "USDCNH",
+      "quote": "CNH",
+      "scale_status": "VERIFIED_CONTINUITY"
+    },
+    {
+      "base": "USD",
+      "cross_rate_status": "NO_RELATION_USD_LEG",
+      "pair": "USDDKK",
+      "quote": "DKK",
+      "scale_status": "VERIFIED_CONTINUITY"
+    },
+    {
+      "base": "USD",
+      "cross_rate_status": "NO_RELATION_USD_LEG",
+      "pair": "USDHKD",
+      "quote": "HKD",
+      "scale_status": "VERIFIED_CONTINUITY"
+    },
+    {
+      "base": "USD",
+      "cross_rate_status": "NO_RELATION_USD_LEG",
+      "pair": "USDILS",
+      "quote": "ILS",
+      "scale_status": "VERIFIED_CONTINUITY"
+    },
+    {
+      "base": "USD",
+      "cross_rate_status": "NO_RELATION_USD_LEG",
+      "pair": "USDJPY",
+      "quote": "JPY",
+      "scale_status": "VERIFIED_CONTINUITY"
+    },
+    {
+      "base": "USD",
+      "cross_rate_status": "NO_RELATION_USD_LEG",
+      "pair": "USDMXN",
+      "quote": "MXN",
+      "scale_status": "VERIFIED_CONTINUITY"
+    },
+    {
+      "base": "USD",
+      "cross_rate_status": "NO_RELATION_USD_LEG",
+      "pair": "USDNOK",
+      "quote": "NOK",
+      "scale_status": "VERIFIED_CONTINUITY"
+    },
+    {
+      "base": "USD",
+      "cross_rate_status": "NO_RELATION_USD_LEG",
+      "pair": "USDPLN",
+      "quote": "PLN",
+      "scale_status": "VERIFIED_CONTINUITY"
+    },
+    {
+      "base": "USD",
+      "cross_rate_status": "NO_RELATION_USD_LEG",
+      "pair": "USDSEK",
+      "quote": "SEK",
+      "scale_status": "VERIFIED_CONTINUITY"
+    },
+    {
+      "base": "USD",
+      "cross_rate_status": "NO_RELATION_USD_LEG",
+      "pair": "USDSGD",
+      "quote": "SGD",
+      "scale_status": "VERIFIED_CONTINUITY"
+    },
+    {
+      "base": "USD",
+      "cross_rate_status": "NO_RELATION_USD_LEG",
+      "pair": "USDTRY",
+      "quote": "TRY",
+      "scale_status": "VERIFIED_CONTINUITY"
+    },
+    {
+      "base": "USD",
+      "cross_rate_status": "NO_RELATION_USD_LEG",
+      "pair": "USDZAR",
+      "quote": "ZAR",
+      "scale_status": "VERIFIED_CONTINUITY"
+    }
+  ],
+  "note": "reference-market research/certification universe; never an execution price or authority",
+  "price_kind": "REFERENCE_MARKET_PRICE",
+  "provider": "dukascopy",
+  "resampling_policy_version": "fx-resample-from-1m-bid-ask-v1",
+  "role": "CERTIFICATION_UNIVERSE",
+  "scale_qa_version": "fx-scale-qa-v1",
+  "schema_version": "frozen-fx-universe-manifest-v1",
+  "source_versions": [
+    "bi5-candles-hour-1:v1",
+    "bi5-candles-min-1:v1"
+  ],
+  "universe_hash": "7242727983a010819d1476047b11477e4ff4bcc4fd2db5443014fea5e128a579",
+  "universe_id": "univ_fx_dukascopy_7242727983a0",
+  "window_end_ms": 1788220800000,
+  "window_start_ms": 1722470400000
+}
