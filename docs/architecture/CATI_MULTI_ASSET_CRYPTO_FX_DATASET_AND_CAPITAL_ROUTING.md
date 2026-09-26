@@ -151,11 +151,11 @@ Saturday); it is recorded verbatim and treated as not tradable (`INSTRUMENT_NOT_
   (research data, not committed).
 * **Acquired (2026-09-26):** probe -> **50 pairs available** (28 G10 + 22 USD/EUR crosses to SEK, NOK, DKK,
   PLN, SGD, HKD, CNH, ZAR, MXN, TRY, ILS); 12 excluded `UNVALIDATED_PRICE_SCALE`. Broad hourly tier
-  (25 months, ~12,950 bars per pair) — **in progress at commit time** (Dukascopy throttles to ~19 req/min
-  with multi-minute stalls; the job is resumable and was still running). Deep minute tier: EURUSD, GBPUSD,
-  USDJPY — the pairs Bybit lists — for the 60 days to 2026-09-25 (~61,600 1m bars and ~4,000 derived 15m
-  bars each). Validation so far: 0 one-sided rows in 1h/15m, 0 negative spreads, triangular check
-  |rel diff| 5e-6.
+  **complete: all 50 pairs, 25 months** (12,939–12,956 bars for most pairs; shorter provider history for
+  EURILS 8,100, USDILS 8,628, EURTRY 10,376, USDTRY 12,254; EURILS has 2 month files the provider does not
+  serve, logged `NO_FILE`). Deep minute tier: EURUSD, GBPUSD, USDJPY — the pairs Bybit lists — for the
+  60 days to 2026-09-25 (~61,600 1m bars and ~4,000 derived 15m bars each). Validation: 0 one-sided rows,
+  0 negative spreads, triangular consistency on 31 crosses with max |rel diff| 6.0e-4.
 
 ## 9. Research vs certification vs execution universes
 
@@ -470,7 +470,7 @@ only contracts with `apiStateOpen=true` and status 1 (1 FX contract at the Satur
 | Crypto and FX first-class asset classes | DONE (identity, discovery, context, risk) |
 | Dynamic venue discovery | DONE (live-verified on 3 venues) |
 | 100+ crypto research universe tooling operational | DONE (136 members frozen, 9.54M bars, 0 gaps) |
-| FX historical/reference pipeline operational | DONE (50 pairs probed; broad tier resumable/in progress; deep tier for Bybit pairs; venue tracking measured) |
+| FX historical/reference pipeline operational | DONE (50 pairs x 25 months hourly bid/ask; minute tier for the Bybit pairs; venue tracking measured) |
 | Venue instruments map to canonical/reference markets | DONE |
 | Bybit API FX via the existing Bybit account path | DONE (demo; live needs validation) |
 | BingX FX execution reflects official API capability | DONE (per-instrument, from the official contract list) |
