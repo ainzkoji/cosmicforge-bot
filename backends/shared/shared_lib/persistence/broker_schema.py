@@ -15,7 +15,8 @@ Additive and idempotent, called from ``migrations.migrate()``.
 * ``broker_transfer_settings`` -- per-account transfer mode and user limits, incl. the
   auto-routing policy (allowed routes, % and destination caps, manual-approval
   threshold, emergency disable).
-* ``cati_capital_plan_evidence`` -- append-only SHADOW capital-routing decisions.
+* ``cati_capital_plan_evidence`` -- append-only SHADOW capital-routing decisions, with the account topology
+  and per-wallet balances each was computed on (the account-scoped topology / balance-segment record).
 * ``broker_transfers_cache`` gains ``classification`` / ``direction`` /
   wallet columns so INTERNAL_TRANSFER is never conflated with DEPOSIT or
   WITHDRAWAL.
@@ -148,6 +149,10 @@ def ensure_broker_schema(db: Any) -> None:
         conn.execute(_RECONCILIATIONS)
         conn.execute(_SETTINGS)
         conn.execute(_CAPITAL_PLAN_EVIDENCE)
+        # Section 19.6/19.7: the broker-authoritative account topology (account mode, UNIFIED/SEGMENTED, routes)
+        # and per-wallet balances each plan was computed on -- additive, NULL on older rows
+        _add(conn, "cati_capital_plan_evidence", "topology_json", "TEXT")
+        _add(conn, "cati_capital_plan_evidence", "balances_json", "TEXT")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_ccpe_account ON cati_capital_plan_evidence(broker_account_id, created_at)")
         for trig, op in (("no_update", "UPDATE"), ("no_delete", "DELETE")):
             conn.execute(f"""CREATE TRIGGER IF NOT EXISTS trg_ccpe_{trig} BEFORE {op} ON cati_capital_plan_evidence

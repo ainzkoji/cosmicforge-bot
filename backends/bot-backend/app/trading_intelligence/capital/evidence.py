@@ -30,7 +30,10 @@ class CapitalPlanEvidenceStore:
 
     def record(self, plan: CapitalPlan, *, user_id: str, bot_instance_id: Optional[str], cycle_id: Optional[str],
                opportunity_id: Optional[str], mode: str = SHADOW, seed: int = 0,
-               model: TransferModel = TransferModel(), transferable_at_plan: Optional[float] = None) -> Dict[str, Any]:
+               model: TransferModel = TransferModel(), transferable_at_plan: Optional[float] = None,
+               topology: Optional[Dict[str, Any]] = None, balances: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+        """``topology`` / ``balances``: the broker-authoritative account topology (mode, class, wallets, routes)
+        and per-wallet balances (None = unknown, never 0) the plan was computed on. No secrets."""
         now = int(time.time() * 1000)
         simulated = None
         if plan.needs_transfer and plan.transfer is not None:
@@ -47,6 +50,10 @@ class CapitalPlanEvidenceStore:
             "plan_json": json.dumps(plan.to_dict(), sort_keys=True), "simulated_transfer_json": json.dumps(simulated),
             "created_at": now,
         }
+        if topology is not None:
+            row["topology_json"] = json.dumps(topology, sort_keys=True, default=str)
+        if balances is not None:
+            row["balances_json"] = json.dumps(balances, sort_keys=True, default=str)
         with self.db.connect() as conn:
             conn.execute(f"INSERT INTO {self.TABLE} ({', '.join(row)}) VALUES ({', '.join('?' for _ in row)})",
                          tuple(row.values()))

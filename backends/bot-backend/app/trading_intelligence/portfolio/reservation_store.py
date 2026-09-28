@@ -54,7 +54,8 @@ import contextlib
 import json
 import threading
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Sequence, Tuple
+from decimal import Decimal
+from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
 
 from app.execution.position_slots import occupied_slots, slot_key
 from app.trading_intelligence.contracts.portfolio import AccountPortfolioReservation, ReservationStatus
@@ -69,6 +70,11 @@ from app.trading_intelligence.portfolio.exposure_builder import (
 
 TABLE = "cati_portfolio_reservations"
 MODE_SHADOW = "SHADOW"
+
+#: Section 17.8/17.9 capital conflicts (the reservation is refused, nothing is substituted)
+CAPITAL_ALREADY_RESERVED = "CAPITAL_ALREADY_RESERVED"
+CAPITAL_BASIS_UNKNOWN = "CAPITAL_BASIS_UNKNOWN"
+FAMILY_BUDGET_EXCEEDED = "FAMILY_BUDGET_EXCEEDED"
 
 Selected = Tuple[str, str, str, str, str]  # (candidate_id, canonical, venue, venue_symbol, side)
 
@@ -186,10 +192,17 @@ class CATIReservationStore:
         expected_exposure_fingerprint: Optional[str] = None, expected_reservation_fingerprint: Optional[str] = None,
         expected_available_slots: Optional[int] = None,
         max_open_positions: Optional[int] = None, policy_version: Optional[str] = None,
-        policy_hash: Optional[str] = None,
+        policy_hash: Optional[str] = None, capital: Optional[Mapping[str, Any]] = None,
     ) -> ReservationOutcome:
         """Atomic revalidate-and-insert under the account lock. On any
-        conflict NOTHING is substituted or mutated."""
+        conflict NOTHING is substituted or mutated.
+
+        ``capital`` (``AccountCapitalView.claim``): the account capital this
+        reservation holds. It is checked INSIDE the same transaction against
+        every other active capital reservation on the account (all bots, all
+        processes): per trading wallet against its broker-reported basis (+ a
+        planned inbound transfer), and per market family against its logical
+        budget over the ONE account basis."""
         if mode != MODE_SHADOW:
             raise ValueError("only SHADOW reservations are permitted in this phase")
         candidate_ids = tuple(sorted(s[0] for s in selected))
@@ -242,24 +255,76 @@ class CATIReservationStore:
                             or capacity < len(selected):
                         return ReservationOutcome(None, CAPACITY_CHANGED, ())
 
+                if capital is not None:
+                    why = self._capital_conflict(conn, broker_account_id, now_ms, capital)
+                    if why is not None:
+                        return ReservationOutcome(None, why, ())
+
                 if existing is not None:  # a previous RELEASED/EXPIRED/CONSUMED row under the same id
                     conn.execute(f"DELETE FROM {TABLE} WHERE reservation_id=?", (rid,))
                 payload = {"candidate_ids": list(candidate_ids), "instruments": [list(i) for i in instruments]}
                 conn.execute(
                     f"INSERT INTO {TABLE} (reservation_id, broker_account_id, bot_instance_id, cycle_id, selected_candidate_ids,"
                     " selected_instruments, status, mode, created_at, expires_at, updated_at, reservation_version,"
-                    " policy_version, policy_hash, payload_hash, capacity_snapshot)"
-                    " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                    " policy_version, policy_hash, payload_hash, capacity_snapshot, user_id, capital_asset,"
+                    " capital_amount, capital_wallet, capital_json)"
+                    " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                     (rid, broker_account_id, bot_instance_id, cycle_id, json.dumps(list(candidate_ids)),
                      json.dumps([list(i) for i in instruments]), ReservationStatus.RESERVED.value, mode, now_ms,
                      now_ms + ttl_seconds * 1000, now_ms,
                      AccountPortfolioReservation.__dataclass_fields__["reservation_version"].default,
                      policy_version, policy_hash, stable_hash(payload),
                      json.dumps({"available_slots": capacity, "exposure_fingerprint": exposure_fp,
-                                 "reservation_fingerprint": reservation_fp})),
+                                 "reservation_fingerprint": reservation_fp}),
+                     (capital or {}).get("user_id"), (capital or {}).get("asset"), (capital or {}).get("amount"),
+                     (capital or {}).get("wallet"), json.dumps(dict(capital), sort_keys=True) if capital else None),
                 )
                 row = conn.execute(f"SELECT * FROM {TABLE} WHERE reservation_id=?", (rid,)).fetchone()
                 return ReservationOutcome(_row_to_reservation(row))
+
+    # -- capital (Section 17.8-17.10) ------------------------------------------------------
+    @staticmethod
+    def _active_capital(conn: Any, account: str, now_ms: int) -> Tuple[Dict[str, Decimal], Dict[str, Decimal]]:
+        """Capital held by active reservations (RESERVED unexpired + RESOLUTION_PENDING): by wallet, by family."""
+        rows = conn.execute(
+            f"SELECT capital_json FROM {TABLE} WHERE broker_account_id=? AND capital_json IS NOT NULL AND"
+            " ((status='RESERVED' AND expires_at>?) OR status='RESOLUTION_PENDING')", (account, now_ms)).fetchall()
+        by_wallet: Dict[str, Decimal] = {}
+        by_family: Dict[str, Decimal] = {}
+        for (raw,) in rows:
+            c = json.loads(raw)
+            for w, v in (c.get("by_wallet") or {}).items():
+                by_wallet[w] = by_wallet.get(w, Decimal("0")) + Decimal(str(v))
+            for f, v in (c.get("by_family") or {}).items():
+                by_family[f] = by_family.get(f, Decimal("0")) + Decimal(str(v))
+        return by_wallet, by_family
+
+    def _capital_conflict(self, conn: Any, account: str, now_ms: int, capital: Mapping[str, Any]) -> Optional[str]:
+        held_wallet, held_family = self._active_capital(conn, account, now_ms)
+        basis = capital.get("basis") or {}
+        inbound = capital.get("transfer_in_by_wallet") or {}
+        for w, v in (capital.get("by_wallet") or {}).items():
+            b = basis.get(w)
+            if b is None:
+                return CAPITAL_BASIS_UNKNOWN  # never reserve against an unknown balance
+            if held_wallet.get(w, Decimal("0")) + Decimal(str(v)) > Decimal(str(b)) + Decimal(str(inbound.get(w, "0"))):
+                return CAPITAL_ALREADY_RESERVED
+        total = Decimal(str(capital.get("total_basis") or "0"))
+        for f, frac in (capital.get("family_limits") or {}).items():
+            need = Decimal(str((capital.get("by_family") or {}).get(f, "0")))
+            if need and held_family.get(f, Decimal("0")) + need > total * Decimal(str(frac)):
+                return f"{FAMILY_BUDGET_EXCEEDED}:{f}"
+        return None
+
+    def capital_reserved(self, broker_account_id: str, now_ms: int) -> Tuple[Dict[str, Decimal], Dict[str, Decimal]]:
+        """(by_wallet, by_family) capital held on the account right now -- the account stage's view."""
+        with self._db.connect() as conn:
+            return self._active_capital(conn, broker_account_id, now_ms)
+
+    def capital(self, reservation_id: str) -> Optional[Dict[str, Any]]:
+        with self._db.connect() as conn:
+            row = conn.execute(f"SELECT capital_json FROM {TABLE} WHERE reservation_id=?", (reservation_id,)).fetchone()
+        return json.loads(row[0]) if row is not None and row[0] else None
 
     def _transition(self, reservation_id: str, to_status: str, now_ms: int) -> bool:
         """Compare-and-set from RESERVED. An expired reservation is marked
@@ -349,5 +414,6 @@ class CATIReservationStore:
             return self._active(conn, broker_account_id, now_ms)
 
 
-__all__ = ["TABLE", "MODE_SHADOW", "Selected", "ReservationOutcome", "ReservationSchemaMissing",
+__all__ = ["TABLE", "MODE_SHADOW", "Selected", "CAPITAL_ALREADY_RESERVED", "CAPITAL_BASIS_UNKNOWN",
+           "FAMILY_BUDGET_EXCEEDED", "ReservationOutcome", "ReservationSchemaMissing",
            "available_slots_from", "reservation_id_note", "CATIReservationStore"]

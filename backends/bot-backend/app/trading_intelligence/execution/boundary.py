@@ -8,7 +8,13 @@ that).
       -> CATI idempotency (one attempt identity per plan id + hash + account)
       -> capital readiness (broker-COMPLETED internal transfer, or a valid
          logical reservation on shared collateral) -- Section 9.14
+      -> execution tenancy: the plan's user + broker account ARE the account
+         this adapter's credentials belong to (Section 18.14)
+      -> instrument / capability revalidation against the Section 7 catalog
+         (stale -> refresh or block; product/account eligibility; no
+         grandfathered capability) -- Section 18.4 / 18.12 / 18.13
       -> TradingOrchestrator.process_trade_plan   (EXISTING hard risk / sizing)
+      -> executable-quantity revalidation under CURRENT metadata (18.5)
       -> ExecutionAdapter.submit_entry            (EXISTING executor: capital,
                                                    slots, margin, idempotency,
                                                    submit-unknown, fill
@@ -70,6 +76,8 @@ class BoundaryStatus:
     EXECUTED = "EXECUTED"
     EXECUTION_REJECTED = "EXECUTION_REJECTED"
     SUBMIT_UNKNOWN = "SUBMIT_UNKNOWN_PENDING_RECONCILIATION"
+    WRONG_ACCOUNT = "EXECUTION_ACCOUNT_SCOPE_MISMATCH"
+    PREFLIGHT_BLOCKED = "SUBMISSION_PREFLIGHT_BLOCKED"
     RECONCILED = "RECONCILED"
     STILL_UNKNOWN = "STILL_UNKNOWN"
     EXIT_ROUTING_DISABLED = "EXIT_ROUTING_DISABLED"
@@ -111,8 +119,14 @@ def _now() -> int:
 class CATIExecutionBoundary:
     def __init__(self, *, orchestrator: Any, adapter: Any, db: Any, config: Optional[CATIExecutionConfig] = None,
                  position_manager: Any = None, clock=None,
-                 resolution_escalation_ms: int = DEFAULT_RESOLUTION_ESCALATION_MS, authority: Any = None) -> None:
+                 resolution_escalation_ms: int = DEFAULT_RESOLUTION_ESCALATION_MS, authority: Any = None,
+                 account_scope: Optional[Tuple[Optional[str], str]] = None, preflight: Any = None) -> None:
+        """``account_scope``: (user_id, broker_account_id) whose credentials ``adapter`` uses -- a plan of any
+        other tenant/account is refused. ``preflight``: ``execution.preflight.SubmissionPreflight``. Both are
+        REQUIRED to reach the broker; absent, the boundary fails closed with an explicit reason."""
         self.orchestrator = orchestrator
+        self.account_scope = tuple(account_scope) if account_scope is not None else None
+        self.preflight = preflight
         self.adapter = adapter
         self.config = config if config is not None else CATIExecutionConfig.from_env()
         self.position_manager = position_manager
@@ -184,6 +198,21 @@ class CATIExecutionBoundary:
             return BoundaryResult(BoundaryStatus.CAPITAL_NOT_READY, plan.trade_plan_id, (code,),
                                   reservation_status=self._res_status(plan))
 
+        # 18.14 -- never execute one tenant's plan with another account's adapter/credentials. The plan's own
+        # reservation is left untouched: the plan may still be executed by the correct account's boundary.
+        if self.account_scope is None or (plan.user_id, plan.broker_account_id) != self.account_scope:
+            code = "EXECUTION_ACCOUNT_SCOPE_UNKNOWN" if self.account_scope is None else "EXECUTION_ACCOUNT_SCOPE_MISMATCH"
+            METRICS.inc("cati_execution_boundary_total", status=BoundaryStatus.WRONG_ACCOUNT)
+            return BoundaryResult(BoundaryStatus.WRONG_ACCOUNT, plan.trade_plan_id, (code,),
+                                  reservation_status=self._res_status(plan))
+        # 18.4 / 18.12 / 18.13 -- current instrument + account capability before hard risk and the broker
+        if self.preflight is None:
+            return self._fail_before_risk(plan, now, BoundaryStatus.PREFLIGHT_BLOCKED,
+                                          "SUBMISSION_PREFLIGHT_NOT_CONFIGURED")
+        pre = self.preflight.instrument(plan, now)
+        if not pre.ok:
+            return self._fail_before_risk(plan, now, BoundaryStatus.PREFLIGHT_BLOCKED, *pre.reason_codes)
+
         reservation = self.reservations.get(plan.portfolio_reservation_id)
         t0 = time.perf_counter()
         risk_result = self.orchestrator.process_trade_plan(
@@ -208,6 +237,14 @@ class CATIExecutionBoundary:
         METRICS.inc("cati_hard_risk_approvals_total", stage=risk.stage)
 
         tp = risk_result["trade_params"]
+        # 18.5 -- the risk-sized quantity must be executable under the CURRENT venue metadata
+        qty = self.preflight.quantity(plan, float(tp["quantity"]), float(tp["entry_price"]), now)
+        if not qty.ok:
+            released = self.reservations.release(plan.portfolio_reservation_id, now)
+            METRICS.inc("cati_execution_boundary_total", status=BoundaryStatus.PREFLIGHT_BLOCKED)
+            return BoundaryResult(BoundaryStatus.PREFLIGHT_BLOCKED, plan.trade_plan_id, qty.reason_codes,
+                                  risk_decision=risk, reservation_status="RELEASED" if released else self._res_status(plan),
+                                  detail=dict(qty.detail))
         req = EntryRequest(
             trade_plan_id=plan.trade_plan_id, trade_plan_hash=plan.trade_plan_hash, risk_decision_id=risk.risk_decision_id,
             venue_symbol=plan.instrument_key.venue_symbol, side=plan.side,
@@ -419,10 +456,10 @@ class CATIExecutionBoundary:
         return BoundaryResult(BoundaryStatus.EXIT_ROUTED, plan.trade_plan_id, (decision.action,), detail=dict(out or {}))
 
     # -- helpers ----------------------------------------------------------------------------------
-    def _fail_before_risk(self, plan, now, status, code) -> BoundaryResult:
+    def _fail_before_risk(self, plan, now, status, *codes) -> BoundaryResult:
         self.reservations.release(plan.portfolio_reservation_id, now)
         METRICS.inc("cati_execution_boundary_total", status=status)
-        return BoundaryResult(status, plan.trade_plan_id, (code,), reservation_status=self._res_status(plan))
+        return BoundaryResult(status, plan.trade_plan_id, tuple(codes), reservation_status=self._res_status(plan))
 
     def _res_status(self, plan) -> Optional[str]:
         r = self.reservations.get(plan.portfolio_reservation_id)

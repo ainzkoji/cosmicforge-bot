@@ -55,7 +55,12 @@ CREATE TABLE IF NOT EXISTS {CATI_RESERVATION_TABLE} (
     execution_attempt_id TEXT,
     pending_since INTEGER,
     resolution_deadline INTEGER,
-    resolution_note TEXT
+    resolution_note TEXT,
+    user_id TEXT,
+    capital_asset TEXT,
+    capital_amount TEXT,
+    capital_wallet TEXT,
+    capital_json TEXT
 )
 """
 
@@ -71,11 +76,21 @@ _ADDITIVE_COLUMNS = (
     ("pending_since", "INTEGER"),
     ("resolution_deadline", "INTEGER"),
     ("resolution_note", "TEXT"),
+    # Section 17.8: the account CAPITAL a reservation holds (tenant, asset, amount, trading wallet, lineage);
+    # NULL on rows written before capital reservations existed (they claim no capital)
+    ("user_id", "TEXT"),
+    ("capital_asset", "TEXT"),
+    ("capital_amount", "TEXT"),
+    ("capital_wallet", "TEXT"),
+    ("capital_json", "TEXT"),
 )
 
 _RESERVATION_COLUMNS = ("reservation_id", "broker_account_id", "bot_instance_id", "cycle_id", "selected_candidate_ids",
                         "selected_instruments", "status", "mode", "created_at", "expires_at", "updated_at",
-                        "reservation_version", "policy_version", "policy_hash", "payload_hash", "capacity_snapshot")
+                        "reservation_version", "policy_version", "policy_hash", "payload_hash", "capacity_snapshot",
+                        "trade_plan_id", "execution_attempt_id", "pending_since", "resolution_deadline",
+                        "resolution_note", "user_id", "capital_asset", "capital_amount", "capital_wallet",
+                        "capital_json")
 
 
 def _upgrade_reservation_status_check(conn: Any) -> None:

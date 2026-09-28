@@ -45,7 +45,10 @@ def canonical_economics(candidate: Any, market_state: Any, forecast: Any, observ
                                      reference_notional=reference_notional)
     if getattr(venue_policy, "strict_required_components", False):
         from app.trading_intelligence.economics.transfer import attach_multi_asset_economics
-        cost = attach_multi_asset_economics(cost, candidate, observation, transfer_economics)
+        # the venue stage precedes any account route: without transfer facts the component is
+        # PENDING_ACCOUNT_CAPITAL_PLAN here and is finalized (or fails closed) in the account stage
+        cost = attach_multi_asset_economics(cost, candidate, observation, transfer_economics,
+                                            defer_transfer=transfer_economics is None)
     opportunity = evaluate_economic_opportunity(
         candidate, market_state, forecast, cost, policy=admission_policy, user_id=user_id,
         broker_account_id=broker_account_id, bot_instance_id=bot_instance_id, run_id=run_id, cycle_id=cycle_id)

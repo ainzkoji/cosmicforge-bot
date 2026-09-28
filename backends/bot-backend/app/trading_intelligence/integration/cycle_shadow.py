@@ -254,10 +254,31 @@ def _portfolio_stage(runner: Any, result: Any) -> None:
                                                     asset_classes=classes)
     evaluated = {o.candidate.setup_candidate_id: o for ev in result.evaluations for o in ev.opportunities}
     _global_market_state_stage(runner, result, decision_time, interval)
+    # Section 17 (closes Section 16.C): AFTER whole-universe ranking, BEFORE account selection -- provisional
+    # size -> DRY-RUN capital plan -> transfer / logical-allocation economics -> final account economics.
+    # Nothing is moved, reserved or submitted here; a view that cannot be built selects nothing.
+    from app.trading_intelligence.integration.account_capital_stage import (
+        build_account_capital_view, record_capital_evidence, summary,
+    )
+
+    if service.store is None:
+        capital_view = None  # the service itself fails closed (RESERVATION_SCHEMA_MISSING)
+    else:
+        try:
+            capital_view = build_account_capital_view(runner, result.ranked, evaluated,
+                                                      reservation_store=service.store, now_ms=now_ms,
+                                                      cycle_id=result.batch.cycle_id)
+        except Exception as exc:
+            _error("cycle_shadow.account_capital", exc, runner)
+            logger.info("[CATI_ACCOUNT_CAPITAL] bot=%s account=%s: view unavailable -> nothing selected",
+                        result.batch.bot_instance_id, account)
+            return
+        logger.info("[CATI_ACCOUNT_CAPITAL] bot=%s account=%s %s", result.batch.bot_instance_id, account,
+                    summary(capital_view))
     outcome = service.select_and_reserve(
         ranked=result.ranked, broker_account_id=account, bot_instance_id=result.batch.bot_instance_id,
         cycle_id=result.batch.cycle_id, max_open_positions=int(getattr(ctx, "max_open_positions", 0) or 0),
-        context=market_context, now_ms=now_ms, evaluated_by_candidate_id=evaluated,
+        context=market_context, now_ms=now_ms, evaluated_by_candidate_id=evaluated, capital_view=capital_view,
     )
     d = outcome.decision
     logger.info(
@@ -266,10 +287,13 @@ def _portfolio_stage(runner: Any, result: Any) -> None:
         d.available_slots, d.portfolio_score, d.solver, d.reservation_id, d.reservation_status, ",".join(d.reason_codes) or "-",
     )
     trade_plan_stage(db, result, outcome, evaluated, now_ms)
-    # Phase 5E/6F: SHADOW capital routing (flag-gated, evidence only, no transfer).
-    from app.trading_intelligence.capital.shadow_hook import shadow_capital_routing
+    # Phase 5E/6F: SHADOW capital-routing evidence (flag-gated) -- the SAME dry-run plans the selection used,
+    # with the topology / balances behind them. Evidence only: no transfer intent, no submission.
+    from app.trading_intelligence.capital.shadow_hook import is_enabled as capital_shadow_enabled
 
-    shadow_capital_routing(runner, outcome, evaluated)
+    if capital_view is not None and d.is_reserved and capital_shadow_enabled():
+        record_capital_evidence(db, capital_view, selected_ids=d.selected_opportunity_ids,
+                                bot_instance_id=d.bot_instance_id, cycle_id=d.cycle_id)
 
 
 def _global_market_state_stage(runner: Any, result: Any, decision_time: int, timeframe: str) -> Any:

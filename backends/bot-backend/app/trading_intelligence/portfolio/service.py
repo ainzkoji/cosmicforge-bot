@@ -90,16 +90,21 @@ class ShadowAccountPortfolioService:
         context: PortfolioMarketContext,
         now_ms: int,
         evaluated_by_candidate_id: Optional[Mapping[str, EvaluatedOpportunity]] = None,
+        capital_view: Any = None,
     ) -> PortfolioOutcome:
         """Section 21: stage latency + bounded portfolio metrics around the
-        unchanged selection/reservation logic."""
+        unchanged selection/reservation logic. ``capital_view``
+        (``account_capital.AccountCapitalView``, Section 17): the account's
+        dry-run capital / final-economics verdict per ranked opportunity; only
+        viable ones may be selected, and the selection's capital is reserved
+        atomically with it."""
         import time as _time
 
         t0 = _time.perf_counter()
         outcome = self._select_and_reserve(
             ranked=ranked, broker_account_id=broker_account_id, bot_instance_id=bot_instance_id, cycle_id=cycle_id,
             max_open_positions=max_open_positions, context=context, now_ms=now_ms,
-            evaluated_by_candidate_id=evaluated_by_candidate_id)
+            evaluated_by_candidate_id=evaluated_by_candidate_id, capital_view=capital_view)
         try:
             from app.trading_intelligence.observability.emitters import observe_portfolio
             from app.trading_intelligence.observability.metrics import METRICS
@@ -121,6 +126,7 @@ class ShadowAccountPortfolioService:
         context: PortfolioMarketContext,
         now_ms: int,
         evaluated_by_candidate_id: Optional[Mapping[str, EvaluatedOpportunity]] = None,
+        capital_view: Any = None,
     ) -> PortfolioOutcome:
         p = self._policy
         if self._store is None:
@@ -138,6 +144,20 @@ class ShadowAccountPortfolioService:
                 else:
                     keep.append(r)
             ranked = keep
+        # Section 17: account capital / final economics. Global rank order is kept; a non-viable
+        # candidate is recorded with its reason and never replaced by re-ranking.
+        account_rejected: List[RejectedCandidate] = []
+        if capital_view is not None:
+            keep = []
+            for r in ranked:
+                if capital_view.viable(r.ranked_opportunity_id):
+                    keep.append(r)
+                    continue
+                c = capital_view.candidates.get(r.ranked_opportunity_id)
+                codes = c.reason_codes if c is not None else ("ACCOUNT_CAPITAL_NOT_EVALUATED",)
+                account_rejected.append(RejectedCandidate(r.ranked_opportunity_id, r.setup_candidate_id,
+                                                          codes[0].split(":", 1)[0], ";".join(codes)))
+            ranked = keep
         self._store.expire_stale(broker_account_id, now_ms)
         try:
             exposure = build_account_exposure_snapshot(
@@ -149,6 +169,7 @@ class ShadowAccountPortfolioService:
         decision = select_portfolio(
             ranked=ranked, exposure=exposure, context=context, policy=p, bot_instance_id=bot_instance_id,
             cycle_id=cycle_id, available_slots=slots, decision_time=now_ms,
+            capital_budget=capital_view.budget() if capital_view is not None else None,
         )
         reservation: Optional[AccountPortfolioReservation] = None
         if decision.selected_opportunity_ids:
@@ -166,6 +187,7 @@ class ShadowAccountPortfolioService:
                     broker_account_id, exposure.reservation_exposures),
                 expected_available_slots=slots, max_open_positions=max_open_positions,
                 policy_version=p.schema_version, policy_hash=p.policy_hash,
+                capital=capital_view.claim(decision.selected_opportunity_ids) if capital_view is not None else None,
             )
             if outcome.reserved:
                 reservation = outcome.reservation
@@ -175,6 +197,10 @@ class ShadowAccountPortfolioService:
                 decision = dataclasses.replace(
                     decision, reservation_status="CONFLICT",
                     reason_codes=tuple(dict.fromkeys(decision.reason_codes + (outcome.conflict_reason or ACCOUNT_RESERVATION_CONFLICT,))))
+        if account_rejected:
+            decision = dataclasses.replace(
+                decision, rejected_candidates=tuple(account_rejected) + decision.rejected_candidates,
+                reason_codes=tuple(dict.fromkeys(decision.reason_codes + tuple(r.reason_code for r in account_rejected))))
         if not_approved:
             decision = dataclasses.replace(
                 decision, rejected_candidates=tuple(not_approved) + decision.rejected_candidates,

@@ -173,7 +173,12 @@ def persist_universe_manifest(db: Any, sel: UniverseSelection) -> str:
 def persist_dataset_manifest(db: Any, *, role: str, asset_class: str, venue: str, payload: Mapping[str, Any],
                              created_at: int) -> str:
     body = json.dumps(payload, sort_keys=True, default=str)
-    h = hashlib.sha256(body.encode()).hexdigest()
+    if payload.get("schema_version") == DATASET_LINEAGE_VERSION:
+        # a frozen lineage manifest is identified by its verified content identity; its created_at is metadata,
+        # so re-persisting the same frozen dataset is idempotent (and a tampered payload is refused)
+        h = verify_dataset_payload(payload)
+    else:  # earlier manifest shapes keep their existing identity semantics unchanged
+        h = hashlib.sha256(body.encode()).hexdigest()
     with db.connect() as conn:
         conn.execute("INSERT OR IGNORE INTO dataset_manifests (manifest_id, manifest_hash, role, asset_class, venue, "
                      "payload_json, created_at) VALUES (?,?,?,?,?,?,?)",

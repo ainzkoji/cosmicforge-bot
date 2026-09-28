@@ -11,6 +11,11 @@ active whenever the cycle shadow is; ``CATI_CAPITAL_ROUTING_SHADOW_ENABLED``
 set to an explicit off value is an operator override that switches it OFF.
 It grants no execution authority and never submits a transfer. Every failure
 is recorded and swallowed: shadow evidence can never block the runtime.
+
+Section 17: the CATI cycle no longer calls ``shadow_capital_routing``. The account capital stage
+(``integration/account_capital_stage``) runs the SAME planner as a dry run BEFORE selection and records
+the plans the decision actually used (``record_capital_evidence``). ``account_capital_state`` below is its
+broker-authoritative input; ``shadow_capital_routing`` remains for tooling only.
 """
 from __future__ import annotations
 

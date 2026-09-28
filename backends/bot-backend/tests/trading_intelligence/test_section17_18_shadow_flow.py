@@ -31,6 +31,10 @@ class _Ctx:
     execution_mode = "paper"
     market_type = "CRYPTO"
     max_open_positions = 3
+    allocation_type = "fixed_usdt"   # provisional sizing: the configured per-trade allocation (Section 17.5)
+    allocation_value = 50.0
+    capital_budget = 0.0
+    max_leverage = 5.0
 
     @property
     def broker_api_key(self):
@@ -188,8 +192,27 @@ def test_record_symbol_wires_venue_context(monkeypatch):
 
 
 # -- the whole cycle: rank once -> portfolio -> reservation -> TradePlan -> STOP ------------------
-def _drive_cycle(monkeypatch, db, evaluations):
+def _capital_state(free="1000"):
+    """Broker-shaped account capital: Binance classic, USDT in the USD-M futures wallet."""
+    from decimal import Decimal
+
+    from shared_lib.broker.wallets import topology_for
+
+    from app.trading_intelligence.capital.planner import AccountCapitalState
+
+    return AccountCapitalState("acct1", "USDT", topology_for("binance"),
+                               {"UMFUTURE": Decimal(free), "MAIN": Decimal("0"), "FUNDING": Decimal("0")})
+
+
+def _drive_cycle(monkeypatch, db, evaluations, capital_state=_capital_state):
     monkeypatch.setenv(cs.ENV_FLAG, "1")
+    import app.trading_intelligence.capital.shadow_hook as sh
+
+    def reader(db_, *, user_id, broker_account_id):
+        assert (user_id, broker_account_id) == ("u1", "acct1")  # the bot's own account only
+        return capital_state()
+
+    monkeypatch.setattr(sh, "account_capital_state", reader)
     by_symbol = {e.candidate.instrument_key.venue_symbol: e for e in evaluations}
 
     class _Ctl:
@@ -231,6 +254,20 @@ def test_full_shadow_cycle_produces_trade_plan_evidence_and_stops(monkeypatch, t
     assert [r["status"] for r in resv] == ["RESERVED"]  # plan creation does not consume the reservation
     assert before == after  # zero orders, zero production slot consumption
     assert not any(c in ("place_order", "order") for c in runner.client.calls)
+
+
+def test_unknown_account_capital_selects_and_reserves_nothing(monkeypatch, tmp_path):
+    """Section 17 / 16.C fail-closed: no broker-authoritative capital facts -> nothing is approved."""
+    db = fresh_db(tmp_path)
+
+    def unreadable():
+        raise RuntimeError("broker unreachable")
+
+    _drive_cycle(monkeypatch, db, _now_evaluations(), capital_state=unreadable)
+    assert TradePlanEvidenceStore(db).for_account("acct1") == []
+    with db.connect() as c:
+        assert c.execute("SELECT COUNT(*) FROM cati_portfolio_reservations").fetchone()[0] == 0
+        assert c.execute("SELECT COUNT(*) FROM broker_transfer_requests").fetchone()[0] == 0
 
 
 def test_real_watch_conditions_create_zero_trade_plans(monkeypatch, tmp_path):

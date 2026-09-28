@@ -223,7 +223,10 @@ def test_executor_margin_rejection_releases(tmp_path):
 
 def test_executor_sizing_rejection(tmp_path):
     h = Harness(tmp_path, fixed=0.5)
-    res = h.run()
+    # defence in depth: with no venue minimum in the catalog the Section 18 pre-submit check passes, and the
+    # executor's OWN sizing authority still rejects (the pre-submit MIN_NOTIONAL block is tested in Section 18)
+    h.seed_catalog(instruments=[h.instrument("BTCUSDT", min_notional=None), h.instrument("ETHUSDT", min_notional=None)])
+    res = h.run(h.boundary(preflight=h.preflight(seed=False)))
     assert res.status == B.EXECUTION_REJECTED and res.risk_decision.rejection_family == F.SIZING.value
 
 

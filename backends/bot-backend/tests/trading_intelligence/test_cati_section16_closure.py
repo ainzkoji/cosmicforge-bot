@@ -103,21 +103,49 @@ def test_venue_fee_difference_and_maker_policy():
 @pytest.mark.parametrize("route,latency,fee,reason", [
     (NO_ACTION_SHARED_COLLATERAL,None,None,None),
     (PHYSICAL_INTERNAL_TRANSFER_REQUIRED,1000,1,None),
-    (PHYSICAL_INTERNAL_TRANSFER_REQUIRED,60_000,1,"TRANSFER_ARRIVES_AFTER_OPPORTUNITY_EXPIRY"),
+    (PHYSICAL_INTERNAL_TRANSFER_REQUIRED,60_000,1,"TRANSFER_DELAY_EXCEEDS_VALIDITY"),
     (PHYSICAL_INTERNAL_TRANSFER_REQUIRED,None,1,"TRANSFER_LATENCY_UNAVAILABLE"),
     (PHYSICAL_INTERNAL_TRANSFER_REQUIRED,1000,None,"TRANSFER_COST_UNAVAILABLE"),
 ])
 def test_transfer_route_fee_and_expiry(route,latency,fee,reason):
     a,req,raw,c=case(); obs=a.observe(req,raw)
     cost=build_venue_cost_estimate(c,obs,policy=a.policy)
-    transfer=TransferEconomics(route,"u","a",T,T+60_000,"fixture",fee,latency,"USDT")
+    transfer=TransferEconomics(route,"u","a",T,T+60_000,"fixture",fee,latency,"USDT",
+                               fee_source="fixture:declared", latency_source="fixture:observed")
     result=attach_multi_asset_economics(cost,c,obs,transfer)
+    evidence=result.native_costs["multi_asset_economics"]
     if reason:
         assert reason in result.reason_codes and result.source_quality == "INVALID"
+        if reason == "TRANSFER_DELAY_EXCEEDS_VALIDITY":
+            assert "OPPORTUNITY_EXPIRED_BEFORE_CAPITAL_READY" in result.reason_codes
     else:
         assert result.source_quality == "VALID"
-        expected=0 if route == NO_ACTION_SHARED_COLLATERAL else fee/cost.native_costs["risk_ccy"]
-        assert result.total_cost_R == cost.total_cost_R+expected
+        if route == NO_ACTION_SHARED_COLLATERAL:
+            # no physical move: the transfer component is NOT_APPLICABLE, not a fabricated zero fee
+            assert evidence["transfer_status"] == "NOT_APPLICABLE" and evidence["transfer_R"] is None
+            assert evidence["physical_transfer_required"] is False
+            assert result.total_cost_R == cost.total_cost_R
+        else:
+            assert result.total_cost_R == cost.total_cost_R+fee/cost.native_costs["risk_ccy"]
+
+
+def test_physical_fee_without_a_source_is_unavailable():
+    a,req,raw,c=case(); obs=a.observe(req,raw)
+    cost=build_venue_cost_estimate(c,obs,policy=a.policy)
+    unsourced=TransferEconomics(PHYSICAL_INTERNAL_TRANSFER_REQUIRED,"u","a",T,T+60_000,"fixture",0.0,1000,"USDT",
+                                latency_source="fixture:observed")
+    assert "TRANSFER_COST_UNAVAILABLE" in attach_multi_asset_economics(cost,c,obs,unsourced).reason_codes
+
+
+def test_venue_stage_defers_transfer_and_final_stage_fails_closed():
+    a,req,raw,c=case(); obs=a.observe(req,raw)
+    cost=build_venue_cost_estimate(c,obs,policy=a.policy)
+    venue=attach_multi_asset_economics(cost,c,obs,None,defer_transfer=True)
+    assert venue.source_quality == "VALID"
+    assert venue.native_costs["multi_asset_economics"]["transfer_status"] == "PENDING_ACCOUNT_CAPITAL_PLAN"
+    assert venue.native_costs["multi_asset_economics"]["final"] is False
+    final=attach_multi_asset_economics(cost,c,obs,None)
+    assert final.source_quality == "INVALID" and "TRANSFER_ECONOMICS_UNAVAILABLE" in final.reason_codes
 
 
 def test_new_policy_does_not_mutate_default_and_registry_stays_unvalidated():

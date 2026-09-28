@@ -203,4 +203,32 @@ class BinanceExecutionAdapter:
                 "avg_price": getattr(res, "avg_price", None)}
 
 
-__all__ = ["BinanceExecutionAdapter"]
+#: broker -> (venue id, execution support of THIS wrapper around the broker-generic executor). The executor
+#: speaks the ONE broker execution contract (``exchange.contract.EXECUTOR_REQUIRED``, incl. broker-native
+#: client ids: Binance newClientOrderId, Bybit orderLinkId, BingX clientOrderID), so Bybit / BingX reuse this
+#: wrapper -- no second adapter. They stay UNVALIDATED (the boundary refuses them) until venue evidence exists.
+EXECUTOR_WRAPPER_SUPPORT = {
+    "binance": ("BINANCE_USDM", ExecutionSupportStatus.CONTRACT_VALIDATED.value),
+    "bybit": ("BYBIT_LINEAR", ExecutionSupportStatus.UNVALIDATED.value),
+    "bingx": ("BINGX_SWAP", ExecutionSupportStatus.UNVALIDATED.value),
+}
+
+
+def executor_adapter_for(broker: str, executor: Any, *, position_manager: Any = None):
+    """The execution adapter for a broker account's existing executor. Any broker without a declared wrapper
+    (MT5 / CFD / OANDA / IBKR ...) gets the fail-closed ``UnvalidatedExecutionAdapter`` -- a TradFi or CFD
+    product is never routed through crypto-perpetual order logic."""
+    from app.trading_intelligence.execution.adapter import UnvalidatedExecutionAdapter
+
+    key = str(broker or "").strip().lower()
+    if key not in EXECUTOR_WRAPPER_SUPPORT:
+        return UnvalidatedExecutionAdapter(str(broker or "UNKNOWN").upper())
+    venue, support = EXECUTOR_WRAPPER_SUPPORT[key]
+    adapter = BinanceExecutionAdapter(executor, venue=venue, position_manager=position_manager)
+    if key != "binance":
+        adapter.execution_support_status = support
+        adapter.adapter_id = f"executor_wrapper:{venue}"
+    return adapter
+
+
+__all__ = ["BinanceExecutionAdapter", "EXECUTOR_WRAPPER_SUPPORT", "executor_adapter_for"]

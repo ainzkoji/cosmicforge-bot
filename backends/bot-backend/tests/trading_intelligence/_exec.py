@@ -121,12 +121,49 @@ class Harness:
         self.adapter = BinanceExecutionAdapter(ex, venue=self.plan.venue)
         self.reservations = CATIReservationStore(self.db)
 
+    # -- Section 18 pre-submission revalidation: a REAL Section 7 catalog seeded with the plan's instruments --
+    CATALOG_VENUE, CATALOG_ENV = "binance_usdm", "DEMO"
+
+    def instrument(self, symbol="BTCUSDT", **overrides):
+        from app.exchange.instruments import DiscoveredInstrument
+
+        base = symbol[:-4]
+        fields = dict(venue=self.CATALOG_VENUE, venue_symbol=symbol, asset_class="CRYPTO", product_type="PERPETUAL",
+                      canonical_symbol=f"{base}/USDT:PERP", base_currency=base, quote_currency="USDT",
+                      settlement_asset="USDT", contract_type="PERPETUAL", status="TRADING", api_tradable=True,
+                      tick_size=0.01, qty_step=0.001, min_qty=0.001, max_qty=10_000.0, min_notional=5.0,
+                      max_leverage=50.0)
+        fields.update(overrides)
+        return DiscoveredInstrument(**fields)
+
+    def seed_catalog(self, now=None, instruments=None):
+        from app.exchange.instruments import InstrumentCatalog
+
+        cat = InstrumentCatalog(self.db)
+        cat.upsert(self.CATALOG_VENUE, self.CATALOG_ENV, instruments or [self.instrument("BTCUSDT"),
+                                                                         self.instrument("ETHUSDT")],
+                   int(self.now if now is None else now))
+        return cat
+
+    def preflight(self, *, seed=True, refresh=None, max_metadata_age_ms=3_600_000, permissions=None):
+        from app.exchange.instruments import InstrumentCatalog
+        from app.trading_intelligence.execution.preflight import SubmissionPreflight
+
+        cat = self.seed_catalog() if seed else InstrumentCatalog(self.db)
+        return SubmissionPreflight(catalog=cat, broker="binance", venue_key=self.CATALOG_VENUE,
+                                   catalog_environment=self.CATALOG_ENV, account_environment="demo",
+                                   permissions=permissions, max_metadata_age_ms=max_metadata_age_ms, refresh=refresh)
+
     def boundary(self, config=ON, adapter=None, **kw):
         # Section 25: these tests exercise the boundary BEHIND hard risk, so they grant an
         # explicit test authority (a real deployment needs the persisted M6+ phase)
         from app.trading_intelligence.governance.promotion import StaticAuthority
 
         kw.setdefault("authority", StaticAuthority(True, "TEST_AUTHORITY_M6_DEMO"))
+        # Section 18: the adapter's own account + current instrument/capability revalidation
+        kw.setdefault("account_scope", (self.plan.user_id, self.plan.broker_account_id))
+        if "preflight" not in kw:
+            kw["preflight"] = self.preflight()
         return CATIExecutionBoundary(orchestrator=self.orch, adapter=adapter or self.adapter, db=self.db, config=config,
                                      **kw)
 

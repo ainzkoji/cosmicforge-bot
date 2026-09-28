@@ -249,10 +249,14 @@ def _cross_asset_ok(subset: Sequence[_Cand], policy: PortfolioPolicy, existing: 
 
 
 def _valid_subset(subset: Sequence[_Cand], policy: PortfolioPolicy,
-                  existing: Optional[Sequence[_Existing]] = None) -> bool:
+                  existing: Optional[Sequence[_Existing]] = None, budget=None) -> bool:
     """No two selected candidates may be the same economic instrument, and the
     subset may not breach a hard cross-asset constraint (currency factor cap,
-    logical asset-class allocation) given the account's existing book."""
+    logical asset-class allocation) given the account's existing book, nor the
+    account's capital budget (Section 17: one collateral basis, logical family
+    budgets as constraints over it)."""
+    if budget is not None and budget.violation([c.ranked.ranked_opportunity_id for c in subset]) is not None:
+        return False
     seen: Dict[str, str] = {}
     for c in subset:
         prev = seen.get(c.canonical)
@@ -267,11 +271,11 @@ def _order_key(item: Tuple[float, Tuple[_Cand, ...]]):
     return (-round(score, 12), len(subset), tuple(sorted(c.cid for c in subset)))
 
 
-def _solve_exact(feasible: Sequence[_Cand], slots: int, scorer: _Scorer, policy: PortfolioPolicy):
+def _solve_exact(feasible: Sequence[_Cand], slots: int, scorer: _Scorer, policy: PortfolioPolicy, budget=None):
     best = None
     for k in range(0, min(slots, len(feasible)) + 1):
         for subset in itertools.combinations(feasible, k):
-            if not _valid_subset(subset, policy, scorer.existing):
+            if not _valid_subset(subset, policy, scorer.existing, budget):
                 continue
             item = (scorer.score(subset)[0], tuple(subset))
             if best is None or _order_key(item) < _order_key(best):
@@ -279,7 +283,7 @@ def _solve_exact(feasible: Sequence[_Cand], slots: int, scorer: _Scorer, policy:
     return best[1]
 
 
-def _solve_beam(feasible: Sequence[_Cand], slots: int, scorer: _Scorer, policy: PortfolioPolicy):
+def _solve_beam(feasible: Sequence[_Cand], slots: int, scorer: _Scorer, policy: PortfolioPolicy, budget=None):
     beam: List[Tuple[float, Tuple[_Cand, ...], int]] = [(0.0, (), -1)]
     best = (0.0, ())
     for _ in range(min(slots, len(feasible))):
@@ -287,7 +291,7 @@ def _solve_beam(feasible: Sequence[_Cand], slots: int, scorer: _Scorer, policy: 
         for _score, subset, last in beam:
             for idx in range(last + 1, len(feasible)):
                 cand = subset + (feasible[idx],)
-                if _valid_subset(cand, policy, scorer.existing):
+                if _valid_subset(cand, policy, scorer.existing, budget):
                     nxt.append((scorer.score(cand)[0], cand, idx))
         if not nxt:
             break
@@ -309,9 +313,12 @@ def select_portfolio(
     cycle_id: str,
     available_slots: int,
     decision_time: int,
+    capital_budget=None,
 ) -> PortfolioSelectionDecision:
     """Pure selection. Does NOT reserve anything (service.py owns the
-    account-scoped reservation transaction)."""
+    account-scoped reservation transaction). ``capital_budget``
+    (``account_capital.CapitalBudget``): the account's capital constraint;
+    None keeps the pre-Section-17 behaviour (no capital facts)."""
     ordered = sorted(ranked, key=lambda r: r.rank_position)  # ranking already fixed the order
     cands = [_Cand(r, context) for r in ordered]
     existing = [_Existing(r, context) for r in exposure.all_exposures]
@@ -320,6 +327,8 @@ def select_portfolio(
     capped = []
     for c in feasible:
         why = _cross_asset_ok((c,), policy, existing)
+        if why is None and capital_budget is not None:
+            why = capital_budget.violation([c.ranked.ranked_opportunity_id])
         if why is not None:
             rejected.append(RejectedCandidate(c.ranked.ranked_opportunity_id, c.cid, why.split(":", 1)[0], why))
         else:
@@ -335,9 +344,9 @@ def select_portfolio(
     elif not feasible:
         selected, solver = (), SOLVER_NONE
     elif available_slots <= policy.exact_enumeration_max_slots:
-        selected, solver = _solve_exact(feasible, available_slots, scorer, policy), SOLVER_EXACT
+        selected, solver = _solve_exact(feasible, available_slots, scorer, policy, capital_budget), SOLVER_EXACT
     else:
-        selected, solver = _solve_beam(feasible, available_slots, scorer, policy), SOLVER_BEAM
+        selected, solver = _solve_beam(feasible, available_slots, scorer, policy, capital_budget), SOLVER_BEAM
 
     total, breakdown = scorer.score(selected)
     breakdown = ScoreBreakdown(breakdown.raw_rank_sum, breakdown.correlation_penalty, breakdown.factor_penalty,
