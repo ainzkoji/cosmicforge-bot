@@ -190,8 +190,10 @@ class GovernanceAuthority:
             return True, f"{phase}_DEMO_AUTHORITY"
         if phase == "M6":
             return False, "M6_IS_DEMO_ONLY"
-        if phase == "M7" and not self.gov.scope_granted(broker_account_id=plan.broker_account_id, venue=plan.venue,
-                                                        environment=env):
+        from .runtime_authority import canonical_venue  # the same venue identity the runtime router uses
+
+        if phase == "M7" and not self.gov.scope_granted(broker_account_id=plan.broker_account_id,
+                                                        venue=canonical_venue(plan.venue), environment=env):
             return False, "M7_SCOPE_NOT_PROMOTED"
         return True, f"{phase}_AUTHORITY"
 

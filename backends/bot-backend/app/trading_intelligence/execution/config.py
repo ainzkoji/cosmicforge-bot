@@ -13,8 +13,9 @@ requires active execution.
 
 A directly constructed ``CATIExecutionConfig()`` is explicit OFF (tests,
 tooling); ``from_env()`` is the runtime reading. Runtime CATI entries also
-need the runner's authority switch, which does not exist yet
-(``app.activation.cati.RUNTIME_AUTHORITY_SWITCH_IMPLEMENTED``).
+are routed by the runtime order-authority router
+(``app.trading_intelligence.governance.runtime_authority``; wiring state in
+``app.activation.cati.runtime_authority_switch``).
 """
 from __future__ import annotations
 

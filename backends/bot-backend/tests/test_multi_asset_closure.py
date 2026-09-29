@@ -291,7 +291,7 @@ def test_cati_capabilities_auto_activate_evidence_and_block_authority(tmp_path, 
     ensure_cati_schema(db)
     d = act.active_execution(db, environment="DEMO", venue="binance_usdm")
     assert not d.active and d.reasons[0] == "GOVERNANCE_PHASE_M0_NO_CATI_AUTHORITY"
-    assert "RUNTIME_AUTHORITY_SWITCH_NOT_IMPLEMENTED" in d.reasons
+    assert "RUNTIME_AUTHORITY_SWITCH_NOT_IMPLEMENTED" not in d.reasons  # wired; governance is what blocks
     by = act.active_execution(db, environment="DEMO", venue="bybit_linear")
     assert "CATI_ECONOMIC_ADAPTER_NOT_VALIDATED_FOR_VENUE" in by.reasons
     gov = PromotionGovernance(db)

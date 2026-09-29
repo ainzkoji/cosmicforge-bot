@@ -2380,6 +2380,26 @@ class PaperRunner:
     class _PositionAlreadyArmedError(Exception):
         """Not an error: the PositionManager already manages this position."""
 
+    def _v2_order_authority_block(self, symbol, action):
+        """Section 25 runtime switch: a V2 NEW entry reaches the executor only while the runtime order-authority
+        router gives V2 this account scope. When CATI owns the scope (or nobody does) V2 is refused here -- the
+        executor is never called -- so the two engines can never both open positions on one account. Exits,
+        protection and reconciliation are not routed and always proceed."""
+        from app.execution.executor import ExecResult
+        from app.trading_intelligence.governance.runtime_authority import V2, resolve_order_authority
+
+        ctx = getattr(self, "context", None)
+        auth = resolve_order_authority(
+            getattr(self, "db", None), broker_account_id=getattr(ctx, "broker_account_id", None),
+            venue=getattr(ctx, "broker_type", None), environment=getattr(ctx, "broker_environment", None))
+        if auth.allows(V2):
+            return None
+        logger.warning("[ORDER_AUTHORITY] V2 entry refused symbol=%s action=%s owner=%s reason=%s phase=%s",
+                       symbol, action, auth.owner, auth.reason, auth.phase)
+        return ExecResult(status="BLOCKED", success=False, error=f"ORDER_AUTHORITY_NOT_V2:{auth.reason}",
+                          details={"symbol": symbol, "signal": action, "reason": "ORDER_AUTHORITY_NOT_V2",
+                                   "order_authority": auth.to_dict()}, action="NO_TRADE")
+
     def _execute_signal_with_evidence(self, symbol, action, *args, **kwargs):
         """Execute a signal inside a canonical execution-attempt row.
 
@@ -2391,6 +2411,10 @@ class PaperRunner:
         """
         from app.evidence.fill_bridge import execution_attempt
 
+        if str(action).upper() in ("BUY", "SELL"):
+            blocked = self._v2_order_authority_block(symbol, action)
+            if blocked is not None:
+                return blocked
         with execution_attempt(self, symbol, action) as attempt:
             result = self.executor.execute_signal(symbol, action, *args, **kwargs)
             details = result.details if isinstance(getattr(result, "details", None), dict) else {}

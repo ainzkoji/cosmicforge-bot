@@ -286,7 +286,14 @@ def _portfolio_stage(runner: Any, result: Any) -> None:
         d.bot_instance_id, d.broker_account_id, d.portfolio_selection_id, ",".join(d.selected_opportunity_ids) or "-",
         d.available_slots, d.portfolio_score, d.solver, d.reservation_id, d.reservation_status, ",".join(d.reason_codes) or "-",
     )
-    trade_plan_stage(db, result, outcome, evaluated, now_ms)
+    plans = trade_plan_stage(db, result, outcome, evaluated, now_ms)
+    # Section 25 runtime switch: every plan is routed by the order-authority router. Below M6 (and for any scope
+    # CATI does not own) nothing is dispatched and the blocking reason is logged; CATI never falls back to V2.
+    if plans:
+        from app.trading_intelligence.integration.cati_dispatch import dispatch_trade_plans
+
+        dispatch_trade_plans(runner, plans, evaluated=evaluated, capital_view=capital_view,
+                             reservation_status=getattr(outcome.reservation, "status", None), now_ms=now_ms)
     # Phase 5E/6F: SHADOW capital-routing evidence (flag-gated) -- the SAME dry-run plans the selection used,
     # with the topology / balances behind them. Evidence only: no transfer intent, no submission.
     from app.trading_intelligence.capital.shadow_hook import is_enabled as capital_shadow_enabled

@@ -17,10 +17,10 @@ needs:
     environment the phase allows (M6: demo only; M7: an explicitly granted
     scope; M8+: promoted), a validated CATI economic adapter for the venue,
     AND the runtime authority switch (V2 -> benchmark, CATI -> sole alpha on
-    the phase's environments). That switch is NOT implemented in the runner
-    yet, so runtime CATI execution is BLOCKED with
-    ``RUNTIME_AUTHORITY_SWITCH_NOT_IMPLEMENTED`` even after M6 -- the honest
-    state, listed as an engineering blocker, never faked ACTIVE.
+    the phase's environments): ``runtime_authority_switch()`` verifies that
+    the order-authority router exists and that BOTH the V2 entry path and the
+    CATI TradePlan dispatch consult it; if either is missing the capability
+    is BLOCKED with ``RUNTIME_AUTHORITY_SWITCH_NOT_IMPLEMENTED``.
 ``CATI_EXIT_INTENT_ROUTING`` (authority)
     CATI_ACTIVE_EXECUTION.
 ``CATI_ML_AUTHORITY:<ROLE>`` (authority)
@@ -51,11 +51,38 @@ OVERRIDE_FLAGS: Mapping[str, str] = {
     ML_AUTHORITY: "CATI_ML_ENABLED",
 }
 
-#: The runner does not yet switch alpha authority (V2 -> benchmark, CATI ->
-#: sole alpha) when a phase is entered: ``GovernanceAuthority.v2_may_place_orders``
-#: has no runtime caller and the runner never calls the execution boundary.
-#: Flip only together with that runtime change and its tests.
-RUNTIME_AUTHORITY_SWITCH_IMPLEMENTED = False
+RUNTIME_AUTHORITY_SWITCH_MISSING = "RUNTIME_AUTHORITY_SWITCH_NOT_IMPLEMENTED"
+
+
+def runtime_authority_switch() -> Prerequisite:
+    """REAL capability state of the Section 25 runtime switch (not a constant): the order-authority router
+    exists AND both engines consult it -- the V2 runner refuses new entries it does not own
+    (``PaperRunner._v2_order_authority_block`` inside ``_execute_signal_with_evidence``) and the CATI cycle routes
+    every TradePlan through it (``cati_dispatch.dispatch_trade_plans`` from ``cycle_shadow._portfolio_stage``).
+    Any missing piece -> unsatisfied."""
+    import inspect
+
+    missing = []
+    try:
+        from app.trading_intelligence.governance.runtime_authority import resolve_order_authority  # noqa: F401
+    except Exception:
+        missing.append("router")
+    try:
+        from app.runner.runner import PaperRunner
+
+        if "_v2_order_authority_block" not in inspect.getsource(PaperRunner._execute_signal_with_evidence):
+            missing.append("v2_entry_gate")
+    except Exception:
+        missing.append("v2_entry_gate")
+    try:
+        from app.trading_intelligence.integration import cycle_shadow
+
+        if "dispatch_trade_plans" not in inspect.getsource(cycle_shadow._portfolio_stage):
+            missing.append("cati_dispatch")
+    except Exception:
+        missing.append("cati_dispatch")
+    return Prerequisite("runtime_authority_switch", not missing, RUNTIME_AUTHORITY_SWITCH_MISSING,
+                        detail="wired" if not missing else "missing=" + ",".join(missing))
 
 _DEMO_ENVS = ("DEMO", "TESTNET", "PAPER")
 
@@ -154,8 +181,7 @@ def active_execution(db: Any, *, environment: str = "DEMO", venue: str = "binanc
     status = ADAPTER_STATUS_REGISTRY.get((str(venue).lower(), adapter_env))
     prereqs.append(Prerequisite("economic_adapter_validated", status is not None,
                                 "CATI_ECONOMIC_ADAPTER_NOT_VALIDATED_FOR_VENUE", detail=str(status)))
-    prereqs.append(Prerequisite("runtime_authority_switch", RUNTIME_AUTHORITY_SWITCH_IMPLEMENTED,
-                                "RUNTIME_AUTHORITY_SWITCH_NOT_IMPLEMENTED"))
+    prereqs.append(runtime_authority_switch())
     authority = "DEMO" if env in _DEMO_ENVS else ("SCOPED_LIVE" if phase == "M7" else "LIVE")
     return decide(ACTIVE_EXECUTION, prereqs, scope=f"{venue}:{env}:{broker_account_id or '*'}",
                   override=_override(ACTIVE_EXECUTION, environ), authority=authority, detail={"phase": phase})
@@ -210,6 +236,6 @@ def cati_status(db: Any = None, *, registry: Any = None, environ: Optional[Mappi
 
 
 __all__ = ["ACTIVE_EXECUTION", "CAPITAL_ROUTING_SHADOW", "CYCLE_SHADOW", "EXIT_INTENT_ROUTING", "GLOBAL_MARKET_STATE",
-           "ML_AUTHORITY", "OVERRIDE_FLAGS", "RUNTIME_AUTHORITY_SWITCH_IMPLEMENTED", "active_execution",
+           "ML_AUTHORITY", "OVERRIDE_FLAGS", "RUNTIME_AUTHORITY_SWITCH_MISSING", "active_execution",
            "capital_routing_shadow", "cati_status", "cycle_shadow", "exit_intent_routing", "global_market_state",
-           "library_prerequisite", "ml_authority"]
+           "library_prerequisite", "ml_authority", "runtime_authority_switch"]

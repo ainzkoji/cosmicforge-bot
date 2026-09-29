@@ -483,5 +483,5 @@ def test_runtime_safety_flags_remain_off():
     for env in ("DEMO", "LIVE"):
         d = act.active_execution(None, environment=env)
         assert d.state.value == "BLOCKED" and not d.active
-    assert "RUNTIME_AUTHORITY_SWITCH_NOT_IMPLEMENTED" in act.active_execution(None).reasons
+    assert act.runtime_authority_switch().satisfied  # the switch is wired; M0 governance is what blocks
     assert canonical_certification_policy().policy_name == "RESEARCH_DEFAULT_V1"
