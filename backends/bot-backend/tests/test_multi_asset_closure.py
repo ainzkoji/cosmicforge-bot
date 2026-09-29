@@ -206,7 +206,11 @@ def test_account_status_reasons_are_structured():
                                  instruments=[], transfers_in_flight=1, health={"quarantined": True})
     caps = {k: (v["status"], v["reason"]) for k, v in none["capabilities"].items()}
     assert caps["CRYPTO_MARKET_DATA"] == ("DATA_NOT_READY", "NO_DISCOVERED_INSTRUMENTS")
-    assert caps["INTERNAL_TRANSFER"][0] == "TRANSFER_PENDING"
+    # Bybit DEMO publishes no internal-transfer API: nothing can be pending there
+    assert caps["INTERNAL_TRANSFER"][0] == "VENUE_API_NOT_SUPPORTED"
+    pending = account_market_status(broker="bybit", environment="LIVE", permissions={**PERMS, "TRADE": False},
+                                    instruments=[], transfers_in_flight=1, account_mode="UNIFIED")
+    assert "TRANSFER_PENDING_RECONCILIATION_REQUIRED" in pending["capabilities"]["INTERNAL_TRANSFER"]["reasons"]
     quarantined = account_market_status(broker="bybit", environment="DEMO", permissions=PERMS,
                                         instruments=[parse_bybit_instrument(BYBIT_BTC)], transfers_in_flight=0,
                                         health={"quarantined": True})

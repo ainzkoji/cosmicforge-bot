@@ -63,6 +63,9 @@ def crypto_broad(args) -> dict:
     cov = crypto_broad_evidence(args.canonical_db)
     if not cov["aggregate"]["reconciles_to_db"]:
         raise SystemExit("REFUSED: coverage does not reconcile to the database")
+    gap_policies = {(m["gap_classification"] or {}).get("policy_version") for m in cov["members"]}
+    if len(gap_policies) != 1 or None in gap_policies:
+        raise SystemExit(f"REFUSED: members were gap-classified under {sorted(map(str, gap_policies))}")
     s, e = int(universe["window_start_ms"]), int(universe["window_end_ms"])
     conn = sqlite3.connect(f"file:{args.canonical_db}?mode=ro", uri=True)
     try:
@@ -85,7 +88,7 @@ def crypto_broad(args) -> dict:
     payload = freeze_dataset_payload(
         universe=universe, partitions=partitions, metadata_hash=universe["metadata_hash"], code_commit=commit,
         product_type="PERPETUAL", base_interval="15m", resampling_policy_version="native-provider-15m-no-resampling",
-        gap_policy_version="gap-classification-v1", created_at=datetime.now(timezone.utc).isoformat())
+        gap_policy_version=gap_policies.pop(), created_at=datetime.now(timezone.utc).isoformat())
     payload = {**payload, "metadata": {**payload["metadata"], "dataset": "CRYPTO_BROAD",
                                        "coverage_content_hash": _content_hash(cov),
                                        "store": "canonical historical_candles (read-only)"}}
