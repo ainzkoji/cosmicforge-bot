@@ -44,6 +44,7 @@ import AffiliateRevenue from '@/pages/admin/AffiliateRevenue';
 import AuditLogs from '@/pages/admin/AuditLogs';
 import Compliance from '@/pages/admin/Compliance';
 import SystemHealth from '@/pages/admin/SystemHealth';
+import CatiStatus from '@/pages/admin/CatiStatus';
 import BotMonitor from '@/pages/admin/BotMonitor';
 import BotRunDetails from '@/pages/admin/BotRunDetails';
 import Transactions from '@/pages/admin/Transactions';
@@ -162,6 +163,7 @@ function App() {
                 <Route path="/admin/audit" element={<AuditLogs />} />
                 <Route path="/admin/compliance" element={<Compliance />} />
                 <Route path="/admin/system-health" element={<SystemHealth />} />
+                <Route path="/admin/cati" element={<CatiStatus />} />
                 <Route path="/admin/bot-monitor" element={<BotMonitor />} />
                 <Route path="/admin/bot/runs/:runId" element={<BotRunDetails />} />
                 <Route path="/admin/transactions" element={<Transactions />} />

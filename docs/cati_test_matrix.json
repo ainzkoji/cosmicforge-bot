@@ -1,0 +1,627 @@
+{
+  "version": "cati-test-matrix-v1",
+  "families": {
+    "24.1 REGRESSION": {
+      "requirement": "existing CATI and full backend suites stay green",
+      "status": "PASS",
+      "executed": 4306,
+      "failed": 0,
+      "selectors": [
+        {
+          "file": "*",
+          "tests": ".*",
+          "executed": 4306,
+          "passed": 4305,
+          "failed": 0,
+          "skipped": 1
+        }
+      ]
+    },
+    "24.2 DISCOVERY": {
+      "requirement": "pagination, new / delisted symbols, refresh triggers, metadata refresh, canonical mapping, same instrument on different venues",
+      "status": "PASS",
+      "executed": 40,
+      "failed": 0,
+      "selectors": [
+        {
+          "file": "tests/test_multi_asset_closure.py",
+          "tests": "test_bybit_discovery_paginates_live_shapes",
+          "executed": 1,
+          "passed": 1,
+          "failed": 0,
+          "skipped": 0
+        },
+        {
+          "file": "tests/test_sections7_9_closure.py",
+          "tests": "pagination|mass_delisting",
+          "executed": 2,
+          "passed": 2,
+          "failed": 0,
+          "skipped": 0
+        },
+        {
+          "file": "tests/test_section7_refresh_triggers.py",
+          "tests": ".*",
+          "executed": 25,
+          "passed": 25,
+          "failed": 0,
+          "skipped": 0
+        },
+        {
+          "file": "tests/test_phase3_execution_parity.py",
+          "tests": "test_catalog_keeps_delisted_rows",
+          "executed": 1,
+          "passed": 1,
+          "failed": 0,
+          "skipped": 0
+        },
+        {
+          "file": "tests/trading_intelligence/test_instrument_identity.py",
+          "tests": ".*",
+          "executed": 4,
+          "passed": 4,
+          "failed": 0,
+          "skipped": 0
+        },
+        {
+          "file": "tests/test_cati_section27_acceptance.py",
+          "tests": "test_every_discovered_instrument",
+          "executed": 5,
+          "passed": 5,
+          "failed": 0,
+          "skipped": 0
+        },
+        {
+          "file": "tests/test_cati_section20_api.py",
+          "tests": "test_instrument_sync",
+          "executed": 1,
+          "passed": 1,
+          "failed": 0,
+          "skipped": 0
+        },
+        {
+          "file": "tests/trading_intelligence/test_cati_section19_closure.py",
+          "tests": "test_instrument_identity_and_delisting_retention",
+          "executed": 1,
+          "passed": 1,
+          "failed": 0,
+          "skipped": 0
+        }
+      ]
+    },
+    "24.3 CLASSIFICATION": {
+      "requirement": "deterministic CRYPTO / FX / TradFi / unsupported product classification",
+      "status": "PASS",
+      "executed": 8,
+      "failed": 0,
+      "selectors": [
+        {
+          "file": "tests/test_multi_asset_closure.py",
+          "tests": "classified",
+          "executed": 1,
+          "passed": 1,
+          "failed": 0,
+          "skipped": 0
+        },
+        {
+          "file": "tests/test_phase3_execution_parity.py",
+          "tests": "classifies",
+          "executed": 1,
+          "passed": 1,
+          "failed": 0,
+          "skipped": 0
+        },
+        {
+          "file": "tests/test_cati_section27_acceptance.py",
+          "tests": "test_every_discovered_instrument",
+          "executed": 5,
+          "passed": 5,
+          "failed": 0,
+          "skipped": 0
+        },
+        {
+          "file": "tests/trading_intelligence/test_cati_section18_closure.py",
+          "tests": "forced_through_crypto",
+          "executed": 1,
+          "passed": 1,
+          "failed": 0,
+          "skipped": 0
+        }
+      ]
+    },
+    "24.4 TENANCY": {
+      "requirement": "account A never affects account B: balances, capabilities, transfers, reservations, economics, fee tier, execution, API responses",
+      "status": "PASS",
+      "executed": 17,
+      "failed": 0,
+      "selectors": [
+        {
+          "file": "tests/test_phase2b_permissions_transfers.py",
+          "tests": "isolation",
+          "executed": 2,
+          "passed": 2,
+          "failed": 0,
+          "skipped": 0
+        },
+        {
+          "file": "tests/test_cati_section20_api.py",
+          "tests": "owner_scoped",
+          "executed": 1,
+          "passed": 1,
+          "failed": 0,
+          "skipped": 0
+        },
+        {
+          "file": "tests/trading_intelligence/test_portfolio.py",
+          "tests": "isolat",
+          "executed": 2,
+          "passed": 2,
+          "failed": 0,
+          "skipped": 0
+        },
+        {
+          "file": "tests/trading_intelligence/test_section17_venue_economics.py",
+          "tests": "account_isolation",
+          "executed": 1,
+          "passed": 1,
+          "failed": 0,
+          "skipped": 0
+        },
+        {
+          "file": "tests/trading_intelligence/test_cati_section16_closure.py",
+          "tests": "scope_isolation|never_shares_account_fees",
+          "executed": 5,
+          "passed": 5,
+          "failed": 0,
+          "skipped": 0
+        },
+        {
+          "file": "tests/trading_intelligence/test_cati_section17_closure.py",
+          "tests": "seen_by_every_bot_on_the_account",
+          "executed": 1,
+          "passed": 1,
+          "failed": 0,
+          "skipped": 0
+        },
+        {
+          "file": "tests/trading_intelligence/test_section21_evidence_observability.py",
+          "tests": "never_appears_for_account_b",
+          "executed": 1,
+          "passed": 1,
+          "failed": 0,
+          "skipped": 0
+        },
+        {
+          "file": "tests/trading_intelligence/test_cati_section18_closure.py",
+          "tests": "another_tenant",
+          "executed": 2,
+          "passed": 2,
+          "failed": 0,
+          "skipped": 0
+        },
+        {
+          "file": "tests/trading_intelligence/test_cati_section19_closure.py",
+          "tests": "not_account_capability|account_scoped",
+          "executed": 2,
+          "passed": 2,
+          "failed": 0,
+          "skipped": 0
+        }
+      ]
+    },
+    "24.5 PERMISSIONS": {
+      "requirement": "missing trade / internal-transfer permission fails closed; withdrawal never required",
+      "status": "PASS",
+      "executed": 9,
+      "failed": 0,
+      "selectors": [
+        {
+          "file": "tests/test_phase2b_permissions_transfers.py",
+          "tests": "withdraw|uninspectable",
+          "executed": 5,
+          "passed": 5,
+          "failed": 0,
+          "skipped": 0
+        },
+        {
+          "file": "tests/test_cati_section25_security.py",
+          "tests": "withdraw|permissions_are_distinct|least_privilege",
+          "executed": 4,
+          "passed": 4,
+          "failed": 0,
+          "skipped": 0
+        }
+      ]
+    },
+    "24.6 UNIFIED ACCOUNT": {
+      "requirement": "no unnecessary physical transfer; logical reservation only",
+      "status": "PASS",
+      "executed": 4,
+      "failed": 0,
+      "selectors": [
+        {
+          "file": "tests/trading_intelligence/test_cati_section16_transfer_runtime.py",
+          "tests": "unified",
+          "executed": 1,
+          "passed": 1,
+          "failed": 0,
+          "skipped": 0
+        },
+        {
+          "file": "tests/trading_intelligence/test_cati_section17_closure.py",
+          "tests": "unified|full_cycle_reserves_capital",
+          "executed": 2,
+          "passed": 2,
+          "failed": 0,
+          "skipped": 0
+        },
+        {
+          "file": "tests/test_cati_section27_acceptance.py",
+          "tests": "unified",
+          "executed": 1,
+          "passed": 1,
+          "failed": 0,
+          "skipped": 0
+        }
+      ]
+    },
+    "24.7 SEGMENTED ACCOUNT": {
+      "requirement": "official route, idempotent intent, reservation first, confirmation before order",
+      "status": "PASS",
+      "executed": 13,
+      "failed": 0,
+      "selectors": [
+        {
+          "file": "tests/trading_intelligence/test_cati_section16_transfer_runtime.py",
+          "tests": "segmented",
+          "executed": 1,
+          "passed": 1,
+          "failed": 0,
+          "skipped": 0
+        },
+        {
+          "file": "tests/trading_intelligence/test_capital_readiness_boundary.py",
+          "tests": ".*",
+          "executed": 10,
+          "passed": 10,
+          "failed": 0,
+          "skipped": 0
+        },
+        {
+          "file": "tests/test_phase2b_permissions_transfers.py",
+          "tests": "idempotent",
+          "executed": 1,
+          "passed": 1,
+          "failed": 0,
+          "skipped": 0
+        },
+        {
+          "file": "tests/test_cati_section20_api.py",
+          "tests": "side_effect_free",
+          "executed": 1,
+          "passed": 1,
+          "failed": 0,
+          "skipped": 0
+        }
+      ]
+    },
+    "24.8 AMBIGUOUS TRANSFER": {
+      "requirement": "UNKNOWN / RESOLUTION_PENDING, no duplicate submit, reconcile before retry",
+      "status": "PASS",
+      "executed": 6,
+      "failed": 0,
+      "selectors": [
+        {
+          "file": "tests/test_phase2b_permissions_transfers.py",
+          "tests": "unknown|reconcil",
+          "executed": 4,
+          "passed": 4,
+          "failed": 0,
+          "skipped": 0
+        },
+        {
+          "file": "tests/test_cati_section20_api.py",
+          "tests": "ambiguous",
+          "executed": 1,
+          "passed": 1,
+          "failed": 0,
+          "skipped": 0
+        },
+        {
+          "file": "tests/test_cati_section25_security.py",
+          "tests": "storm",
+          "executed": 1,
+          "passed": 1,
+          "failed": 0,
+          "skipped": 0
+        }
+      ]
+    },
+    "24.9 DATASET": {
+      "requirement": ">=100 broad crypto, provenance, coverage, gaps, manifest determinism, young symbols, real vs synthetic",
+      "status": "PASS",
+      "executed": 54,
+      "failed": 0,
+      "selectors": [
+        {
+          "file": "tests/trading_intelligence/test_cati_section13_closure.py",
+          "tests": ".*",
+          "executed": 23,
+          "passed": 23,
+          "failed": 0,
+          "skipped": 0
+        },
+        {
+          "file": "tests/test_sections10_12_datasets.py",
+          "tests": ".*",
+          "executed": 30,
+          "passed": 30,
+          "failed": 0,
+          "skipped": 0
+        },
+        {
+          "file": "tests/test_cati_section27_acceptance.py",
+          "tests": "at_least_100",
+          "executed": 1,
+          "passed": 1,
+          "failed": 0,
+          "skipped": 0
+        }
+      ]
+    },
+    "24.10 FX DATA": {
+      "requirement": "reference != execution price identity, bid/ask preserved, scale QA, no reference spread as executable spread",
+      "status": "PASS",
+      "executed": 17,
+      "failed": 0,
+      "selectors": [
+        {
+          "file": "tests/test_sections10_12_datasets.py",
+          "tests": "scale|bid|fx",
+          "executed": 12,
+          "passed": 12,
+          "failed": 0,
+          "skipped": 0
+        },
+        {
+          "file": "tests/trading_intelligence/test_cati_section14_closure.py",
+          "tests": "reference_spread",
+          "executed": 1,
+          "passed": 1,
+          "failed": 0,
+          "skipped": 0
+        },
+        {
+          "file": "tests/trading_intelligence/test_cati_section16_closure.py",
+          "tests": "reference_spread",
+          "executed": 1,
+          "passed": 1,
+          "failed": 0,
+          "skipped": 0
+        },
+        {
+          "file": "tests/trading_intelligence/test_cati_section19_closure.py",
+          "tests": "fx_reference_and_execution",
+          "executed": 1,
+          "passed": 1,
+          "failed": 0,
+          "skipped": 0
+        },
+        {
+          "file": "tests/test_phase4_market_data.py",
+          "tests": "fx",
+          "executed": 2,
+          "passed": 2,
+          "failed": 0,
+          "skipped": 0
+        }
+      ]
+    },
+    "24.11 RISK": {
+      "requirement": "2.5% daily hard loss, slots, leverage, margin, currency / account exposure, emergency halt remain superior",
+      "status": "PASS",
+      "executed": 14,
+      "failed": 0,
+      "selectors": [
+        {
+          "file": "tests/trading_intelligence/test_capital_readiness_boundary.py",
+          "tests": "hard_daily_cap|daily_risk_budget",
+          "executed": 2,
+          "passed": 2,
+          "failed": 0,
+          "skipped": 0
+        },
+        {
+          "file": "tests/trading_intelligence/test_section20_execution_boundary.py",
+          "tests": "daily|slot|margin|leverage|sizing",
+          "executed": 9,
+          "passed": 9,
+          "failed": 0,
+          "skipped": 0
+        },
+        {
+          "file": "tests/trading_intelligence/test_global_state_cross_asset.py",
+          "tests": "currency_factor_cap|shared_broker_account",
+          "executed": 2,
+          "passed": 2,
+          "failed": 0,
+          "skipped": 0
+        },
+        {
+          "file": "tests/trading_intelligence/test_cati_section17_closure.py",
+          "tests": "kill_switch",
+          "executed": 1,
+          "passed": 1,
+          "failed": 0,
+          "skipped": 0
+        }
+      ]
+    },
+    "24.12 EXECUTION": {
+      "requirement": "unsupported product reason, no adapter coercion, stale metadata refresh/block, capital readiness, unknown order reconciles, no duplicate submission",
+      "status": "PASS",
+      "executed": 20,
+      "failed": 0,
+      "selectors": [
+        {
+          "file": "tests/trading_intelligence/test_cati_section18_closure.py",
+          "tests": ".*",
+          "executed": 16,
+          "passed": 16,
+          "failed": 0,
+          "skipped": 0
+        },
+        {
+          "file": "tests/trading_intelligence/test_section20_execution_boundary.py",
+          "tests": "unknown|duplicate|reconcil|recover",
+          "executed": 4,
+          "passed": 4,
+          "failed": 0,
+          "skipped": 0
+        }
+      ]
+    },
+    "24.13 CERTIFICATION": {
+      "requirement": "crypto / FX separation, holdouts closed, frozen manifests, threshold immutability, no auto promotion",
+      "status": "PASS",
+      "executed": 88,
+      "failed": 0,
+      "selectors": [
+        {
+          "file": "tests/trading_intelligence/test_cati_section22_guards.py",
+          "tests": ".*",
+          "executed": 17,
+          "passed": 17,
+          "failed": 0,
+          "skipped": 0
+        },
+        {
+          "file": "tests/trading_intelligence/test_section22_framework.py",
+          "tests": ".*",
+          "executed": 59,
+          "passed": 59,
+          "failed": 0,
+          "skipped": 0
+        },
+        {
+          "file": "tests/test_phase6_certification_security.py",
+          "tests": ".*",
+          "executed": 12,
+          "passed": 12,
+          "failed": 0,
+          "skipped": 0
+        }
+      ]
+    },
+    "24.14 GLOBALMARKETSTATE": {
+      "requirement": "shadow state cannot alter TradePlan, admission, risk or execution",
+      "status": "PASS",
+      "executed": 15,
+      "failed": 0,
+      "selectors": [
+        {
+          "file": "tests/trading_intelligence/test_cati_section14_closure.py",
+          "tests": ".*",
+          "executed": 10,
+          "passed": 10,
+          "failed": 0,
+          "skipped": 0
+        },
+        {
+          "file": "tests/trading_intelligence/test_global_state_cross_asset.py",
+          "tests": "global_state|cycle_stage",
+          "executed": 5,
+          "passed": 5,
+          "failed": 0,
+          "skipped": 0
+        }
+      ]
+    },
+    "SECTION 20 API": {
+      "requirement": "backend API surface, tenancy, reason codes, redaction",
+      "status": "PASS",
+      "executed": 9,
+      "failed": 0,
+      "selectors": [
+        {
+          "file": "tests/test_cati_section20_api.py",
+          "tests": ".*",
+          "executed": 9,
+          "passed": 9,
+          "failed": 0,
+          "skipped": 0
+        }
+      ]
+    },
+    "SECTION 21 UI": {
+      "requirement": "UI safety view-model",
+      "status": "PASS",
+      "executed": 14,
+      "failed": 0,
+      "selectors": [
+        {
+          "file": "src/tests/multiAssetView.test.ts",
+          "tests": ".*",
+          "executed": 14,
+          "passed": 14,
+          "failed": 0,
+          "skipped": 0
+        }
+      ]
+    },
+    "SECTION 25 SECURITY": {
+      "requirement": "credentials, redaction, withdrawal, signatures, rate limits, lineage",
+      "status": "PASS",
+      "executed": 15,
+      "failed": 0,
+      "selectors": [
+        {
+          "file": "tests/test_cati_section25_security.py",
+          "tests": ".*",
+          "executed": 15,
+          "passed": 15,
+          "failed": 0,
+          "skipped": 0
+        }
+      ]
+    },
+    "SECTION 26 OBSERVABILITY": {
+      "requirement": "events, metrics, alerts, determinism boundary",
+      "status": "PASS",
+      "executed": 7,
+      "failed": 0,
+      "selectors": [
+        {
+          "file": "tests/test_cati_section26_observability.py",
+          "tests": ".*",
+          "executed": 7,
+          "passed": 7,
+          "failed": 0,
+          "skipped": 0
+        }
+      ]
+    },
+    "SECTION 27 ACCEPTANCE": {
+      "requirement": "definition-of-done invariants",
+      "status": "PASS",
+      "executed": 11,
+      "failed": 0,
+      "selectors": [
+        {
+          "file": "tests/test_cati_section27_acceptance.py",
+          "tests": ".*",
+          "executed": 11,
+          "passed": 11,
+          "failed": 0,
+          "skipped": 0
+        }
+      ]
+    }
+  },
+  "totals": {
+    "cases": 4306,
+    "passed": 4305,
+    "failed": 0,
+    "skipped": 1
+  }
+}

@@ -679,6 +679,35 @@ function normalizeAnalyticsTrade(raw: Record<string, any>): AnalyticsTrade {
     } as AnalyticsTrade;
 }
 
+/** An API error that preserves the backend's deterministic reason code (never a generic "failed"). */
+export class ReasonedApiError extends Error {
+    reasonCode: string | null;
+    status: number;
+    constructor(status: number, reasonCode: string | null, message: string) {
+        super(message);
+        this.status = status;
+        this.reasonCode = reasonCode;
+    }
+}
+
+async function brokerJson(path: string, init: RequestInit = {}): Promise<any> {
+    const res = await fetch(`${API_BASE}${path}`, {
+        ...init,
+        headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${localStorage.getItem('access_token')}`,
+            ...(init.headers || {}),
+        },
+    });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) {
+        const detail = (body && body.detail) || {};
+        const code = typeof detail === 'object' ? detail.reason_code ?? null : null;
+        throw new ReasonedApiError(res.status, code, typeof detail === 'string' ? detail : (code || `HTTP_${res.status}`));
+    }
+    return body;
+}
+
 export const api = {
     // --- Auth ---
     login: async (data: LoginRequest): Promise<AuthResponse> => {
@@ -1224,6 +1253,28 @@ export const api = {
         if (!res.ok) throw new Error("Failed to fetch broker summary");
         return res.json();
     },
+
+    // --- CATI multi-asset account state (Section 20/21). Errors keep the backend's machine reason code. ---
+    getMarketStatus: async (accountId: string, params: Record<string, string> = {}): Promise<any> => {
+        const qs = new URLSearchParams(params).toString();
+        return brokerJson(`/api/v1/brokers/${accountId}/market-status${qs ? `?${qs}` : ""}`);
+    },
+    syncInstruments: async (accountId: string): Promise<any> =>
+        brokerJson(`/api/v1/brokers/${accountId}/market-discovery/sync`, { method: 'POST', body: '{}' }),
+    getTransferSettings: async (accountId: string): Promise<any> =>
+        brokerJson(`/api/v1/brokers/${accountId}/transfer-settings`),
+    updateTransferSettings: async (accountId: string, values: Record<string, any>): Promise<any> =>
+        brokerJson(`/api/v1/brokers/${accountId}/transfer-settings`, { method: 'PUT', body: JSON.stringify(values) }),
+    planCapitalTransfer: async (accountId: string, body: Record<string, any>): Promise<any> =>
+        brokerJson(`/api/v1/brokers/${accountId}/capital-transfer-plan`, { method: 'POST', body: JSON.stringify(body) }),
+    listInternalTransfers: async (accountId: string): Promise<any> =>
+        brokerJson(`/api/v1/brokers/${accountId}/internal-transfers`),
+    /** Execute an approved plan. The idempotency key makes a repeated request return the SAME transfer. */
+    createInternalTransfer: async (accountId: string, body: { asset: string; amount: string; source_wallet: string;
+                                   destination_wallet: string; idempotency_key: string }): Promise<any> =>
+        brokerJson(`/api/v1/brokers/${accountId}/internal-transfers`, {
+            method: 'POST', body: JSON.stringify(body), headers: { 'Idempotency-Key': body.idempotency_key },
+        }),
 
     validateBroker: async (accountId: string): Promise<any> => {
         const res = await fetch(`${API_BASE}/api/v1/brokers/${accountId}/validate`, {

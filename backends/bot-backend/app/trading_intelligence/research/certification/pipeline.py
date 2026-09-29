@@ -279,6 +279,14 @@ def _holdout(open_holdout, holdouts, holdout_id, freeze, stages, series, meta, c
     if prior is None or prior.status != S.PASS.value:
         return CertificationStageResult(stage=ST.HOLDOUT.value, status=S.NOT_RUN.value, diagnostics=reserved,
                                         reason_codes=(R.PRECEDING_STAGES.value, "RESERVED_UNTOUCHED"))
+    # Section 22.11: ``open_holdout`` is only a REQUEST. Opening also needs the separate, deliberate, recorded
+    # operator authorization for THIS holdout and THIS policy freeze (holdout_guard.authorize_holdout), which in
+    # turn required a READY pre-holdout readiness (frozen, complete, real dataset). Nothing here creates it.
+    from app.trading_intelligence.research.certification.holdout_guard import holdout_authorization
+
+    if holdout_authorization(holdouts._db, holdout_id, freeze.freeze_hash) is None:
+        return CertificationStageResult(stage=ST.HOLDOUT.value, status=S.NOT_RUN.value, diagnostics=reserved,
+                                        reason_codes=("HOLDOUT_AUTHORIZATION_REQUIRED", "RESERVED_UNTOUCHED"))
     try:
         holdouts.open(holdout_id, policy_freeze_hash=freeze.freeze_hash)
     except HoldoutBurned as exc:

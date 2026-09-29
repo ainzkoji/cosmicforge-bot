@@ -17,6 +17,7 @@ import {
     Webhook,
     RadioTower,
     Network,
+    Database,
 } from "lucide-react";
 
 type NavItem = {
@@ -34,6 +35,7 @@ const navItems: NavItem[] = [
     { path: "/admin/profitability", icon: BarChart3, label: "Profitability" },
     { path: "/admin/affiliate-revenue", icon: Link2, label: "Affiliate & Broker Revenue" },
     { path: "/admin/ml", icon: Cpu, label: "ML Monitoring" },
+    { path: "/admin/cati", icon: Database, label: "CATI Research & Certification" },
     { path: "/admin/audit", icon: FileText, label: "Audit Logs" },
     { path: "/admin/bot-monitor", icon: Activity, label: "Bot Monitor" },
     { path: "/admin/events", icon: CalendarClock, label: "Event Calendar", exact: true },

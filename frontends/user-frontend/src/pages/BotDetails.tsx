@@ -414,7 +414,7 @@ function BrokerNameResolver({ accountId }: { accountId: string }) {
                 {brokerId}
             </span>
             <span className="font-semibold text-white text-sm">{account.label || "Account"}</span>
-            <span className="text-xs text-gray-500 font-mono">({account.masked_key?.substring(0, 8)}...)</span>
+            <span className="text-xs text-gray-500 uppercase">({account.environment || "live"})</span>
         </span>
     );
 }

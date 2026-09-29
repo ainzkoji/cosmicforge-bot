@@ -571,6 +571,13 @@ async def _startup_run_manager():
         from app.activation.account_status import discovery_refresh_loop
 
         asyncio.create_task(discovery_refresh_loop(_DrDB()))
+    # Section 26.4: multi-asset operational alerts into the existing alert store (read-only evaluation,
+    # de-duplicated). Operator override: MULTI_ASSET_ALERTS_ENABLED=false.
+    if _os_tr.getenv("MULTI_ASSET_ALERTS_ENABLED", "true").strip().lower() not in ("0", "false", "no", "off"):
+        from shared_lib.persistence.db import DB as _MaDB
+        from app.ops.multi_asset_alerts import multi_asset_alert_loop
+
+        asyncio.create_task(multi_asset_alert_loop(_MaDB()))
 
 
 @app.on_event("shutdown")

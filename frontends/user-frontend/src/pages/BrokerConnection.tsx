@@ -8,6 +8,7 @@ import {
 } from "lucide-react";
 import { api } from "../api/client";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import MultiAssetPanel from "../components/Broker/MultiAssetPanel";
 
 // --- Components ---
 function CapitalSummary({ accountId }: { accountId: string }) {
@@ -397,7 +398,7 @@ export default function BrokerConnection() {
                                     initial={{ opacity: 0, y: 10 }}
                                     animate={{ opacity: 1, y: 0 }}
                                     key={account.id}
-                                    className="group bg-card hover:bg-accent/5 border border-border/50 rounded-2xl p-5 flex flex-col md:flex-row items-center justify-between gap-6 hover:shadow-lg hover:border-primary/20 transition-all cursor-default"
+                                    className="group bg-card hover:bg-accent/5 border border-border/50 rounded-2xl p-5 flex flex-col md:flex-row md:flex-wrap items-center justify-between gap-6 hover:shadow-lg hover:border-primary/20 transition-all cursor-default"
                                 >
                                     <div className="flex items-center gap-5 w-full md:w-auto">
                                         <div className="w-16 h-16 rounded-2xl bg-white shadow-sm flex items-center justify-center shrink-0 p-3 relative overflow-hidden">
@@ -425,7 +426,7 @@ export default function BrokerConnection() {
                                                     <span className="capitalize font-medium text-foreground">{account.status}</span>
                                                 </div>
                                                 <span className="text-border">|</span>
-                                                <span className="font-mono text-xs bg-muted/50 px-1.5 py-0.5 rounded">{account.masked_key?.substring(0, 8)}...</span>
+                                                <span className="text-xs uppercase">{account.environment || "live"}</span>
                                                 <span className="text-border">|</span>
                                                 <span>{account.market_type === 'crypto' ? 'Crypto' : 'Stocks'}</span>
                                             </div>
@@ -443,6 +444,13 @@ export default function BrokerConnection() {
                                     {account.status === 'connected' && (
                                         <div className="hidden md:block px-6 py-2 border-l border-border/50">
                                             <CapitalSummary accountId={account.id} />
+                                        </div>
+                                    )}
+
+                                    {/* CATI Section 21: markets, permission health, topology, routing policy, transfers */}
+                                    {account.status === 'connected' && (
+                                        <div className="w-full md:basis-full order-last">
+                                            <MultiAssetPanel accountId={account.id} />
                                         </div>
                                     )}
 

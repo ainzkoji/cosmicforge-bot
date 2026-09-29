@@ -190,6 +190,9 @@ app.include_router(admin_router, prefix="/api", tags=["Admin"])
 from app.api.admin_ml import router as admin_ml_router
 app.include_router(admin_ml_router, prefix="/api", tags=["Admin ML"])
 
+from app.api.admin_cati import router as admin_cati_router  # operator CATI research/certification status (read-only)
+app.include_router(admin_cati_router, prefix="/api", tags=["Admin CATI"])
+
 from app.api.admin_events import router as admin_events_router
 app.include_router(admin_events_router, prefix="/api", tags=["Admin Events"])
 

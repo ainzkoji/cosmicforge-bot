@@ -74,6 +74,18 @@ def _metric(venue: str, status: str, reason: Optional[str]) -> None:
     multi_asset_metrics.transfer(venue, status, reason)
 
 
+def _event(component: str, status: str, reason: Optional[str], *, user_id: Optional[str], account_id: Optional[str],
+           **extra: Any) -> None:
+    """Section 26.1 structured, redacted event with tenant + account lineage (never raises, never a secret)."""
+    try:
+        from app.trading_intelligence.observability.logging import log_stage
+
+        log_stage(component=component, status=status, reason_codes=[reason] if reason else [], user_id=user_id,
+                  broker_account_id=account_id, extra={k: v for k, v in extra.items() if v is not None})
+    except Exception:
+        pass
+
+
 def _dec(v: Any) -> Optional[Decimal]:
     try:
         return Decimal(str(v)) if v not in (None, "") else None
@@ -320,6 +332,115 @@ class InternalTransferService:
                 total += _dec(r["capital_allocation"]) or Decimal("0")
         return total if rows else None
 
+    # -- dry-run plan (Section 20.6) ---------------------------------------------------
+    PLAN_VALIDITY_MS = 60_000
+
+    def plan_transfer(self, *, user_id: str, account_id: str, asset: str, amount: Optional[Decimal] = None,
+                      source_wallet: Optional[str] = None, destination_wallet: Optional[str] = None,
+                      product: Optional[str] = None, required: Optional[Decimal] = None,
+                      origin: TransferOrigin = TransferOrigin.MANUAL, now_ms: Optional[int] = None) -> Dict[str, Any]:
+        """DRY RUN. Same ownership, planner and validation as a real request -- but nothing is persisted, no
+        transfer intent is created and the broker is never asked to move anything (read-only topology and
+        balance reads only). A plan is evidence for ``PLAN_VALIDITY_MS``, never proof capital stays available.
+
+        Either an explicit route (``source_wallet`` + ``destination_wallet`` + ``amount``) or a capital
+        requirement (``product`` + ``required``), for which the Section 9 planner decides the route."""
+        import time as _time
+
+        from app.trading_intelligence.capital.planner import CapitalSettings, plan_capital
+        from app.trading_intelligence.capital.route_facts import ObservedRouteFacts
+        from app.trading_intelligence.hashing import short_id
+
+        auth = self._auth(user_id, account_id)  # ownership: another tenant's account is TransferAccessError
+        now = int(now_ms if now_ms is not None else _time.time() * 1000)
+        asset = str(asset or "").strip().upper()
+        settings = self.store.settings(user_id=user_id, broker_account_id=account_id)
+        adapter = self._adapter_factory(auth)
+        topo = None
+        try:
+            topo = adapter.topology() if adapter is not None else None
+        except Exception:
+            topo = None
+        capital_plan = None
+        if not (source_wallet and destination_wallet):
+            if not (product and required is not None and required > 0):
+                raise ValueError("PLAN_INPUT_REQUIRED")
+            from app.trading_intelligence.capital.shadow_hook import account_capital_state
+
+            state = account_capital_state(self.db, user_id=user_id, broker_account_id=account_id, asset=asset,
+                                          adapter_factory=self._adapter_factory,
+                                          resolver=lambda a, u, _db: auth)
+            if state is None:
+                decision = {"ok": False, "reason": B.INTERNAL_TRANSFER_UNSUPPORTED.value}
+            else:
+                cp = plan_capital(state=state, product=str(product).upper(), required=Decimal(required),
+                                  settings=CapitalSettings.from_store(settings), plan_key=f"dryrun:{account_id}:{now}")
+                capital_plan = cp.to_dict()
+                if cp.needs_transfer and cp.transfer is not None:
+                    source_wallet, destination_wallet = cp.transfer.source_wallet, cp.transfer.destination_wallet
+                    amount = cp.transfer.amount
+                    decision = None
+                else:  # logical allocation or a block: no physical transfer is planned
+                    decision = {"ok": cp.outcome in ("NO_ACTION_SHARED_COLLATERAL", "LOGICAL_REALLOCATION"),
+                                "reason": None if cp.outcome in ("NO_ACTION_SHARED_COLLATERAL", "LOGICAL_REALLOCATION")
+                                else (cp.reason_codes[0] if cp.reason_codes else cp.outcome)}
+        else:
+            decision = None
+        route_facts = None
+        if source_wallet and destination_wallet:
+            if amount is None or amount <= 0:
+                raise ValueError("INVALID_AMOUNT")
+            row = {"id": None, "origin": origin.value, "asset": asset, "amount": format(Decimal(amount), "f"),
+                   "source_wallet": str(source_wallet).upper(), "destination_wallet": str(destination_wallet).upper(),
+                   "metadata": {}}
+            try:
+                v = self._validate(auth, adapter, row, settings)
+            except Exception as exc:
+                v = Validation(False, "VALIDATION_ERROR", redact_exception(exc)[:200])
+            decision = {"ok": v.ok, "reason": v.reason, "detail": v.detail, "route_code": v.route_code}
+            f = ObservedRouteFacts(self.db).facts(broker_account_id=account_id, source_wallet=row["source_wallet"],
+                                                  destination_wallet=row["destination_wallet"], asset=asset,
+                                                  now_ms=now)
+            route_facts = {"fee": {"state": "KNOWN" if f.fee is not None else "UNAVAILABLE",
+                                   "value": f.fee, "currency": f.fee_currency,
+                                   "source": f.fee_source or "UNAVAILABLE_FROM_VENUE_API"},
+                           "latency": {"state": "OBSERVED" if f.latency_ms is not None else "UNAVAILABLE",
+                                       "value_ms": f.latency_ms, "source": f.latency_source}}
+        physical = bool(source_wallet and destination_wallet)
+        threshold = _dec(settings.get("manual_approval_threshold"))
+        automated = origin != TransferOrigin.MANUAL
+        approval = ({"required": True, "by": "USER_EXECUTE_REQUEST",
+                     "note": "a manual plan moves nothing until the account owner executes it"} if not automated
+                    else {"required": bool(threshold is not None and amount is not None and Decimal(amount) > threshold),
+                          "by": "ACCOUNT_OWNER", "threshold": None if threshold is None else format(threshold, "f")})
+        reasons = [] if decision and decision.get("ok") else [decision.get("reason") if decision else "PLAN_UNDECIDED"]
+        if route_facts and route_facts["fee"]["state"] == "UNAVAILABLE":
+            reasons.append("TRANSFER_COST_UNAVAILABLE")
+        body = {"user_id": user_id, "broker_account_id": account_id, "asset": asset,
+                "amount": None if amount is None else format(Decimal(amount), "f"),
+                "source_wallet": source_wallet, "destination_wallet": destination_wallet, "origin": origin.value,
+                "decision": decision, "account_mode": getattr(topo, "account_mode", None)}
+        plan_id = short_id("xferplan", body)
+        _event("multi_asset.transfer_plan", "ELIGIBLE" if decision and decision.get("ok") else "BLOCKED",
+               None if decision and decision.get("ok") else (reasons[0] if reasons else None), user_id=user_id,
+               account_id=account_id, plan_id=plan_id, venue=auth.broker_type, asset=asset,
+               physical=bool(source_wallet and destination_wallet))
+        return {"plan_id": plan_id, "dry_run": True, "side_effects": "NONE",
+                "broker_account_id": account_id, "broker": auth.broker_type, "environment": auth.environment.value,
+                "asset": asset, "amount": body["amount"], "physical_transfer_required": physical,
+                "route": ({"source_wallet": str(source_wallet).upper(), "destination_wallet": str(destination_wallet).upper(),
+                           "route_code": (decision or {}).get("route_code")} if physical else None),
+                "allocation": None if physical else "LOGICAL_ALLOCATION_NO_PHYSICAL_TRANSFER",
+                "topology": {"class": getattr(getattr(topo, "topology_class", None), "value", None) or "UNKNOWN",
+                             "account_mode": getattr(topo, "account_mode", None)},
+                "capital_plan": capital_plan, "route_facts": route_facts,
+                "policy_decision": {"eligible": bool(decision and decision.get("ok")),
+                                    "reason_code": None if decision and decision.get("ok") else reasons[0],
+                                    "detail": (decision or {}).get("detail")},
+                "approval": approval, "reason_codes": [r for r in dict.fromkeys(reasons) if r],
+                "observed_at_ms": now, "valid_until_ms": now + self.PLAN_VALIDITY_MS,
+                "withdrawal": "NEVER_USED", "cross_broker": "NEVER"}
+
     # -- request / submit -----------------------------------------------------------
     def request_transfer(self, intent: TransferIntent) -> Dict[str, Any]:
         auth = self._auth(intent.user_id, intent.broker_account_id)
@@ -343,6 +464,8 @@ class InternalTransferService:
             self.store.transition(tid, expect=S.VALIDATING, to=S.BLOCKED, event="BLOCKED",
                                   detail={"reason": v.reason, "detail": v.detail}, failure_reason=v.reason)
             logger.info("internal_transfer_blocked id=%s account=%s reason=%s", tid, auth.account_id, v.reason)
+            _event("multi_asset.transfer", "BLOCKED", v.reason, user_id=auth.user_id, account_id=auth.account_id,
+                   transfer_id=tid, venue=auth.broker_type)
             _metric(auth.broker_type, "BLOCKED", v.reason)
             return self.store.get_any(tid)
 
@@ -368,6 +491,8 @@ class InternalTransferService:
             self.store.transition(tid, expect=S.SUBMITTING, to=S.FAILED, event="BROKER_REJECTED",
                                   detail={"error": redact_exception(exc)[:200]}, failure_reason="BROKER_REJECTED")
             _metric(auth.broker_type, "FAILED", "BROKER_REJECTED")
+            _event("multi_asset.transfer", "FAILED", "BROKER_REJECTED", user_id=auth.user_id,
+                   account_id=auth.account_id, transfer_id=tid, venue=auth.broker_type)
             return self.store.get_any(tid)
         except Exception as exc:
             # Dispatched and no answer (timeout, connection reset, 5xx): the
@@ -377,6 +502,8 @@ class InternalTransferService:
                                   failure_reason="SUBMIT_OUTCOME_UNKNOWN")
             logger.warning("internal_transfer_unknown id=%s account=%s", tid, auth.account_id)
             _metric(auth.broker_type, "UNKNOWN", "SUBMIT_OUTCOME_UNKNOWN")
+            _event("multi_asset.transfer", "UNKNOWN", "SUBMIT_OUTCOME_UNKNOWN", user_id=auth.user_id,
+                   account_id=auth.account_id, transfer_id=tid, venue=auth.broker_type)
             return self.store.get_any(tid)
         fields: Dict[str, Any] = {"broker_transfer_id": outcome.broker_transfer_id}
         if outcome.status == S.COMPLETED:
@@ -390,6 +517,9 @@ class InternalTransferService:
                     "broker_ref=%s", tid, auth.account_id, auth.broker_type, v.source_native, v.destination_native,
                     row["asset"], outcome.status.value, outcome.broker_transfer_id)
         _metric(auth.broker_type, outcome.status.value, outcome.raw_status)
+        _event("multi_asset.transfer", outcome.status.value, None if outcome.status != S.FAILED else fields.get(
+            "failure_reason"), user_id=auth.user_id, account_id=auth.account_id, transfer_id=tid,
+               venue=auth.broker_type, broker_ref=outcome.broker_transfer_id)
         return self.store.get_any(tid)
 
 

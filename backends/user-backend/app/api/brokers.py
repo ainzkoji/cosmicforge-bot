@@ -360,6 +360,13 @@ async def create_internal_transfer(request: Request, account_id: str, body: Dict
     return await _proxy(request, f"/api/v1/brokers/{account_id}/internal-transfers", json_body=body)
 
 
+@router.post("/{account_id}/capital-transfer-plan")
+async def plan_capital_transfer(request: Request, account_id: str, body: Dict[str, Any] = Body(...),
+                                user_id: str = Depends(get_current_user_id)):
+    """Dry-run transfer plan (bot-backend resolves the account for the token's user; nothing moves)."""
+    return await _proxy(request, f"/api/v1/brokers/{account_id}/capital-transfer-plan", json_body=body)
+
+
 @router.get("/{account_id}/internal-transfers")
 async def list_internal_transfers(request: Request, account_id: str, user_id: str = Depends(get_current_user_id)):
     return await _proxy(request, f"/api/v1/brokers/{account_id}/internal-transfers")

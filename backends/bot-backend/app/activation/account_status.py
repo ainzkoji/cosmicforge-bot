@@ -30,7 +30,7 @@ from __future__ import annotations
 import logging
 import threading
 import time
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Mapping, Optional, Tuple
 
 VENUE_KEY = {"binance": "binance_usdm", "bybit": "bybit_linear", "bingx": "bingx_swap"}
 DISCOVERY_MAX_AGE_MS = 6 * 3_600_000
@@ -147,6 +147,36 @@ def sync_discovery(db: Any, auth: Any, *, client_factory: Optional[Callable[[Any
         return {"status": "FAILED", "venue": venue, "reason": "DISCOVERY_FAILED", "detail": redact_exception(exc)}
 
 
+def request_sync(db: Any, auth: Any, *, user_id: str, client_factory: Optional[Callable[[Any], Any]] = None,
+                 now_ms: Optional[int] = None) -> Dict[str, Any]:
+    """User-requested catalog sync (Section 20.3): the SAME Section 7 discovery, behind the SAME per-venue cooldown
+    as every other refresh -- a repeated request inside ``REFRESH_MIN_INTERVAL_MS`` is THROTTLED (deterministic,
+    no venue call), so no user can storm a venue. Instrument metadata only; no history is downloaded."""
+    from app.trading_intelligence.hashing import short_id
+
+    broker = str(auth.broker_type).lower()
+    env = str(auth.environment.value).upper()
+    venue = VENUE_KEY.get(broker)
+    now = int(now_ms if now_ms is not None else time.time() * 1000)
+    lineage = {"request_id": short_id("isync", {"u": user_id, "a": auth.account_id, "v": venue, "t": now}),
+               "user_id": user_id, "broker_account_id": auth.account_id, "venue": venue, "environment": env,
+               "requested_at_ms": now}
+    if venue is None:
+        return {"status": "UNSUPPORTED", "reason": "PLATFORM_ADAPTER_NOT_IMPLEMENTED", "lineage": lineage}
+    with _refresh_guard:
+        last_try = _refresh_attempts.get((venue, env))
+        if last_try is not None and now - last_try < REFRESH_MIN_INTERVAL_MS:
+            logger.info("[CATALOG_SYNC] throttled request=%s account=%s venue=%s", lineage["request_id"],
+                        auth.account_id, venue)
+            return {"status": "THROTTLED", "reason": "SYNC_COOLDOWN", "venue": venue,
+                    "retry_after_ms": REFRESH_MIN_INTERVAL_MS - (now - last_try), "lineage": lineage}
+        _refresh_attempts[(venue, env)] = now
+    out = sync_discovery(db, auth, client_factory=client_factory, now_ms=now)
+    logger.info("[CATALOG_SYNC] request=%s account=%s venue=%s status=%s", lineage["request_id"], auth.account_id,
+                venue, out.get("status"))
+    return {**out, "lineage": lineage}
+
+
 def _connected_pairs(db: Any) -> Dict[tuple, List[tuple]]:
     """(broker, ENV) -> [(account_id, user_id), ...] of connected accounts (most recently updated first)."""
     from shared_lib.broker.environment import normalize_environment
@@ -251,10 +281,96 @@ def _account_mode(svc: Any, auth: Any) -> Optional[str]:
         return None
 
 
+def topology_view(broker: str, account_mode: Optional[str], *, internal_transfer: Mapping[str, Any],
+                  observed_at_ms: Optional[int]) -> Dict[str, Any]:
+    """UNIFIED / SEGMENTED / UNKNOWN / UNSUPPORTED with the broker-native mode, wallets and routes (Section 20.5).
+    Route availability follows THIS account's INTERNAL_TRANSFER capability; route fees are never assumed."""
+    from shared_lib.broker.wallets import ACCOUNT_MODE_DEPENDENT, topology_class, topology_for, topology_for_account
+
+    topo = topology_for_account(broker, account_mode)
+    cls = topo.topology_class.value if topo is not None else topology_class(broker, account_mode).value
+    available = internal_transfer.get("state") == "ACTIVE"
+    out: Dict[str, Any] = {
+        "class": cls, "account_mode": getattr(topo, "account_mode", None),
+        "account_mode_source": ("BROKER" if broker in ACCOUNT_MODE_DEPENDENT else "SINGLE_ACCOUNT_MODEL")
+        if topo is not None else None,
+        "observed_at_ms": observed_at_ms if topo is not None and broker in ACCOUNT_MODE_DEPENDENT else None,
+        "reason_code": None if topo is not None else ("ACCOUNT_TOPOLOGY_UNKNOWN" if topology_for(broker) is not None
+                                                      else "TOPOLOGY_UNSUPPORTED"),
+        "wallets": [w.to_dict() for w in topo.wallets] if topo is not None else [],
+        "routes": [{**r, "available": available,
+                    "reason_code": None if available else (internal_transfer.get("reason")
+                                                           or "INTERNAL_TRANSFER_UNAVAILABLE")}
+                   for r in (topo.to_dict()["routes"] if topo is not None else [])],
+    }
+    if cls == "UNIFIED":
+        out["logical_allocation"] = ("one broker collateral pool: per-market allocations are POLICY constraints over "
+                                     "it, not separate broker wallets, and moving between them moves no money")
+    return out
+
+
+def _instrument_readiness(item: Dict[str, Any], *, broker: str) -> Dict[str, Any]:
+    """Four independent states (Section 20.4 / 21.8): market available != research ready != certification ready
+    != execution authorized. Discovery alone never makes an instrument trade-ready."""
+    from app.market_data import research_status as rs
+
+    dims = item["dimensions"]
+    venue, ac = item["venue"], item["asset_class"]
+    research = {"state": "RESEARCH_ONLY", "reason": "INSTRUMENT_RESEARCH_ONLY"}
+    if ac == "CRYPTO" and venue == "binance_usdm":
+        members = rs.research_members("CRYPTO_BROAD")
+        if members is not None and item["venue_symbol"] in members:
+            research = {"state": "RESEARCH_READY", "reason": None, "dataset": "CRYPTO_BROAD"}
+    elif ac == "FX":
+        members = rs.research_members("FX_REFERENCE")
+        legs = str(item["canonical_symbol"]).split(":")[0].replace("/", "")
+        if members is not None and legs in members:
+            acq = rs._cached("fx_acq", lambda: rs.fx_acquisition(rs.load_manifest("FX_REFERENCE")["manifest"]))
+            research = ({"state": "RESEARCH_READY", "reason": None, "dataset": "FX_REFERENCE"}
+                        if acq.get("state") == "COMPLETE" else
+                        {"state": "DATASET_ACQUIRING", "reason": "DATASET_ACQUIRING", "dataset": "FX_REFERENCE"})
+    cert = dims["CERTIFICATION_READY"]
+    gov = dims["GOVERNANCE_AUTHORISED"]
+    executable = item["lifecycle_stage"] == "CATI_EXECUTABLE"
+    return {
+        "market_available": {"state": dims["MARKET_EXISTS"]["state"] == "YES", "reason": dims["MARKET_EXISTS"]["reason"]},
+        "research": research,
+        "certification": {"state": "CERTIFICATION_READY" if cert["state"] == "YES" else "NOT_CERTIFIED",
+                          "reason": None if cert["state"] == "YES" else "CERTIFICATION_NOT_READY"},
+        "execution_authorized": {"state": executable,
+                                 "reason": None if executable else ((item["next_blocker"] or {}).get("reason")
+                                                                    or gov["reason"])},
+    }
+
+
+INSTRUMENT_FILTERS = ("product_type", "lifecycle_stage", "api_tradable", "research_state", "execution_authorized")
+
+
+def _filter_instruments(rows: List[Dict[str, Any]], filters: Mapping[str, Any]) -> List[Dict[str, Any]]:
+    out = []
+    for r in rows:
+        if filters.get("product_type") and r["product_type"] != str(filters["product_type"]).upper():
+            continue
+        if filters.get("lifecycle_stage") and r["lifecycle_stage"] != str(filters["lifecycle_stage"]).upper():
+            continue
+        if filters.get("api_tradable") is not None and (
+                (r["dimensions"]["API_EXECUTION_SUPPORTED"]["state"] == "YES") != bool(filters["api_tradable"])):
+            continue
+        if filters.get("research_state") and r["readiness"]["research"]["state"] != str(
+                filters["research_state"]).upper():
+            continue
+        if filters.get("execution_authorized") is not None and (
+                r["readiness"]["execution_authorized"]["state"] != bool(filters["execution_authorized"])):
+            continue
+        out.append(r)
+    return out
+
+
 def account_status(db: Any, *, user_id: str, account_id: str, service: Any = None,
                    include_balances: bool = False, refresh_stale: bool = False,
                    instruments_family: Optional[str] = None,
-                   client_factory: Optional[Callable[[Any], Any]] = None) -> Dict[str, Any]:
+                   client_factory: Optional[Callable[[Any], Any]] = None,
+                   instrument_filters: Optional[Mapping[str, Any]] = None) -> Dict[str, Any]:
     from shared_lib.broker.wallets import ACCOUNT_MODE_DEPENDENT, topology_class, topology_for, topology_for_account
 
     from app.activation.market import FAMILIES, account_market_status, instrument_capabilities
@@ -292,11 +408,22 @@ def account_status(db: Any, *, user_id: str, account_id: str, service: Any = Non
                    "detail": "account mode not read from the broker; request include_balances=true"}
     else:
         buckets = {"status": "UNSUPPORTED", "reason": "TOPOLOGY_UNKNOWN", "topology_class": "UNSUPPORTED"}
+    now_ms = int(time.time() * 1000)
     out = {
-        "broker_account_id": account_id, "broker": broker, "environment": env,
+        "broker_account_id": account_id, "broker": broker, "environment": env, "observed_at_ms": now_ms,
+        "topology": topology_view(broker, account_mode, internal_transfer=status["capabilities"].get(
+            "INTERNAL_TRANSFER", {}), observed_at_ms=now_ms if include_balances else None),
         "discovery": {**freshness, "instruments": len(instruments or []),
                       **({"refresh": refresh} if refresh is not None else {})},
-        "permission_evidence": ({"inspected": ev.inspected, "permissions": dict(ev.permissions)}
+        # Section 25.5 least privilege: read + trade (+ internal transfer only for physical routes); an IP allowlist
+        # is operator GUIDANCE where the venue supports it, never a requirement the platform imposes
+        "least_privilege": {"recommended_permissions": ["READ", "TRADE", "INTERNAL_TRANSFER (only for physical routes)"],
+                            "withdrawal": "NEVER_REQUIRED",
+                            "ip_allowlist": {"state": getattr(ev, "ip_restricted", None) if ev is not None else None,
+                                             "guidance": "restrict the API key to this platform's egress IP where the "
+                                                         "venue supports it"}},
+        "permission_evidence": ({"inspected": ev.inspected, "permissions": dict(ev.permissions),
+                                 "observed_at_ms": getattr(ev, "probed_at_ms", None)}
                                 if ev is not None else {"inspected": False, "reason": "PERMISSION_EVIDENCE_REQUIRED"}),
         **{k: status[k] for k in ("capabilities", "markets", "withdrawal_permission_required",
                                   "withdrawals_supported_by_platform", "withdraw_permission_present",
@@ -321,12 +448,18 @@ def account_status(db: Any, *, user_id: str, account_id: str, service: Any = Non
         from app.activation.market import _cati_eligible
 
         cati = _cati_eligible(fam, broker, env, db, account_id, ())
-        out["instruments"] = [instrument_capabilities(i, broker=broker, environment=env, permissions=perms,
-                                                      cati_decision=cati)
-                              for i in (instruments or []) if i.asset_class == fam]
+        rows = []
+        for i in (instruments or []):
+            if i.asset_class != fam:
+                continue
+            item = instrument_capabilities(i, broker=broker, environment=env, permissions=perms, cati_decision=cati)
+            item["readiness"] = _instrument_readiness(item, broker=broker)
+            rows.append(item)
+        out["instruments"] = _filter_instruments(rows, instrument_filters or {})
     return out
 
 
-__all__ = ["DISCOVERY_MAX_AGE_MS", "REFRESH_MIN_INTERVAL_MS", "VENUE_KEY", "account_status", "discovered_instruments",
+__all__ = ["DISCOVERY_MAX_AGE_MS", "INSTRUMENT_FILTERS", "REFRESH_MIN_INTERVAL_MS", "VENUE_KEY", "account_status",
+           "discovered_instruments", "request_sync", "topology_view",
            "discovery_freshness", "discovery_refresh_loop", "refresh_due", "refresh_due_catalogs", "refresh_if_stale",
            "sync_discovery"]

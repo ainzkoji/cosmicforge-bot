@@ -61,7 +61,7 @@ export const BotInstanceRow = ({ bot, onStart, onPause, onStop, onDelete, onView
                                         {/* Simple icon mapping based on ID/Name if logo not avail in Account object. Usually account has broker_id. */}
                                         <span className="capitalize">{broker.broker_id}</span>
                                         <span className="text-border">|</span>
-                                        <span className="font-mono text-xs text-muted-foreground">{broker.masked_key?.substring(0, 8)}...</span>
+                                        <span className="text-xs text-muted-foreground uppercase">{broker.environment || "live"}</span>
                                     </>
                                 ) : (
                                     <span>🏦 {bot.broker_account_id}</span>

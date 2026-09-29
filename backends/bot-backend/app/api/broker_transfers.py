@@ -171,6 +171,55 @@ def create_internal_transfer(account_id: str, body: InternalTransferCreate,
         raise _resolver_error(exc)
 
 
+class CapitalTransferPlanRequest(BaseModel):
+    """Either an explicit route (source + destination + amount) or a capital requirement (product + required)."""
+    asset: str = Field("USDT", min_length=1, max_length=20)
+    amount: Optional[Union[str, float, int]] = None
+    source_wallet: Optional[str] = Field(None, min_length=1, max_length=40)
+    destination_wallet: Optional[str] = Field(None, min_length=1, max_length=40)
+    product: Optional[str] = Field(None, max_length=40)  # CRYPTO_PERPETUAL | FX_PERPETUAL | TRADFI_PERPETUAL
+    required: Optional[Union[str, float, int]] = None
+    automated: bool = False  # plan it as Auto Capital Routing would (policy + approval threshold apply)
+
+
+def _positive(value, code: str) -> Optional[Decimal]:
+    if value is None:
+        return None
+    try:
+        d = Decimal(str(value))
+    except (InvalidOperation, ValueError):
+        raise HTTPException(status_code=422, detail={"reason_code": code})
+    if not d.is_finite() or d <= 0:
+        raise HTTPException(status_code=422, detail={"reason_code": code})
+    return d
+
+
+@router.post("/{account_id}/capital-transfer-plan")
+def plan_capital_transfer(account_id: str, body: CapitalTransferPlanRequest,
+                          user_id: str = Depends(get_current_user_id),
+                          service: InternalTransferService = Depends(get_transfer_service)):
+    """DRY RUN (Section 20.6): the route, amount, policy decision, approval requirement, fee / latency facts and
+    validity of an internal transfer -- no transfer intent is created, nothing is submitted, no money moves.
+    Executing is the separate POST /internal-transfers with an idempotency key."""
+    amount = _positive(body.amount, "INVALID_AMOUNT")
+    required = _positive(body.required, "INVALID_REQUIRED_AMOUNT")
+    explicit = bool(body.source_wallet and body.destination_wallet and amount is not None)
+    if not explicit and not (body.product and required is not None):
+        raise HTTPException(status_code=422, detail={"reason_code": "PLAN_INPUT_REQUIRED"})
+    try:
+        return service.plan_transfer(
+            user_id=user_id, account_id=account_id, asset=body.asset.strip().upper(), amount=amount,
+            source_wallet=body.source_wallet, destination_wallet=body.destination_wallet,
+            product=body.product, required=required,
+            origin=TransferOrigin.CAPITAL_PLANNER if body.automated else TransferOrigin.MANUAL)
+    except TransferAccessError:
+        raise _not_found()
+    except BrokerResolverError as exc:
+        raise _resolver_error(exc)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail={"reason_code": str(exc)})
+
+
 @router.get("/{account_id}/internal-transfers")
 def list_internal_transfers(account_id: str, limit: int = 50, user_id: str = Depends(get_current_user_id),
                             service: InternalTransferService = Depends(get_transfer_service)):
