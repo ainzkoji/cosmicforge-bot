@@ -36,6 +36,18 @@ _load_dotenv(
     override=os.environ.get("COSMICFORGE_TEST_MODE") != "1",
 )
 CONFIG_LOADED_AT = datetime.now(timezone.utc).isoformat()
+
+# CATI evidence logs ([CATI_BATCH], [CATI_GLOBAL_STATE], ...) are INFO; with no logging configured Python only
+# emits WARNING+, so a healthy shadow cycle that ranked nothing leaves no trace. Opt-in, CATI namespace only.
+_cati_log_level = os.environ.get("CATI_LOG_LEVEL", "").strip().upper()
+if _cati_log_level in ("DEBUG", "INFO", "WARNING", "ERROR"):
+    _cati_logger = logging.getLogger("app.trading_intelligence")
+    if not _cati_logger.handlers:
+        _cati_handler = logging.StreamHandler()
+        _cati_handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(name)s %(message)s"))
+        _cati_logger.addHandler(_cati_handler)
+    _cati_logger.setLevel(_cati_log_level)
+    _cati_logger.propagate = False
 # Phase 5F-2 reload trigger v2: 2026-04-04 — shadow side-normalization fix
 
 """

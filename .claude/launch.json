@@ -4,7 +4,7 @@
     {
       "name": "bot-backend",
       "runtimeExecutable": "powershell",
-      "runtimeArgs": ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "scripts/start_trading_runtime.ps1", "-Once"],
+      "runtimeArgs": ["-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", "$env:CATI_LOG_LEVEL='INFO'; & ./scripts/start_trading_runtime.ps1 -Once"],
       "port": 9000
     },
     {
