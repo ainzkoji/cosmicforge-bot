@@ -60,13 +60,18 @@ def _gaps(open_times, step, start, end, classify):
 # ── crypto broad (canonical historical_candles, frozen v1) ────────────────────
 
 def crypto_broad(args) -> Dict[str, Any]:
+    return _write(args.out, crypto_broad_evidence(args.canonical_db))
+
+
+def crypto_broad_evidence(canonical_db: str) -> Dict[str, Any]:
+    """The crypto-broad coverage body (no ``content_hash`` / ``generated_at``); shared with the dataset freeze."""
     from app.market_data.gaps import classify_crypto_gap
     from app.market_data.universe import load_frozen_universe
 
     m = load_frozen_universe(BROAD)
     s, e, step = int(m["window_start_ms"]), int(m["window_end_ms"]), 15 * MIN
     expected = (e - s) // step
-    conn = _ro(args.canonical_db)
+    conn = _ro(canonical_db)
     members, agg = [], {"symbols": 0, "rows": 0, "complete_symbols": 0, "gaps": 0, "invalid_rows": 0,
                         "duplicate_rows": 0, "misaligned_rows": 0}
     where = "symbol=? AND interval='15m' AND data_source='binance' AND market_type='crypto' AND open_time>=? AND " \
@@ -108,7 +113,7 @@ def crypto_broad(args) -> Dict[str, Any]:
     agg["reconciles_to_db"] = total == agg["rows"]
     agg["young_symbols"] = 0
     agg["young_symbols_note"] = "v1 excluded symbols younger than 731 days (manifest rejections: LISTING_TOO_RECENT)"
-    return _write(args.out, {
+    return {
         "scope": "CRYPTO_BROAD", "universe_id": m["universe_id"], "universe_hash": m["universe_hash"],
         "timeframe": "15m", "window_start": _iso(s), "window_end": _iso(e), "expected_rows_per_symbol": expected,
         "members": members, "aggregate": agg,
@@ -123,7 +128,7 @@ def crypto_broad(args) -> Dict[str, Any]:
                 "they are established per series by the manifest and the importer, not guessed per row",
                 "data_version is NULL on every v1 row (LEGACY_UNVERSIONED); fetched_at is the ingest timestamp",
                 "acquisition failures were not logged per period by the legacy importer",
-                "survivorship bias: members were TRADING at generation time; delisted symbols are absent (declared)"]}})
+                "survivorship bias: members were TRADING at generation time; delisted symbols are absent (declared)"]}}
 
 
 # ── crypto deep ──────────────────────────────────────────────────────────────

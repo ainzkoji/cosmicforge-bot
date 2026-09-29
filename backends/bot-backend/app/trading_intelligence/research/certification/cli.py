@@ -206,6 +206,36 @@ def cmd_status(args) -> int:
     return 0
 
 
+def cmd_readiness(args) -> int:
+    """Section 22.3 pre-holdout readiness from RECORDED evidence only: the frozen dataset manifest, the report's
+    policy freeze and the FULL/MEDIUM stage run persisted in the research DB. Reads no candles, opens nothing and
+    authorizes nothing (``holdout_guard.authorize_holdout`` stays a separate, deliberate operator action)."""
+    from .freeze import PolicyFreezeManifest
+    from .holdout_guard import pre_holdout_readiness
+    from .registry import CertificationRunStore, SqliteResearchStore
+
+    manifest = json.loads(Path(args.dataset_manifest).read_text(encoding="utf-8")) if args.dataset_manifest else None
+    report = json.loads(Path(args.report).read_text(encoding="utf-8")) if args.report else None
+    freeze = run = None
+    if report:
+        pf = report["policy_freeze"]
+        freeze = PolicyFreezeManifest(policy_hashes=pf["policy_hashes"], source_commit=pf["source_commit"],
+                                      source_tree_dirty=pf["source_tree_dirty"], schema_version=pf["schema_version"])
+        dataset_hash = report["dataset_manifest"].get("dataset_hash")
+        runs = [r for r in CertificationRunStore(SqliteResearchStore(args.research_db)).runs()
+                if r["dataset_hash"] == dataset_hash and r["policy_freeze_hash"] == freeze.freeze_hash]
+        for stage in ("FULL", "MEDIUM"):
+            hit = [r for r in runs if r["stage"] == stage]
+            if hit:
+                run = {"stage": stage, "status": hit[-1]["status"], "artifact_hash": hit[-1]["artifact_hash"]}
+                break
+    out = pre_holdout_readiness(dataset_manifest=manifest, acquisition_state=args.acquisition_state, freeze=freeze,
+                                pre_holdout_run=run)
+    print(json.dumps({**out, "pre_holdout_run": run, "report": args.report,
+                      "dataset_manifest": args.dataset_manifest}, indent=2, default=str))
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="certification", description="CATI Section 22 research & certification")
     sub = p.add_subparsers(dest="command", required=True)
@@ -240,6 +270,12 @@ def build_parser() -> argparse.ArgumentParser:
     st = sub.add_parser("status")
     st.add_argument("--research-db", default="data/research/certification.db")
     st.set_defaults(func=cmd_status)
+    rd = sub.add_parser("readiness")
+    rd.add_argument("--dataset-manifest", default=None, help="frozen dataset (lineage v2) manifest JSON")
+    rd.add_argument("--acquisition-state", default=None, help="COMPLETE once the dataset's acquisition finished")
+    rd.add_argument("--report", default=None, help="certification report JSON of the pre-holdout run")
+    rd.add_argument("--research-db", default="data/research/certification.db")
+    rd.set_defaults(func=cmd_readiness)
     return p
 
 

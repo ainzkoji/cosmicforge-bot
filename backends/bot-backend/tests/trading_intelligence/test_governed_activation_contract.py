@@ -95,3 +95,33 @@ def test_operator_flags_and_user_toggles_cannot_grant_authority(tmp_path, flags)
     assert GovernanceAuthority(db).authorize_entry(_plan()) == (False, "GOVERNANCE_PHASE_M0_NO_CATI_AUTHORITY")
     _advance(PromotionGovernance(db), "M5")  # historical certification eligibility is still not execution
     assert GovernanceAuthority(db).authorize_entry(_plan()) == (False, "GOVERNANCE_PHASE_M5_NO_CATI_AUTHORITY")
+
+
+@pytest.mark.parametrize("state,stage_status,expected,reason", [
+    ("COMPLETE", "PASS", "READY", None),
+    ("ACQUIRING", "PASS", "NOT_READY", "DATA_ACQUISITION_IN_PROGRESS"),
+    ("COMPLETE", "FAIL", "NOT_READY", "PRE_HOLDOUT_RUN_NOT_COMPLETED"),
+])
+def test_readiness_cli_reads_recorded_evidence_only(tmp_path, capsys, state, stage_status, expected, reason):
+    import json
+
+    from test_cati_section22_guards import _ready_inputs
+
+    from app.trading_intelligence.research.certification.cli import main
+
+    manifest, freeze, _run = _ready_inputs()
+    research = SqliteResearchStore(str(tmp_path / "cert.db"))
+    with research.connect() as conn:
+        conn.execute("INSERT INTO cati_certification_runs (certification_run_id, stage, status, scope_hash, "
+                     "dataset_hash, policy_freeze_hash, certification_policy_hash, artifact_hash, recorded_at, "
+                     "schema_version, table_version, payload, payload_hash) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                     ("crun_t", "FULL", stage_status, "s", "d" * 64, freeze.freeze_hash, "p", "a" * 64, 1, "1", "1",
+                      "{}", "h"))
+    (tmp_path / "ds.json").write_text(json.dumps(manifest), encoding="utf-8")
+    (tmp_path / "rep.json").write_text(json.dumps({"policy_freeze": freeze.to_dict(),
+                                                   "dataset_manifest": {"dataset_hash": "d" * 64}}), encoding="utf-8")
+    assert main(["readiness", "--dataset-manifest", str(tmp_path / "ds.json"), "--acquisition-state", state,
+                 "--report", str(tmp_path / "rep.json"), "--research-db", str(tmp_path / "cert.db")]) == 0
+    out = json.loads(capsys.readouterr().out)
+    assert out["status"] == expected and (reason is None or reason in out["reason_codes"])
+    assert HoldoutRegistry(research).status("any")["status"] == "UNRESERVED"  # readiness reserves / opens nothing
