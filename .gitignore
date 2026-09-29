@@ -143,3 +143,5 @@ data/research/*.db-wal
 # Certification replay caches are large, content-addressed and reproducible
 # from the frozen dataset; the certification report JSON/MD stays committable.
 data/research/certification/replay_*.json
+# Outcome-library artifacts (rows are large and reproducible; the identity pin is committed under docs/).
+data/research/cati_libraries/
