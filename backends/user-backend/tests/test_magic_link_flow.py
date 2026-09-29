@@ -11,7 +11,22 @@ from shared_lib.persistence.db import DB
 from app.core import mt_pairing_service
 import time
 
-def test_magic_link_flow():
+def _isolated_db(tmp_path, monkeypatch):
+    """A throw-away database built by the repository's canonical migration runner -- never data/bot.db."""
+    import importlib.util
+    from pathlib import Path
+
+    path = tmp_path / "magic_link.db"
+    monkeypatch.setenv("DATABASE_URL", f"sqlite:///{path.as_posix()}")
+    runner = Path(__file__).resolve().parents[1] / "migrations" / "run_migration.py"
+    spec = importlib.util.spec_from_file_location("run_migration", runner)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    module.run_migrations()
+
+
+def test_magic_link_flow(tmp_path, monkeypatch):
+    _isolated_db(tmp_path, monkeypatch)
     print("=" * 60)
     print("  MAGIC LINK CONNECTOR FLOW TEST")
     print("=" * 60)

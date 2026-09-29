@@ -49,24 +49,22 @@ def test_mt_broker_flow():
         result = submit_broker_credentials(user_id, account_id, creds)
         assert result is True
 
-    # 3. Validate Connection (Proxy Test)
-    with patch("app.core.broker_service.DB") as mock_db, \
-         patch("app.core.broker_service.decrypt_credentials", return_value=creds), \
-         patch("app.core.broker_service._test_broker_connection") as mock_test_conn, \
-         patch("app.core.broker_service._log_audit_event"):
-         
+    # 3. Validate Connection (Proxy Test) -- credentials come from the canonical resolver
+    #    (shared_lib.broker.resolver.resolve_broker_auth, v2 with v1 fallback), not a local decrypt.
+    from types import SimpleNamespace
+
+    auth = SimpleNamespace(extra={"bridge_url": creds["bridge_url"], "bridge_token": creds["bridge_token"]},
+                           api_key=None, api_secret=None, base_url=None,
+                           environment=SimpleNamespace(value="live"), credential_version=1)
+    permission = {"decision": "ACCEPTED", "message": "", "evidence": {"permissions": {"TRADE": True}}}
+    with patch("app.core.broker_service.get_db") as mock_get_db,          patch("shared_lib.broker.resolver.resolve_broker_auth", return_value=auth),          patch("app.core.broker_service._evaluate_key_permissions", return_value=permission),          patch("app.core.broker_service._test_broker_connection") as mock_test_conn,          patch("app.core.broker_service._log_audit_event"):
+
         mock_conn = MagicMock()
-        mock_db.return_value.connect.return_value.__enter__.return_value = mock_conn
-        
-        # Mock retrieval for validation
-        mock_conn.execute.side_effect = [
-            MagicMock(fetchone=lambda: {"broker_id": "mt4", "environment": "live"}), 
-            MagicMock(fetchone=lambda: {"encrypted_blob": b"blob"}),
-            MagicMock() # update status
-        ]
-        
+        mock_get_db.return_value.connect.return_value.__enter__.return_value = mock_conn
+        mock_conn.execute.return_value.fetchone.return_value = {"broker_id": "mt4"}
         mock_test_conn.return_value = {"success": True}
-        
+
         res = validate_broker_account(user_id, account_id)
-        assert res["success"] is True
-        mock_test_conn.assert_called_with("mt4", creds, "live")
+        assert res["success"] is True and res["status"] == "connected"
+        expected = {**auth.extra, "api_key": None, "api_secret": None, "base_url": None}
+        mock_test_conn.assert_called_with("mt4", expected, "live")
