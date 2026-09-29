@@ -25,6 +25,7 @@ public function is exception-proof (P9.14).
 """
 from __future__ import annotations
 
+import json
 import logging
 import os
 import threading
@@ -166,6 +167,46 @@ def _expected_symbols(runner: Any) -> Set[str]:
     return out
 
 
+def _perf_baseline() -> Dict[str, Any]:
+    """Process / stage counters at an instant (observation only; never an input to a decision)."""
+    from app.trading_intelligence.observability.metrics import METRICS
+
+    stages: Dict[str, Any] = {}
+    for row in METRICS.snapshot()["summaries"].get("cati_stage_latency_ms", []):
+        st = stages.setdefault(str(row["labels"].get("stage")), [0, 0.0])
+        st[0] += row["count"]
+        st[1] += row["sum"]
+    cpu = rss = None
+    try:
+        import psutil
+
+        proc = psutil.Process()
+        t = proc.cpu_times()
+        cpu, rss = t.user + t.system, proc.memory_info().rss
+    except Exception:
+        pass
+    return {"wall": time.monotonic(), "cpu": cpu, "rss": rss, "stages": stages}
+
+
+def _log_epoch_perf(bot: str, info: Dict[str, Any], note: str, batch: Any) -> None:
+    """[CATI_EPOCH_PERF]: whole-universe deadline evidence per epoch (Workstream B)."""
+    try:
+        start, end = info.get("perf0"), _perf_baseline()
+        if not start:
+            return
+        stages = {k: {"n": v[0] - start["stages"].get(k, [0, 0.0])[0],
+                      "ms": round(v[1] - start["stages"].get(k, [0, 0.0])[1], 1)} for k, v in end["stages"].items()}
+        logger.info("[CATI_EPOCH_PERF] bot=%s epoch=%s note=%s complete=%s expected=%d completed=%d failed=%d "
+                    "wall_s=%.1f cpu_s=%s rss_mb=%s stages=%s", bot, info["epoch"], note, batch.batch_complete,
+                    len(batch.expected_due_instruments), len(batch.completed_instruments), len(batch.failed_instruments),
+                    end["wall"] - start["wall"],
+                    None if start["cpu"] is None or end["cpu"] is None else round(end["cpu"] - start["cpu"], 1),
+                    None if end["rss"] is None else round(end["rss"] / 1e6, 1),
+                    json.dumps({k: v for k, v in sorted(stages.items()) if v["n"]}, sort_keys=True))
+    except Exception:
+        pass
+
+
 def _finalize_epoch(runner: Any, bot: str, note: str) -> None:
     info = _epochs.pop(bot, None)
     if info is None:
@@ -173,6 +214,7 @@ def _finalize_epoch(runner: Any, bot: str, note: str) -> None:
     coordinator = _get_coordinator()
     result = coordinator.finalize_bot_cycle(info["key"])
     b = result.batch
+    _log_epoch_perf(bot, info, note, b)
     logger.info(
         "[CATI_BATCH] bot=%s epoch=%s note=%s batch_id=%s complete=%s expected=%d completed=%d failed=%s "
         "approved=%d watch=%d rejected=%d ranked=%d reasons=%s",
@@ -442,7 +484,7 @@ def on_cycle_start(runner: Any) -> None:
                     run_id=str(getattr(runner, "run_id", "") or ""), universe_version="broker_universe",
                     universe_symbols=sorted(expected),
                 )
-                info = _epochs[bot] = {"epoch": epoch, "key": key, "expected": set()}
+                info = _epochs[bot] = {"epoch": epoch, "key": key, "expected": set(), "perf0": _perf_baseline()}
             for sym in expected - info["expected"]:
                 coordinator.mark_due(info["key"], sym)
             info["expected"] |= expected
