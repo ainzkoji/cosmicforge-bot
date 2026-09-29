@@ -140,3 +140,6 @@ data/research/examples/
 data/research/*.db
 data/research/*.db-journal
 data/research/*.db-wal
+# Certification replay caches are large, content-addressed and reproducible
+# from the frozen dataset; the certification report JSON/MD stays committable.
+data/research/certification/replay_*.json
