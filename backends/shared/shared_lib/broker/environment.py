@@ -26,7 +26,7 @@ _BASE_URLS: Dict[Tuple[str, BrokerEnvironment], str] = {
     ("binance",  BrokerEnvironment.LIVE): "https://fapi.binance.com",
     ("binance",  BrokerEnvironment.DEMO): "https://demo-fapi.binance.com",
     ("bybit",    BrokerEnvironment.LIVE): "https://api.bybit.com",
-    ("bybit",    BrokerEnvironment.DEMO): "https://api-testnet.bybit.com",
+    ("bybit",    BrokerEnvironment.DEMO): "https://api-demo.bybit.com",
     ("bingx",    BrokerEnvironment.LIVE): "https://open-api.bingx.com",
     ("bingx",    BrokerEnvironment.DEMO): "https://open-api-vst.bingx.com",
     ("oanda",    BrokerEnvironment.LIVE): "https://api-fxtrade.oanda.com",
@@ -42,7 +42,7 @@ _WALLET_BASE_URLS: Dict[Tuple[str, BrokerEnvironment], Optional[str]] = {
     ("binance",  BrokerEnvironment.LIVE): "https://api.binance.com",
     ("binance",  BrokerEnvironment.DEMO): None,
     ("bybit",    BrokerEnvironment.LIVE): "https://api.bybit.com",
-    ("bybit",    BrokerEnvironment.DEMO): "https://api-testnet.bybit.com",
+    ("bybit",    BrokerEnvironment.DEMO): None,
     ("bingx",    BrokerEnvironment.LIVE): "https://open-api.bingx.com",
     ("bingx",    BrokerEnvironment.DEMO): None,
 }

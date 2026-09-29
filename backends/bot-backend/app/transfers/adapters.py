@@ -187,6 +187,10 @@ class BybitTransferAdapter(TransferAdapter):
     broker = "bybit"
     client_supplied_id = True
 
+    def _require_wallet_api(self) -> None:
+        if not resolve_wallet_base_url("bybit", self.auth.environment):
+            raise VenueApiUnavailable(f"no verified Bybit wallet API for {self.auth.environment.value}")
+
     def account_mode(self) -> Optional[str]:
         if getattr(self, "_mode", None) is None:
             data = self.trading.account_info()
@@ -211,6 +215,7 @@ class BybitTransferAdapter(TransferAdapter):
         return topology_for("bybit", mode) if mode else None
 
     def transferable(self, wallet: BrokerWallet, asset: str) -> Optional[Decimal]:
+        self._require_wallet_api()
         data = self.trading.account_coin_balance(wallet.native_type, asset)
         if (data or {}).get("retCode") != 0:
             return None
@@ -218,6 +223,7 @@ class BybitTransferAdapter(TransferAdapter):
         return _dec(bal.get("transferBalance"))
 
     def submit(self, *, request_id, route_code, source, destination, asset, amount) -> SubmitOutcome:
+        self._require_wallet_api()
         data = self.trading.inter_transfer(request_id, asset, format(amount, "f"), source.native_type,
                                            destination.native_type)
         if (data or {}).get("retCode") != 0:
@@ -235,6 +241,7 @@ class BybitTransferAdapter(TransferAdapter):
 
     def lookup(self, *, request_id, broker_transfer_id, route_code, asset, amount, submitted_at_ms,
                claimed_ids) -> LookupOutcome:
+        self._require_wallet_api()
         data = self.trading.query_inter_transfers(transfer_id=broker_transfer_id or request_id)
         if (data or {}).get("retCode") != 0:
             return LookupOutcome(False)
@@ -245,6 +252,7 @@ class BybitTransferAdapter(TransferAdapter):
         return LookupOutcome(True, hit.status, hit.broker_transfer_id, str(hit.raw.get("status")))
 
     def history(self, start_ms: int, end_ms: int) -> List[HistoryRow]:
+        self._require_wallet_api()
         out, cursor = [], None
         for _ in range(20):  # bounded pagination
             data = self.trading.query_inter_transfers(start_time_ms=start_ms, end_time_ms=end_ms, limit=50, cursor=cursor)

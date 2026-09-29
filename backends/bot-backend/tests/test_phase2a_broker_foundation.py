@@ -45,6 +45,7 @@ def test_canonical_factory_builds_every_crypto_broker(broker, cls, env):
 def test_environment_url_table():
     assert resolve_base_url("binance", BrokerEnvironment.DEMO) == "https://demo-fapi.binance.com"
     assert resolve_base_url("bybit", BrokerEnvironment.LIVE) == "https://api.bybit.com"
+    assert resolve_base_url("bybit", BrokerEnvironment.DEMO) == "https://api-demo.bybit.com"
     assert resolve_base_url("bingx", BrokerEnvironment.DEMO) == "https://open-api-vst.bingx.com"
 
 
@@ -308,7 +309,7 @@ def test_daily_snapshot_uses_canonical_resolver(migrated_db):
     assert summary["errors"]["acc_nocred"] == BrokerResolverError.REASON_NO_CREDENTIALS
     call = sched.snapshot_service.record_snapshot.call_args.kwargs
     assert call["broker_account_id"] == "acc_ok" and call["user_id"] == "alice"
-    assert call["client"].base_url == "https://api-testnet.bybit.com"  # demo URL, never mainnet
+    assert call["client"].base_url == "https://api-demo.bybit.com"
     assert call["client"].api_key == "alicekey1"
 
 

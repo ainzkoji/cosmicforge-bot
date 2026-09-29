@@ -272,10 +272,10 @@ def test_one_account_answers_which_families_it_can_automate_and_why_not():
     uninspectable = account_market_status(broker="bybit", environment="DEMO", permissions={"TRADE": True},
                                           instruments=ins, transfers_in_flight=0, account_mode="UNIFIED")
     xfer = uninspectable["capabilities"]["INTERNAL_TRANSFER"]
-    assert (xfer["reason"], xfer["reason_class"]) == ("PERMISSION_EVIDENCE_REQUIRED", "PERMISSION_EVIDENCE_REQUIRED")
+    assert (xfer["reason"], xfer["reason_class"]) == ("VENUE_API_NOT_SUPPORTED_IN_ENVIRONMENT", "VENUE_API_NOT_SUPPORTED")
     denied = account_market_status(broker="bybit", environment="DEMO", permissions={**PERMS, "INTERNAL_TRANSFER": False},
                                    instruments=ins, transfers_in_flight=0, account_mode="UNIFIED")
-    assert denied["capabilities"]["INTERNAL_TRANSFER"]["reason_class"] == "PERMISSION_MISSING"
+    assert denied["capabilities"]["INTERNAL_TRANSFER"]["reason_class"] == "VENUE_API_NOT_SUPPORTED"
     assert uninspectable["markets"]["CRYPTO"]["execution"]["status"] == "ACTIVE"  # trading needs no transfer grant
     # never synced / stale catalog
     none = account_market_status(broker="bybit", environment="DEMO", permissions=PERMS, instruments=None)
@@ -371,11 +371,11 @@ def test_account_status_is_per_account_isolated_and_secret_free(db):
     a1 = account_status(db, user_id="alice", account_id="acc_a1", service=svc, include_balances=True)
     a2 = account_status(db, user_id="alice", account_id="acc_a2", service=svc)
     assert [t["id"] for t in a1["current_transfers"]] == [unknown["id"]] and a2["current_transfers"] == []
-    assert a1["capabilities"]["INTERNAL_TRANSFER"]["status"] == "TRANSFER_PENDING"
+    assert a1["capabilities"]["INTERNAL_TRANSFER"]["status"] == "VENUE_API_NOT_SUPPORTED"
     # the other account is independent: no pending transfer, but its mode was not read -> no route assumed
-    assert a2["capabilities"]["INTERNAL_TRANSFER"]["reasons"] == ["ACCOUNT_TOPOLOGY_UNKNOWN"]
+    assert "VENUE_API_NOT_SUPPORTED_IN_ENVIRONMENT" in a2["capabilities"]["INTERNAL_TRANSFER"]["reasons"]
     assert account_status(db, user_id="alice", account_id="acc_a2", service=svc,
-                          include_balances=True)["capabilities"]["INTERNAL_TRANSFER"]["state"] == "ACTIVE"
+                          include_balances=True)["capabilities"]["INTERNAL_TRANSFER"]["state"] != "ACTIVE"
     assert a1["capital_buckets"]["account_mode"] == "CLASSIC" and a1["topology_class"] == "SEGMENTED"
     assert a2["capital_buckets"]["reason"] == "ACCOUNT_TOPOLOGY_UNKNOWN"  # mode not read without a live read
     for other in (("bob", "acc_a1"), ("alice", "acc_b"), ("mallory", "acc_a1")):

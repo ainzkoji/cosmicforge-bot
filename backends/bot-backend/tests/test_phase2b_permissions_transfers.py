@@ -436,6 +436,23 @@ def test_bybit_adapter_mode_balance_and_rejection():
     assert BybitTransferAdapter(_auth("bybit"), build=lambda a: client).topology() is None  # unknown mode: no guess
 
 
+def test_bybit_demo_transfer_is_unavailable_without_a_verified_wallet_api():
+    from app.transfers.adapters import VenueApiUnavailable
+
+    client = MagicMock()
+    adapter = BybitTransferAdapter(_auth("bybit", BrokerEnvironment.DEMO), build=lambda a: client)
+    with pytest.raises(VenueApiUnavailable):
+        adapter.submit(request_id="demo", route_code="FUND->UNIFIED", source=None, destination=None,
+                       asset="USDT", amount=Decimal("1"))
+    client.inter_transfer.assert_not_called()
+
+
+def test_bybit_demo_transfer_capability_is_not_advertised_as_usable(db):
+    _account(db, "acc_demo", "alice", perms=SAFE_EVIDENCE)
+    status = _service(db, FakeAdapter()).capabilities(user_id="alice", account_id="acc_demo")
+    assert status["internal_transfer"]["usable"] is False
+
+
 # ── no withdrawal anywhere ─────────────────────────────────────────────────
 
 def test_no_withdrawal_primitive_exists():

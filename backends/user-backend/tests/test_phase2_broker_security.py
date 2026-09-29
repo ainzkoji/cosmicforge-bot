@@ -46,6 +46,21 @@ def test_unimplemented_brokers_never_report_connected(broker):
     assert res["success"] is False and res["reason_code"] == "UNSUPPORTED_BROKER"
 
 
+@pytest.mark.parametrize("broker,module,expected_host", [
+    ("bybit", "app.exchange.bybit.client.BybitClient", "https://api-demo.bybit.com"),
+    ("bingx", "app.exchange.bingx.client.BingXClient", "https://open-api-vst.bingx.com"),
+])
+def test_demo_connection_uses_canonical_host(broker, module, expected_host):
+    from app.core.broker_service import _test_broker_connection
+
+    with patch(module) as client_type:
+        client_type.return_value.test_connection.return_value = {"success": True}
+        result = _test_broker_connection(broker, {"api_key": "k", "api_secret": "s",
+                                                  "base_url": "https://api.bybit.com"}, "demo")
+    assert result["success"] is True
+    assert client_type.call_args.kwargs["base_url"] == expected_host
+
+
 def test_withdraw_capable_binance_key_is_restricted_not_connected(db):
     from app.core import broker_service as bs
 

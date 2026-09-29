@@ -132,7 +132,11 @@ class InternalTransferService:
             except Exception as exc:
                 topo_error = redact_exception(exc)
         cap = profile.entry(Capability.INTERNAL_TRANSFER)
-        usable = profile.usable(Capability.INTERNAL_TRANSFER, auth.environment) and perm_ok and topo is not None
+        from shared_lib.broker.environment import resolve_wallet_base_url
+
+        wallet_api_verified = resolve_wallet_base_url(auth.broker_type, auth.environment) is not None
+        usable = (profile.usable(Capability.INTERNAL_TRANSFER, auth.environment) and perm_ok
+                  and topo is not None and wallet_api_verified)
         return {
             "broker_account_id": account_id,
             "broker": auth.broker_type,

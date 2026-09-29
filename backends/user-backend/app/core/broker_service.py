@@ -634,21 +634,21 @@ def _test_broker_connection(broker_id: str, credentials: Dict[str, Any], environ
             
         elif broker_id == "bybit":
             from app.exchange.bybit.client import BybitClient as ByBitClient
-            testnet = (environment == "demo" or environment == "testnet")
+            from shared_lib.broker.environment import normalize_environment, resolve_base_url
             client = ByBitClient(
                 api_key=credentials.get("api_key"),
                 api_secret=credentials.get("api_secret"),
-                testnet=testnet
+                base_url=resolve_base_url("bybit", normalize_environment(environment))
             )
             return client.test_connection()
             
         elif broker_id == "bingx":
             from app.exchange.bingx.client import BingXClient
-            testnet = (environment == "demo" or environment == "testnet")
+            from shared_lib.broker.environment import normalize_environment, resolve_base_url
             client = BingXClient(
                 api_key=credentials.get("api_key"),
                 api_secret=credentials.get("api_secret"),
-                testnet=testnet
+                base_url=resolve_base_url("bingx", normalize_environment(environment))
             )
             return client.test_connection()
         
