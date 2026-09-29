@@ -195,7 +195,7 @@ def chronology_for(series, cfg: ReplayConfig) -> ChronologyPlan:
 def run_replay(series: Mapping[str, Mapping[str, Sequence[Any]]], meta: Mapping[str, Mapping[str, str]],
                cfg: ReplayConfig, *, data_sources: Sequence[str], phase: str = "PRE_HOLDOUT",
                max_decisions: Optional[int] = None, library_rows: Optional[Sequence[Any]] = None,
-               library_template: Any = None) -> ReplayResult:
+               library_template: Any = None, library_sink: Any = None) -> ReplayResult:
     """``phase`` = PRE_HOLDOUT (walk-forward folds; holdout candles never
     loaded) or HOLDOUT (library from ALL pre-holdout rows, evaluated on the
     reserved window). ``max_decisions`` bounds a determinism re-check."""
@@ -240,6 +240,9 @@ def run_replay(series: Mapping[str, Mapping[str, Sequence[Any]]], meta: Mapping[
             snapshot_limit=cfg.snapshot_limit, venue=cfg.venue, source_name=cfg.source_name),
             source_info={"data_sources": list(data_sources)})
         template, library_rows = build.library, build.library.rows
+        if library_sink is not None:
+            # the canonical pre-holdout library is available as soon as it exists (before the fold replay)
+            library_sink(build)
     elif library_template is None:
         raise ValueError("reused library rows require the library template they were built with")
     else:

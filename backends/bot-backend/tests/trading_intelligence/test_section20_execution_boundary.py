@@ -373,7 +373,7 @@ def test_unvalidated_adapter_fails_closed(h):
 
 def test_no_binance_semantics_in_cati_contracts():
     for rel in ("contracts/execution.py", "contracts/position.py", "execution/adapter.py", "execution/boundary.py"):
-        src = (BACKEND / "app" / "trading_intelligence" / rel).read_text()
+        src = (BACKEND / "app" / "trading_intelligence" / rel).read_text(encoding="utf-8")
         tree = ast.parse(src)
         strings = {n.value for n in ast.walk(tree) if isinstance(n, ast.Constant) and isinstance(n.value, str)}
         assert not {"BUY", "SELL", "clientOrderId", "reduceOnly", "USDT"} & strings, rel

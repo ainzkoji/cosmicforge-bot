@@ -515,5 +515,5 @@ def test_evidence_schema_is_canonical_and_idempotent(tmp_path):
 
     with pytest.raises(TradePlanSchemaMissing):
         TradePlanEvidenceStore(_Bare(str(tmp_path / "bare.db")))
-    src = (BACKEND / "app" / "trading_intelligence" / "trade_plan" / "evidence_store.py").read_text()
+    src = (BACKEND / "app" / "trading_intelligence" / "trade_plan" / "evidence_store.py").read_text(encoding="utf-8")
     assert "CREATE TABLE" not in src.upper()  # no runtime DDL

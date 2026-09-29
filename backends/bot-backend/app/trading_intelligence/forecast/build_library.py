@@ -191,8 +191,85 @@ def _freeze_decision_point(
     return snapshot, market_state, regime, tuple(candidates)
 
 
+def _resolve_workers(workers: Optional[int], jobs: int) -> int:
+    if workers is None:
+        import os
+
+        workers = int(os.environ.get("CATI_BUILD_WORKERS", "1") or 1)
+    return max(1, min(int(workers), jobs))
+
+
+def _build_symbol(job) -> Dict[str, Any]:
+    """The per-symbol body of ``run_build`` (top level so a spawned worker can run it)."""
+    symbol, sym_series, sym_meta, cfg, cost_model, cost_model_version = job
+    regime_policy = REGIME_POLICIES[cfg.regime_policy_name]()
+    setup_policies = SETUP_POLICIES[cfg.setup_policy_name]()
+    out: Dict[str, Any] = {"symbol": symbol, "missing_timeframe": False, "rows": [], "counts": Counter(),
+                           "by_family": Counter(), "by_side": Counter(), "by_regime": Counter(),
+                           "quality": Counter(), "skipped": Counter(), "first_decision": None, "last_decision": None}
+    if cfg.timeframe not in sym_series:
+        out["missing_timeframe"] = True
+        return out
+    counts, skipped, rows_out = out["counts"], out["skipped"], out["rows"]
+    primary_rows = sym_series[cfg.timeframe]
+    q = assess_quality(primary_rows, symbol=symbol, timeframe=cfg.timeframe)
+    out["quality_summary"] = {
+        "rows": q.rows, "missing_bars": q.missing_bars, "completeness": q.completeness,
+        "missing_windows": [list(w) for w in q.missing_windows[:20]], "missing_window_count": len(q.missing_windows),
+    }
+    clock = HistoricalClock(int(primary_rows[0][6]) - 1)
+    provider = HistoricalMarketDataProvider({symbol: dict(sym_series)}, clock, source=cfg.source_name,
+                                            source_environment="HISTORICAL")
+    group = static_group_for(symbol)
+    for t in provider.step(symbol, cfg.timeframe, start_ms=cfg.start_ms, end_ms=cfg.end_ms):
+        counts["decision_points"] += 1
+        out["first_decision"] = t if out["first_decision"] is None else out["first_decision"]
+        out["last_decision"] = t
+        frozen = _freeze_decision_point(provider, symbol, cfg.timeframe, cfg, sym_meta, regime_policy, setup_policies)
+        if frozen is None:
+            skipped["no_snapshot"] += 1
+            continue
+        _snapshot, market_state, regime, candidates = frozen
+        if not market_state.is_usable:
+            skipped["market_state_unusable"] += 1
+            continue
+        # ---------------- FREEZE LINE: candidates are immutable from here ----------------
+        for candidate in candidates:
+            counts["candidates"] += 1
+            if len(future_rows(primary_rows, candidate.decision_time, cfg.label_horizon_bars)) < cfg.label_horizon_bars:
+                skipped[CENSORED_FUTURE_HORIZON] += 1
+                continue
+            label = label_candidate(
+                candidate, primary_rows, cost_model=cost_model, horizon_bars=cfg.label_horizon_bars,
+                cost_model_version=cost_model_version,
+            )
+            if label.label_quality != LabelQuality.VALID.value:
+                skipped[f"label_{label.label_quality.lower()}"] += 1
+                continue
+            dims = derive_cohort_dimensions(
+                setup_family=candidate.setup_family, side=candidate.side, market_state=market_state,
+                regime_distribution=regime, instrument_group=group,
+            )
+            rows_out.append(LibraryRow(
+                label=label, cohort_dimensions=dims,
+                continuous_features={
+                    "room_to_target_R": float(candidate.room_to_target_R or 0.0),
+                    "initial_risk_fraction": float(candidate.initial_structural_risk / candidate.trigger_reference),
+                },
+            ))
+            counts["labeled"] += 1
+            out["by_family"][candidate.setup_family] += 1
+            out["by_side"][candidate.side] += 1
+            out["by_regime"][regime.dominant_regime] += 1
+            out["quality"][label.label_quality] += 1
+    return out
+
+
 def run_build(series: Mapping[str, Mapping[str, Sequence[Any]]], meta: Mapping[str, Mapping[str, str]],
-              cfg: BuildConfig, *, source_info: Optional[Mapping[str, Any]] = None) -> BuildResult:
+              cfg: BuildConfig, *, source_info: Optional[Mapping[str, Any]] = None,
+              workers: Optional[int] = None) -> BuildResult:
+    """``workers``: per-symbol process parallelism (default ``CATI_BUILD_WORKERS`` or 1). Execution detail only:
+    it is not part of ``BuildConfig`` and never changes the rows, counts or library identity."""
     cost_model = COST_MODELS.get(cfg.cost_model_name)
     if cost_model is None:
         if cfg.cost_model_name == "zero_gross_only" and cfg.allow_gross_only:
@@ -219,61 +296,31 @@ def run_build(series: Mapping[str, Mapping[str, Sequence[Any]]], meta: Mapping[s
     per_symbol: Dict[str, Any] = {}
     first_decision = last_decision = None
 
-    for symbol in sorted(series):
-        if cfg.timeframe not in series[symbol]:
+    # One independent pass per symbol (own provider/clock); results are merged in sorted-symbol order, so any
+    # worker count reproduces the sequential rows, counts and identity exactly.
+    jobs = [(symbol, dict(series[symbol]), dict(meta.get(symbol, {})), cfg, cost_model, cost_model_version)
+            for symbol in sorted(series)]
+    n = _resolve_workers(workers, len(jobs))
+    if n <= 1:
+        parts = [_build_symbol(job) for job in jobs]
+    else:
+        import multiprocessing as mp
+        from concurrent.futures import ProcessPoolExecutor
+
+        with ProcessPoolExecutor(max_workers=n, mp_context=mp.get_context("spawn")) as pool:
+            parts = list(pool.map(_build_symbol, jobs))
+    for part in parts:
+        if part["missing_timeframe"]:
             skipped["symbol_missing_timeframe"] += 1
             continue
-        primary_rows = series[symbol][cfg.timeframe]
-        q = assess_quality(primary_rows, symbol=symbol, timeframe=cfg.timeframe)
-        per_symbol[symbol] = {
-            "rows": q.rows, "missing_bars": q.missing_bars, "completeness": q.completeness,
-            "missing_windows": [list(w) for w in q.missing_windows[:20]], "missing_window_count": len(q.missing_windows),
-        }
-        clock = HistoricalClock(int(primary_rows[0][6]) - 1)
-        provider = HistoricalMarketDataProvider({symbol: dict(series[symbol])}, clock, source=cfg.source_name, source_environment="HISTORICAL")
-        sym_meta = meta.get(symbol, {})
-        group = static_group_for(symbol)
-        for t in provider.step(symbol, cfg.timeframe, start_ms=cfg.start_ms, end_ms=cfg.end_ms):
-            counts["decision_points"] += 1
-            first_decision = t if first_decision is None else first_decision
-            last_decision = t
-            frozen = _freeze_decision_point(provider, symbol, cfg.timeframe, cfg, sym_meta, regime_policy, setup_policies)
-            if frozen is None:
-                skipped["no_snapshot"] += 1
-                continue
-            _snapshot, market_state, regime, candidates = frozen
-            if not market_state.is_usable:
-                skipped["market_state_unusable"] += 1
-                continue
-            # ---------------- FREEZE LINE: candidates are immutable from here ----------------
-            for candidate in candidates:
-                counts["candidates"] += 1
-                if len(future_rows(primary_rows, candidate.decision_time, cfg.label_horizon_bars)) < cfg.label_horizon_bars:
-                    skipped[CENSORED_FUTURE_HORIZON] += 1
-                    continue
-                label = label_candidate(
-                    candidate, primary_rows, cost_model=cost_model, horizon_bars=cfg.label_horizon_bars,
-                    cost_model_version=cost_model_version,
-                )
-                if label.label_quality != LabelQuality.VALID.value:
-                    skipped[f"label_{label.label_quality.lower()}"] += 1
-                    continue
-                dims = derive_cohort_dimensions(
-                    setup_family=candidate.setup_family, side=candidate.side, market_state=market_state,
-                    regime_distribution=regime, instrument_group=group,
-                )
-                rows_out.append(LibraryRow(
-                    label=label, cohort_dimensions=dims,
-                    continuous_features={
-                        "room_to_target_R": float(candidate.room_to_target_R or 0.0),
-                        "initial_risk_fraction": float(candidate.initial_structural_risk / candidate.trigger_reference),
-                    },
-                ))
-                counts["labeled"] += 1
-                by_family[candidate.setup_family] += 1
-                by_side[candidate.side] += 1
-                by_regime[regime.dominant_regime] += 1
-                quality[label.label_quality] += 1
+        per_symbol[part["symbol"]] = part["quality_summary"]
+        rows_out.extend(part["rows"])
+        for acc, key in ((counts, "counts"), (by_family, "by_family"), (by_side, "by_side"),
+                         (by_regime, "by_regime"), (quality, "quality"), (skipped, "skipped")):
+            acc.update(part[key])
+        if part["first_decision"] is not None:
+            first_decision = part["first_decision"] if first_decision is None else first_decision
+            last_decision = part["last_decision"]
 
     versions = {fam: spec.setup_version for fam, spec in SPECIALIST_REGISTRY.items()}
     library = HistoricalOutcomeLibrary.build(
@@ -311,10 +358,55 @@ def run_build(series: Mapping[str, Mapping[str, Sequence[Any]]], meta: Mapping[s
     return BuildResult(library=library, provenance=provenance, skipped=dict(skipped))
 
 
-def build_and_write(series, meta, cfg: BuildConfig, output_dir: str, *, source_info=None) -> Tuple[Path, BuildResult]:
-    result = run_build(series, meta, cfg, source_info=source_info)
-    path = write_library_artifact(result.library, output_dir, provenance=result.provenance)
+def build_and_write(series, meta, cfg: BuildConfig, output_dir: str, *, source_info=None,
+                    governance: Optional[Mapping[str, Any]] = None, workers: Optional[int] = None
+                    ) -> Tuple[Path, BuildResult]:
+    """``governance``: the frozen dataset / universe / holdout / code identity this build is pinned to. It is
+    recorded in the (hashed) manifest, so a library built from other data or code is a different artifact."""
+    result = run_build(series, meta, cfg, source_info=source_info, workers=workers)
+    provenance = dict(result.provenance)
+    if governance:
+        provenance["governance"] = dict(governance)
+    path = write_library_artifact(result.library, output_dir, provenance=provenance)
     return path, result
+
+
+def governance_pins(*, universe_manifest: Optional[str], dataset_manifest: Optional[str],
+                    holdout_start_ms: Optional[int], cfg: BuildConfig) -> Dict[str, Any]:
+    """Verify the frozen inputs a governed (runtime) library is pinned to. Raises ``BuildError``."""
+    pins: Dict[str, Any] = {}
+    if universe_manifest:
+        from app.market_data.universe import load_frozen_universe
+
+        u = load_frozen_universe(universe_manifest)
+        if tuple(sorted(cfg.symbols)) != tuple(sorted(u["selected_symbols"])):
+            raise BuildError("symbols differ from the frozen universe membership")
+        if not (u["window_start_ms"] <= cfg.start_ms and cfg.end_ms < u["window_end_ms"]):
+            raise BuildError("build range lies outside the frozen universe window")
+        pins.update(universe_id=u["universe_id"], universe_hash=u["universe_hash"])
+    if dataset_manifest:
+        from app.market_data.universe import verify_dataset_payload
+
+        d = json.loads(Path(dataset_manifest).read_text(encoding="utf-8"))
+        try:
+            pins["dataset_manifest_hash"] = verify_dataset_payload(d)
+        except Exception as exc:
+            raise BuildError(f"dataset manifest refused: {exc}") from exc
+        if pins.get("universe_hash") and d.get("universe_hash") != pins["universe_hash"]:
+            raise BuildError("dataset manifest belongs to another universe")
+    if holdout_start_ms is not None:
+        # the labeler reads up to (label_horizon + 1) bars past ``end``: all of it must precede the holdout
+        last_read = cfg.end_ms + (cfg.label_horizon_bars + 1) * TIMEFRAME_MS[cfg.timeframe]
+        if last_read >= holdout_start_ms:
+            raise BuildError(f"HOLDOUT_OVERLAP: label reads reach {last_read} >= holdout start {holdout_start_ms}")
+        pins.update(holdout_start_ms=int(holdout_start_ms), last_candle_read_bound_ms=last_read)
+    if not pins:
+        return pins  # an ungoverned (research / smoke) build carries no governance block
+    from app.replay.identity import code_revision
+
+    commit, _branch, dirty = code_revision()
+    pins.update(code_commit=commit, source_tree_dirty=dirty)
+    return pins
 
 
 def _parse_time(text: str) -> int:
@@ -327,7 +419,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     ap = argparse.ArgumentParser(description="Build an immutable CATI HistoricalOutcomeLibrary artifact")
     ap.add_argument("--db", required=True, help="sqlite DB holding the historical_candles table (read-only)")
     ap.add_argument("--historical-source", default="db", choices=["db"])
-    ap.add_argument("--symbols", required=True, help="comma separated venue symbols")
+    ap.add_argument("--symbols", default=None, help="comma separated venue symbols (or --universe-manifest)")
     ap.add_argument("--timeframe", default="15m")
     ap.add_argument("--higher-timeframe", default=None)
     ap.add_argument("--start", required=True, help="YYYY-MM-DD (UTC) or epoch ms")
@@ -342,18 +434,33 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     ap.add_argument("--market-type", default="crypto")
     ap.add_argument("--data-source", default=None)
     ap.add_argument("--snapshot-limit", type=int, default=250)
+    ap.add_argument("--universe-manifest", default=None, help="frozen universe manifest: its members are the symbols")
+    ap.add_argument("--dataset-manifest", default=None, help="frozen (lineage v2) dataset manifest the build is pinned to")
+    ap.add_argument("--holdout-start-ms", type=int, default=None,
+                    help="refuse unless every candle the build reads (labels included) precedes this holdout start")
+    ap.add_argument("--workers", type=int, default=None, help="per-symbol processes (identity-neutral)")
     ap.add_argument("--declare-source-kind", default=None,
                     help="optional DOWNGRADE of the source kind derived from data_source (never an upgrade)")
     args = ap.parse_args(argv)
+    if args.universe_manifest:
+        from app.market_data.universe import load_frozen_universe
+
+        symbols = tuple(load_frozen_universe(args.universe_manifest)["selected_symbols"])
+    elif args.symbols:
+        symbols = tuple(s.strip().upper() for s in args.symbols.split(",") if s.strip())
+    else:
+        ap.error("--symbols or --universe-manifest is required")
 
     cfg = BuildConfig(
-        symbols=tuple(s.strip().upper() for s in args.symbols.split(",") if s.strip()), timeframe=args.timeframe,
+        symbols=symbols, timeframe=args.timeframe,
         start_ms=_parse_time(args.start), end_ms=_parse_time(args.end), label_horizon_bars=args.label_horizon_bars,
         higher_timeframe=args.higher_timeframe, snapshot_limit=args.snapshot_limit, venue=args.venue,
         cost_model_name=args.cost_model, allow_gross_only=args.allow_gross_only,
         setup_policy_name=args.setup_policy, regime_policy_name=args.regime_policy,
     )
     try:
+        governance = governance_pins(universe_manifest=args.universe_manifest, dataset_manifest=args.dataset_manifest,
+                                     holdout_start_ms=args.holdout_start_ms, cfg=cfg)
         series, meta, source_info = load_series_from_db(
             args.db, cfg.symbols, cfg.timeframe, cfg.start_ms, cfg.end_ms, label_horizon_bars=cfg.label_horizon_bars,
             warmup_bars=cfg.snapshot_limit, higher_timeframe=cfg.higher_timeframe, market_type=args.market_type,
@@ -361,6 +468,11 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         )
         if not series:
             raise BuildError("no historical candles found for the requested symbols/range")
+        if args.universe_manifest and len(series) != len(cfg.symbols):
+            raise BuildError(f"FROZEN_UNIVERSE_INCOMPLETE_{len(series)}_OF_{len(cfg.symbols)}")
+        if args.holdout_start_ms is not None and any(
+                int(r[0]) >= args.holdout_start_ms for tfs in series.values() for rows in tfs.values() for r in rows):
+            raise BuildError("HOLDOUT_OVERLAP: a loaded candle opens at or after the holdout start")
         derived = classify_data_sources(source_info.get("data_sources", ()))
         try:
             kind = resolve_source_kind(args.declare_source_kind, derived)
@@ -372,7 +484,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             cfg, source_kind=kind, source_provider=",".join(source_info.get("data_sources", ())) or "unknown",
             source_dataset_id=f"sqlite:{Path(args.db).name}:historical_candles:{args.market_type}", market_type=args.market_type,
         )
-        path, result = build_and_write(series, meta, cfg, args.output, source_info=source_info)
+        path, result = build_and_write(series, meta, cfg, args.output, source_info=source_info,
+                                       governance=governance or None, workers=args.workers)
     except BuildError as exc:
         print(f"BUILD FAILED: {exc}", file=sys.stderr)
         return 2

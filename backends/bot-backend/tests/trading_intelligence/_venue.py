@@ -14,7 +14,7 @@ from app.trading_intelligence.venue.binance import BinanceUsdmEconomicAdapter
 from app.trading_intelligence.venue.contract_suite import ContractCase
 from app.trading_intelligence.venue.reference_adapters import DatedFuturesEconomicAdapter, ForexEconomicAdapter
 
-FIXTURE = json.loads((Path(__file__).parent / "fixtures" / "binance_demo_recorded.json").read_text())
+FIXTURE = json.loads((Path(__file__).parent / "fixtures" / "binance_demo_recorded.json").read_text(encoding="utf-8"))
 FAKE_SECRETS = ("fake-secret-value-9f8e7d", "fake-api-key-value-1a2b3c")
 
 #: a Wednesday 10:00 New York (14:00 UTC) -- FX open, far from rollover

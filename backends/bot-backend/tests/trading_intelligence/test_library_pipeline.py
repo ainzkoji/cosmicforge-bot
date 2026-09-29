@@ -213,8 +213,8 @@ def test_row_manifest_and_library_identity_are_deterministic(built, hist_db, tmp
     assert [x.label.label_id for x in r1.library.rows] == [x.label.label_id for x in r2.library.rows]
     assert r1.library.library_hash == r2.library.library_hash
     assert path2.name == built["path"].name
-    m1 = json.loads((built["path"] / MANIFEST_FILE).read_text())
-    m2 = json.loads((path2 / MANIFEST_FILE).read_text())
+    m1 = json.loads((built["path"] / MANIFEST_FILE).read_text(encoding="utf-8"))
+    m2 = json.loads((path2 / MANIFEST_FILE).read_text(encoding="utf-8"))
     assert m1["manifest_hash"] == m2["manifest_hash"]
 
 
@@ -256,7 +256,7 @@ def test_loader_refuses_expected_hash_mismatch(built):
 
 def test_loader_refuses_tampered_rows(built, tmp_path):
     d = _copy(built, tmp_path)
-    text = (d / ROWS_FILE).read_text()
+    text = (d / ROWS_FILE).read_text(encoding="utf-8")
     (d / ROWS_FILE).write_text(text.replace('"net_profitable":true', '"net_profitable":false', 1), newline="\n")
     with pytest.raises(LibraryArtifactError, match="rows hash mismatch"):
         load_library_artifact(d, mode="TEST")
@@ -264,7 +264,7 @@ def test_loader_refuses_tampered_rows(built, tmp_path):
 
 def test_loader_refuses_tampered_manifest(built, tmp_path):
     d = _copy(built, tmp_path)
-    m = json.loads((d / MANIFEST_FILE).read_text())
+    m = json.loads((d / MANIFEST_FILE).read_text(encoding="utf-8"))
     m["labeled_count"] += 1
     (d / MANIFEST_FILE).write_text(json.dumps(m))
     with pytest.raises(LibraryArtifactError, match="manifest hash mismatch"):
@@ -273,7 +273,7 @@ def test_loader_refuses_tampered_manifest(built, tmp_path):
 
 def test_loader_refuses_incompatible_schema_even_with_valid_manifest_hash(built, tmp_path):
     d = _copy(built, tmp_path)
-    m = json.loads((d / MANIFEST_FILE).read_text())
+    m = json.loads((d / MANIFEST_FILE).read_text(encoding="utf-8"))
     m["label_policy_version"] = "999.0.0"
     m["manifest_hash"] = manifest_hash_of(m)
     (d / MANIFEST_FILE).write_text(json.dumps(m))
@@ -283,7 +283,7 @@ def test_loader_refuses_incompatible_schema_even_with_valid_manifest_hash(built,
 
 def test_loader_refuses_missing_required_field(built, tmp_path):
     d = _copy(built, tmp_path)
-    m = json.loads((d / MANIFEST_FILE).read_text())
+    m = json.loads((d / MANIFEST_FILE).read_text(encoding="utf-8"))
     del m["cohort_schema_version"]
     (d / MANIFEST_FILE).write_text(json.dumps(m))
     with pytest.raises(LibraryArtifactError, match="missing required fields"):

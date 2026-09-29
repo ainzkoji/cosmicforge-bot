@@ -72,7 +72,8 @@ def certify(series: Mapping[str, Mapping[str, Sequence[Any]]], meta: Mapping[str
             research_db: Any, artifact_dir: Path, policy: Optional[CertificationPolicy] = None,
             runtime_db: Any = None, open_holdout: bool = False, calendar_source_version: str = "UNAVAILABLE",
             freeze: Optional[PolicyFreezeManifest] = None, hypothesis: str = "frozen CATI deterministic baseline",
-            now_ms: Optional[int] = None) -> CertificationReport:
+            now_ms: Optional[int] = None, library_output: Optional[Path] = None,
+            library_governance: Optional[Mapping[str, Any]] = None) -> CertificationReport:
     started = int(now_ms or time.time() * 1000)
     policy = policy or canonical_certification_policy()
     from app.replay.cost_model import BINANCE_FUTURES_STANDARD
@@ -92,11 +93,18 @@ def certify(series: Mapping[str, Mapping[str, Sequence[Any]]], meta: Mapping[str
                                   end_ms=plan.holdout.end_ms, now_ms=started)
 
     # ---- one canonical pre-holdout replay (cached by content hash) ----------------------
+    sink = _library_sink(library_output, {**dict(library_governance or {}), "certification_dataset_hash":
+                                          manifest.dataset_hash, "holdout_id": holdout_id,
+                                          "holdout_start_ms": plan.holdout.start_ms,
+                                          "policy_freeze_hash": freeze.freeze_hash,
+                                          "certification_policy_hash": policy.policy_hash,
+                                          "code_commit": freeze.source_commit,
+                                          "source_tree_dirty": freeze.source_tree_dirty}) if library_output else None
     key = cache_key(manifest.manifest_hash, freeze.freeze_hash, cfg, "PRE_HOLDOUT")
     cached = load_replay(Path(artifact_dir), key)
     library_rows = template = None
     if cached is None:
-        result = run_replay(series, meta, cfg, data_sources=data_sources, phase="PRE_HOLDOUT")
+        result = run_replay(series, meta, cfg, data_sources=data_sources, phase="PRE_HOLDOUT", library_sink=sink)
         save_replay(result, Path(artifact_dir), key)
         records, integrity, counts, library_info, replay_hash = (result.records, result.integrity, result.counts,
                                                                  result.library, result.replay_hash)
@@ -110,7 +118,7 @@ def certify(series: Mapping[str, Mapping[str, Sequence[Any]]], meta: Mapping[str
     # ---- bounded determinism re-check ---------------------------------------------------
     check = run_replay(series, meta, cfg, data_sources=data_sources, phase="PRE_HOLDOUT",
                        max_decisions=DETERMINISM_SAMPLE_DECISIONS, library_rows=library_rows,
-                       library_template=template)
+                       library_template=template, library_sink=sink)
     if library_rows is None:
         library_rows, template = check.library_rows, check.library_template
     if check.records:
@@ -219,6 +227,21 @@ def certify(series: Mapping[str, Mapping[str, Sequence[Any]]], meta: Mapping[str
                 "cost_provenance": COST_PROVENANCE, "library_folds": library_info.get("folds"),
                 "holdout_id": holdout_id, "counts": counts, "config": cfg.to_dict()},
         generated_at=datetime.now(timezone.utc).isoformat(), operational={"reused_cached_replay": reused})
+
+
+def _library_sink(output: Path, governance: Mapping[str, Any]):
+    """Persist the canonical PRE-HOLDOUT library (every pre-holdout row; the library a governed holdout replay
+    uses) as an immutable, identity-pinned artifact -- the runtime outcome library, at certification parity.
+    Built only from the holdout-truncated series; writing it opens and authorizes nothing."""
+    from app.trading_intelligence.forecast.artifact import write_library_artifact
+
+    def sink(build) -> None:
+        provenance = {**dict(build.provenance), "governance": {**dict(governance),
+                                                               "library_role": "CERTIFICATION_PRE_HOLDOUT_CANONICAL"}}
+        path = write_library_artifact(build.library, output, provenance=provenance)
+        print(f"[CERTIFICATION] canonical pre-holdout library artifact: {path}", flush=True)
+
+    return sink
 
 
 def _experiment(manifest, freeze, hypothesis, stage_names, *, results, status, artifact_hashes, reasons, created_at):

@@ -133,7 +133,7 @@ def test_invalid_credentials_and_unknown_transfer_and_missing_fx_reference_fail_
 def test_existing_positions_keep_protection_when_new_entries_are_refused():
     """The capability gate only refuses NEW bots/entries: the runner's quarantine
     path keeps the bot row active so managed positions stay reconciled."""
-    src = (ROOT / "app/runner/multi_runner.py").read_text()
+    src = (ROOT / "app/runner/multi_runner.py").read_text(encoding="utf-8")
     gate = src[src.index("A'. Execution-capability gate"):src.index("# Build credentials dict")]
     assert "quarantine_bot" in gate and "status = 'stopped'" not in gate and "close_position" not in gate
 
@@ -152,7 +152,7 @@ def test_cati_execution_remains_disabled_and_phases_do_not_auto_advance(monkeypa
     assert not act.active_execution(None, environment="DEMO").active
     monkeypatch.setenv("CATI_ACTIVE_EXECUTION_ENABLED", "false")
     assert not is_active_execution_enabled()
-    new_code = "\n".join(p.read_text() for p in [
+    new_code = "\n".join(p.read_text(encoding="utf-8") for p in [
         *(ROOT / "app/transfers").glob("*.py"), *(ROOT / "app/market_data").glob("*.py"),
         *(ROOT / "app/trading_intelligence/capital").glob("*.py"), ROOT / "app/trading_intelligence/fx/context.py",
         ROOT / "app/trading_intelligence/economics/fx_perp.py", ROOT / "app/ops/multi_asset_metrics.py",

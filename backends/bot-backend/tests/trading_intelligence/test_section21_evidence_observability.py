@@ -157,7 +157,7 @@ def test_migration_idempotent_and_no_runtime_ddl(tmp_path):
     assert first == second and ("table", "cati_exit_decisions") in first
     for pkg in NEW_MODULES:
         for path in pkg.glob("*.py"):
-            assert "CREATE TABLE" not in path.read_text().upper(), path
+            assert "CREATE TABLE" not in path.read_text(encoding="utf-8").upper(), path
 
 
 def test_missing_schema_fails_closed(tmp_path):
@@ -377,7 +377,7 @@ def test_evidence_modules_store_only_opaque_ids():
             assert not any(b == f or f.endswith("_" + b) for b in banned), (cls.__name__, f)
     for pkg in NEW_MODULES:
         for path in pkg.glob("*.py"):
-            tree = ast.parse(path.read_text())
+            tree = ast.parse(path.read_text(encoding="utf-8"))
             for node in ast.walk(tree):
                 if isinstance(node, ast.Attribute):
                     assert node.attr not in ("api_key", "api_secret", "secret_key"), (path.name, node.attr)

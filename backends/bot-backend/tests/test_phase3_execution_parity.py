@@ -44,7 +44,7 @@ def test_executor_contract_covers_what_the_executor_calls():
     root = Path(__file__).resolve().parents[1] / "app"
     called = set()
     for rel in ("execution/executor.py", "execution/fill_resolution.py", "execution/position_reconciliation.py"):
-        called |= set(re.findall(r"self\.client\.([a-z_]+)\(", (root / rel).read_text()))
+        called |= set(re.findall(r"self\.client\.([a-z_]+)\(", (root / rel).read_text(encoding="utf-8")))
     called -= {"get_klines", "get_position_stop", "get_ticker", "_signed_get", "close_position"}  # hasattr-guarded fallbacks
     assert called <= set(EXECUTOR_REQUIRED), sorted(called - set(EXECUTOR_REQUIRED))
 

@@ -164,7 +164,9 @@ def cmd_run(args) -> int:
                      dataset_identity=(f"historical_candles:{Path(args.db).name}"
                                        + (f":universe:{universe['universe_hash']}" if universe else "")),
                      research_db=SqliteResearchStore(args.research_db), artifact_dir=Path(args.artifacts),
-                     runtime_db=runtime, open_holdout=args.open_holdout)
+                     runtime_db=runtime, open_holdout=args.open_holdout,
+                     library_output=Path(args.library_output) if args.library_output else None,
+                     library_governance=_library_governance(args, universe))
     jpath, mpath = report.write(Path(args.artifacts))
     wanted = [s for s in report.stages if args.stage in ("ALL", s)]
     print(json.dumps({
@@ -175,6 +177,18 @@ def cmd_run(args) -> int:
         "overall": report.overall_status, "blocking": list(report.blocking_gates),
         "artifact": str(jpath), "markdown": str(mpath), "report_hash": report.report_hash}, indent=2))
     return 0
+
+
+def _library_governance(args, universe) -> dict:
+    out = {"universe_id": universe["universe_id"], "universe_hash": universe["universe_hash"]} if universe else {}
+    if getattr(args, "dataset_manifest", None):
+        from app.market_data.universe import verify_dataset_payload
+
+        d = json.loads(Path(args.dataset_manifest).read_text(encoding="utf-8"))
+        out["dataset_manifest_hash"] = verify_dataset_payload(d)  # refuses a tampered / unfrozen manifest
+        if universe and d.get("universe_hash") != universe["universe_hash"]:
+            raise SystemExit("dataset manifest belongs to another universe")
+    return out
 
 
 def cmd_report(args) -> int:
@@ -263,6 +277,9 @@ def build_parser() -> argparse.ArgumentParser:
     run.add_argument("--research-db", default="data/research/certification.db")
     run.add_argument("--runtime-db", default=None, help="runtime evidence DB for forward demo / operational gates")
     run.add_argument("--open-holdout", action="store_true")
+    run.add_argument("--library-output", default=None,
+                     help="persist the canonical pre-holdout outcome library artifact here (runtime library)")
+    run.add_argument("--dataset-manifest", default=None, help="frozen dataset manifest the run is pinned to")
     run.set_defaults(func=cmd_run)
     rep = sub.add_parser("report")
     rep.add_argument("--artifacts", default="data/research/certification")

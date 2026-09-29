@@ -525,7 +525,7 @@ _FORBIDDEN_CALLS = {"place_order", "cancel_order", "cancel_all_orders", "close_p
 
 def test_position_intelligence_cannot_touch_orders_positions_or_protection():
     for path in sorted(POSITION_PKG.glob("*.py")):
-        tree = ast.parse(path.read_text())
+        tree = ast.parse(path.read_text(encoding="utf-8"))
         for node in ast.walk(tree):
             if isinstance(node, (ast.Import, ast.ImportFrom)):
                 mod = node.module if isinstance(node, ast.ImportFrom) else node.names[0].name

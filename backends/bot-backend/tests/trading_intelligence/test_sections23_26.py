@@ -312,7 +312,7 @@ def test_no_duplicate_alpha_authority_inside_cati():
     ti = BOT_ROOT / "app" / "trading_intelligence"
     offenders = []
     for p in ti.rglob("*.py"):
-        text = p.read_text()
+        text = p.read_text(encoding="utf-8")
         if "from app.threshold" in text or "import app.threshold" in text or "from app.strategy.master_ensemble" in text:
             offenders.append(str(p.relative_to(BOT_ROOT)))
     assert offenders == []  # no V2 confidence floor / ensemble inside CATI decision code

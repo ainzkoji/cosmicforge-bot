@@ -267,13 +267,13 @@ def test_holdout_requires_a_certifiable_freeze_and_passed_preceding_stages(pipel
 def test_certification_artifacts_hold_no_secrets(pipeline_env):
     root, _db, rep = pipeline_env
     jpath, mpath = rep.write(root / "out")
-    text = jpath.read_text() + mpath.read_text()
+    text = jpath.read_text(encoding="utf-8") + mpath.read_text(encoding="utf-8")
     for needle in ("api_key", "apiKey", "secret=", "BINANCE_API", "Bearer ", "password"):
         assert needle not in text
-    body = json.loads(jpath.read_text())
+    body = json.loads(jpath.read_text(encoding="utf-8"))
     assert body["promotion"] == {"cati_active_execution_enabled": False, "section_25_owns_promotion": True}
     for word in ("guaranteed", "is profitable", "is safe"):
-        assert word not in mpath.read_text().lower()
+        assert word not in mpath.read_text(encoding="utf-8").lower()
 
 
 # ============================== CLI ==============================
@@ -317,3 +317,26 @@ def test_cli_plan_status_and_report(tmp_path, capsys, data, pipeline_env):
     assert main(["status", "--research-db", str(root / "research.db")]) == 0
     st = json.loads(capsys.readouterr().out)
     assert st["holdout_events"] and st["experiments"] and len(st["certification_runs"]) >= 6
+
+
+def test_certification_persists_its_canonical_pre_holdout_library_pinned_and_holdout_free(tmp_path, data):
+    """The runtime outcome library IS the certification's canonical pre-holdout library (exact parity): it is
+    persisted as soon as it is built, pinned to the run's dataset / holdout / policy / code identity."""
+    from app.trading_intelligence.forecast.artifact import load_library_artifact
+
+    s, m = data
+    db = SqliteResearchStore(str(tmp_path / "research.db"))
+    rep = certify(s, m, cfg=CFG, data_sources=SYNTHETIC_SOURCES, source_provider="synthetic",
+                  dataset_identity="synthetic", research_db=db, artifact_dir=tmp_path / "art",
+                  library_output=tmp_path / "libs", library_governance={"dataset_manifest_hash": "d" * 64})
+    (art,) = [p for p in (tmp_path / "libs").iterdir() if p.is_dir()]
+    lib, manifest = load_library_artifact(art, mode="TEST")
+    gov = manifest["governance"]
+    assert gov["library_role"] == "CERTIFICATION_PRE_HOLDOUT_CANONICAL" and gov["dataset_manifest_hash"] == "d" * 64
+    assert gov["holdout_id"] == rep.replay["holdout_id"] and gov["policy_freeze_hash"] == rep.policy_freeze["freeze_hash"]
+    holdout_start = rep.replay["chronology"]["holdout"]["start_ms"]
+    horizon_ms = CFG.label_horizon_bars * 900_000
+    assert lib.rows and all(r.label.decision_time + horizon_ms < holdout_start for r in lib.rows)
+    assert HoldoutRegistry(db).status(gov["holdout_id"])["status"] == "RESERVED"  # persisting opened nothing
+    with pytest.raises(Exception):  # synthetic data can never become a RUNTIME library
+        load_library_artifact(art)

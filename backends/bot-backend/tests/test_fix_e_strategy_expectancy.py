@@ -573,7 +573,7 @@ class TestAnalysisScriptIsolation(unittest.TestCase):
         p = Path(script_path)
         if not p.exists():
             self.skipTest("analyze_strategy_expectancy.py not found")
-        source = p.read_text()
+        source = p.read_text(encoding="utf-8")
         for forbidden in ["BinanceClient", "BinanceFutures", "exchange_client", "requests.get"]:
             self.assertNotIn(
                 forbidden, source,
