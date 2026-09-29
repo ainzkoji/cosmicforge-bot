@@ -1,0 +1,23 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "bot-backend",
+      "runtimeExecutable": "powershell",
+      "runtimeArgs": ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "scripts/start_trading_runtime.ps1", "-Once"],
+      "port": 9000
+    },
+    {
+      "name": "user-backend",
+      "runtimeExecutable": "powershell",
+      "runtimeArgs": ["-NoProfile", "-Command", "Set-Location backends/user-backend; ../venv/Scripts/python.exe -X utf8 -m uvicorn app.main:app --port 8000"],
+      "port": 8000
+    },
+    {
+      "name": "user-frontend",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["--prefix", "frontends/user-frontend", "run", "dev"],
+      "port": 5173
+    }
+  ]
+}
