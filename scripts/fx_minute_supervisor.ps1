@@ -57,7 +57,8 @@ while ($true) {
         exit 3
     }
     Write-Log "run start"
-    & $python scripts\acquire_fx_reference_dataset.py --db $db --pace $Pace minute --manifest $manifest *>> $Log
+    & $python scripts\acquire_fx_reference_dataset.py --db $db --pace $Pace minute --manifest $manifest 2>&1 |
+        ForEach-Object { "$_" } | Out-File -FilePath $Log -Append -Encoding utf8  # a bare *>> writes UTF-16 in PS 5.1
     Write-Log "run exit code=$LASTEXITCODE"
     $remaining = Get-Remaining
     Write-Log "remaining=$remaining"
