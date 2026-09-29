@@ -75,11 +75,17 @@ def _get_coordinator():
 def _get_controller():
     global _controller
     if _controller is None:
-        from app.trading_intelligence.config import load_configured_library
+        from app.trading_intelligence.config import (
+            library_failure_code, library_scope, load_configured_library_with_reason,
+        )
         from app.trading_intelligence.controller.cati_controller import CATIController
 
-        library, _manifest = load_configured_library()
-        _controller = CATIController(outcome_library=library)
+        library, manifest, reason = load_configured_library_with_reason()
+        # the runtime forecasts only the asset classes the governed library was built from
+        _controller = CATIController(outcome_library=library, library_scope=library_scope(manifest),
+                                     library_unavailable_code=library_failure_code(reason))
+        logger.info("[CATI_LIBRARY] loaded=%s library_hash=%s scope=%s reason=%s", library is not None,
+                    (manifest or {}).get("library_hash"), library_scope(manifest), reason or "-")
     return _controller
 
 

@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import logging
 import time
-from typing import Any, Callable, Optional, Sequence, Union
+from typing import Any, Callable, Optional, Sequence, Tuple, Union
 
 from app.replay.cost_model import BINANCE_FUTURES_STANDARD, CostModel
 from app.trading_intelligence.contracts.economics import AdmissionPolicy, EconomicOpportunity
@@ -28,7 +28,7 @@ from app.trading_intelligence.economics.canonical import canonical_economics
 from app.trading_intelligence.economics.costs import build_cost_estimate
 from app.trading_intelligence.economics.engine import evaluate_economic_opportunity
 from app.trading_intelligence.economics.policy import default_admission_policy
-from app.trading_intelligence.forecast.engine import build_outcome_forecast
+from app.trading_intelligence.forecast.engine import build_outcome_forecast, library_unavailable_forecast
 from app.trading_intelligence.forecast.library import HistoricalOutcomeLibrary
 from app.trading_intelligence.integration.snapshot_adapter import evaluate_market_state
 from app.trading_intelligence.portfolio.groups import static_group_for
@@ -59,8 +59,15 @@ class CATIController:
         admission_policy: Optional[AdmissionPolicy] = None,
         veto_policy: Optional[VetoPolicy] = None,
         cost_model: Optional[CostModel] = None,
+        library_scope: Optional[Tuple[str, ...]] = None,
+        library_unavailable_code: Optional[str] = None,
     ) -> None:
+        """``library_scope``: asset classes the library's evidence covers (None = unrestricted, e.g. research
+        replays built on one asset class); a candidate outside it gets OUTCOME_LIBRARY_SCOPE_UNAVAILABLE.
+        ``library_unavailable_code``: why no library is loaded (identity mismatch, unsupported version, ...)."""
         self._outcome_library = outcome_library
+        self._library_scope = None if library_scope is None else tuple(str(x).upper() for x in library_scope)
+        self._library_unavailable_code = library_unavailable_code
         self._setup_policies = setup_policies if setup_policies is not None else default_policies()
         self._regime_policy = regime_policy or default_policy()
         self._admission_policy = admission_policy or default_admission_policy()
@@ -138,7 +145,13 @@ class CATIController:
             lap("VENUE_ECONOMICS")
             evaluated = []
             for candidate in candidates:
-                forecast = build_outcome_forecast(candidate, market_state, regime, self._outcome_library, instrument_group=group)
+                if self._outcome_library is None:
+                    forecast = library_unavailable_forecast(candidate, detail_code=self._library_unavailable_code)
+                elif self._library_scope is not None and str(asset_class).upper() not in self._library_scope:
+                    forecast = library_unavailable_forecast(candidate, scope=True)
+                else:
+                    forecast = build_outcome_forecast(candidate, market_state, regime, self._outcome_library,
+                                                      instrument_group=group)
                 lap("FORECAST")
                 if observation is not None:
                     # THE canonical CATI economics (economics/canonical.py)

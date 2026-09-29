@@ -89,6 +89,18 @@ def _unavailable_forecast(candidate: SetupCandidate, status: str, reason_codes: 
     )
 
 
+def library_unavailable_forecast(candidate: SetupCandidate, *, scope: bool = False,
+                                 detail_code: Optional[str] = None) -> OutcomeForecast:
+    """Fail-closed forecast when no usable library applies: never a neutral probability, never usable."""
+    if scope:
+        return _unavailable_forecast(candidate, ForecastStatus.OUTCOME_LIBRARY_SCOPE_UNAVAILABLE.value,
+                                     (ForecastReasonCode.OUTCOME_LIBRARY_SCOPE_UNAVAILABLE.value,))
+    codes = (ForecastReasonCode.OUTCOME_LIBRARY_UNAVAILABLE.value,)
+    if detail_code and detail_code not in codes:
+        codes += (detail_code,)
+    return _unavailable_forecast(candidate, ForecastStatus.OUTCOME_LIBRARY_UNAVAILABLE.value, codes)
+
+
 def build_outcome_forecast(
     candidate: SetupCandidate,
     market_state: Any,

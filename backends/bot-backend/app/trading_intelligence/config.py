@@ -49,6 +49,36 @@ class CATIConfig:
         return cls(outcome_library_path=path, outcome_library_expected_hash=expected, library_mode=mode)
 
 
+def library_failure_code(reason: Optional[str]) -> Optional[str]:
+    """The specific ForecastReasonCode behind a library that could not be used (None when it loaded)."""
+    if not reason:
+        return None
+    r = str(reason)
+    low = r.lower()
+    if r in (LIBRARY_NOT_CONFIGURED, LIBRARY_EXPECTED_HASH_REQUIRED, LIBRARY_MODE_INVALID):
+        return "OUTCOME_LIBRARY_NOT_CONFIGURED"
+    if "hash" in low and ("mismatch" in low or "does not match" in low):
+        return "OUTCOME_LIBRARY_IDENTITY_MISMATCH"
+    if "incompatible" in low:
+        return "OUTCOME_LIBRARY_VERSION_UNSUPPORTED"
+    if "SOURCE_KIND_NOT_TRUSTED" in r:
+        return "OUTCOME_LIBRARY_SOURCE_NOT_TRUSTED"
+    return "OUTCOME_LIBRARY_UNAVAILABLE"
+
+
+_MARKET_TYPE_TO_ASSET_CLASS = {"crypto": "CRYPTO", "forex": "FX", "fx": "FX", "futures": "FUTURES",
+                               "equity": "EQUITY"}
+
+
+def library_scope(manifest: Optional[dict]) -> Optional[Tuple[str, ...]]:
+    """The asset classes a loaded library's evidence was built from (its manifest ``market_type``).
+    A manifest that does not state it yields an EMPTY scope: such a library forecasts nothing."""
+    if manifest is None:
+        return None
+    kind = _MARKET_TYPE_TO_ASSET_CLASS.get(str(manifest.get("market_type") or "").strip().lower())
+    return (kind,) if kind else ()
+
+
 def load_configured_library_with_reason(
     config: Optional[CATIConfig] = None,
 ) -> Tuple[Optional[object], Optional[dict], Optional[str]]:
@@ -82,5 +112,5 @@ def load_configured_library(config: Optional[CATIConfig] = None) -> Tuple[Option
 __all__ = [
     "ENV_LIBRARY_PATH", "ENV_LIBRARY_EXPECTED_HASH", "ENV_LIBRARY_MODE", "CATIConfig",
     "LIBRARY_NOT_CONFIGURED", "LIBRARY_EXPECTED_HASH_REQUIRED", "LIBRARY_REFUSED", "LIBRARY_MODE_INVALID",
-    "load_configured_library", "load_configured_library_with_reason",
+    "load_configured_library", "load_configured_library_with_reason", "library_failure_code", "library_scope",
 ]
