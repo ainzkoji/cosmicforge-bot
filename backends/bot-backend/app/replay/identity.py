@@ -57,16 +57,18 @@ def code_revision() -> tuple[str | None, str | None, bool | None]:
     dirty is not.
     """
     def _git(*args: str) -> str | None:
+        """stdout (possibly EMPTY) on success; None only when git could not answer. An empty
+        ``status --porcelain`` is the answer "clean" -- it must never read as "unknown"."""
         try:
             out = subprocess.run(
                 ["git", *args], capture_output=True, text=True, timeout=10,
             )
-            return (out.stdout or "").strip() or None
         except Exception:
             return None
+        return (out.stdout or "").strip() if out.returncode == 0 else None
 
-    revision = _git("rev-parse", "HEAD")
-    branch = _git("rev-parse", "--abbrev-ref", "HEAD")
+    revision = _git("rev-parse", "HEAD") or None
+    branch = _git("rev-parse", "--abbrev-ref", "HEAD") or None
     status = _git("status", "--porcelain")
     dirty = None if status is None else bool(status)
     return revision, branch, dirty

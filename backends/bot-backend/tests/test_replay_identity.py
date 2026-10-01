@@ -130,3 +130,31 @@ def test_the_dataset_hash_is_stable_across_symbol_ordering():
          "ETHUSDT": {"15m": [[0, "1", "2", "0", "2", "1", 1, "0", 0, "0", "0", "0"]]}}
     b = {"ETHUSDT": a["ETHUSDT"], "BTCUSDT": a["BTCUSDT"]}
     assert dataset_hash(a) == dataset_hash(b)
+
+
+def test_code_revision_reports_a_clean_tree_as_clean_not_unknown(tmp_path, monkeypatch):
+    """An empty `git status --porcelain` means CLEAN (False). It used to collapse to None ("unknown"), so no
+    clean-tree certification freeze was ever certifiable."""
+    import subprocess
+
+    from app.replay.identity import code_revision
+    from app.trading_intelligence.research.certification.freeze import build_policy_freeze
+    from app.trading_intelligence.research.certification.policy import canonical_certification_policy
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    git = lambda *a: subprocess.run(["git", "-C", str(repo), *a], check=True, capture_output=True)
+    git("init", "-q")
+    git("config", "user.email", "t@t")
+    git("config", "user.name", "t")
+    (repo / "f.txt").write_text("x", encoding="utf-8")
+    git("add", "f.txt")
+    git("commit", "-q", "-m", "c")
+    monkeypatch.chdir(repo)
+    commit, _branch, dirty = code_revision()
+    assert commit and dirty is False
+    assert build_policy_freeze(certification_policy=canonical_certification_policy()).certifiable
+    (repo / "f.txt").write_text("y", encoding="utf-8")
+    assert code_revision()[2] is True
+    monkeypatch.chdir(tmp_path)  # not a repository: genuinely unknown
+    assert code_revision() == (None, None, None)
