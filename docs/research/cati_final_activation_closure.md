@@ -1,7 +1,7 @@
 # CATI final activation closure — living report
 
 Single source of truth for CATI activation status. Updated in place; every claim has evidence (commit, artifact,
-hash, count). Last update: 2026-10-01 04:50 UTC, `main@c45a8a95`.
+hash, count). Last update: 2026-10-01 04:55 UTC.
 
 **Governance today:** phase **M0**. CATI execution **BLOCKED** (`GOVERNANCE_PHASE_M0_NO_CATI_AUTHORITY`).
 Demo authority **FALSE**. Live authority **FALSE**. Crypto holdout **RESERVED, unopened** (`hold_8c0c0e484403395b79b63fdc`).
@@ -66,6 +66,28 @@ Section 22 thresholds unchanged. No holdout row has been evaluated.
 |---|---|---|
 | 2026-09-29 21:18–22:01 | Two FX writers overlapped ~43 min (a second session's supervisor woke from cooldown) | No damage: primary keys on quotes and ingest log; 0 periods logged twice; 0 FAILED. One writer since. |
 | 2026-09-30 09:10 | First crypto certification run died (`MemoryError`) writing the ~2.8M-row library | Root-caused and fixed in `c45a8a95`; relaunched. |
+
+## FX dataset — interim evidence (read-only coverage, 2026-10-01 04:51 UTC, content hash `3bf0ffe5…`)
+
+| | provider 1h | 1m (acquiring) |
+|---|---|---|
+| rows | 634,985 | 29,207,790 |
+| pairs complete | 50 / 50 | 39 / 50 |
+| missing bid/ask side, negative spread | 0, 0 | 0, 0 |
+| WEEKEND / HOLIDAY / SESSION closed gaps | 5,119 / 112 / 178 | 3,664 / 3,976 / 23,019 |
+| **UNKNOWN_GAP** | **1,909 gaps / 30,847 bars** | **265,121 gaps / 2,903,222 minutes** |
+
+Cross-rate QA: 32 relations, 0 failing (worst median rel. error 0.088%). EURCNH / EURZAR 2024-08 scale repairs remain
+validated (rel. diff 0.0033% / 0.15% vs triangular level). Derived 5m / 4h: not started; 15m: 3 pairs (preliminary).
+
+**FX freeze blocker (DATA + CODE, open).** Dukascopy daily 1m files carry all 1,440 minutes; minutes without ticks are
+zero-volume flat bars, which ingestion drops (`fx_reference.drop_flat_closed_bars`) so a closed market is a gap and
+never a fabricated price. Inside open sessions those dropped minutes are classified `UNKNOWN_GAP`
+(`gaps.classify_fx_gap`: the period is FETCHED), and the lineage-v2 freeze accepts only expected closures — so the FX
+dataset cannot freeze under the current rules (USDTRY: median 1,150 of 1,440 minutes on Tue–Thu, never ≥ 1,435;
+USDZAR median 1,430). A legitimate fix needs per-minute provider evidence (the missing minutes are exactly the file's
+zero-volume flat records), not an assumption; verification against a real file was attempted and refused by the provider
+(HTTP 503 / connection reset) and will be retried when the provider recovers. No rule has been changed.
 
 ## Known constraints (not defects)
 
