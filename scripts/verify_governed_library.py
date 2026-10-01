@@ -69,15 +69,23 @@ def verify(library_dir: Path, dataset_manifest: Path, mode: str = "RUNTIME") -> 
     last_label_end = max((r.label.decision_time + horizon_ms for r in lib.rows), default=None)
     put("7_HOLDOUT_CUTOFF", holdout is not None and last_label_end is not None and last_label_end < holdout,
         holdout_id=gov.get("holdout_id"), holdout_start_ms=holdout, last_label_end_ms=last_label_end)
+    first_hash, calibration_status = lib.library_hash, lib.calibration_status
+    del lib  # one resident copy at a time: a certification-scale library is millions of rows
+    import gc
+
+    gc.collect()
     again, _ = load_library_artifact(library_dir, mode=mode)
+    reload_hash = again.library_hash
+    del again
+    gc.collect()
     file_hash = _file_text_hash(library_dir / ROWS_FILE)
-    put("8_RELOAD_IDENTITY", again.library_hash == lib.library_hash and file_hash == manifest["rows_sha256"],
-        reload_library_hash=again.library_hash, rows_sha256=file_hash)
+    put("8_RELOAD_IDENTITY", reload_hash == first_hash and file_hash == manifest["rows_sha256"],
+        reload_library_hash=reload_hash, rows_sha256=file_hash)
     verdict = "VERIFIED" if all(c["result"] == "PASS" for c in checks.values()) else "FAILED"
     return {"verdict": verdict, "checks": checks, "library_id": manifest["library_id"],
-            "library_hash": lib.library_hash, "manifest_hash": manifest["manifest_hash"],
+            "library_hash": first_hash, "manifest_hash": manifest["manifest_hash"],
             "market_type": manifest.get("market_type"), "row_count": n, "governance": gov,
-            "calibration_status": lib.calibration_status}
+            "calibration_status": calibration_status}
 
 
 def main() -> int:
