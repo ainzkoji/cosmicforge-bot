@@ -95,14 +95,16 @@ def main() -> int:
     ap.add_argument("--write-pin", default=None)
     ap.add_argument("--mode", default="RUNTIME", choices=["RUNTIME", "TEST"], help="TEST only for synthetic fixtures")
     args = ap.parse_args()
+    library, dataset = Path(args.library).resolve(), Path(args.dataset_manifest).resolve()  # before chdir
+    pin = Path(args.write_pin).resolve() if args.write_pin else None
     os.chdir(REPO / "backends" / "bot-backend")
-    out = verify(Path(args.library).resolve(), Path(args.dataset_manifest).resolve(), args.mode)
-    if args.write_pin and out["verdict"] == "VERIFIED":
-        pin = {k: out[k] for k in ("library_id", "library_hash", "manifest_hash", "market_type", "row_count",
-                                   "governance", "calibration_status")}
-        pin["checks"] = {k: v["result"] for k, v in out["checks"].items()}
-        Path(args.write_pin).parent.mkdir(parents=True, exist_ok=True)
-        Path(args.write_pin).write_text(json.dumps(pin, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    out = verify(library, dataset, args.mode)
+    if pin is not None and out["verdict"] == "VERIFIED":
+        record = {k: out[k] for k in ("library_id", "library_hash", "manifest_hash", "market_type", "row_count",
+                                      "governance", "calibration_status")}
+        record["checks"] = {k: v["result"] for k, v in out["checks"].items()}
+        pin.parent.mkdir(parents=True, exist_ok=True)
+        pin.write_text(json.dumps(record, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     print(json.dumps(out, indent=2, sort_keys=True, default=str))
     return 0 if out["verdict"] == "VERIFIED" else 1
 
