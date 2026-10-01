@@ -70,9 +70,12 @@ class HistoricalOutcomeLibrary:
 
     @cached_property
     def rows_content_hash(self) -> str:
-        from app.trading_intelligence.forecast.artifact import row_to_dict
+        """== stable_hash(sorted(row_to_dict(r)), by label_id), streamed: a certification-scale library
+        (millions of rows) never materializes its whole JSON text."""
+        from app.trading_intelligence.forecast.artifact import canonical_row_lines
+        from app.trading_intelligence.hashing import stable_hash_of_json_list
 
-        return stable_hash(sorted((row_to_dict(r) for r in self.rows), key=lambda d: d["label"]["label_id"]))
+        return stable_hash_of_json_list(canonical_row_lines(self.rows))
 
     @property
     def library_version(self) -> str:
@@ -111,6 +114,53 @@ class HistoricalOutcomeLibrary:
         )
 
 
+class RowInterner:
+    """Shares identical immutable values across library rows (interned strings, one InstrumentKey per
+    instrument, one read-only cohort mapping per distinct cohort). Row CONTENT, equality, serialization and
+    every hash are unchanged; only the memory of a large library is (~40% less resident)."""
+
+    def __init__(self) -> None:
+        import sys
+
+        self._intern = sys.intern
+        self._dims: dict = {}
+        self._keys: dict = {}
+
+    def _s(self, v):
+        return self._intern(v) if isinstance(v, str) else v
+
+    def dims(self, d):
+        key = tuple(sorted(d.items()))
+        hit = self._dims.get(key)
+        if hit is None:
+            # never mutated anywhere (rows are immutable evidence); shared by every row of this cohort
+            hit = self._dims[key] = {self._s(k): self._s(v) for k, v in d.items()}
+        return hit
+
+    def instrument_key(self, ik):
+        return self._keys.setdefault(ik, ik)
+
+    def label_fields(self, fields: dict) -> dict:
+        out = {k: self._s(v) for k, v in fields.items()}
+        out["reason_codes"] = tuple(self._s(x) for x in fields.get("reason_codes", ()))
+        return out
+
+    def row(self, row: "LibraryRow") -> "LibraryRow":
+        import dataclasses
+
+        lab = row.label
+        fields = self.label_fields({f.name: getattr(lab, f.name) for f in dataclasses.fields(lab)})
+        fields["instrument_key"] = self.instrument_key(lab.instrument_key)
+        return LibraryRow(label=type(lab)(**fields), cohort_dimensions=self.dims(row.cohort_dimensions),
+                          continuous_features=dict(row.continuous_features))
+
+
+def compact_rows(rows) -> tuple:
+    """The same rows with shared immutable values (see ``RowInterner``)."""
+    interner = RowInterner()
+    return tuple(interner.row(r) for r in rows)
+
+
 def empty_library(*, label_policy_version: str, cost_model_version: str) -> HistoricalOutcomeLibrary:
     """An explicitly empty, valid library -- distinct from
     OUTCOME_LIBRARY_UNAVAILABLE (no library object at all). Cohort lookup
@@ -121,4 +171,4 @@ def empty_library(*, label_policy_version: str, cost_model_version: str) -> Hist
     )
 
 
-__all__ = ["LibraryRow", "HistoricalOutcomeLibrary", "empty_library"]
+__all__ = ["LibraryRow", "HistoricalOutcomeLibrary", "RowInterner", "compact_rows", "empty_library"]

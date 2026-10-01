@@ -69,13 +69,19 @@ def row_to_dict(row: LibraryRow) -> Dict[str, Any]:
     }
 
 
-def row_from_dict(d: Mapping[str, Any]) -> LibraryRow:
+def row_from_dict(d: Mapping[str, Any], interner: Any = None) -> LibraryRow:
     label = dict(d["label"])
     label["instrument_key"] = InstrumentKey(**label["instrument_key"])
     label["reason_codes"] = tuple(label.get("reason_codes", ()))
+    if interner is not None:  # shared immutable values; identical content
+        label = interner.label_fields(label)
+        label["instrument_key"] = interner.instrument_key(label["instrument_key"])
+        dims = interner.dims(d["cohort_dimensions"])
+    else:
+        dims = dict(d["cohort_dimensions"])
     return LibraryRow(
         label=SetupOutcomeLabel(**label),
-        cohort_dimensions=dict(d["cohort_dimensions"]),
+        cohort_dimensions=dims,
         continuous_features=dict(d.get("continuous_features", {})),
     )
 
@@ -88,8 +94,26 @@ def _ordered_rows(library: HistoricalOutcomeLibrary):
     return sorted(library.rows, key=lambda r: r.label.label_id)
 
 
+def canonical_row_lines(rows):
+    """Each row's canonical JSON (no newline), in label-id order -- the unit of both the rows file and
+    ``rows_content_hash``. A generator: a large library is never serialized in one piece."""
+    for r in sorted(rows, key=lambda r: r.label.label_id):
+        yield _canonical_line(row_to_dict(r))
+
+
 def _rows_text(library: HistoricalOutcomeLibrary) -> str:
-    return "".join(_canonical_line(row_to_dict(r)) + "\n" for r in _ordered_rows(library))
+    """The whole rows file as one string (small libraries / tests only; writing and loading stream)."""
+    return "".join(line + "\n" for line in canonical_row_lines(library.rows))
+
+
+def _file_text_hash(path: Path) -> str:
+    from app.trading_intelligence.hashing import TextHasher
+
+    h = TextHasher()
+    with open(path, encoding="utf-8", newline="") as fh:
+        for line in fh:
+            h.update(line)
+    return h.hexdigest()
 
 
 def library_identity(library: HistoricalOutcomeLibrary) -> str:
@@ -111,8 +135,18 @@ def write_library_artifact(
     fields the library object itself does not carry (source hash/range,
     policy hashes, counts, ...). Refuses to overwrite a DIFFERENT library
     stored under the same identity."""
-    rows_text = _rows_text(library)
-    rows_sha = stable_hash(rows_text)
+    # stream the rows file: hash (== stable_hash(rows_text)) while writing to a temporary file
+    from app.trading_intelligence.hashing import TextHasher
+
+    Path(output_dir).mkdir(parents=True, exist_ok=True)
+    tmp = Path(output_dir) / f".rows_{os.getpid()}_{id(library)}.tmp"
+    hasher = TextHasher()
+    with open(tmp, "w", encoding="utf-8", newline="\n") as fh:
+        for line in canonical_row_lines(library.rows):
+            text = line + "\n"
+            hasher.update(text)
+            fh.write(text)
+    rows_sha = hasher.hexdigest()
     manifest: Dict[str, Any] = {
         "artifact_schema_version": LIBRARY_ARTIFACT_SCHEMA_VERSION,
         "library_id": library_identity(library),
@@ -144,6 +178,7 @@ def write_library_artifact(
     manifest["manifest_hash"] = manifest_hash_of(manifest)
     missing = [f for f in REQUIRED_MANIFEST_FIELDS if f not in manifest]
     if missing:
+        tmp.unlink(missing_ok=True)
         raise LibraryArtifactError(f"manifest is missing required fields: {missing}")
 
     target = Path(output_dir) / manifest["library_id"]
@@ -151,13 +186,15 @@ def write_library_artifact(
     if target.exists():
         existing = target / MANIFEST_FILE
         existing_rows = target / ROWS_FILE
-        if existing.exists() and existing_rows.exists() and \
-                json.loads(existing.read_text(encoding="utf-8")).get("manifest_hash") == manifest["manifest_hash"] and \
-                existing_rows.read_text(encoding="utf-8") == rows_text:
+        same = existing.exists() and existing_rows.exists() and \
+            json.loads(existing.read_text(encoding="utf-8")).get("manifest_hash") == manifest["manifest_hash"] and \
+            _file_text_hash(existing_rows) == rows_sha
+        tmp.unlink(missing_ok=True)
+        if same:
             return target  # identical artifact already stored: idempotent
         raise LibraryArtifactError(f"refusing to overwrite a different library stored under identity {manifest['library_id']}")
     target.mkdir(parents=True, exist_ok=False)
-    (target / ROWS_FILE).write_text(rows_text, encoding="utf-8", newline="\n")
+    os.replace(tmp, target / ROWS_FILE)
     (target / MANIFEST_FILE).write_text(manifest_text, encoding="utf-8", newline="\n")
     return target
 
@@ -213,13 +250,26 @@ def load_library_artifact(
     if not str(manifest.get("cost_model_version") or ""):
         raise LibraryArtifactError("cost_model_version is required")
 
-    rows_text = rpath.read_text(encoding="utf-8")
-    if stable_hash(rows_text) != manifest["rows_sha256"]:
+    # one streaming pass: hash the file text (== stable_hash(rows_text)) and parse rows with shared values;
+    # the hash verdict still comes first, so an altered file is reported as altered, not as malformed
+    from app.trading_intelligence.forecast.library import RowInterner
+    from app.trading_intelligence.hashing import TextHasher
+
+    hasher, interner, parsed, parse_error = TextHasher(), RowInterner(), [], None
+    with open(rpath, encoding="utf-8", newline="") as fh:
+        for line in fh:
+            hasher.update(line)
+            if parse_error is None and line.strip():
+                try:
+                    parsed.append(row_from_dict(json.loads(line), interner))
+                except (KeyError, TypeError, ValueError) as exc:
+                    parse_error = exc
+    if hasher.hexdigest() != manifest["rows_sha256"]:
         raise LibraryArtifactError("rows hash mismatch (row data was altered)")
-    try:
-        rows = tuple(row_from_dict(json.loads(line)) for line in rows_text.splitlines() if line.strip())
-    except (KeyError, TypeError, ValueError) as exc:
-        raise LibraryArtifactError(f"malformed row data: {exc}") from exc
+    if parse_error is not None:
+        raise LibraryArtifactError(f"malformed row data: {parse_error}") from parse_error
+    rows = tuple(parsed)
+    del parsed
     if len(rows) != int(manifest["row_count"]) or len(rows) != int(manifest["label_count"]):
         raise LibraryArtifactError("row/label count disagrees with manifest")
     _check_rows(rows, manifest)
