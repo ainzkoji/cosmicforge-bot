@@ -130,6 +130,12 @@ def build_outcome_forecast(
         market_state=market_state, regime_distribution=regime_distribution,
         instrument_group=instrument_group,
     )
+    if hasattr(library, "v5_joint_probability"):
+        try:
+            return library.forecast(candidate, dims, causal_market_context)
+        except (ValueError, AttributeError, KeyError, ZeroDivisionError):
+            return _unavailable_forecast(candidate, ForecastStatus.INVALID_INPUT.value,
+                                         ("V5_CAUSAL_CONTEXT_UNAVAILABLE",))
     if hasattr(library, "v4_probability"):
         try:
             return library.forecast(candidate, dims, causal_market_context)

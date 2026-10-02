@@ -216,6 +216,9 @@ def load_library_artifact(
     REPLAY_CAPTURE sources. SYNTHETIC_TEST, FIXTURE_TEST and UNKNOWN
     libraries load only with an explicit ``mode="TEST"``/``"DEVELOPMENT"``."""
     root = Path(path)
+    if (root / "v5_model.json").is_file() or (root / "v5_model.json.gz").is_file():
+        from app.trading_intelligence.forecast.v5_artifact import load_v5_artifact
+        return load_v5_artifact(root, expected_hash=expected_hash, mode=mode)
     if (root / "v4_model.json").is_file():
         from app.trading_intelligence.forecast.v4_artifact import load_v4_artifact
         return load_v4_artifact(root, expected_hash=expected_hash, mode=mode)

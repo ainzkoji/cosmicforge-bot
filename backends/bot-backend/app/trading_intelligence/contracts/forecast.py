@@ -191,6 +191,11 @@ class OutcomeForecast:
     expected_net_R: Optional[float] = None
     conditional_positive_net_R: Optional[float] = None
     conditional_loss_net_R: Optional[float] = None
+    # V5 coherent joint research distribution; legacy forecasts leave it absent.
+    joint_outcome_probabilities: Mapping[str, float] = field(default_factory=dict)
+    joint_state_net_R_means: Mapping[str, float] = field(default_factory=dict)
+    joint_event_time_probabilities: Mapping[str, Tuple[float, ...]] = field(default_factory=dict)
+    event_time_unit: Optional[str] = None
 
     e_r_given_target: Optional[float] = None
     e_r_given_stop: Optional[float] = None
