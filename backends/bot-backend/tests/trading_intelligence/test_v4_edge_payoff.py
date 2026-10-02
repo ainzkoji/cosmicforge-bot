@@ -5,7 +5,7 @@ import pytest
 from threadpoolctl import threadpool_limits
 from app.trading_intelligence.hashing import stable_hash
 from app.trading_intelligence.forecast.causal_context import closed_candle_context,align_context
-from app.trading_intelligence.forecast.v4_models import FeatureEncoder,V4Probability,ConditionalPayoff,MODES,FEATURE_SCHEMA,probability_gate
+from app.trading_intelligence.forecast.v4_models import FeatureEncoder,V4Probability,ConditionalPayoff,NumericTrees,MODES,FEATURE_SCHEMA,probability_gate
 from app.trading_intelligence.forecast.artifact import load_library_artifact,LibraryArtifactError
 
 
@@ -29,6 +29,15 @@ def test_context_exact_alignment_and_appending_future_candles_has_no_effect():
     np.testing.assert_array_equal(before,align_context(closed,z,closed[30:40])[0])
     with pytest.raises(ValueError): align_context(closed,x,closed[30:40]+1)
     with pytest.raises(ValueError): align_context(closed,x,np.array([closed[0]-1]))
+
+
+def test_payoff_tree_threshold_preserves_float64_boundary_for_float32_inputs():
+    lo=np.float32(.2); hi=np.nextafter(lo,np.float32(1.))
+    threshold=(float(lo)+float(hi))/2
+    tree=NumericTrees(); tree.base=0.; tree.width=1
+    tree.trees=[[dict(is_leaf=0,feature_idx=0,num_threshold=threshold,left=1,right=2,missing_go_to_left=0,value=0.),
+                 dict(is_leaf=1,value=0.),dict(is_leaf=1,value=1.)]]
+    np.testing.assert_array_equal(tree.predict(np.array([[lo],[hi]],dtype=np.float32)),[0.,1.])
 
 
 @pytest.mark.parametrize('mode',MODES)

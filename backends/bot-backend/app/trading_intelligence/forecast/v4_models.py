@@ -147,7 +147,10 @@ class NumericTrees:
         return obj
 
     def predict(self,x):
-        x=np.asarray(x)
+        # sklearn's raw histogram predictor compares in float64. Comparing a
+        # Python threshold to float32 arrays can round a boundary to float32
+        # and send an exact adjacent value down the wrong branch.
+        x=np.asarray(x,dtype=np.float64)
         if x.shape[1]!=self.width: raise ValueError('payoff predictor width mismatch')
         result=np.full(len(x),self.base)
         for nodes in self.trees:
