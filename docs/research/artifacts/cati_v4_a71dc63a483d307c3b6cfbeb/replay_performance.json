@@ -1,0 +1,15 @@
+{
+  "candidate_id": "cati_v4_a71dc63a483d307c3b6cfbeb",
+  "outer_probability_replay_max_absolute_difference": 0.0,
+  "probability_refit_identity_equal": true,
+  "payoff_refit_identity_equal": true,
+  "runtime_load_rejected": true,
+  "artifact_load_seconds": 0.11118809995241463,
+  "parameter_replay_rows": 998,
+  "parameter_replay_seconds": 0.12766179989557713,
+  "peak_working_set_bytes": 1112264704,
+  "elapsed_seconds": 44.05345150001813,
+  "holdout_query_count": 0,
+  "parallel_fit_workers": 1,
+  "scope": "Fixed final refit and all 20 outer probability replays; not a new search or final-fit out-of-sample score."
+}

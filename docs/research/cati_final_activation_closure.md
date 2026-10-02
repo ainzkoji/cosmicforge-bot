@@ -143,5 +143,29 @@ Source verification is sampled, not an independent rebuild of every price path.
 Report: [calibration root cause](cati_calibration_failure_root_cause.md).
 Identity: [causal correction candidate](cati_causal_baseline_candidate.json).
 Next research design: [candidate plan](cati_next_candidate_design.md).
-V3 remains design-only until an eligible final selection layer is established;
-this inspected pre-holdout span cannot be represented as pristine selection data.
+That diagnosis preceded the completed V3 and V4 development work described below.
+The inspected pre-holdout span cannot be represented as pristine selection data.
+
+## Latest development status — V4, 2026-10-03
+
+V3 was implemented and rejected at skill 0.01852752. V4’s registered nested
+four-family search is complete: `cati_v4_a71dc63a483d307c3b6cfbeb`, 51,887 outer
+predictions, skill **0.01928768**, ECE **0.01019027**. Each later fold improves on
+V3, but pooled skill still misses the unchanged 0.02 gate. The hybrid family’s
+0.02011761 pooled score fails the predeclared last-fold robustness condition.
+V4 remains **REJECTED_PRE_HOLDOUT / RESEARCH_ONLY; MODEL_READY = NO**.
+
+The separate conditional payoff model passes its registered pooled development
+checks. It is not ready for CATI decisions: folds 1 and 5 have expectancy-bucket
+reversals; the highest pooled predicted-return bucket realizes −0.07838 R; and
+independent profit/terminal probabilities violate joint consistency on 16.41%
+of outer rows. These limits are reported separately from the registered pass.
+
+M0, CATI execution OFF, no runtime library pin, and the 2.5% hard-loss cap remain.
+No holdout was opened, inspected or queried. The existing healthy paper runtime
+and single FX acquisition writer/queued completion workflow were preserved.
+No FX acquisition/freeze completion is claimed. Full CATI regression passed;
+numeric models and evidence are committed with the research implementation.
+
+See [V4 development report](cati_v4_development_report.md) for all candidates,
+folds, residuals, payoff diagnostics, provenance, tests and resource measurements.

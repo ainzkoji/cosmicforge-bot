@@ -56,7 +56,7 @@ class V4Library:
             e_r_given_target=candidate.room_to_target_R,e_r_given_stop=-1.,e_r_given_timeout=float(payoff['timeout_gross_R'][0]),
             mfe_R_quantiles={str(q):float(payoff['mfe'][0,j]) for j,q in enumerate((.1,.5,.9))},
             mae_R_quantiles={str(q):float(payoff['mae'][0,j]) for j,q in enumerate((.1,.5,.9))},
-            forecast_uncertainty=1.,reason_codes=('V4_RESEARCH_ONLY','V4_TIME_DISTRIBUTION_UNMODELED',
+            forecast_uncertainty=1.,reason_codes=('V4_RESEARCH_ONLY','V4_TIME_DISTRIBUTION_UNMODELED','V4_JOINT_PAYOFF_NOT_VALIDATED',
                 'V4_PAYOFF_DEVELOPMENT_VALIDATED' if self.payoff_validated else 'V4_PAYOFF_VALIDATION_FAILED'),calibration_status='RESEARCH_ONLY')
 
 
@@ -71,7 +71,8 @@ def load_v4_artifact(path,*,expected_hash=None,mode='RUNTIME'):
         if d['registry_hash']!=stable_hash(registry) or d['role']!=registry['role']: raise ValueError('unregistered V4 candidate')
         if d['feature_schema']!=FEATURE_SCHEMA: raise ValueError('wrong V4 feature schema')
         if any(d[k]!=registry[k] for k in ('parent_library_hash','dataset_manifest_hash')): raise ValueError('wrong V4 dataset')
-        if d['source_tree_dirty'] is not False or len(d['code_revision'])!=40: raise ValueError('dirty/invalid V4 provenance')
+        if d['source_tree_dirty'] is not False or len(d['code_revision'])!=40 or any(c not in '0123456789abcdef' for c in d['code_revision']):
+            raise ValueError('dirty/invalid V4 provenance')
         if d['training_label_end']>=d['holdout_start_ms'] or d['holdout_query_count']!=0: raise ValueError('V4 holdout violation')
         if d['runtime_eligible'] is not False or d['calibration_status']!='RESEARCH_ONLY': raise ValueError('V4 research artifact authority claim')
         passed=probability_gate(d['metrics'],d['folds'],registry['probability_gate'])

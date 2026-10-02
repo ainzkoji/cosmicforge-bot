@@ -4,6 +4,7 @@ Training statistics and labels never enter prediction inputs. Models serialize
 to validated numeric JSON, with no executable pickle/joblib deserialization.
 """
 from __future__ import annotations
+import gc
 import warnings
 import numpy as np
 from scipy import sparse
@@ -58,7 +59,14 @@ class FeatureEncoder:
         if not np.all(np.isfinite(z)): raise ValueError('nonfinite V4 predictors')
         parts=[sparse.csr_matrix(z)]
         for j,keys in enumerate(self.vocabularies):
-            parts.append(sparse.csr_matrix(np.column_stack([cats[:,j]==k for k in keys]).astype(float)) if keys else sparse.csr_matrix((len(g),0)))
+            if not keys:
+                parts.append(sparse.csr_matrix((len(g),0))); continue
+            # Construct sparse effects directly: no N-by-136 dense instrument
+            # matrix while fitting a 120k-row training prefix.
+            values=np.asarray(keys); positions=np.searchsorted(values,cats[:,j])
+            valid=(positions<len(keys)) & (values[np.minimum(positions,len(keys)-1)]==cats[:,j])
+            rows=np.flatnonzero(valid)
+            parts.append(sparse.csr_matrix((np.ones(len(rows)),(rows,positions[rows])),shape=(len(g),len(keys))))
         if self.mode in (MODES[1],MODES[3]) and self.families:
             # Family slopes are L2-penalized deviations from shared geometry.
             # Unpopulated families retain the shared slopes.
@@ -78,7 +86,7 @@ class FeatureEncoder:
         if (obj.mean.shape!=(expected,) or obj.scale.shape!=(expected,) or obj.knots.shape!=(3,3)
                 or obj.lower.shape!=(3,) or obj.upper.shape!=(3,) or len(obj.vocabularies)!=5
                 or np.any(obj.scale<=0) or np.any(obj.lower>obj.upper)
-                or any(len(v)!=len(set(v)) for v in obj.vocabularies)
+                or any(v!=sorted(set(v)) for v in obj.vocabularies)
                 or not all(np.all(np.isfinite(getattr(obj,k))) for k in ('lower','upper','knots','mean','scale'))):
             raise ValueError('invalid V4 transform parameters')
         return obj
@@ -104,12 +112,15 @@ class V4Probability:
     def __init__(self,mode,C=.01): self.mode=mode; self.C=float(C)
 
     def fit(self,g,c,cats,y):
+        gc.collect()  # Release optimizer closure cycles before allocating another prefix.
         self.encoder=FeatureEncoder(self.mode).fit(g,c,cats)
         model=LogisticRegression(C=self.C,solver='lbfgs',max_iter=2000,tol=1e-6,random_state=0)
         with warnings.catch_warnings():
             warnings.simplefilter('error',ConvergenceWarning)
             model.fit(self.encoder.transform(g,c,cats),y)
         self.coefficients=model.coef_[0]; self.intercept=float(model.intercept_[0])
+        del model
+        gc.collect()
         return self
 
     def predict(self,g,c,cats):
@@ -144,6 +155,8 @@ class NumericTrees:
             obj.trees.append([{k:float(n[k]) if k in ('value','num_threshold') else int(n[k]) for k in
                 ('value','num_threshold','feature_idx','left','right','is_leaf','missing_go_to_left')} for n in nodes])
         np.testing.assert_allclose(obj.predict(x),model.predict(x),rtol=1e-11,atol=1e-11)
+        del model
+        gc.collect()
         return obj
 
     def predict(self,x):

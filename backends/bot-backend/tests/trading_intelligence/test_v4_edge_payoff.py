@@ -61,6 +61,20 @@ def test_family_deviations_omit_tiny_groups_and_share_broader_slopes():
     np.testing.assert_array_equal(model.predict(g[:1],c[:1],first),model.predict(g[:1],c[:1],second))
 
 
+@pytest.mark.parametrize('mode',MODES)
+def test_sparse_category_construction_is_exactly_equal_to_dense_reference(mode):
+    g,c,cats,_=inputs(1600)
+    encoder=FeatureEncoder(mode).fit(g,c,cats)
+    cats=cats.copy(); cats[:3,0]=['UNSEEN','UNKNOWN','']; cats[:3,4]='NEW'
+    z=(encoder._numeric(g,c)-encoder.mean)/encoder.scale
+    parts=[z]
+    parts.extend((cats[:,j,None]==np.asarray(keys)[None,:]).astype(float)
+                 for j,keys in enumerate(encoder.vocabularies))
+    if mode in (MODES[1],MODES[3]) and encoder.families:
+        parts.append(np.column_stack([(cats[:,0]==f)[:,None]*z[:,:4] for f in encoder.families]))
+    np.testing.assert_array_equal(encoder.transform(g,c,cats).toarray(),np.column_stack(parts))
+
+
 @pytest.fixture(scope='module')
 def trained():
     g,c,cats,target=inputs()
@@ -118,6 +132,7 @@ def test_artifact_identity_runtime_closed_and_canonical_payoff_contract(tmp_path
     assert fc.status=='VALID' and fc.calibration_status=='RESEARCH_ONLY'
     assert fc.expected_net_R is not None and fc.conditional_positive_net_R>=0 and fc.conditional_loss_net_R<=0
     assert 'V4_RESEARCH_ONLY' in fc.reason_codes
+    assert 'V4_JOINT_PAYOFF_NOT_VALIDATED' in fc.reason_codes
     context['source_close_times'][1]+=1
     assert build_outcome_forecast(candidate,ms,regime,lib,causal_market_context=context).status=='INVALID_INPUT'
     with pytest.raises(LibraryArtifactError,match='runtime remains closed'): load_library_artifact(tmp_path,expected_hash=d['library_hash'])
@@ -125,7 +140,7 @@ def test_artifact_identity_runtime_closed_and_canonical_payoff_contract(tmp_path
 
 
 @pytest.mark.parametrize('key,value,message',[
-    ('source_tree_dirty',True,'provenance'),('dataset_manifest_hash','wrong','dataset'),
+    ('source_tree_dirty',True,'provenance'),('code_revision','z'*40,'provenance'),('dataset_manifest_hash','wrong','dataset'),
     ('feature_schema','wrong','schema'),('registry_hash','wrong','unregistered'),
     ('probability_gate_pass',False,'calibration'),('payoff_gate_pass',False,'payoff'),
     ('training_label_end',1783876499999,'holdout')])
@@ -140,3 +155,14 @@ def test_pooled_improvement_cannot_hide_late_fold_degradation():
     assert probability_gate(m,folds,r['probability_gate'])
     folds[4]['brier_skill']=.015
     assert not probability_gate(m,folds,r['probability_gate'])
+
+
+def test_published_v4_candidate_reloads_and_remains_rejected_for_runtime():
+    root=Path(__file__).resolve().parents[4]/'docs/research/artifacts/cati_v4_a71dc63a483d307c3b6cfbeb'
+    lib,record=load_library_artifact(root,mode='DEVELOPMENT')
+    assert lib.library_id=='cati_v4_a71dc63a483d307c3b6cfbeb'
+    assert record['development_status']=='REJECTED_PRE_HOLDOUT'
+    assert record['model_ready'] is False and record['payoff_gate_pass'] is True
+    assert json.loads((root/'supplemental_diagnostics.json').read_text())['decision_payoff_ready'] is False
+    with pytest.raises(LibraryArtifactError,match='runtime remains closed'):
+        load_library_artifact(root,mode='RUNTIME')

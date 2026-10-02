@@ -1,0 +1,448 @@
+{
+  "scope": "Additional development diagnostics only; no refit, selection or gate changes.",
+  "decision_payoff_ready": false,
+  "pooled": {
+    "samples": 51887,
+    "profit_stop_incoherence_fraction": 0.16410661630080753,
+    "maximum_probability_excess": 0.4654908342404023
+  },
+  "folds": [
+    {
+      "fold": 1,
+      "samples": 10840,
+      "profit_stop_incoherence_fraction": 0.19059040590405904,
+      "maximum_probability_excess": 0.30705809230498965,
+      "expectancy_monotonic": false,
+      "maximum_expectancy_quintile_inversion_R": 0.08344218293741681
+    },
+    {
+      "fold": 2,
+      "samples": 10895,
+      "profit_stop_incoherence_fraction": 0.17696190913262966,
+      "maximum_probability_excess": 0.10323257665258873,
+      "expectancy_monotonic": true,
+      "maximum_expectancy_quintile_inversion_R": 0.0
+    },
+    {
+      "fold": 3,
+      "samples": 10311,
+      "profit_stop_incoherence_fraction": 0.14111143439045679,
+      "maximum_probability_excess": 0.4654908342404023,
+      "expectancy_monotonic": true,
+      "maximum_expectancy_quintile_inversion_R": 0.0
+    },
+    {
+      "fold": 4,
+      "samples": 9814,
+      "profit_stop_incoherence_fraction": 0.14998981047483187,
+      "maximum_probability_excess": 0.1687783383221113,
+      "expectancy_monotonic": true,
+      "maximum_expectancy_quintile_inversion_R": 0.0
+    },
+    {
+      "fold": 5,
+      "samples": 10027,
+      "profit_stop_incoherence_fraction": 0.15897077889697817,
+      "maximum_probability_excess": 0.3349547000988661,
+      "expectancy_monotonic": false,
+      "maximum_expectancy_quintile_inversion_R": 0.06068633846731469
+    }
+  ],
+  "conditional_buckets": {
+    "conditional_positive_net_R": [
+      {
+        "samples": 3747,
+        "prediction_mean": 0.7708559047934086,
+        "realized_mean": 0.7587844909967993
+      },
+      {
+        "samples": 3747,
+        "prediction_mean": 1.0992276314641087,
+        "realized_mean": 1.0723480726341175
+      },
+      {
+        "samples": 3747,
+        "prediction_mean": 1.3169868471005013,
+        "realized_mean": 1.2812843785761614
+      },
+      {
+        "samples": 3747,
+        "prediction_mean": 1.6313381626534593,
+        "realized_mean": 1.6043882595943628
+      },
+      {
+        "samples": 3748,
+        "prediction_mean": 2.5592212729581485,
+        "realized_mean": 2.4964651692780175
+      }
+    ],
+    "conditional_loss_net_R": [
+      {
+        "samples": 6629,
+        "prediction_mean": -1.3795766502137536,
+        "realized_mean": -1.3903187638872625
+      },
+      {
+        "samples": 6631,
+        "prediction_mean": -1.1442798356731427,
+        "realized_mean": -1.142314472122439
+      },
+      {
+        "samples": 6630,
+        "prediction_mean": -1.0648870516443432,
+        "realized_mean": -1.0604392993304663
+      },
+      {
+        "samples": 6630,
+        "prediction_mean": -0.9688209741804845,
+        "realized_mean": -0.9494381196953467
+      },
+      {
+        "samples": 6631,
+        "prediction_mean": -0.7506600064430351,
+        "realized_mean": -0.7258615431999563
+      }
+    ]
+  },
+  "terminal_calibration": {
+    "TARGET": [
+      {
+        "samples": 8286,
+        "predicted": 0.06662318309126297,
+        "realized": 0.06903210234129857
+      },
+      {
+        "samples": 16457,
+        "predicted": 0.15022824774001572,
+        "realized": 0.1465030078386097
+      },
+      {
+        "samples": 14176,
+        "predicted": 0.24837825262629684,
+        "realized": 0.2394892776523702
+      },
+      {
+        "samples": 10820,
+        "predicted": 0.3458798721001552,
+        "realized": 0.332902033271719
+      },
+      {
+        "samples": 2113,
+        "predicted": 0.4244035499840957,
+        "realized": 0.42072882158069097
+      },
+      {
+        "samples": 26,
+        "predicted": 0.5387425682598725,
+        "realized": 0.34615384615384615
+      },
+      {
+        "samples": 6,
+        "predicted": 0.6251460128868663,
+        "realized": 0.16666666666666666
+      },
+      {
+        "samples": 2,
+        "predicted": 0.7401351069987382,
+        "realized": 0.0
+      },
+      {
+        "samples": 1,
+        "predicted": 0.80316405406515,
+        "realized": 0.0
+      }
+    ],
+    "STOP": [
+      {
+        "samples": 292,
+        "predicted": 0.07114574875269059,
+        "realized": 0.04794520547945205
+      },
+      {
+        "samples": 1216,
+        "predicted": 0.15767420229274606,
+        "realized": 0.12664473684210525
+      },
+      {
+        "samples": 2549,
+        "predicted": 0.2561028203930511,
+        "realized": 0.22950176539819536
+      },
+      {
+        "samples": 4677,
+        "predicted": 0.3543607955608979,
+        "realized": 0.3258499037844772
+      },
+      {
+        "samples": 6922,
+        "predicted": 0.45312969852657287,
+        "realized": 0.4235770008668015
+      },
+      {
+        "samples": 12723,
+        "predicted": 0.5560675460381374,
+        "realized": 0.5530928240194922
+      },
+      {
+        "samples": 13956,
+        "predicted": 0.6461999434601688,
+        "realized": 0.6354972771567784
+      },
+      {
+        "samples": 7250,
+        "predicted": 0.742843754499628,
+        "realized": 0.731448275862069
+      },
+      {
+        "samples": 2232,
+        "predicted": 0.8327913951673056,
+        "realized": 0.803763440860215
+      },
+      {
+        "samples": 70,
+        "predicted": 0.9432557142615561,
+        "realized": 0.7285714285714285
+      }
+    ],
+    "TIMEOUT": [
+      {
+        "samples": 20705,
+        "predicted": 0.02925016199463914,
+        "realized": 0.03375996136198986
+      },
+      {
+        "samples": 5699,
+        "predicted": 0.15428696460703162,
+        "realized": 0.17195999298122477
+      },
+      {
+        "samples": 8561,
+        "predicted": 0.24999980042340236,
+        "realized": 0.2667912627029553
+      },
+      {
+        "samples": 6848,
+        "predicted": 0.34711206654816623,
+        "realized": 0.39164719626168226
+      },
+      {
+        "samples": 4329,
+        "predicted": 0.44598780580629743,
+        "realized": 0.5102795102795102
+      },
+      {
+        "samples": 2553,
+        "predicted": 0.5459424456735811,
+        "realized": 0.5887191539365453
+      },
+      {
+        "samples": 1572,
+        "predicted": 0.6460595359401251,
+        "realized": 0.6863867684478372
+      },
+      {
+        "samples": 995,
+        "predicted": 0.7447389226404446,
+        "realized": 0.7909547738693468
+      },
+      {
+        "samples": 504,
+        "predicted": 0.8420210862625955,
+        "realized": 0.8194444444444444
+      },
+      {
+        "samples": 121,
+        "predicted": 0.9247679621721054,
+        "realized": 0.9008264462809917
+      }
+    ]
+  },
+  "effect_drift": {
+    "BOUNDED_HYBRID": {
+      "shared_raw_geometry_slopes": [
+        [
+          -0.02202380943461808,
+          0.06051446096499564,
+          0.7259738159972987,
+          0.06765638616031427
+        ],
+        [
+          0.13367941102902212,
+          0.09164469603460898,
+          0.8370379546901326,
+          0.08398079791203118
+        ],
+        [
+          0.07756843912324202,
+          0.09663242973159009,
+          1.0625814456452796,
+          0.07930282984035367
+        ],
+        [
+          0.12190015407526883,
+          0.08962157730037183,
+          0.8859533902908845,
+          0.10099251209267138
+        ],
+        [
+          0.21247575821952955,
+          0.1132703373599481,
+          1.2071808126276604,
+          0.12533732975672493
+        ]
+      ],
+      "range": [
+        0.23449956765414762,
+        0.05275587639495246,
+        0.4812069966303617,
+        0.057680943596410655
+      ],
+      "interpretation": "Within-family shared slopes only; correlated geometry prevents causal interpretation. Full family deviations and context effects remain in model traces."
+    },
+    "CAUSAL_MARKET_CONTEXT": {
+      "shared_raw_geometry_slopes": [
+        [
+          0.11147160834283944,
+          -0.04893253340524267,
+          -0.7387861267552325,
+          0.16038100304943126
+        ],
+        [
+          0.29603230895428573,
+          0.03541061814558078,
+          -0.4124974572175019,
+          0.1917587272523426
+        ],
+        [
+          0.26569529524730257,
+          0.0575526861323218,
+          -0.19158371261036056,
+          0.18106419687000266
+        ],
+        [
+          0.3749664553530947,
+          0.10399540155819904,
+          -0.04824322907180065,
+          0.19866563486471545
+        ],
+        [
+          0.5226785863787651,
+          0.08713656425249283,
+          -0.032262211680462984,
+          0.22728668046703027
+        ]
+      ],
+      "range": [
+        0.41120697803592565,
+        0.1529279349634417,
+        0.7065239150747695,
+        0.06690567741759901
+      ],
+      "interpretation": "Within-family shared slopes only; correlated geometry prevents causal interpretation. Full family deviations and context effects remain in model traces."
+    },
+    "FAMILY_AWARE_GEOMETRY": {
+      "shared_raw_geometry_slopes": [
+        [
+          -0.09085076165026464,
+          -0.06893591114847947,
+          -0.41686963984835973,
+          0.09100795096734185
+        ],
+        [
+          0.013199192221175925,
+          -0.030104006371979023,
+          -0.5036540392795853,
+          0.09735958485595364
+        ],
+        [
+          -0.09054959310545196,
+          -0.018666559761406864,
+          -0.20767869010627305,
+          0.08019785488728431
+        ],
+        [
+          -0.027506426530734197,
+          -0.013784868795729186,
+          -0.4401220023785155,
+          0.08777363817884412
+        ],
+        [
+          0.041608239417174626,
+          -0.01825159895018089,
+          -0.34669059335280733,
+          0.10476719404384084
+        ]
+      ],
+      "range": [
+        0.13245900106743927,
+        0.055151042352750285,
+        0.29597534917331225,
+        0.024569339156556527
+      ],
+      "interpretation": "Within-family shared slopes only; correlated geometry prevents causal interpretation. Full family deviations and context effects remain in model traces."
+    },
+    "REGULARIZED_SPLINE_LOGISTIC": {
+      "shared_raw_geometry_slopes": [
+        [
+          0.07815854856314657,
+          0.039513584672724346,
+          0.7860662417482894,
+          0.13927598303585625
+        ],
+        [
+          0.2950201247788483,
+          0.07685316845172283,
+          1.2538962000449223,
+          0.18213845687413435
+        ],
+        [
+          0.2529825103688192,
+          0.08511399719519958,
+          1.5137729313304817,
+          0.18511391421507198
+        ],
+        [
+          0.3061851946167254,
+          0.08027391578426955,
+          1.5067430886725655,
+          0.21183514135641784
+        ],
+        [
+          0.45688923722500824,
+          0.10675735811426497,
+          1.8310687041807725,
+          0.24367206293723603
+        ]
+      ],
+      "range": [
+        0.37873068866186166,
+        0.06724377344154062,
+        1.0450024624324832,
+        0.10439607990137978
+      ],
+      "interpretation": "Within-family shared slopes only; correlated geometry prevents causal interpretation. Full family deviations and context effects remain in model traces."
+    }
+  },
+  "family_joint_coherence": {
+    "BOUNDED_HYBRID": {
+      "samples": 51887,
+      "profit_stop_incoherence_fraction": 0.15811282209416616,
+      "maximum_probability_excess": 0.4654908342404023
+    },
+    "CAUSAL_MARKET_CONTEXT": {
+      "samples": 51887,
+      "profit_stop_incoherence_fraction": 0.17503420895407326,
+      "maximum_probability_excess": 0.5005444635607357
+    },
+    "FAMILY_AWARE_GEOMETRY": {
+      "samples": 51887,
+      "profit_stop_incoherence_fraction": 0.16329716499315822,
+      "maximum_probability_excess": 0.3349547000988661
+    },
+    "REGULARIZED_SPLINE_LOGISTIC": {
+      "samples": 51887,
+      "profit_stop_incoherence_fraction": 0.16952223100198507,
+      "maximum_probability_excess": 0.3822226565263323
+    }
+  }
+}
