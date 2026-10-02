@@ -1,0 +1,20 @@
+{
+  "brier_baseline": 0.22788403450766645,
+  "brier_score": 0.22764573856574608,
+  "brier_skill": 0.0010456894992016963,
+  "calibration_policy_hash": "d6baee27c12dd48d49cd3d60fc1164cf8752c3470ed676972234e0c2043ca8ae",
+  "calibration_status": "RESEARCH_ONLY",
+  "candidate_name": "RESEARCH_CANDIDATE_V2_CAUSAL_BASELINE_CORRECTION",
+  "clean_code_commit": "4719a831e0e4c8e8bf911e6cd5e865715cf9cf3e",
+  "ece": 0.010402743914891039,
+  "holdout_access": false,
+  "library_hash": "80348290bf88005f4b2c151ce322dbb67f8d7a36095f9f244694315e548f3e55",
+  "library_id": "cati_lib_80348290bf88005f4b2c151c",
+  "manifest_hash": "276cbccc811b052ea542ee2c48b2689d1d898d447d7013382d6dc89000d24344",
+  "min_brier_skill": 0.02,
+  "parent_library_hash": "0ead8264955eb958b20e165edfd3dfc1ecd1548731e717e87c4bb04f526bc9b4",
+  "research_decision": "REJECTED_PRE_HOLDOUT",
+  "row_count": 3007222,
+  "rows_sha256": "590e78a3cfc0188b1143e142aa0f810e9ae5e33dd06e7b78749a44d12af7c442",
+  "runtime_eligible": false
+}

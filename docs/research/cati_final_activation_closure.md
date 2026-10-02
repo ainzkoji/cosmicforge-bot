@@ -1,7 +1,7 @@
 # CATI final activation closure — living report
 
 Single source of truth for CATI activation status. Updated in place; every claim has evidence (commit, artifact,
-hash, count). Last update: 2026-10-01 04:55 UTC.
+hash, count). Last update: 2026-10-02 05:16 UTC.
 
 **Governance today:** phase **M0**. CATI execution **BLOCKED** (`GOVERNANCE_PHASE_M0_NO_CATI_AUTHORITY`).
 Demo authority **FALSE**. Live authority **FALSE**. Crypto holdout **RESERVED, unopened** (`hold_8c0c0e484403395b79b63fdc`).
@@ -12,12 +12,12 @@ Section 22 thresholds unchanged. No holdout row has been evaluated.
 
 | Item | Status |
 |---|---|
-| Outcome library | RUNNING (canonical crypto library being built by the certification run) |
-| Calibration | RUNNING — runs on the library as soon as it exists |
-| Runtime ranking | WAITING (needs a calibrated library) |
+| Outcome library | COMPLETE: 3,007,222 rows; `0ead8264955e…`; clean rebuild; 8/8 verification PASS |
+| Calibration | FAILED: V1 skill 0.0004776754 < 0.02; causal-benchmark V2 skill 0.0010456895 < 0.02; both RESEARCH_ONLY |
+| Runtime ranking | BLOCKED (no calibrated eligible library; runtime stopped; no library pin) |
 | 5 full epochs | WAITING (measured after the library is installed, with certification suspended) |
-| Crypto pre-holdout | RUNNING |
-| FX acquisition | RUNNING (single writer) |
+| Crypto pre-holdout | NOT_RUNNING; no completed certification result established by this calibration audit |
+| FX acquisition | NOT_RUNNING at process inspection; completion not assessed here; no writer restarted |
 | FX derivation / QA / freeze | WAITING (after 1m completes) |
 | Bybit demo validation | WAITING_FOR_USER (connect a Bybit Demo Trading account in the app) |
 | BingX demo validation | WAITING_FOR_USER (connect a BingX VST account in the app) |
@@ -44,7 +44,11 @@ Section 22 thresholds unchanged. No holdout row has been evaluated.
 | Test environment: no `PYTHONPATH` / `PYTHONUTF8` needed; user-backend 68 passed / 0 failed | `76a6bbac`, `205aeea0` |
 | FX acquisition supervisor (backoff, single-writer check) | `8ee94d65` |
 
-## RUNNING
+## Last reported acquisition/certification jobs (historical)
+
+The job descriptions below are the previous checkpoint, not current running-state evidence.
+No Python jobs were running at the readiness audit; the diagnostic jobs subsequently completed.
+No acquisition, certification replay, or trading runtime was restarted.
 
 | Job | Detail |
 |---|---|
@@ -95,3 +99,34 @@ zero-volume flat records), not an assumption; verification against a real file w
   Ranking at runtime and accepted evidence in certification therefore depend on the library passing the existing
   out-of-sample calibration thresholds. Thresholds are not changed.
 - The FX dataset freeze adapter (partition semantics for FX closures) is written against the finished dataset.
+
+## Calibration failure diagnosis — 2026-10-02
+
+The original V1 calibration was numerically reproduced exactly using an indexed
+replay of its scored probabilities. V1's baseline uses evaluation-set prevalence,
+so it is a retrospective constant rather than a causal baseline forecaster.
+Correcting that information set does not rescue the model: skill is still only
+0.0010456895 against the unchanged 0.02 requirement. Exact-cohort lookup covers
+99.55% of predictions; ROC-AUC is 0.53735. The dominant finding is insufficient
+predictive information, with a secondary evaluation-methodology defect.
+
+Full checks of all library rows found no label arithmetic/validity violations;
+65/65 source-bounded candidate/label/cohort reconstructions matched exactly.
+Source verification is sampled, not an independent rebuild of every price path.
+
+- V1 research decision: **REJECTED_PRE_HOLDOUT**. Its immutable artifact and
+  calibration result remain **RESEARCH_ONLY**, unchanged.
+- New opt-in causal-baseline research candidate: `cati_lib_80348290bf88005f4b2c151c`,
+  hash `80348290bf88005f4b2c151ce322dbb67f8d7a36095f9f244694315e548f3e55`.
+  Identical row bytes; separate research schema and calibration record; runtime
+  loader rejects its version. Also **REJECTED_PRE_HOLDOUT / RESEARCH_ONLY**.
+- Clean source provenance: `4719a831e0e4c8e8bf911e6cd5e865715cf9cf3e`;
+  85 targeted tests passed.
+- No thresholds, `RESEARCH_DEFAULT_V1`, governance phase, execution authority,
+  runtime library pin, or holdout access changed.
+
+Report: [calibration root cause](cati_calibration_failure_root_cause.md).
+Identity: [causal correction candidate](cati_causal_baseline_candidate.json).
+Next research design: [candidate plan](cati_next_candidate_design.md).
+V3 remains design-only until an eligible final selection layer is established;
+this inspected pre-holdout span cannot be represented as pristine selection data.
