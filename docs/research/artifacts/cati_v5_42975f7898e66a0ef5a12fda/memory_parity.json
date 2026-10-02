@@ -1,0 +1,15 @@
+{
+  "all_50_inner_probability_records_exact": true,
+  "all_5_outer_reports_exact": true,
+  "all_3_architecture_results_exact": true,
+  "arrays_compared": 68,
+  "array_values_bit_exact": true,
+  "first_full_evaluation_peak_bytes": 2171478016,
+  "compact_full_evaluation_peak_bytes": 1879846912,
+  "memory_target_bytes": 1610612736,
+  "memory_target_met": false,
+  "original_supported_candidate": "cati_v5_a3f02633b0dabb8683fdcd08",
+  "original_aborted_completed_inner_fits": 30,
+  "original_aborted_completed_outer_folds": 2,
+  "no_new_architectures_or_hyperparameters": true
+}

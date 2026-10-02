@@ -24,7 +24,11 @@ def inputs(n=1800):
     impossible_profit=(terminal==2)&(room<=cost)
     net[impossible_profit]=(room-cost-.01)[impossible_profit]
     target=np.column_stack((net>0,net,net+cost,abs(rng.normal(size=n))+1,abs(rng.normal(size=n))+1,terminal))
+    target[terminal==0,3]=np.maximum(target[terminal==0,3],room[terminal==0])
+    target[terminal==2,3]=np.minimum(target[terminal==2,3],np.nextafter(room[terminal==2],0.))
+    target[terminal==2,4]=np.minimum(target[terminal==2,4],np.nextafter(1.,0.))
     events=rng.integers(1,49,n); events[terminal==2]=48
+    events[terminal==0]=np.minimum(events[terminal==0],47)
     times=np.arange(n,dtype=np.int64)*900000+1600000000000
     return g,c,cats,target,events,times
 
@@ -100,6 +104,7 @@ def test_generated_path_support_contains_required_terminal_boundaries(trained):
         if state in (3,4):
             assert np.all(pred['net_R_quantiles']<=np.exp(probe[:,0,None])-cost+1e-12)
             assert np.all(pred['net_R_quantiles']>=-1-cost-1e-12)
+            assert np.all(pred['mfe']<np.exp(probe[:,0,None])) and np.all(pred['mae']<1.)
 
 
 def test_recency_weights_are_time_only_normalized_and_future_rejected():
@@ -123,12 +128,21 @@ def test_compact_categories_preserve_exact_fitted_parameters(trained):
 
 
 def test_generator_policy_is_versioned_without_changing_fitted_numbers(trained):
-    record=trained[-1].to_dict(); assert record['generation_policy']=='CAUSAL_TERMINAL_SUPPORT_V5_2'
+    record=trained[-1].to_dict(); assert record['generation_policy']=='CAUSAL_TERMINAL_SUPPORT_V5_3'
     old=copy.deepcopy(record); old.pop('generation_policy')
     restored=ConditionalAtoms.from_dict(old)
     assert restored.generation_policy=='LEGACY_V5_1'
-    restored.generation_policy='CAUSAL_TERMINAL_SUPPORT_V5_2'
+    restored.generation_policy='CAUSAL_TERMINAL_SUPPORT_V5_3'
     assert stable_hash(restored.to_dict())==stable_hash(record)
+
+
+def test_target_stop_excursion_cannot_follow_a_last_bar_target(trained):
+    g,c,cats,_,_,_,_,distribution=trained
+    d=copy.deepcopy(distribution.to_dict()); d['models']['0']['mae']=dict(atoms=[2.]*101)
+    model=ConditionalAtoms.from_dict(d); joint=np.zeros((10,5)); joint[:,0]=1.
+    pred=model.predict(g[20:30],c[20:30],cats[20:30],joint)
+    assert np.all(pred['state_time_pmf'][:,0,47]==0.)
+    np.testing.assert_allclose(pred['joint_time_pmf'].sum(axis=(1,2)),1.)
 
 
 def test_histogram_joint_export_and_recency_classifier_are_deterministic():
@@ -151,7 +165,7 @@ def payload(trained):
     return dict(role=r['role'],feature_schema=FEATURE_SCHEMA,registry_hash=stable_hash(r),parent_library_hash=r['parent_library_hash'],
         dataset_manifest_hash=r['dataset_manifest_hash'],source_tree_dirty=False,code_revision='1'*40,holdout_start_ms=1783876499999,
         training_label_end=1500000000000,training_rows=1000,holdout_query_count=0,runtime_eligible=False,calibration_status='RESEARCH_ONLY',
-        joint_states=STATES,probability_model=model.to_dict(),conditional_model=dist.to_dict(),metrics=metric,folds=[copy.deepcopy(metric) for _ in range(5)],
+        joint_states=STATES,generation_policy=dist.generation_policy,probability_model=model.to_dict(),conditional_model=dist.to_dict(),metrics=metric,folds=[copy.deepcopy(metric) for _ in range(5)],
         coherence_pass=True,model_ready=True,decision_payoff_ready=True,payoff_gate_pass=True,development_status='DEVELOPMENT_GATE_PASS')
 
 
@@ -187,7 +201,7 @@ def test_numeric_artifact_identity_canonical_adapter_and_m0_runtime_denial(tmp_p
 
 
 @pytest.mark.parametrize('key,value,message',[
-    ('source_tree_dirty',True,'provenance'),('code_revision','z'*40,'provenance'),('dataset_manifest_hash','wrong','dataset'),
+    ('source_tree_dirty',True,'provenance'),('code_revision','z'*40,'provenance'),('source_fit_code_revision','z'*40,'provenance'),('dataset_manifest_hash','wrong','dataset'),
     ('feature_schema','wrong','schema'),('registry_hash','wrong','unregistered'),('model_ready',False,'verdict'),
     ('decision_payoff_ready',False,'verdict'),('training_label_end',1783876499999,'holdout'),('holdout_query_count',1,'holdout')])
 def test_semantic_artifact_rejection_with_recomputed_identity(tmp_path,trained,key,value,message):
@@ -217,8 +231,15 @@ def test_numeric_component_reference_is_verified_and_tamper_fails_closed(tmp_pat
         load_library_artifact(tmp_path,mode='DEVELOPMENT')
 
 
-def test_published_v5_replays_registered_inner_selection_and_stays_runtime_closed():
-    root=Path(__file__).resolve().parents[4]/'docs/research/artifacts/cati_v5_2130b8e979e2c5d27ea97cf8'
+def test_generator_claim_cannot_disagree_with_numeric_component(tmp_path,trained):
+    d=payload(trained); d['generation_policy']='LEGACY_V5_1'; save(tmp_path,d)
+    with pytest.raises(LibraryArtifactError,match='generator provenance'):
+        load_library_artifact(tmp_path,mode='DEVELOPMENT')
+
+
+@pytest.mark.parametrize('candidate_id',['cati_v5_2130b8e979e2c5d27ea97cf8','cati_v5_42975f7898e66a0ef5a12fda'])
+def test_published_v5_replays_registered_inner_selection_and_stays_runtime_closed(candidate_id):
+    root=Path(__file__).resolve().parents[4]/'docs/research/artifacts'/candidate_id
     lib,d=load_library_artifact(root,mode='DEVELOPMENT')
     r=registry(); assert len(d['attempts'])==50
     for fold in d['folds']:
@@ -234,5 +255,9 @@ def test_published_v5_replays_registered_inner_selection_and_stays_runtime_close
     assert d['metrics']['brier_skill']>=.02 and d['development_status']=='REJECTED_PRE_HOLDOUT'
     assert d['model_ready'] is False and d['decision_payoff_ready'] is False
     assert d['metrics']['coherence']['profit_stop_incoherence_count']==0
+    if candidate_id.endswith('12fda'):
+        assert lib.distribution.generation_policy=='CAUSAL_TERMINAL_SUPPORT_V5_2'
+        qa=json.loads((root/'support_repair_validation.json').read_text())
+        assert qa['completed_new_model_fits']==0 and qa['net_R_quantile_support_violations']==0
     with pytest.raises(LibraryArtifactError,match='runtime remains closed'):
         load_library_artifact(root,mode='RUNTIME')

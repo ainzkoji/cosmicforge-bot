@@ -127,7 +127,7 @@ class JointProbability:
 class ConditionalAtoms:
     """Bounded state-conditioned payoff/path/time distributions, never independent marginals."""
     def fit(self,g,c,cats,targets,event_bars):
-        self.generation_policy='CAUSAL_TERMINAL_SUPPORT_V5_2'
+        self.generation_policy='CAUSAL_TERMINAL_SUPPORT_V5_3'
         gc.collect(); self.encoder=FeatureEncoder(MODES[3]).fit(g,c,cats)
         x=self.encoder.transform(g,c,cats).toarray().astype(np.float32)
         states=joint_labels(targets); self.models={}; self.event_pmf=[]; self.support=[]
@@ -182,9 +182,13 @@ class ConditionalAtoms:
         net[:,0,:]=np.maximum(target,0.)[:,None]; net[:,1,:]=np.minimum(target,0.)[:,None]; net[:,2,:]=(-1-cost)[:,None]
         net[:,3,:]=np.minimum(self._atoms(3,'net',x),np.maximum(target,0.)[:,None])
         magnitude=self._atoms(4,'net',x)
-        if self.generation_policy=='CAUSAL_TERMINAL_SUPPORT_V5_2':
+        if self.generation_policy in ('CAUSAL_TERMINAL_SUPPORT_V5_2','CAUSAL_TERMINAL_SUPPORT_V5_3'):
             magnitude=np.maximum(magnitude,np.maximum(cost-room,0.)[:,None])
         net[:,4,:]=-np.minimum(magnitude,(1+cost)[:,None])
+        if self.generation_policy=='CAUSAL_TERMINAL_SUPPORT_V5_3':
+            upper=np.nextafter(target,-np.inf); lower=np.nextafter(-1-cost,np.inf)
+            net[:,3,:]=np.minimum(net[:,3,:],np.maximum(upper,0.)[:,None])
+            net[:,4,:]=np.maximum(np.minimum(net[:,4,:],np.minimum(upper,0.)[:,None]),lower[:,None])
         means=net.mean(axis=2); p=joint[:,PROFIT].sum(axis=1); terminal=np.column_stack([joint[:,TERMINAL==j].sum(axis=1) for j in range(3)])
         expected=np.sum(joint*means,axis=1)
         positive=np.divide(np.sum(joint[:,PROFIT]*means[:,PROFIT],axis=1),p,out=np.zeros(len(p)),where=p>0)
@@ -192,20 +196,35 @@ class ConditionalAtoms:
         result=dict(joint=joint,p=p,terminal=terminal,expected_net_R=expected,expected_gross_R=expected+cost,
             conditional_positive_net_R=positive,conditional_loss_net_R=loss,state_net_R_mean=means,
             state_gross_R_mean=means+cost[:,None],net_R_quantiles=self.mixture_quantiles(net,joint))
+        paths={}
         for name in ('mfe','mae'):
             atoms=np.stack([self._atoms(s,name,x) for s in range(5)],axis=1)
             # A common equiprobable atom index couples payoff and path draws.
             # Every generated path contains its terminal gross payoff and the
             # required first-touch boundary; these are causal support bounds.
             gross_atoms=net+cost[:,None,None]
+            if self.generation_policy=='CAUSAL_TERMINAL_SUPPORT_V5_3':
+                gross_atoms[:,3:,:]=np.clip(gross_atoms[:,3:,:],np.nextafter(-1.,0.),np.nextafter(room,0.)[:,None,None])
             floor=np.maximum(gross_atoms,0.) if name=='mfe' else np.maximum(-gross_atoms,0.)
             if name=='mfe': floor[:,:2,:]=np.maximum(floor[:,:2,:],room[:,None,None])
             else: floor[:,2,:]=np.maximum(floor[:,2,:],1.)
             atoms=np.maximum(atoms,floor)
+            if self.generation_policy=='CAUSAL_TERMINAL_SUPPORT_V5_3':
+                ceiling=np.nextafter(room,0.)[:,None,None] if name=='mfe' else np.nextafter(1.,0.)
+                atoms[:,3:,:]=np.minimum(atoms[:,3:,:],ceiling)
+            paths[name]=atoms
             result[name]=self.mixture_quantiles(atoms,joint)
         event=np.asarray(self.event_pmf)
-        result['state_time_pmf']=np.broadcast_to(event,(len(g),5,48))
-        result['joint_time_pmf']=joint[:,:,None]*event[None,:,:]
+        conditional_time=np.broadcast_to(event,(len(g),5,48)).copy()
+        if self.generation_policy=='CAUSAL_TERMINAL_SUPPORT_V5_3':
+            # TARGET followed by a full-horizon stop excursion must happen by
+            # bar 47: simultaneous final-bar touches resolve conservatively STOP.
+            for state in (0,1):
+                fraction=np.mean(paths['mae'][:,state,:]>=1.,axis=1)
+                earlier=event[state].copy(); earlier[-1]=0.; earlier/=earlier.sum()
+                conditional_time[:,state,:]=(1-fraction[:,None])*event[state]+fraction[:,None]*earlier
+        result['state_time_pmf']=conditional_time
+        result['joint_time_pmf']=joint[:,:,None]*conditional_time
         return result
 
     def to_dict(self): return dict(encoder=self.encoder.to_dict(),models=self.models,event_pmf=self.event_pmf,support=self.support,generation_policy=self.generation_policy)
@@ -216,12 +235,13 @@ class ConditionalAtoms:
         obj.generation_policy=d.get('generation_policy','LEGACY_V5_1')
         width=len(obj.encoder.mean)+sum(map(len,obj.encoder.vocabularies))+4*len(obj.encoder.families)
         event=np.asarray(obj.event_pmf)
-        if (obj.generation_policy not in ('LEGACY_V5_1','CAUSAL_TERMINAL_SUPPORT_V5_2') or obj.encoder.mode!=MODES[3] or event.shape!=(5,48) or np.any(event<0)
+        if (obj.generation_policy not in ('LEGACY_V5_1','CAUSAL_TERMINAL_SUPPORT_V5_2','CAUSAL_TERMINAL_SUPPORT_V5_3') or obj.encoder.mode!=MODES[3] or event.shape!=(5,48) or np.any(event<0)
             or not np.all(np.isfinite(event)) or np.max(abs(event.sum(axis=1)-1))>1e-12
             or len(obj.support)!=5 or any(n<0 for n in obj.support)
             or set(obj.models)!=set(map(str,range(5)))
             or np.any(event[3:,:47]!=0) or np.any(event[3:,47]!=1)):
             raise ValueError('invalid joint conditional distribution')
+        if np.any(event[:2,:47].sum(axis=1)<=0): raise ValueError('target time support unavailable')
         for s,records in obj.models.items():
             if set(records)!=({'mfe','mae'} if int(s)<3 else {'net','mfe','mae'}): raise ValueError('conditional state target mismatch')
             for record in records.values():

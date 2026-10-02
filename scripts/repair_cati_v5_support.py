@@ -35,9 +35,9 @@ def main(a):
                 with io.TextIOWrapper(compressed,encoding='utf-8') as f: json.dump(updated,f,sort_keys=True,separators=(',',':'))
         return dict(artifact_file=path.name,sha256=hashlib.sha256(path.read_bytes()).hexdigest())
     for trace in d['outer_conditional_models']:
-        model=ConditionalAtoms.from_dict(read_numeric_model(src,trace['model'])); model.generation_policy='CAUSAL_TERMINAL_SUPPORT_V5_2'
+        model=ConditionalAtoms.from_dict(read_numeric_model(src,trace['model'])); model.generation_policy='CAUSAL_TERMINAL_SUPPORT_V5_3'
         trace['model']=persist(trace['model'],model); distributions[trace['fold']]=model
-    final=ConditionalAtoms.from_dict(read_numeric_model(src,d['conditional_model'])); final.generation_policy='CAUSAL_TERMINAL_SUPPORT_V5_2'
+    final=ConditionalAtoms.from_dict(read_numeric_model(src,d['conditional_model'])); final.generation_policy='CAUSAL_TERMINAL_SUPPORT_V5_3'
     d['conditional_model']=persist(d['conditional_model'],final)
     del final; gc.collect()
     def metrics(record):
@@ -63,6 +63,12 @@ def main(a):
                 for key in ('joint','p','terminal'): np.testing.assert_array_equal(pred[key],record[key][sl])
                 for key in ('expected_net_R','conditional_positive_net_R','conditional_loss_net_R','expected_gross_R','state_net_R_mean','mfe','mae','net_R_quantiles'):
                     record[key][sl]=pred[key]
+                from app.trading_intelligence.forecast.v5_models import TERMINAL
+                terminal=targets[ix,5].astype(int); masses=np.zeros((len(ix),48))
+                for term in range(3):
+                    rows=terminal==term
+                    masses[rows]=pred['joint_time_pmf'][rows][:,TERMINAL==term,:].sum(axis=1)/pred['terminal'][rows,term,None]
+                record['time_cdf'][sl]=np.cumsum(masses,axis=1)
             f=copy.deepcopy(fold); f.update(metrics({k:v[offset:offset+n] for k,v in record.items()})); folds.append(f); offset+=n
         assert offset==len(record['indices'])
         m=metrics(record); coherent=coherence_pass(m['coherence'])
@@ -81,7 +87,7 @@ def main(a):
     joined=aggregate(selected); m=metrics(joined); coherent=coherence_pass(m['coherence'])
     assert support_violations==0
     d.update(metrics=m,folds=selected_folds,source_fit_code_revision=original['code_revision'],code_revision=subprocess.check_output(['git','rev-parse','HEAD'],cwd=REPO,text=True).strip(),
-        support_repair_from=original['candidate_id'],generation_policy='CAUSAL_TERMINAL_SUPPORT_V5_2',
+        support_repair_from=original['candidate_id'],generation_policy='CAUSAL_TERMINAL_SUPPORT_V5_3',
         coherence_pass=coherent,payoff_gate_pass=payoff_gate(m['payoff'],[f['payoff'] for f in selected_folds],registry['payoff_gate']),
         model_ready=probability_gate(m,selected_folds,registry['probability_gate']) and coherent,
         decision_payoff_ready=decision_gate(m['payoff'],selected_folds,m['time_validation'],registry,coherent))

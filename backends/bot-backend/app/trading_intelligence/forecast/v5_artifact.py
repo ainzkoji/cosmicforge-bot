@@ -86,6 +86,8 @@ def load_v5_artifact(path,*,expected_hash=None,mode='RUNTIME'):
         if d['feature_schema']!=FEATURE_SCHEMA or tuple(d['joint_states'])!=STATES: raise ValueError('V5 schema/state mismatch')
         if any(d[k]!=registry[k] for k in ('parent_library_hash','dataset_manifest_hash')): raise ValueError('wrong V5 dataset')
         if d['source_tree_dirty'] is not False or len(d['code_revision'])!=40 or any(c not in '0123456789abcdef' for c in d['code_revision']): raise ValueError('dirty/invalid V5 provenance')
+        fit_revision=d.get('source_fit_code_revision',d['code_revision'])
+        if len(fit_revision)!=40 or any(c not in '0123456789abcdef' for c in fit_revision): raise ValueError('invalid V5 fitting provenance')
         if d['training_label_end']>=d['holdout_start_ms'] or d['holdout_query_count']!=0: raise ValueError('V5 holdout violation')
         if d['holdout_start_ms']!=1783876499999: raise ValueError('changed holdout boundary')
         if d['runtime_eligible'] is not False or d['calibration_status']!='RESEARCH_ONLY': raise ValueError('V5 authority claim')
@@ -98,6 +100,7 @@ def load_v5_artifact(path,*,expected_hash=None,mode='RUNTIME'):
         if mode!='DEVELOPMENT': raise ValueError('V5 RESEARCH_ONLY; runtime remains closed pending governance')
         if d['probability_model']['spec'] not in registry['variants']: raise ValueError('unregistered V5 variant')
         probability=JointProbability.from_dict(d['probability_model']); distribution=ConditionalAtoms.from_dict(read_numeric_model(root,d['conditional_model']))
+        if d.get('generation_policy','LEGACY_V5_1')!=distribution.generation_policy: raise ValueError('joint generator provenance mismatch')
     except (OSError,ValueError,KeyError,TypeError,IndexError) as exc:
         raise LibraryArtifactError(str(exc)) from exc
     return V5Library(d['library_hash'],d['candidate_id'],probability,distribution,d['training_label_end'],d['training_rows'],decision),{**d,'market_type':'crypto'}
