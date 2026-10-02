@@ -1,0 +1,25 @@
+{
+  "registry_version": "1",
+  "role": "RESEARCH_CANDIDATE_V3_INFORMATION_CONDITIONING",
+  "feature_schema": "cati-v3-causal-geometry-additive-1",
+  "estimator": "L2_ADDITIVE_LOGISTIC_LOG_GEOMETRY",
+  "dataset_manifest_hash": "d64e5c517fd634e57ecff9441341d67ea9009072d0b184772471cd33e5903dfb",
+  "parent_library_hash": "0ead8264955eb958b20e165edfd3dfc1ecd1548731e717e87c4bb04f526bc9b4",
+  "inspection_history": "The entire pre-holdout range has previously been inspected. Nested temporal scores are development evidence, not untouched confirmation.",
+  "sampling": "Every twelfth canonical label-id-ordered row, selected before labels are read; time/label-id sorted afterwards. No family excluded.",
+  "maximum_training_rows": 120000,
+  "maximum_evaluation_rows_per_fold": 12000,
+  "outer_folds": "Six equal chronological pre-holdout windows: seed window 0, evaluation windows 1 through 5. Only labels fully matured before each window start train the estimator.",
+  "inner_folds": "For each outer training prefix, three equal chronological windows: seed 0, validation 1 and 2, with strict horizon maturity. Choose lowest pooled inner Brier; ties choose smaller C.",
+  "variants": [
+    {"variant_id": "v3-log-geometry-l2-c001", "C": 0.01},
+    {"variant_id": "v3-log-geometry-l2-c01", "C": 0.1},
+    {"variant_id": "v3-log-geometry-l2-c1", "C": 1.0}
+  ],
+  "minimum_instrument_support": 300,
+  "calibration_requirements": {"minimum_samples": 300, "minimum_brier_skill": 0.02, "maximum_ece": 0.05},
+  "consistency_requirement": "Every outer fold has positive causal Brier skill and pooled evidence passes all frozen calibration gates.",
+  "runtime_eligible": false,
+  "holdout_opened": false,
+  "holdout_query_count": 0
+}

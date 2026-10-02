@@ -150,6 +150,37 @@ def forecast_from_dimensions(
     setup_candidate_id, market_state_id, setup_family and room_to_target_R,
     so offline calibration can forecast a held-out library row from its own
     stored cohort dimensions without re-deriving them from a MarketState."""
+    if hasattr(library, "conditioner"):
+        from dataclasses import replace
+        from app.trading_intelligence.forecast.information_conditioning import causal_features
+        # Reuse the existing distribution/uncertainty contract. Binary V3 model
+        # replaces only p(net profitable); ancillary analog distributions remain
+        # explicitly research-only and cannot approve an entry.
+        try:
+            if candidate.decision_time <= library.training_label_end:
+                raise ValueError("V3 model not available at historical decision time")
+            if candidate.timeframe != library.timeframe:
+                raise ValueError("V3 timeframe outside registered training domain")
+            features = causal_features(dimensions=dims, room=candidate.room_to_target_R,
+                risk_fraction=candidate.initial_structural_risk/candidate.trigger_reference,
+                timeframe=candidate.timeframe, horizon=library.horizon,
+                instrument=candidate.instrument_key.venue_symbol)
+            probability = float(library.conditioner.predict([features])[0])
+        except (ValueError, AttributeError, ZeroDivisionError):
+            return _unavailable_forecast(candidate, ForecastStatus.INVALID_INPUT.value,
+                                         ("V3_CAUSAL_FEATURES_UNAVAILABLE",))
+        class ReferenceView:
+            rows = library.rows
+            library_hash = library.library_hash
+            library_version = library.library_version
+            calibration_status = "RESEARCH_ONLY"
+        reference = forecast_from_dimensions(candidate, dims, ReferenceView(),
+            min_usable_raw_support=min_usable_raw_support, prior_strength=prior_strength,
+            credible_interval_level=credible_interval_level, shrinkage_strength=shrinkage_strength)
+        return replace(reference, p_net_profitable_mean=probability,
+                       credible_interval_low=0., credible_interval_high=1.,
+                       forecast_uncertainty=1., calibration_status="RESEARCH_ONLY",
+                       reason_codes=reference.reason_codes+("V3_RESEARCH_ONLY", "V3_ANALOG_DISTRIBUTION_REFERENCE"))
     matched: List[LibraryRow] = []
     level = len(BACKOFF_LEVELS) - 1
     level_dims: Tuple[str, ...] = BACKOFF_LEVELS[-1]

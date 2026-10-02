@@ -216,6 +216,9 @@ def load_library_artifact(
     REPLAY_CAPTURE sources. SYNTHETIC_TEST, FIXTURE_TEST and UNKNOWN
     libraries load only with an explicit ``mode="TEST"``/``"DEVELOPMENT"``."""
     root = Path(path)
+    if (root / "v3_model.json").is_file():
+        from app.trading_intelligence.forecast.v3_artifact import load_v3_artifact
+        return load_v3_artifact(root, expected_hash=expected_hash, mode=mode)
     mpath, rpath = root / MANIFEST_FILE, root / ROWS_FILE
     if not mpath.is_file() or not rpath.is_file():
         raise LibraryArtifactError(f"not a library artifact directory: {root}")
