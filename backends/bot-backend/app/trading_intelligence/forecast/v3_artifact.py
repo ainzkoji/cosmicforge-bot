@@ -72,4 +72,8 @@ def load_v3_artifact(path, *, expected_hash=None, mode="RUNTIME"):
     except (OSError,ValueError,KeyError,TypeError) as exc:
         raise LibraryArtifactError(str(exc)) from exc
     # Even passing development metrics remain RESEARCH_ONLY at the forecast boundary.
-    return V3Library(d['library_hash'],d['candidate_id'],model,rows,'RESEARCH_ONLY',d['training_label_end']),d
+    # Scope derives from the pinned, registered crypto parent identity. Without
+    # this metadata the existing controller correctly scopes the library to no
+    # asset classes; never make the compact model unrestricted.
+    manifest={**d,'market_type':'crypto','scope_source':'registered_crypto_parent_library'}
+    return V3Library(d['library_hash'],d['candidate_id'],model,rows,'RESEARCH_ONLY',d['training_label_end']),manifest

@@ -71,7 +71,9 @@ def write(tmp_path,d):
 
 def test_artifact_development_reload_and_runtime_closed(tmp_path):
     d=artifact(tmp_path); h=write(tmp_path,d)
-    library,_=load_library_artifact(tmp_path,mode='DEVELOPMENT',expected_hash=h)
+    library,manifest=load_library_artifact(tmp_path,mode='DEVELOPMENT',expected_hash=h)
+    from app.trading_intelligence.config import library_scope
+    assert library_scope(manifest)==('CRYPTO',)
     assert library.library_hash==h and library.calibration_status=='RESEARCH_ONLY'
     with pytest.raises(LibraryArtifactError,match='runtime format not approved'):
         load_library_artifact(tmp_path,expected_hash=h)

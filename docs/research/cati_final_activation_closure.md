@@ -1,7 +1,7 @@
 # CATI final activation closure — living report
 
 Single source of truth for CATI activation status. Updated in place; every claim has evidence (commit, artifact,
-hash, count). Last update: 2026-10-02 05:16 UTC.
+hash, count). Last update: 2026-10-02, V3 implementation/runtime checkpoint.
 
 **Governance today:** phase **M0**. CATI execution **BLOCKED** (`GOVERNANCE_PHASE_M0_NO_CATI_AUTHORITY`).
 Demo authority **FALSE**. Live authority **FALSE**. Crypto holdout **RESERVED, unopened** (`hold_8c0c0e484403395b79b63fdc`).
@@ -13,12 +13,12 @@ Section 22 thresholds unchanged. No holdout row has been evaluated.
 | Item | Status |
 |---|---|
 | Outcome library | COMPLETE: 3,007,222 rows; `0ead8264955e…`; clean rebuild; 8/8 verification PASS |
-| Calibration | FAILED: V1 skill 0.0004776754 < 0.02; causal-benchmark V2 skill 0.0010456895 < 0.02; both RESEARCH_ONLY |
-| Runtime ranking | BLOCKED (no calibrated eligible library; runtime stopped; no library pin) |
+| Calibration | FAILED: V1 0.0004776754; causal V2 0.0010456895; information-conditioned V3 0.0185275224; all below frozen 0.02 |
+| Runtime ranking | BLOCKED (no calibrated eligible library; canonical application RUNNING safely at M0; no library pin) |
 | 5 full epochs | WAITING (measured after the library is installed, with certification suspended) |
 | Crypto pre-holdout | NOT_RUNNING; no completed certification result established by this calibration audit |
-| FX acquisition | NOT_RUNNING at process inspection; completion not assessed here; no writer restarted |
-| FX derivation / QA / freeze | WAITING (after 1m completes) |
+| FX acquisition | RUNNING: existing single-writer supervisor resumed; fewer than 6,500 pair/day periods remain |
+| FX derivation / QA / freeze | QUEUED sequentially after acquisition; strict gap rule retained; NOT FROZEN |
 | Bybit demo validation | WAITING_FOR_USER (connect a Bybit Demo Trading account in the app) |
 | BingX demo validation | WAITING_FOR_USER (connect a BingX VST account in the app) |
 | Holdout | WAITING_FOR_GOVERNANCE (needs PRE_HOLDOUT_PASS and explicit user authorization) |
@@ -28,6 +28,21 @@ Section 22 thresholds unchanged. No holdout row has been evaluated.
 | Hard risk / 2.5% daily hard-loss | ACTIVE (unchanged; every CATI entry passes the existing hard-risk stack) |
 
 ## DONE
+
+V3 is now actual code and a completed nested chronological evaluation, not a
+design-only proposal. Candidate `cati_v3_f97c1349086b6c1068ee49c0`, 51,887 outer
+predictions, skill 0.0185275224, ECE 0.0128049516, positive skill in all five
+outer folds. Gate FAILED; RESEARCH_ONLY. See
+[development report](cati_v3_development_report.md),
+[registered variants](cati_v3_research_registry.json) and
+[model/metrics/provenance result](cati_v3_development_result.json).
+
+Canonical runtime health, live scheduler/calendar workers, market cycles,
+instrument discovery and active hard-risk blocks verified. Full CATI regressions
+1,110 passed; broader runtime/risk/broker/market/V3/FX checks 353 passed; final
+scope/authority/V3/FX checks 24 passed. Full requested engineering closure remains
+incomplete pending FX acquisition/QA/gaps/freeze and authenticated user-account
+validation. MODEL_READY = NO. No holdout query, promotion or CATI authority change.
 
 | Work | Evidence |
 |---|---|
