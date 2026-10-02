@@ -21,7 +21,8 @@ def inputs(n=1800):
     c=rng.normal(0,.01,(n,11)); cats=np.asarray([['A' if i%2 else 'B','LONG','RANGE','MEDIUM','BTC'] for i in range(n)])
     terminal=np.choose(np.arange(n)%4,[0,1,2,2]); cost=np.expm1(g[:,2]); room=np.exp(g[:,0])
     net=np.where(terminal==0,room-cost,np.where(terminal==1,-1-cost,np.where(np.arange(n)%4==2,.2,-.3)))
-    net[(terminal==2)&(room<=cost)]=-.03
+    impossible_profit=(terminal==2)&(room<=cost)
+    net[impossible_profit]=(room-cost-.01)[impossible_profit]
     target=np.column_stack((net>0,net,net+cost,abs(rng.normal(size=n))+1,abs(rng.normal(size=n))+1,terminal))
     events=rng.integers(1,49,n); events[terminal==2]=48
     times=np.arange(n,dtype=np.int64)*900000+1600000000000
@@ -88,12 +89,17 @@ def test_generated_path_support_contains_required_terminal_boundaries(trained):
     g,c,cats,_,_,_,_,dist=trained
     for state in range(5):
         joint=np.zeros((20,5)); joint[:,state]=1.
-        pred=dist.predict(g[20:40],c[20:40],cats[20:40],joint)
-        if state in (0,1): assert np.all(pred['mfe']>=np.exp(g[20:40,0,None]))
+        probe=g[20:40].copy()
+        if state in (1,4): probe[:,0]=np.log(.05)
+        pred=dist.predict(probe,c[20:40],cats[20:40],joint)
+        if state in (0,1): assert np.all(pred['mfe']>=np.exp(probe[:,0,None]))
         if state==2: assert np.all(pred['mae']>=1.)
-        cost=np.expm1(g[20:40,2,None])
+        cost=np.expm1(probe[:,2,None])
         if state==3: assert np.all(pred['mfe']>=np.maximum(pred['net_R_quantiles']+cost,0.)-1e-12)
         if state==4: assert np.all(pred['mae']>=np.maximum(-pred['net_R_quantiles'][:,::-1]-cost,0.)-1e-12)
+        if state in (3,4):
+            assert np.all(pred['net_R_quantiles']<=np.exp(probe[:,0,None])-cost+1e-12)
+            assert np.all(pred['net_R_quantiles']>=-1-cost-1e-12)
 
 
 def test_recency_weights_are_time_only_normalized_and_future_rejected():
@@ -114,6 +120,15 @@ def test_compact_categories_preserve_exact_fitted_parameters(trained):
     with threadpool_limits(limits=1):
         refit=JointProbability(registry()['variants'][0]).fit(g,c,compact,targets,times,int(times[-1])+900000)
     assert stable_hash(refit.to_dict())==stable_hash(model.to_dict())
+
+
+def test_generator_policy_is_versioned_without_changing_fitted_numbers(trained):
+    record=trained[-1].to_dict(); assert record['generation_policy']=='CAUSAL_TERMINAL_SUPPORT_V5_2'
+    old=copy.deepcopy(record); old.pop('generation_policy')
+    restored=ConditionalAtoms.from_dict(old)
+    assert restored.generation_policy=='LEGACY_V5_1'
+    restored.generation_policy='CAUSAL_TERMINAL_SUPPORT_V5_2'
+    assert stable_hash(restored.to_dict())==stable_hash(record)
 
 
 def test_histogram_joint_export_and_recency_classifier_are_deterministic():
@@ -200,3 +215,24 @@ def test_numeric_component_reference_is_verified_and_tamper_fails_closed(tmp_pat
     d['conditional_model']['artifact_file']='../conditional.json.gz'; save(tmp_path,d)
     with pytest.raises(LibraryArtifactError,match='reference'):
         load_library_artifact(tmp_path,mode='DEVELOPMENT')
+
+
+def test_published_v5_replays_registered_inner_selection_and_stays_runtime_closed():
+    root=Path(__file__).resolve().parents[4]/'docs/research/artifacts/cati_v5_2130b8e979e2c5d27ea97cf8'
+    lib,d=load_library_artifact(root,mode='DEVELOPMENT')
+    r=registry(); assert len(d['attempts'])==50
+    for fold in d['folds']:
+        scored=[]
+        for order,spec in enumerate(r['variants']):
+            variant=spec.get('equivalent_to',spec['id'])
+            fits=[x for x in d['attempts'] if x['outer_fold']==fold['fold'] and x['variant']==variant]
+            assert len(fits)==2
+            assert all(x['training_label_end']<x['training_cutoff']<=x['evaluation_start']<d['holdout_start_ms'] for x in fits)
+            score=sum(x['brier']*x['samples'] for x in fits)/sum(x['samples'] for x in fits)
+            scored.append((score,order,spec['id']))
+        assert min(scored)[2]==fold['variant']
+    assert d['metrics']['brier_skill']>=.02 and d['development_status']=='REJECTED_PRE_HOLDOUT'
+    assert d['model_ready'] is False and d['decision_payoff_ready'] is False
+    assert d['metrics']['coherence']['profit_stop_incoherence_count']==0
+    with pytest.raises(LibraryArtifactError,match='runtime remains closed'):
+        load_library_artifact(root,mode='RUNTIME')

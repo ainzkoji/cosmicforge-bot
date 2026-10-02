@@ -127,6 +127,7 @@ class JointProbability:
 class ConditionalAtoms:
     """Bounded state-conditioned payoff/path/time distributions, never independent marginals."""
     def fit(self,g,c,cats,targets,event_bars):
+        self.generation_policy='CAUSAL_TERMINAL_SUPPORT_V5_2'
         gc.collect(); self.encoder=FeatureEncoder(MODES[3]).fit(g,c,cats)
         x=self.encoder.transform(g,c,cats).toarray().astype(np.float32)
         states=joint_labels(targets); self.models={}; self.event_pmf=[]; self.support=[]
@@ -175,10 +176,15 @@ class ConditionalAtoms:
             raise ValueError('invalid joint distribution')
         x=self.encoder.transform(g,c,cats).toarray().astype(np.float32)
         room=np.exp(g[:,0]); cost=np.expm1(g[:,2]); target=room-cost
+        if (np.any((joint[:,0]>0)&(target<=0)) or np.any((joint[:,1]>0)&(target>0))
+            or np.any((joint[:,3]>0)&(target<=0))): raise ValueError('joint probability outside causal state support')
         net=np.empty((len(g),5,101))
         net[:,0,:]=np.maximum(target,0.)[:,None]; net[:,1,:]=np.minimum(target,0.)[:,None]; net[:,2,:]=(-1-cost)[:,None]
         net[:,3,:]=np.minimum(self._atoms(3,'net',x),np.maximum(target,0.)[:,None])
-        net[:,4,:]=-np.minimum(self._atoms(4,'net',x),(1+cost)[:,None])
+        magnitude=self._atoms(4,'net',x)
+        if self.generation_policy=='CAUSAL_TERMINAL_SUPPORT_V5_2':
+            magnitude=np.maximum(magnitude,np.maximum(cost-room,0.)[:,None])
+        net[:,4,:]=-np.minimum(magnitude,(1+cost)[:,None])
         means=net.mean(axis=2); p=joint[:,PROFIT].sum(axis=1); terminal=np.column_stack([joint[:,TERMINAL==j].sum(axis=1) for j in range(3)])
         expected=np.sum(joint*means,axis=1)
         positive=np.divide(np.sum(joint[:,PROFIT]*means[:,PROFIT],axis=1),p,out=np.zeros(len(p)),where=p>0)
@@ -202,14 +208,15 @@ class ConditionalAtoms:
         result['joint_time_pmf']=joint[:,:,None]*event[None,:,:]
         return result
 
-    def to_dict(self): return dict(encoder=self.encoder.to_dict(),models=self.models,event_pmf=self.event_pmf,support=self.support)
+    def to_dict(self): return dict(encoder=self.encoder.to_dict(),models=self.models,event_pmf=self.event_pmf,support=self.support,generation_policy=self.generation_policy)
 
     @classmethod
     def from_dict(cls,d):
         obj=cls(); obj.encoder=FeatureEncoder.from_dict(d['encoder']); obj.models=d['models']; obj.event_pmf=d['event_pmf']; obj.support=d['support']
+        obj.generation_policy=d.get('generation_policy','LEGACY_V5_1')
         width=len(obj.encoder.mean)+sum(map(len,obj.encoder.vocabularies))+4*len(obj.encoder.families)
         event=np.asarray(obj.event_pmf)
-        if (obj.encoder.mode!=MODES[3] or event.shape!=(5,48) or np.any(event<0)
+        if (obj.generation_policy not in ('LEGACY_V5_1','CAUSAL_TERMINAL_SUPPORT_V5_2') or obj.encoder.mode!=MODES[3] or event.shape!=(5,48) or np.any(event<0)
             or not np.all(np.isfinite(event)) or np.max(abs(event.sum(axis=1)-1))>1e-12
             or len(obj.support)!=5 or any(n<0 for n in obj.support)
             or set(obj.models)!=set(map(str,range(5)))

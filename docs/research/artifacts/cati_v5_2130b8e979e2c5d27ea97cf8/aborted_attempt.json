@@ -1,0 +1,7 @@
+{
+  "status": "ABORTED_ENGINEERING_SUPPORT_CHECK",
+  "reason": "Path atoms must contain known terminal boundary/closing payoff. No architecture/hyperparameter/selection changes; original probability fits remain diagnostic only.",
+  "completed_inner_fits": 30,
+  "completed_outer_folds": 2,
+  "candidate_produced": false
+}
