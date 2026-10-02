@@ -84,6 +84,18 @@ def test_distribution_and_event_time_replay_never_reads_future_labels(trained):
     np.testing.assert_array_equal(model.predict(g2[:100],c[:100],cats[:100]),joint)
 
 
+def test_generated_path_support_contains_required_terminal_boundaries(trained):
+    g,c,cats,_,_,_,_,dist=trained
+    for state in range(5):
+        joint=np.zeros((20,5)); joint[:,state]=1.
+        pred=dist.predict(g[20:40],c[20:40],cats[20:40],joint)
+        if state in (0,1): assert np.all(pred['mfe']>=np.exp(g[20:40,0,None]))
+        if state==2: assert np.all(pred['mae']>=1.)
+        cost=np.expm1(g[20:40,2,None])
+        if state==3: assert np.all(pred['mfe']>=np.maximum(pred['net_R_quantiles']+cost,0.)-1e-12)
+        if state==4: assert np.all(pred['mae']>=np.maximum(-pred['net_R_quantiles'][:,::-1]-cost,0.)-1e-12)
+
+
 def test_recency_weights_are_time_only_normalized_and_future_rejected():
     times=np.array([0,180,365],dtype=np.int64)*86400000; cutoff=366*86400000
     w=recency_weights(times,cutoff,180)

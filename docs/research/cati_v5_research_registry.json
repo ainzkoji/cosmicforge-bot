@@ -5,36 +5,178 @@
   "parent_library_hash": "0ead8264955eb958b20e165edfd3dfc1ecd1548731e717e87c4bb04f526bc9b4",
   "dataset_manifest_hash": "d64e5c517fd634e57ecff9441341d67ea9009072d0b184772471cd33e5903dfb",
   "inspection_history": "All V1-V4 pre-holdout evidence inspected; DEVELOPMENT only. V4 hybrid is not promoted or selected post hoc.",
-  "architectures": ["JOINT_MULTINOMIAL_REGULARIZED", "JOINT_HISTOGRAM_BOOSTING", "RECENCY_AWARE_JOINT_MODEL"],
-  "variants": [
-    {"id":"A_001", "architecture":"JOINT_MULTINOMIAL_REGULARIZED", "C":0.01, "half_life_days":null},
-    {"id":"A_010", "architecture":"JOINT_MULTINOMIAL_REGULARIZED", "C":0.1, "half_life_days":null},
-    {"id":"B_FIXED", "architecture":"JOINT_HISTOGRAM_BOOSTING", "C":null, "half_life_days":null},
-    {"id":"C_NONE", "architecture":"RECENCY_AWARE_JOINT_MODEL", "C":0.01, "half_life_days":null, "equivalent_to":"A_001"},
-    {"id":"C_LONG", "architecture":"RECENCY_AWARE_JOINT_MODEL", "C":0.01, "half_life_days":365},
-    {"id":"C_MEDIUM", "architecture":"RECENCY_AWARE_JOINT_MODEL", "C":0.01, "half_life_days":180}
+  "architectures": [
+    "JOINT_MULTINOMIAL_REGULARIZED",
+    "JOINT_HISTOGRAM_BOOSTING",
+    "RECENCY_AWARE_JOINT_MODEL"
   ],
-  "search_budget": {"serious_architectures":3,"declared_variants":6,"unique_fit_variants":5,"outer_folds":5,"inner_validation_folds":2,"maximum_unique_inner_fits":50,"maximum_outer_architecture_fits":15,"final_probability_refits":1,"fixed_conditional_distribution_fits":6},
-  "features": {"encoder":"V4 BOUNDED_HYBRID, training-only knots/scaling/vocabularies/family deviations", "domain":{"timeframe":"15m","horizon":48}, "domain_note":"Timeframe/horizon are constant validated domain fields, not fabricated varying predictors.","context_names":["return_4","return_24","realized_vol_24","atr_14_fraction","ma_distance_24","trend_slope_24","log_volume_ratio_24","btc_return_4","btc_return_24","eth_return_4","eth_return_24"],"alignment":"Exact last closed instrument/BTC/ETH candle equals decision time. Missing/stale/future context fails closed.","omitted":["liquidity","funding_crowding","HTF_alignment","market_breadth"]},
-  "joint_states": ["TARGET_PROFIT","TARGET_LOSS","STOP_LOSS","TIMEOUT_PROFIT","TIMEOUT_LOSS"],
+  "variants": [
+    {
+      "id": "A_001",
+      "architecture": "JOINT_MULTINOMIAL_REGULARIZED",
+      "C": 0.01,
+      "half_life_days": null
+    },
+    {
+      "id": "A_010",
+      "architecture": "JOINT_MULTINOMIAL_REGULARIZED",
+      "C": 0.1,
+      "half_life_days": null
+    },
+    {
+      "id": "B_FIXED",
+      "architecture": "JOINT_HISTOGRAM_BOOSTING",
+      "C": null,
+      "half_life_days": null
+    },
+    {
+      "id": "C_NONE",
+      "architecture": "RECENCY_AWARE_JOINT_MODEL",
+      "C": 0.01,
+      "half_life_days": null,
+      "equivalent_to": "A_001"
+    },
+    {
+      "id": "C_LONG",
+      "architecture": "RECENCY_AWARE_JOINT_MODEL",
+      "C": 0.01,
+      "half_life_days": 365
+    },
+    {
+      "id": "C_MEDIUM",
+      "architecture": "RECENCY_AWARE_JOINT_MODEL",
+      "C": 0.01,
+      "half_life_days": 180
+    }
+  ],
+  "search_budget": {
+    "serious_architectures": 3,
+    "declared_variants": 6,
+    "unique_fit_variants": 5,
+    "outer_folds": 5,
+    "inner_validation_folds": 2,
+    "maximum_unique_inner_fits": 50,
+    "maximum_outer_architecture_fits": 15,
+    "final_probability_refits": 1,
+    "fixed_conditional_distribution_fits": 6
+  },
+  "features": {
+    "encoder": "V4 BOUNDED_HYBRID, training-only knots/scaling/vocabularies/family deviations",
+    "domain": {
+      "timeframe": "15m",
+      "horizon": 48
+    },
+    "domain_note": "Timeframe/horizon are constant validated domain fields, not fabricated varying predictors.",
+    "context_names": [
+      "return_4",
+      "return_24",
+      "realized_vol_24",
+      "atr_14_fraction",
+      "ma_distance_24",
+      "trend_slope_24",
+      "log_volume_ratio_24",
+      "btc_return_4",
+      "btc_return_24",
+      "eth_return_4",
+      "eth_return_24"
+    ],
+    "alignment": "Exact last closed instrument/BTC/ETH candle equals decision time. Missing/stale/future context fails closed.",
+    "omitted": [
+      "liquidity",
+      "funding_crowding",
+      "HTF_alignment",
+      "market_breadth"
+    ]
+  },
+  "joint_states": [
+    "TARGET_PROFIT",
+    "TARGET_LOSS",
+    "STOP_LOSS",
+    "TIMEOUT_PROFIT",
+    "TIMEOUT_LOSS"
+  ],
   "state_support": "TARGET_PROFIT/TARGET_LOSS split is deterministic from decision-time room minus frozen cost. Latent classifier states TARGET,STOP,TIMEOUT_PROFIT,TIMEOUT_LOSS. When room<=cost, profitable timeout is structurally impossible and its latent logit is -infinity before softmax. Joint probabilities are constructed from the one normalized latent vector; no post-hoc probability clipping. No STOP_PROFIT state.",
   "label_support_evidence": "Frozen development cache: TARGET_LOSS=37, TARGET_PROFIT=52281, STOP_LOSS=137019, TIMEOUT_PROFIT=37863, TIMEOUT_LOSS=23402; no STOP_PROFIT. Terminal net-R matches room-cost / -1-cost; timeout net-R within [-1-cost,room-cost]. Checked before model evaluation.",
-  "classifier": {"logistic":{"solver":"lbfgs","maximum_iterations":2000,"tolerance":0.000001},"histogram":{"iterations":60,"maximum_leaves":15,"minimum_leaf":400,"L2":20,"learning_rate":0.1,"maximum_bins":128,"early_stopping":false,"random_seed":0},"recency":"2^(-(training_cutoff-decision_time)/(half_life_days*86400000)), normalized to mean 1; timestamps only. Transform fitting unweighted and training-only."},
-  "maximum_probability_training_rows":120000,
-  "maximum_histogram_training_rows":60000,
-  "maximum_distribution_training_rows":60000,
-  "maximum_evaluation_rows_per_fold":12000,
-  "prediction_chunk_rows":256,
-  "sampling":"Identical V4 every-twelfth canonical-row sample and identical outer test indices; no family/instrument exclusion.",
-  "folds":"Same six equal chronological development windows: seed 0, outer 1..5. Inner three equal prefix windows: seed 0, validation 1,2. All training label horizons must end strictly before cutoff; all validation horizons mature before inner-end.",
-  "selection":"Lowest pooled inner binary Brier derived from the joint vector selects variant within architecture and architecture; ties follow registry order. Equivalent C_NONE reuses A_001 scores/fits. No outer selection. Final variant is last outer prefix's inner choice, then refit all matured pre-holdout development.",
-  "probability_gate":{"minimum_samples":300,"minimum_brier_skill":0.02,"maximum_ece":0.05,"each_outer_ece_maximum":0.05,"all_outer_skills_positive":true,"minimum_fold_3_skill":0.01653700347650422,"minimum_fold_4_skill":0.01815023223819101,"minimum_fold_5_skill":0.01716711342484334},
-  "coherence_gate":{"maximum_probability_sum_error":1e-12,"maximum_identity_error":1e-12,"negative_probability_count":0,"over_one_probability_count":0,"profit_stop_incoherence_count":0,"state_payoff_sign_violation_count":0},
-  "conditional_distribution":{"representation":"101 equiprobable conditional atoms per joint state; expected payoff and marginal quantiles derive from this same mixture. TARGET/STOP net atoms deterministic frozen geometry/cost. TIMEOUT magnitude mean histogram trees plus training-only empirical residual-ratio atoms, bounded to causal terminal net support. MFE/MAE per-state nonnegative histogram means with training-only residual-ratio atoms. Small states (<400) use empirical constant distribution; retained, not removed.","trees":60,"maximum_leaves":15,"minimum_leaf":200,"L2":10,"early_stopping":false,"random_seed":0,"ratio_quantiles":"midpoints (j+0.5)/101, nonnegative, mean-normalized", "conditional_sign":"Positive states nonnegative magnitude; loss states nonpositive magnitude. Bounds are generative outcome support, not probability clipping.","time":"48-bin state-conditional empirical event-time distribution with Dirichlet 0.5/bin smoothing, fit from relevant first-touch label only. TIMEOUT is administrative horizon censoring at 48, not an observed target/stop event. Joint state/time mass is p(state)*p(time|state)."},
-  "payoff_gate":{"pooled_expected_R_RMSE_no_worse_than_causal_mean":true,"pooled_expected_R_MAE_no_worse_than_causal_mean":true,"maximum_expected_R_bucket_absolute_bias":0.15,"maximum_quantile_coverage_error":0.05,"maximum_expectancy_quintile_inversion_R":0.05,"terminal_multiclass_brier_no_worse_than_causal_frequency":true,"maximum_each_fold_RMSE_relative_degradation":0.05},
-  "decision_payoff_gate":{"all_outer_maximum_adjacent_inversion_R":0.05,"all_outer_top_bucket_realized_R_minimum":0,"pooled_top_bucket_realized_R_minimum":0,"all_outer_top_minus_bottom_realized_R_strictly_positive":true,"each_outer_maximum_bucket_absolute_bias":0.15,"time_conditional_MAE_relative_to_causal_terminal_frequency_maximum":1.05,"time_conditional_CRPS_relative_to_causal_terminal_frequency_maximum":1.05,"time_validation_required_for_decision_readiness":true,"time_not_required_for_binary_admission":true},
-  "parallel_fit_workers":1,
-  "runtime_eligible":false,
-  "holdout_opened":false,
-  "holdout_query_count":0
+  "classifier": {
+    "logistic": {
+      "solver": "lbfgs",
+      "maximum_iterations": 2000,
+      "tolerance": 1e-06
+    },
+    "histogram": {
+      "iterations": 60,
+      "maximum_leaves": 15,
+      "minimum_leaf": 400,
+      "L2": 20,
+      "learning_rate": 0.1,
+      "maximum_bins": 128,
+      "early_stopping": false,
+      "random_seed": 0
+    },
+    "recency": "2^(-(training_cutoff-decision_time)/(half_life_days*86400000)), normalized to mean 1; timestamps only. Transform fitting unweighted and training-only."
+  },
+  "maximum_probability_training_rows": 120000,
+  "maximum_histogram_training_rows": 60000,
+  "maximum_distribution_training_rows": 60000,
+  "maximum_evaluation_rows_per_fold": 12000,
+  "prediction_chunk_rows": 256,
+  "sampling": "Identical V4 every-twelfth canonical-row sample and identical outer test indices; no family/instrument exclusion.",
+  "folds": "Same six equal chronological development windows: seed 0, outer 1..5. Inner three equal prefix windows: seed 0, validation 1,2. All training label horizons must end strictly before cutoff; all validation horizons mature before inner-end.",
+  "selection": "Lowest pooled inner binary Brier derived from the joint vector selects variant within architecture and architecture; ties follow registry order. Equivalent C_NONE reuses A_001 scores/fits. No outer selection. Final variant is last outer prefix's inner choice, then refit all matured pre-holdout development.",
+  "probability_gate": {
+    "minimum_samples": 300,
+    "minimum_brier_skill": 0.02,
+    "maximum_ece": 0.05,
+    "each_outer_ece_maximum": 0.05,
+    "all_outer_skills_positive": true,
+    "minimum_fold_3_skill": 0.01653700347650422,
+    "minimum_fold_4_skill": 0.01815023223819101,
+    "minimum_fold_5_skill": 0.01716711342484334
+  },
+  "coherence_gate": {
+    "maximum_probability_sum_error": 1e-12,
+    "maximum_identity_error": 1e-12,
+    "negative_probability_count": 0,
+    "over_one_probability_count": 0,
+    "profit_stop_incoherence_count": 0,
+    "state_payoff_sign_violation_count": 0
+  },
+  "conditional_distribution": {
+    "representation": "101 equiprobable conditional atoms per joint state; expected payoff and marginal quantiles derive from this same mixture. TARGET/STOP net atoms deterministic frozen geometry/cost. TIMEOUT magnitude mean histogram trees plus training-only empirical residual-ratio atoms, bounded to causal terminal net support. MFE/MAE per-state nonnegative histogram means with training-only residual-ratio atoms. Small states (<400) use empirical constant distribution; retained, not removed.",
+    "trees": 60,
+    "maximum_leaves": 15,
+    "minimum_leaf": 200,
+    "L2": 10,
+    "early_stopping": false,
+    "random_seed": 0,
+    "ratio_quantiles": "midpoints (j+0.5)/101, nonnegative, mean-normalized",
+    "conditional_sign": "Positive states nonnegative magnitude; loss states nonpositive magnitude. Bounds are generative outcome support, not probability clipping.",
+    "time": "48-bin state-conditional empirical event-time distribution with Dirichlet 0.5/bin smoothing, fit from relevant first-touch label only. TIMEOUT is administrative horizon censoring at 48, not an observed target/stop event. Joint state/time mass is p(state)*p(time|state).",
+    "path_support": "Common equiprobable atom index couples net payoff/MFE/MAE. MFE includes positive gross terminal payoff; MAE includes negative gross terminal payoff. TARGET MFE>=known room and STOP MAE>=1. These causal generative bounds are engineering correctness, not outer-tuned probability clipping.",
+    "time_index_units": "Frozen zero-based first-touch index is converted to elapsed support 1..48; timeout censoring at 48. Canonical first-touch quantiles retain zero-based label units."
+  },
+  "payoff_gate": {
+    "pooled_expected_R_RMSE_no_worse_than_causal_mean": true,
+    "pooled_expected_R_MAE_no_worse_than_causal_mean": true,
+    "maximum_expected_R_bucket_absolute_bias": 0.15,
+    "maximum_quantile_coverage_error": 0.05,
+    "maximum_expectancy_quintile_inversion_R": 0.05,
+    "terminal_multiclass_brier_no_worse_than_causal_frequency": true,
+    "maximum_each_fold_RMSE_relative_degradation": 0.05
+  },
+  "decision_payoff_gate": {
+    "all_outer_maximum_adjacent_inversion_R": 0.05,
+    "all_outer_top_bucket_realized_R_minimum": 0,
+    "pooled_top_bucket_realized_R_minimum": 0,
+    "all_outer_top_minus_bottom_realized_R_strictly_positive": true,
+    "each_outer_maximum_bucket_absolute_bias": 0.15,
+    "time_conditional_MAE_relative_to_causal_terminal_frequency_maximum": 1.05,
+    "time_conditional_CRPS_relative_to_causal_terminal_frequency_maximum": 1.05,
+    "time_validation_required_for_decision_readiness": true,
+    "time_not_required_for_binary_admission": true
+  },
+  "parallel_fit_workers": 1,
+  "runtime_eligible": false,
+  "holdout_opened": false,
+  "holdout_query_count": 0
 }

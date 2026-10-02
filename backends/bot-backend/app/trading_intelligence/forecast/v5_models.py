@@ -179,6 +179,14 @@ class ConditionalAtoms:
             state_gross_R_mean=means+cost[:,None],net_R_quantiles=self.mixture_quantiles(net,joint))
         for name in ('mfe','mae'):
             atoms=np.stack([self._atoms(s,name,x) for s in range(5)],axis=1)
+            # A common equiprobable atom index couples payoff and path draws.
+            # Every generated path contains its terminal gross payoff and the
+            # required first-touch boundary; these are causal support bounds.
+            gross_atoms=net+cost[:,None,None]
+            floor=np.maximum(gross_atoms,0.) if name=='mfe' else np.maximum(-gross_atoms,0.)
+            if name=='mfe': floor[:,:2,:]=np.maximum(floor[:,:2,:],room[:,None,None])
+            else: floor[:,2,:]=np.maximum(floor[:,2,:],1.)
+            atoms=np.maximum(atoms,floor)
             result[name]=self.mixture_quantiles(atoms,joint)
         event=np.asarray(self.event_pmf)
         result['state_time_pmf']=np.broadcast_to(event,(len(g),5,48))

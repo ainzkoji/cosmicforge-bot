@@ -38,10 +38,12 @@ class V5Library:
         joint=self.v5_joint_probability.predict(g[None,:],c,cats); pred=self.distribution.predict(g[None,:],c,cats,joint)
         terminal=pred['terminal'][0]; timing={}
         for term,name in [(0,'target'),(1,'stop')]:
+            if terminal[term]==0:
+                timing[name]={}; continue  # Conditional time is undefined for a zero-mass event.
             cdf=np.cumsum(pred['joint_time_pmf'][0,TERMINAL==term,:].sum(axis=0)/terminal[term])
             # Canonical first-touch quantiles retain frozen zero-based index units.
             timing[name]={str(q):float(np.argmax(cdf>=q)) for q in (.1,.5,.9)}
-        timeout_gross=float(np.sum(joint[0,3:]*pred['state_gross_R_mean'][0,3:])/terminal[2])
+        timeout_gross=float(np.sum(joint[0,3:]*pred['state_gross_R_mean'][0,3:])/terminal[2]) if terminal[2]>0 else None
         signature=stable_hash(dict(dimensions=dims,context=context,geometry=g.tolist()))
         return OutcomeForecast(forecast_id=OutcomeForecast.build_id(setup_candidate_id=candidate.setup_candidate_id,
             library_hash=self.library_hash,forecast_version=self.library_version,cohort_signature=signature),setup_candidate_id=candidate.setup_candidate_id,
