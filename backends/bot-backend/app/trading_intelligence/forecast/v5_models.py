@@ -14,6 +14,15 @@ PROFIT=np.array([True,False,False,True,False])
 TERMINAL=np.array([0,0,1,2,2])
 
 
+def compact_categories(categories):
+    """Shared Python string references avoid copying fixed-width Unicode prefixes."""
+    raw=np.asarray(categories); result=np.empty(raw.shape,dtype=object)
+    for j in range(raw.shape[1]):
+        keys=np.unique(raw[:,j]); positions=np.searchsorted(keys,raw[:,j])
+        result[:,j]=keys.astype(object)[positions]
+    return result
+
+
 def joint_labels(targets):
     t=np.asarray(targets); terminal=t[:,5].astype(int); positive=t[:,0].astype(bool)
     if (not np.all(np.isfinite(t)) or not np.all(np.isin(terminal,[0,1,2]))

@@ -1,4 +1,4 @@
-import copy,gzip,json
+import copy,gzip,json,hashlib
 from pathlib import Path
 import numpy as np
 import pytest
@@ -7,7 +7,7 @@ from app.trading_intelligence.hashing import stable_hash
 from app.trading_intelligence.forecast.artifact import load_library_artifact,LibraryArtifactError
 from app.trading_intelligence.forecast.v5_models import (
     JointProbability,ConditionalAtoms,STATES,PROFIT,TERMINAL,FEATURE_SCHEMA,
-    joint_labels,joint_from_logits,recency_weights,coherence_metrics,coherence_pass,decision_gate)
+    joint_labels,joint_from_logits,recency_weights,coherence_metrics,coherence_pass,decision_gate,compact_categories)
 
 
 def registry():
@@ -106,6 +106,16 @@ def test_recency_weights_are_time_only_normalized_and_future_rejected():
     with pytest.raises(ValueError,match='unregistered'): recency_weights(times,cutoff,3)
 
 
+def test_compact_categories_preserve_exact_fitted_parameters(trained):
+    g,c,cats,targets,_,times,model,_=trained
+    compact=compact_categories(cats)
+    np.testing.assert_array_equal(compact,cats)
+    assert compact.nbytes<cats.nbytes
+    with threadpool_limits(limits=1):
+        refit=JointProbability(registry()['variants'][0]).fit(g,c,compact,targets,times,int(times[-1])+900000)
+    assert stable_hash(refit.to_dict())==stable_hash(model.to_dict())
+
+
 def test_histogram_joint_export_and_recency_classifier_are_deterministic():
     g,c,cats,targets,events,times=inputs(1600)
     for spec in [registry()['variants'][2],registry()['variants'][4]]:
@@ -177,3 +187,16 @@ def test_temporal_reversal_and_negative_top_bucket_deny_payoff_even_if_pooled_pa
     assert not decision_gate(m['payoff'],d['folds'],m['time_validation'],r,True)
     d=payload(trained); d['metrics']['payoff']['expected_R_buckets'][-1]['realized_mean']=-.01
     assert not decision_gate(d['metrics']['payoff'],d['folds'],d['metrics']['time_validation'],r,True)
+
+
+def test_numeric_component_reference_is_verified_and_tamper_fails_closed(tmp_path,trained):
+    d=payload(trained); path=tmp_path/'conditional.json.gz'
+    with gzip.open(path,'wt') as f: json.dump(d['conditional_model'],f)
+    d['conditional_model']=dict(artifact_file=path.name,sha256=hashlib.sha256(path.read_bytes()).hexdigest())
+    save(tmp_path,d); load_library_artifact(tmp_path,mode='DEVELOPMENT')
+    path.write_bytes(b'tampered')
+    with pytest.raises(LibraryArtifactError,match='numeric model identity'):
+        load_library_artifact(tmp_path,mode='DEVELOPMENT')
+    d['conditional_model']['artifact_file']='../conditional.json.gz'; save(tmp_path,d)
+    with pytest.raises(LibraryArtifactError,match='reference'):
+        load_library_artifact(tmp_path,mode='DEVELOPMENT')

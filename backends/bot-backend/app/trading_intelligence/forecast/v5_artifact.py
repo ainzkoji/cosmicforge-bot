@@ -1,7 +1,7 @@
 """V5 numeric artifact loader: development only, never grants runtime authority."""
 from __future__ import annotations
 from dataclasses import dataclass
-import gzip,json
+import gzip,json,hashlib
 from pathlib import Path
 import numpy as np
 from app.trading_intelligence.hashing import stable_hash
@@ -10,6 +10,15 @@ from .artifact import LibraryArtifactError
 from .information_conditioning import causal_features
 from .v4_models import probability_gate,payoff_gate
 from .v5_models import JointProbability,ConditionalAtoms,FEATURE_SCHEMA,STATES,TERMINAL,coherence_pass,decision_gate
+
+
+def read_numeric_model(root,record):
+    if 'artifact_file' not in record: return record
+    name=record['artifact_file']
+    if Path(name).name!=name or not name.endswith('.json.gz'): raise ValueError('invalid numeric model reference')
+    path=Path(root)/name
+    if hashlib.sha256(path.read_bytes()).hexdigest()!=record['sha256']: raise ValueError('numeric model identity mismatch')
+    with gzip.open(path,'rt',encoding='utf-8') as f: return json.load(f)
 
 
 @dataclass(frozen=True)
@@ -88,7 +97,7 @@ def load_v5_artifact(path,*,expected_hash=None,mode='RUNTIME'):
             or d['development_status']!=('DEVELOPMENT_GATE_PASS' if model_ready else 'REJECTED_PRE_HOLDOUT')): raise ValueError('V5 readiness verdict integrity')
         if mode!='DEVELOPMENT': raise ValueError('V5 RESEARCH_ONLY; runtime remains closed pending governance')
         if d['probability_model']['spec'] not in registry['variants']: raise ValueError('unregistered V5 variant')
-        probability=JointProbability.from_dict(d['probability_model']); distribution=ConditionalAtoms.from_dict(d['conditional_model'])
+        probability=JointProbability.from_dict(d['probability_model']); distribution=ConditionalAtoms.from_dict(read_numeric_model(root,d['conditional_model']))
     except (OSError,ValueError,KeyError,TypeError,IndexError) as exc:
         raise LibraryArtifactError(str(exc)) from exc
     return V5Library(d['library_hash'],d['candidate_id'],probability,distribution,d['training_label_end'],d['training_rows'],decision),{**d,'market_type':'crypto'}

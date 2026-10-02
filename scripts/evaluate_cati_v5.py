@@ -1,6 +1,6 @@
 """Registered bounded joint-state nested evaluation. No source/holdout queries."""
 from __future__ import annotations
-import argparse,gc,hashlib,json,subprocess,sys,time
+import argparse,gc,gzip,io,hashlib,json,subprocess,sys,time
 from pathlib import Path
 REPO=Path(__file__).resolve().parents[1]
 sys.path[:0]=[str(REPO/'scripts'),str(REPO/'backends/bot-backend'),str(REPO/'backends/shared')]
@@ -12,7 +12,7 @@ from evaluate_cati_v4 import payoff_metrics,decomposition
 from cati_v3_residual_analysis import population_stability
 from app.trading_intelligence.hashing import stable_hash
 from app.trading_intelligence.forecast.v4_models import probability_gate,payoff_gate
-from app.trading_intelligence.forecast.v5_models import JointProbability,ConditionalAtoms,FEATURE_SCHEMA,STATES,TERMINAL,joint_labels,coherence_metrics,coherence_pass,time_gate,decision_gate
+from app.trading_intelligence.forecast.v5_models import JointProbability,ConditionalAtoms,FEATURE_SCHEMA,STATES,TERMINAL,joint_labels,coherence_metrics,coherence_pass,time_gate,decision_gate,compact_categories
 
 
 def time_metrics(cdf,baseline,events,terminal):
@@ -40,6 +40,12 @@ def main(a):
     if subprocess.check_output(['git','status','--porcelain'],cwd=REPO).strip(): raise ValueError('commit clean implementation first')
     revision=subprocess.check_output(['git','rev-parse','HEAD'],cwd=REPO,text=True).strip()
     out.mkdir(parents=True,exist_ok=False)
+    def persist_numeric(name,model):
+        path=out/name
+        with path.open('wb') as raw:
+            with gzip.GzipFile(fileobj=raw,mode='wb',mtime=0) as compressed:
+                with io.TextIOWrapper(compressed,encoding='utf-8') as f: json.dump(model,f,sort_keys=True,separators=(',',':'))
+        return dict(artifact_file=name,sha256=hashlib.sha256(path.read_bytes()).hexdigest())
     metadata=json.loads((root/'metadata.json').read_text())
     for k in ('parent_library_hash','dataset_manifest_hash'):
         if metadata[k]!=registry[k]: raise ValueError('wrong dataset identity')
@@ -47,6 +53,7 @@ def main(a):
         if hashlib.sha256((root/name).read_bytes()).hexdigest()!=sha: raise ValueError('cache identity mismatch')
     cache={p.stem:np.load(p,mmap_mode='r',allow_pickle=False) for p in root.glob('*.npy')}
     t,end,g,c,cats,targets,events=[cache[k] for k in ('times','label_ends','geometry','context','categories','targets','event_bars')]
+    cats=compact_categories(cats); del cache['categories']; gc.collect()
     if np.any(end>=metadata['holdout_start_ms']) or np.any(cache['context_source_times']!=t): raise ValueError('holdout/context boundary')
     states=joint_labels(targets)
     by_end=np.argsort(end,kind='stable'); sorted_end=end[by_end]
@@ -103,7 +110,7 @@ def main(a):
             selection.append((float(np.mean(loss)),variants.index(spec),spec))
         chosen=min(selection,key=lambda x:(x[0],x[1]))[2]
         paytrain=limited(tr,60000); distribution=ConditionalAtoms().fit(g[paytrain],c[paytrain],cats[paytrain],targets[paytrain],events[paytrain])
-        distributions.append(dict(fold=fold,model=distribution.to_dict()))
+        distributions.append(dict(fold=fold,model=persist_numeric(f'outer_{fold}_conditional.json.gz',distribution.to_dict())))
         base_time=np.zeros((3,48))
         for term in range(3):
             mask=targets[tr,5]==term
@@ -115,7 +122,7 @@ def main(a):
             model=fit(tr,spec,cutoff); record=predict(model,distribution,te,base_time); summary=metric(record)
             summary.update(fold=fold,variant=spec['id'],architecture=architecture,training_label_end=int(end[tr].max()),evaluation_start=int(t[te].min()))
             results[architecture].append(summary); outer[architecture].append(record)
-            traces.append(dict(fold=fold,architecture=architecture,model=model.to_dict()))
+            traces.append(dict(fold=fold,architecture=architecture,model=persist_numeric(f'outer_{fold}_architecture_{architectures.index(architecture)}.json.gz',model.to_dict())))
             if spec['id']==chosen['id']:
                 folds.append(summary); selected.append(record)
             del model; gc.collect()
@@ -148,13 +155,14 @@ def main(a):
         parent_library_hash=metadata['parent_library_hash'],dataset_manifest_hash=metadata['dataset_manifest_hash'],cache_metadata=metadata,
         holdout_start_ms=metadata['holdout_start_ms'],training_label_end=int(end[train].max()),training_rows=len(limited(train,120000)),
         holdout_query_count=0,runtime_eligible=False,calibration_status='RESEARCH_ONLY',joint_states=STATES,
-        probability_model=final.to_dict(),conditional_model=final_distribution.to_dict(),metrics=pooled,folds=folds,
+        probability_model=final.to_dict(),conditional_model=persist_numeric('final_conditional.json.gz',final_distribution.to_dict()),metrics=pooled,folds=folds,
         architecture_results=family,attempts=attempts,outer_probability_models=traces,outer_conditional_models=distributions,
         feature_drift=drift,brier_gain_components=components,coherence_pass=coherent,payoff_gate_pass=paypass,
         model_ready=probability_pass,decision_payoff_ready=decision_pass,
         development_status='DEVELOPMENT_GATE_PASS' if probability_pass else 'REJECTED_PRE_HOLDOUT',inspection_history=registry['inspection_history'])
     payload['library_hash']=stable_hash(payload); payload['candidate_id']='cati_v5_'+payload['library_hash'][:24]
-    (out/'v5_model.json').write_text(json.dumps(payload,sort_keys=True,indent=2)); np.savez_compressed(out/'outer_predictions.npz',**joined)
+    with (out/'v5_model.json').open('w',encoding='utf-8') as f: json.dump(payload,f,sort_keys=True,indent=2)
+    np.savez_compressed(out/'outer_predictions.npz',**joined)
     performance=dict(peak_working_set_bytes=psutil.Process().memory_info().peak_wset,evaluation_seconds=time.perf_counter()-started,parallel_fit_workers=1)
     (out/'performance.json').write_text(json.dumps(performance,indent=2))
     print(json.dumps(dict(candidate=payload['candidate_id'],metrics=pooled,model_ready=probability_pass,decision_payoff_ready=decision_pass,performance=performance)),flush=True)
