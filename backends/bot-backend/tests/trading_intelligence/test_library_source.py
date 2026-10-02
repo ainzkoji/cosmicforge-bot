@@ -33,6 +33,24 @@ START = HIST_START_MS + 260 * TF_MS
 END = HIST_START_MS + 330 * TF_MS
 
 
+def test_causal_research_identity_is_explicit_and_runtime_rejected(real_plumbing, tmp_path):
+    from app.trading_intelligence.forecast.artifact import (
+        CAUSAL_RESEARCH_LIBRARY_VERSION, write_library_artifact,
+    )
+    path, _ = real_plumbing
+    original, manifest = load_library_artifact(path)
+    research = dataclasses.replace(original, schema_version=CAUSAL_RESEARCH_LIBRARY_VERSION)
+    provenance = {k:v for k,v in manifest.items() if k not in ('library_id','library_hash','manifest_hash')}
+    provenance['library_version']=CAUSAL_RESEARCH_LIBRARY_VERSION
+    target=write_library_artifact(research,tmp_path,provenance=provenance)
+    assert research.library_hash!=original.library_hash
+    with pytest.raises(LibraryArtifactError,match='incompatible library_version'):
+        load_library_artifact(target,mode='RUNTIME')
+    restored,_=load_library_artifact(target,mode='DEVELOPMENT',expected_hash=research.library_hash)
+    assert restored.library_hash==research.library_hash
+    assert restored.rows==original.rows
+
+
 def _cfg(**kw):
     base = dict(symbols=("BTCUSDT",), timeframe="15m", start_ms=START, end_ms=END, label_horizon_bars=24)
     base.update(kw)

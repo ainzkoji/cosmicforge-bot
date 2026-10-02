@@ -60,6 +60,23 @@ class CalibrationPolicy:
 
 
 @dataclass(frozen=True)
+class CausalCalibrationPolicy(CalibrationPolicy):
+    """Opt-in research V2 benchmark; V1 and every acceptance threshold stay frozen.
+
+    Each baseline prediction is the positive frequency in the SAME matured
+    training slice available to that model prediction, never evaluation labels.
+    This is an evaluation correction, not evidence of improved model skill.
+    """
+
+    schema_version: str = "1.1.0-causal-baseline"
+    baseline_mode: str = "CAUSAL_EXPANDING_GLOBAL"
+
+    def __post_init__(self) -> None:
+        if self.schema_version != "1.1.0-causal-baseline" or self.baseline_mode != "CAUSAL_EXPANDING_GLOBAL":
+            raise ValueError("Unsupported causal calibration policy identity")
+
+
+@dataclass(frozen=True)
 class CalibrationReport:
     library_hash: str
     policy_hash: str
@@ -139,6 +156,7 @@ def evaluate_library_calibration(
     stride = max(1, -(-len(rows) // policy.max_eval_rows)) if policy.max_eval_rows else 1
 
     binary: List[Tuple[float, int]] = []
+    causal_baseline: List[Tuple[float, int]] = []
     per_family: Dict[str, List[Tuple[float, int]]] = {}
     per_regime: Dict[str, List[Tuple[float, int]]] = {}
     per_support: Dict[str, List[Tuple[float, int]]] = {}
@@ -160,6 +178,8 @@ def evaluate_library_calibration(
             continue
         y = 1 if test.label.net_profitable else 0
         binary.append((fc.p_net_profitable_mean, y))
+        if isinstance(policy, CausalCalibrationPolicy):
+            causal_baseline.append((sum(r.label.net_profitable for r in train) / len(train), y))
         per_family.setdefault(test.label.setup_family, []).append((fc.p_net_profitable_mean, y))
         per_regime.setdefault(test.cohort_dimensions.get("dominant_regime", "UNKNOWN"), []).append((fc.p_net_profitable_mean, y))
         per_support.setdefault(_support_bucket(fc.raw_support, policy.support_bucket_edges), []).append((fc.p_net_profitable_mean, y))
@@ -178,7 +198,9 @@ def evaluate_library_calibration(
     if n:
         brier = sum((p - y) ** 2 for p, y in binary) / n
         base = sum(y for _, y in binary) / n
-        baseline = sum((base - y) ** 2 for _, y in binary) / n
+        baseline = (sum((p - y) ** 2 for p, y in causal_baseline) / n
+                    if isinstance(policy, CausalCalibrationPolicy)
+                    else sum((base - y) ** 2 for _, y in binary) / n)
         skill = (1.0 - brier / baseline) if baseline > 0 else None
         bins = []
         for b in range(policy.reliability_bins):
@@ -235,7 +257,8 @@ def status_from_stored_record(record: Mapping[str, Any], *, library_hash: str) -
         return CalibrationStatus.UNCALIBRATED.value
     pol = dict(record["policy"])
     pol["support_bucket_edges"] = tuple(pol.get("support_bucket_edges", ()))
-    policy = CalibrationPolicy(**pol)
+    policy_type = CausalCalibrationPolicy if pol.get("schema_version") == "1.1.0-causal-baseline" else CalibrationPolicy
+    policy = policy_type(**pol)
     if policy.policy_hash != record.get("policy_hash"):
         return CalibrationStatus.UNCALIBRATED.value
     r = dict(record["report"])

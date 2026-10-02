@@ -41,6 +41,10 @@ MANIFEST_FILE = "manifest.json"
 ROWS_FILE = "rows.jsonl"
 CALIBRATION_FILE = "calibration.json"
 
+# Separate research identity for a benchmark correction over unchanged rows.
+# Explicit DEVELOPMENT loading only: never accepted by the runtime loader.
+CAUSAL_RESEARCH_LIBRARY_VERSION = "2.1.0-research-causal-baseline"
+
 REQUIRED_MANIFEST_FIELDS: Tuple[str, ...] = (
     "artifact_schema_version", "library_id", "library_version", "library_hash", "rows_sha256",
     # source provenance (pre-Section-17 closure)
@@ -243,6 +247,8 @@ def load_library_artifact(
         "regime_model_version": REGIME_MODEL_VERSION,
         "library_version": OUTCOME_LIBRARY_SCHEMA_VERSION,
     }
+    if mode == LibraryLoadMode.DEVELOPMENT.value and manifest.get("library_version") == CAUSAL_RESEARCH_LIBRARY_VERSION:
+        compat["library_version"] = CAUSAL_RESEARCH_LIBRARY_VERSION
     for key, supported in compat.items():
         if manifest[key] != supported:
             raise LibraryArtifactError(f"incompatible {key}: artifact={manifest[key]!r} supported={supported!r}")
@@ -280,6 +286,9 @@ def load_library_artifact(
         label_policy_version=manifest["label_policy_version"], cost_model_version=manifest["cost_model_version"],
         feature_bucket_schema_version=manifest["cohort_schema_version"], source_kind=source_kind,
     )
+    if mode == LibraryLoadMode.DEVELOPMENT.value and manifest["library_version"] == CAUSAL_RESEARCH_LIBRARY_VERSION:
+        import dataclasses
+        library = dataclasses.replace(library, schema_version=CAUSAL_RESEARCH_LIBRARY_VERSION)
     if library.library_hash != manifest["library_hash"]:
         raise LibraryArtifactError("library hash mismatch (recomputed hash differs from manifest)")
     if expected_hash is not None and library.library_hash != expected_hash:
