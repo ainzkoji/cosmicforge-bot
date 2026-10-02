@@ -3,12 +3,12 @@ hierarchical backoff, Beta-Binomial + Dirichlet-Multinomial posteriors,
 robust R-distribution statistics with shrinkage, and OOD assessment,
 assembled into one immutable ``OutcomeForecast``.
 
-Pure function of (candidate, market_state, regime_distribution, library) --
-no clock, no network, no tenant input, no ML model.
+Pure function of candidate, causal market inputs and governed library --
+no clock, network or tenant input. Research estimators remain authority-gated.
 """
 from __future__ import annotations
 
-from typing import Any, List, Optional, Tuple
+from typing import Any, List, Mapping, Optional, Tuple
 
 from app.trading_intelligence.contracts.forecast import (
     ForecastReasonCode,
@@ -112,6 +112,7 @@ def build_outcome_forecast(
     prior_strength: float = PRIOR_STRENGTH,
     credible_interval_level: float = DEFAULT_CREDIBLE_INTERVAL_LEVEL,
     shrinkage_strength: float = DEFAULT_SHRINKAGE_STRENGTH,
+    causal_market_context: Optional[Mapping[str, Any]] = None,
 ) -> OutcomeForecast:
     if library is None:
         return _unavailable_forecast(
@@ -129,6 +130,12 @@ def build_outcome_forecast(
         market_state=market_state, regime_distribution=regime_distribution,
         instrument_group=instrument_group,
     )
+    if hasattr(library, "v4_probability"):
+        try:
+            return library.forecast(candidate, dims, causal_market_context)
+        except (ValueError, AttributeError, KeyError, ZeroDivisionError):
+            return _unavailable_forecast(candidate, ForecastStatus.INVALID_INPUT.value,
+                                         ("V4_CAUSAL_CONTEXT_UNAVAILABLE",))
     return forecast_from_dimensions(
         candidate, dims, library, min_usable_raw_support=min_usable_raw_support,
         prior_strength=prior_strength, credible_interval_level=credible_interval_level,

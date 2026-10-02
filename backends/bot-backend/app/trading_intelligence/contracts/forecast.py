@@ -187,6 +187,11 @@ class OutcomeForecast:
     net_R_reference_mean: Optional[float] = None
     net_R_reference_median: Optional[float] = None
 
+    # Separate supervised conditional payoff estimates (research until governed).
+    expected_net_R: Optional[float] = None
+    conditional_positive_net_R: Optional[float] = None
+    conditional_loss_net_R: Optional[float] = None
+
     e_r_given_target: Optional[float] = None
     e_r_given_stop: Optional[float] = None
     e_r_given_timeout: Optional[float] = None
