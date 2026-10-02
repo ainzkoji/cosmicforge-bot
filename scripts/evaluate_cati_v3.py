@@ -37,7 +37,8 @@ def main(args):
     started=time.perf_counter(); peak=0
     def memory():
         nonlocal peak
-        peak=max(peak,psutil.Process().memory_info().rss)
+        info=psutil.Process().memory_info()
+        peak=max(peak,getattr(info,'peak_wset',info.rss))
     registry=json.loads((REPO/'docs/research/cati_v3_research_registry.json').read_text())
     if subprocess.check_output(['git','status','--porcelain'],cwd=REPO).strip():
         raise RuntimeError('commit implementation before producing governed provenance')
@@ -93,10 +94,13 @@ def main(args):
                 va=limited(np.flatnonzero((t>=inner_bounds[inner])&(end<inner_bounds[inner+1])),12000)
                 model=fit(tr,variant['C']); p=model.predict([features[i] for i in va])
                 losses.extend(((p-y[va])**2).tolist())
+                by_end=np.argsort(end,kind='stable'); n=np.searchsorted(end[by_end],t[va],side='left')
+                baseline=np.cumsum(y[by_end])[n-1]/n
                 attempts.append(dict(outer_fold=fold,inner_fold=inner,variant=variant['variant_id'],
                     training_samples=len(limited(tr,120000)),validation_samples=len(va),
                     training_label_end=int(end[tr].max()),validation_start=int(t[va].min()),
-                    brier=float(np.mean((p-y[va])**2))))
+                    **scores(p,y[va],baseline)))
+                (out/'attempts.json').write_text(json.dumps(attempts,indent=2))
             inner_scores.append((float(np.mean(losses)),variant['C'],variant['variant_id']))
         _,c,variant_id=min(inner_scores)
         model=fit(train,c); p=model.predict([features[i] for i in test])
@@ -109,6 +113,7 @@ def main(args):
             evaluation_end=int(t[test].max()),**result))
         for j,i in enumerate(test): rows.append(dict(fold=fold,t=int(t[i]),y=int(y[i]),p=float(p[j]),baseline=float(base[j]),**groups[i]))
         print(json.dumps({'stage':'outer','result':folds[-1]}),flush=True)
+        (out/'outer_folds.json').write_text(json.dumps(folds,indent=2))
     p=np.asarray([r['p'] for r in rows]); target=np.asarray([r['y'] for r in rows]); base=np.asarray([r['baseline'] for r in rows])
     metrics=scores(p,target,base); breakdown={}
     for key in ('setup_family','side','dominant_regime','volatility_bucket','year','fold'):

@@ -66,7 +66,7 @@ class InformationConditioner:
         keys = sorted(k for k,n in counts.items()
                       if n >= (self.minimum_instrument_support if k.startswith("instrument") else 30))
         self.vocabulary = {k:i for i,k in enumerate(keys)}
-        model = LogisticRegression(C=self.regularization, solver="lbfgs", max_iter=250,
+        model = LogisticRegression(C=self.regularization, solver="lbfgs", max_iter=1500,
                                    tol=1e-7, random_state=0)
         import warnings
         from sklearn.exceptions import ConvergenceWarning
