@@ -146,3 +146,4 @@ data/research/certification/replay_*.json
 # Outcome-library artifacts (rows are large and reproducible; the identity pin is committed under docs/).
 data/research/cati_libraries*/
 data/research/calibration_diagnostics/
+data/research/fx_finalization/

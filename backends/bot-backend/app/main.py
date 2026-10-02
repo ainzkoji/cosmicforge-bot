@@ -2943,8 +2943,21 @@ async def health():
     trade_symbols = parse_symbols(settings.TRADE_SYMBOLS, settings.MAX_SYMBOLS)
     live_symbols = parse_symbols(settings.LIVE_SYMBOLS, settings.MAX_SYMBOLS)
     strong_trend_guard = evaluate_strong_trend_guard(settings)
+    # Read live component state, without claiming that a running worker has
+    # successfully fetched fresh data. Never expose credentials/account IDs.
+    multi = getattr(runner_service, "multi_runner", None)
+    component_state = {
+        "runtime_owns_lease": bool(getattr(multi, "owns_runtime", False)),
+        "signal_scheduler_running": bool(_signal_scheduler and _signal_scheduler.running),
+        "signal_scheduler_jobs": len(_signal_scheduler.get_jobs()) if _signal_scheduler else 0,
+        "calendar_sync_running": bool(calendar_sync_worker.running),
+        "event_ingestion_running": bool(getattr(event_ingestion_worker, "_running", False)),
+        "adaptive_daily_risk_enabled": bool(settings.ADAPTIVE_DAILY_RISK_ENABLED),
+        "daily_hard_loss_fraction": settings.ADAPTIVE_DAILY_RISK_MAX_DAILY_LOSS_PCT,
+    }
     return {
         "status": "ok",
+        "components": component_state,
         "time_utc": datetime.now(timezone.utc).isoformat(),
         "execution_mode": settings.EXECUTION_MODE,
         "binance_env": settings.BINANCE_ENV,
