@@ -1,0 +1,10 @@
+{
+  "checked_at": "2026-10-03T13:44:28.772803+00:00",
+  "published_identity_arithmetic_carry_decomposition": "PASS",
+  "registered_run_reinvoked": false,
+  "source_and_prior_governance_unchanged": true,
+  "tests_passed": 1426,
+  "tests_warnings": 8,
+  "holdout_queries": 0,
+  "report_validation_note": "First supplemental reporting assertion used zero-based fold indices against one-based label IDs; reporting mapping corrected and every fold arithmetic verified. Evaluator and published population unchanged."
+}

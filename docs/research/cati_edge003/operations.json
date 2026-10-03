@@ -1,0 +1,341 @@
+{
+  "observed_at_utc": "2026-10-03T13:37:58.570088+00:00",
+  "code_revision": "8ca044670c4481ccbeb2efc112afd17e1ad288f9",
+  "working_tree_clean": false,
+  "runtime_components": {
+    "runtime_owns_lease": true,
+    "signal_scheduler_running": true,
+    "signal_scheduler_jobs": 2,
+    "calendar_sync_running": true,
+    "event_ingestion_running": true,
+    "adaptive_daily_risk_enabled": true,
+    "daily_hard_loss_fraction": 0.025
+  },
+  "running_sessions": [
+    {
+      "runtime_session_id": "rts_be475e1130e4470bb6a1",
+      "pid": 20260,
+      "started_at": "2026-10-03T12:55:14.102336+00:00",
+      "code_revision": "e4d3cd16e19a16eb385a1d96e9d7dabd838f07df",
+      "working_tree_dirty": null,
+      "status": "RUNNING"
+    }
+  ],
+  "latest_cycles": [
+    {
+      "started_at": "2026-10-03T13:37:38.809058+00:00",
+      "completed_at": "2026-10-03T13:37:51.270828+00:00",
+      "symbols_seen": 100,
+      "symbols_managed": 0,
+      "new_candle_evaluations": 0,
+      "execution_attempt_count": 0,
+      "fill_count": 0,
+      "error_count": 0,
+      "reason_counts_json": "{\"NO_NEW_CANDLE\": 100}"
+    },
+    {
+      "started_at": "2026-10-03T13:37:28.379819+00:00",
+      "completed_at": "2026-10-03T13:37:34.717796+00:00",
+      "symbols_seen": 100,
+      "symbols_managed": 0,
+      "new_candle_evaluations": 0,
+      "execution_attempt_count": 0,
+      "fill_count": 0,
+      "error_count": 0,
+      "reason_counts_json": "{\"NO_NEW_CANDLE\": 100}"
+    },
+    {
+      "started_at": "2026-10-03T13:37:17.947160+00:00",
+      "completed_at": "2026-10-03T13:37:24.143668+00:00",
+      "symbols_seen": 100,
+      "symbols_managed": 0,
+      "new_candle_evaluations": 0,
+      "execution_attempt_count": 0,
+      "fill_count": 0,
+      "error_count": 0,
+      "reason_counts_json": "{\"NO_NEW_CANDLE\": 100}"
+    }
+  ],
+  "latest_snapshot": {
+    "fetched_at": "2026-10-03T13:34:36.813918+00:00",
+    "closed_candle_close_time": 1791034199999,
+    "higher_timeframe_aligned": 1,
+    "source_environment": null
+  },
+  "broker_connections": [
+    {
+      "broker_id": "binance",
+      "environment": "demo",
+      "status": "connected"
+    }
+  ],
+  "global_market_state_rows": 0,
+  "process_tree": [
+    {
+      "pid": 12076,
+      "ppid": 15892,
+      "name": "powershell.exe",
+      "create_time": 1791016049.386325,
+      "role": "FX_SUPERVISOR"
+    },
+    {
+      "pid": 19436,
+      "ppid": 15892,
+      "name": "powershell.exe",
+      "create_time": 1791016049.4113867,
+      "role": "FX_COMPLETION"
+    },
+    {
+      "pid": 20160,
+      "ppid": 18740,
+      "name": "python.exe",
+      "create_time": 1791032104.7934315,
+      "role": "RUNTIME"
+    },
+    {
+      "pid": 20260,
+      "ppid": 20160,
+      "name": "python.exe",
+      "create_time": 1791032104.8022726,
+      "role": "RUNTIME"
+    },
+    {
+      "pid": 32516,
+      "ppid": 12076,
+      "name": "python.exe",
+      "create_time": 1791032604.0655415,
+      "role": "FX_WRITER"
+    },
+    {
+      "pid": 35872,
+      "ppid": 32516,
+      "name": "python.exe",
+      "create_time": 1791032604.0802863,
+      "role": "FX_WRITER"
+    }
+  ],
+  "fx_logical_writer_count": 1,
+  "fx_acquisition_plan": {
+    "pairs": 50,
+    "market_days": 652,
+    "per_pair": {
+      "AUDCAD": {
+        "done": 652,
+        "remaining": 0
+      },
+      "AUDCHF": {
+        "done": 652,
+        "remaining": 0
+      },
+      "AUDJPY": {
+        "done": 652,
+        "remaining": 0
+      },
+      "AUDNZD": {
+        "done": 652,
+        "remaining": 0
+      },
+      "AUDUSD": {
+        "done": 652,
+        "remaining": 0
+      },
+      "CADCHF": {
+        "done": 652,
+        "remaining": 0
+      },
+      "CADJPY": {
+        "done": 652,
+        "remaining": 0
+      },
+      "CHFJPY": {
+        "done": 652,
+        "remaining": 0
+      },
+      "EURAUD": {
+        "done": 652,
+        "remaining": 0
+      },
+      "EURCAD": {
+        "done": 652,
+        "remaining": 0
+      },
+      "EURCHF": {
+        "done": 652,
+        "remaining": 0
+      },
+      "EURCNH": {
+        "done": 652,
+        "remaining": 0
+      },
+      "EURDKK": {
+        "done": 652,
+        "remaining": 0
+      },
+      "EURGBP": {
+        "done": 652,
+        "remaining": 0
+      },
+      "EURHKD": {
+        "done": 652,
+        "remaining": 0
+      },
+      "EURILS": {
+        "done": 652,
+        "remaining": 0
+      },
+      "EURJPY": {
+        "done": 652,
+        "remaining": 0
+      },
+      "EURMXN": {
+        "done": 652,
+        "remaining": 0
+      },
+      "EURNOK": {
+        "done": 652,
+        "remaining": 0
+      },
+      "EURNZD": {
+        "done": 652,
+        "remaining": 0
+      },
+      "EURPLN": {
+        "done": 652,
+        "remaining": 0
+      },
+      "EURSEK": {
+        "done": 652,
+        "remaining": 0
+      },
+      "EURSGD": {
+        "done": 652,
+        "remaining": 0
+      },
+      "EURTRY": {
+        "done": 652,
+        "remaining": 0
+      },
+      "EURUSD": {
+        "done": 652,
+        "remaining": 0
+      },
+      "EURZAR": {
+        "done": 652,
+        "remaining": 0
+      },
+      "GBPAUD": {
+        "done": 652,
+        "remaining": 0
+      },
+      "GBPCAD": {
+        "done": 652,
+        "remaining": 0
+      },
+      "GBPCHF": {
+        "done": 652,
+        "remaining": 0
+      },
+      "GBPJPY": {
+        "done": 652,
+        "remaining": 0
+      },
+      "GBPNZD": {
+        "done": 652,
+        "remaining": 0
+      },
+      "GBPUSD": {
+        "done": 652,
+        "remaining": 0
+      },
+      "NZDCAD": {
+        "done": 409,
+        "remaining": 243
+      },
+      "NZDCHF": {
+        "done": 0,
+        "remaining": 652
+      },
+      "NZDJPY": {
+        "done": 0,
+        "remaining": 652
+      },
+      "NZDUSD": {
+        "done": 652,
+        "remaining": 0
+      },
+      "USDCAD": {
+        "done": 652,
+        "remaining": 0
+      },
+      "USDCHF": {
+        "done": 652,
+        "remaining": 0
+      },
+      "USDCNH": {
+        "done": 652,
+        "remaining": 0
+      },
+      "USDDKK": {
+        "done": 652,
+        "remaining": 0
+      },
+      "USDHKD": {
+        "done": 652,
+        "remaining": 0
+      },
+      "USDILS": {
+        "done": 652,
+        "remaining": 0
+      },
+      "USDJPY": {
+        "done": 652,
+        "remaining": 0
+      },
+      "USDMXN": {
+        "done": 652,
+        "remaining": 0
+      },
+      "USDNOK": {
+        "done": 652,
+        "remaining": 0
+      },
+      "USDPLN": {
+        "done": 652,
+        "remaining": 0
+      },
+      "USDSEK": {
+        "done": 652,
+        "remaining": 0
+      },
+      "USDSGD": {
+        "done": 652,
+        "remaining": 0
+      },
+      "USDTRY": {
+        "done": 652,
+        "remaining": 0
+      },
+      "USDZAR": {
+        "done": 652,
+        "remaining": 0
+      }
+    },
+    "remaining_periods": 1547,
+    "remaining_requests_estimate": 3094
+  },
+  "cati_runtime_log_evidence": [
+    "2026-10-03 15:36:08,722 ERROR app.trading_intelligence.errors [CATI_COMPONENT_ERROR] {\"bot_instance_id\": \"bot_a8117dc719fc\", \"broker_account_id\": \"brk_c729454e6c98\", \"component\": \"cycle_shadow.on_cycle_start\", \"cycle_id\": \"1f80f154-d845-4548-b38f-130b98f70473\", \"exception_class\": \"ValueError\", \"message\": \"cycle already begun: ('bot_a8117dc719fc', 'epoch_1791034200000')\", \"observed_at\": 1791034568722, \"reason_code\": \"CATI_COMPONENT_ERROR\", \"stage\": null, \"symbol\": null, \"user_id\": null}",
+    "2026-10-03 15:36:19,157 ERROR app.trading_intelligence.errors [CATI_COMPONENT_ERROR] {\"bot_instance_id\": \"bot_a8117dc719fc\", \"broker_account_id\": \"brk_c729454e6c98\", \"component\": \"cycle_shadow.on_cycle_start\", \"cycle_id\": \"320c59c4-ff01-460f-a132-7a4bc8678639\", \"exception_class\": \"ValueError\", \"message\": \"cycle already begun: ('bot_a8117dc719fc', 'epoch_1791034200000')\", \"observed_at\": 1791034579157, \"reason_code\": \"CATI_COMPONENT_ERROR\", \"stage\": null, \"symbol\": null, \"user_id\": null}",
+    "2026-10-03 15:36:35,375 ERROR app.trading_intelligence.errors [CATI_COMPONENT_ERROR] {\"bot_instance_id\": \"bot_a8117dc719fc\", \"broker_account_id\": \"brk_c729454e6c98\", \"component\": \"cycle_shadow.on_cycle_start\", \"cycle_id\": \"bc8dcffc-0ff2-471b-83d0-6f311142581d\", \"exception_class\": \"ValueError\", \"message\": \"cycle already begun: ('bot_a8117dc719fc', 'epoch_1791034200000')\", \"observed_at\": 1791034595375, \"reason_code\": \"CATI_COMPONENT_ERROR\", \"stage\": null, \"symbol\": null, \"user_id\": null}",
+    "2026-10-03 15:36:43,235 ERROR app.trading_intelligence.errors [CATI_COMPONENT_ERROR] {\"bot_instance_id\": \"bot_a8117dc719fc\", \"broker_account_id\": \"brk_c729454e6c98\", \"component\": \"cycle_shadow.on_cycle_start\", \"cycle_id\": \"bb6d4636-6b52-4757-bdae-7b8809c0b431\", \"exception_class\": \"ValueError\", \"message\": \"cycle already begun: ('bot_a8117dc719fc', 'epoch_1791034200000')\", \"observed_at\": 1791034603235, \"reason_code\": \"CATI_COMPONENT_ERROR\", \"stage\": null, \"symbol\": null, \"user_id\": null}",
+    "2026-10-03 15:36:53,420 ERROR app.trading_intelligence.errors [CATI_COMPONENT_ERROR] {\"bot_instance_id\": \"bot_a8117dc719fc\", \"broker_account_id\": \"brk_c729454e6c98\", \"component\": \"cycle_shadow.on_cycle_start\", \"cycle_id\": \"7e7a2923-a3a2-479a-ad65-e852b422ccb9\", \"exception_class\": \"ValueError\", \"message\": \"cycle already begun: ('bot_a8117dc719fc', 'epoch_1791034200000')\", \"observed_at\": 1791034613420, \"reason_code\": \"CATI_COMPONENT_ERROR\", \"stage\": null, \"symbol\": null, \"user_id\": null}",
+    "2026-10-03 15:37:09,768 ERROR app.trading_intelligence.errors [CATI_COMPONENT_ERROR] {\"bot_instance_id\": \"bot_a8117dc719fc\", \"broker_account_id\": \"brk_c729454e6c98\", \"component\": \"cycle_shadow.on_cycle_start\", \"cycle_id\": \"897f78bd-5238-4fca-a937-59913bc5cf58\", \"exception_class\": \"ValueError\", \"message\": \"cycle already begun: ('bot_a8117dc719fc', 'epoch_1791034200000')\", \"observed_at\": 1791034629768, \"reason_code\": \"CATI_COMPONENT_ERROR\", \"stage\": null, \"symbol\": null, \"user_id\": null}",
+    "2026-10-03 15:37:15,215 INFO app.trading_intelligence.integration.forward_observe [CATI_FORWARD_OBSERVE] symbols=BTCUSDT,ETHUSDT records=34 source=CATI_FORWARD_PUBLIC_MICROSTRUCTURE_V1 no_orders=True",
+    "2026-10-03 15:37:18,015 ERROR app.trading_intelligence.errors [CATI_COMPONENT_ERROR] {\"bot_instance_id\": \"bot_a8117dc719fc\", \"broker_account_id\": \"brk_c729454e6c98\", \"component\": \"cycle_shadow.on_cycle_start\", \"cycle_id\": \"76fa0de8-310d-489b-9957-378bb3260e9d\", \"exception_class\": \"ValueError\", \"message\": \"cycle already begun: ('bot_a8117dc719fc', 'epoch_1791034200000')\", \"observed_at\": 1791034638015, \"reason_code\": \"CATI_COMPONENT_ERROR\", \"stage\": null, \"symbol\": null, \"user_id\": null}",
+    "2026-10-03 15:37:28,521 ERROR app.trading_intelligence.errors [CATI_COMPONENT_ERROR] {\"bot_instance_id\": \"bot_a8117dc719fc\", \"broker_account_id\": \"brk_c729454e6c98\", \"component\": \"cycle_shadow.on_cycle_start\", \"cycle_id\": \"07afe99e-28e7-4855-8b24-ada9716da199\", \"exception_class\": \"ValueError\", \"message\": \"cycle already begun: ('bot_a8117dc719fc', 'epoch_1791034200000')\", \"observed_at\": 1791034648521, \"reason_code\": \"CATI_COMPONENT_ERROR\", \"stage\": null, \"symbol\": null, \"user_id\": null}",
+    "2026-10-03 15:37:45,292 ERROR app.trading_intelligence.errors [CATI_COMPONENT_ERROR] {\"bot_instance_id\": \"bot_a8117dc719fc\", \"broker_account_id\": \"brk_c729454e6c98\", \"component\": \"cycle_shadow.on_cycle_start\", \"cycle_id\": \"01228056-c4b1-40e1-9e61-d5e63e38bdf2\", \"exception_class\": \"ValueError\", \"message\": \"cycle already begun: ('bot_a8117dc719fc', 'epoch_1791034200000')\", \"observed_at\": 1791034665292, \"reason_code\": \"CATI_COMPONENT_ERROR\", \"stage\": null, \"symbol\": null, \"user_id\": null}",
+    "2026-10-03 15:37:53,539 ERROR app.trading_intelligence.errors [CATI_COMPONENT_ERROR] {\"bot_instance_id\": \"bot_a8117dc719fc\", \"broker_account_id\": \"brk_c729454e6c98\", \"component\": \"cycle_shadow.on_cycle_start\", \"cycle_id\": \"983af465-228d-4efa-9d40-c2d767fb2fee\", \"exception_class\": \"ValueError\", \"message\": \"cycle already begun: ('bot_a8117dc719fc', 'epoch_1791034200000')\", \"observed_at\": 1791034673539, \"reason_code\": \"CATI_COMPONENT_ERROR\", \"stage\": null, \"symbol\": null, \"user_id\": null}",
+    "2026-10-03 15:38:03,685 ERROR app.trading_intelligence.errors [CATI_COMPONENT_ERROR] {\"bot_instance_id\": \"bot_a8117dc719fc\", \"broker_account_id\": \"brk_c729454e6c98\", \"component\": \"cycle_shadow.on_cycle_start\", \"cycle_id\": \"d9b1fd2b-a5b0-4f2e-93ee-d7c2d131f313\", \"exception_class\": \"ValueError\", \"message\": \"cycle already begun: ('bot_a8117dc719fc', 'epoch_1791034200000')\", \"observed_at\": 1791034683685, \"reason_code\": \"CATI_COMPONENT_ERROR\", \"stage\": null, \"symbol\": null, \"user_id\": null}"
+  ],
+  "holdout_queries_by_this_capture": 0
+}

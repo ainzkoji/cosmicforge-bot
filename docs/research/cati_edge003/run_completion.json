@@ -1,0 +1,12 @@
+{
+  "evaluation_runs": 1,
+  "completed_at": "2026-10-03T13:35:29.547032+00:00",
+  "results_sha256": "16366f17e2d9329ee33785ea9b4eb5eb0ea08a52b657101a2bf56e91322318c0",
+  "registry_hash": "f3cac76976590fb59ae9f83252092dc484cf89e59b3880945288bc92458ce36f",
+  "source_hashes": {
+    "scripts\\evaluate_cati_edge003.py": "c93ce5804d4554ed69f03ec470f27553616a7d59034e062a89f9e1665c53c7a3",
+    "scripts\\evaluate_cati_alpha.py": "27b6812f733eeaa0860d541da0b57ddf7341aa6422760015a8f56eb702dff848",
+    "backends\\bot-backend\\app\\trading_intelligence\\setups\\alpha_v2.py": "0bb9b64e15c9da1523a9412785727adb386013fabd415457a952355b2206423d",
+    "backends\\bot-backend\\tests\\test_cati_edge003.py": "95b9256210a8b072a1cac01ba2335fc42c597c8396fac6d1bd233e6a2fd580bc"
+  }
+}

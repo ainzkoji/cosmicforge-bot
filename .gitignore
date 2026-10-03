@@ -147,3 +147,6 @@ data/research/certification/replay_*.json
 data/research/cati_libraries*/
 data/research/calibration_diagnostics/
 data/research/fx_finalization/
+
+# Frozen Mandate 003 hashed local input arrays; provenance receipts are committed.
+data/research/edge003_inputs/

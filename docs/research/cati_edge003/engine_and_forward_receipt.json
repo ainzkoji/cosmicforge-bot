@@ -1,0 +1,726 @@
+{
+  "owned_active_engine_status": [
+    {
+      "owner": "NONE",
+      "reason": "GOVERNANCE_PHASE_M0_NO_ORDER_AUTHORITY",
+      "phase": "M0",
+      "environment": "DEMO",
+      "broker_account_id": "brk_c729454e6c98",
+      "venue": "binance",
+      "version": "runtime-cati-sole-authority-v2",
+      "cati_runtime_active": true,
+      "cati_entry_authority": "BLOCKED",
+      "engine": "CATI",
+      "runtime_process": "RUNNING",
+      "runtime_health": {
+        "state": "RUNNING",
+        "active": true,
+        "reason": "CANONICAL_RUNTIME_SESSION_LEASE_HEARTBEAT_VALID",
+        "heartbeat_age_seconds": 5.3,
+        "session_valid": true,
+        "preflight_status": "ALREADY_RUNNING"
+      },
+      "cati_managed_instance": false,
+      "instance_status": "active",
+      "historical_strategy_id": "master_ensemble",
+      "observe_mode": true,
+      "execution_eligibility": {
+        "capability": "CATI_ACTIVE_EXECUTION",
+        "scope": "binance_usdm:DEMO:brk_c729454e6c98",
+        "state": "BLOCKED",
+        "reason": "GOVERNANCE_PHASE_M0_NO_CATI_AUTHORITY",
+        "reasons": [
+          "GOVERNANCE_PHASE_M0_NO_CATI_AUTHORITY"
+        ],
+        "override": "AUTO",
+        "authority": "NONE",
+        "prerequisites": [
+          {
+            "name": "governance_phase",
+            "satisfied": false,
+            "reason": "GOVERNANCE_PHASE_M0_NO_CATI_AUTHORITY",
+            "detail": "phase=M0",
+            "structural": false
+          },
+          {
+            "name": "environment_permitted",
+            "satisfied": true,
+            "reason": "",
+            "detail": "",
+            "structural": false
+          },
+          {
+            "name": "kill_switch_off",
+            "satisfied": true,
+            "reason": "CATI_NEW_ENTRY_KILL_SWITCH",
+            "detail": "",
+            "structural": false
+          },
+          {
+            "name": "economic_adapter_validated",
+            "satisfied": true,
+            "reason": "CATI_ECONOMIC_ADAPTER_NOT_VALIDATED_FOR_VENUE",
+            "detail": "DEMO_VALIDATED",
+            "structural": false
+          },
+          {
+            "name": "runtime_authority_switch",
+            "satisfied": true,
+            "reason": "RUNTIME_AUTHORITY_SWITCH_NOT_IMPLEMENTED",
+            "detail": "wired",
+            "structural": false
+          }
+        ],
+        "version": "auto-activation-v1",
+        "detail": {
+          "phase": "M0"
+        }
+      },
+      "library_configuration": {
+        "name": "outcome_library",
+        "satisfied": false,
+        "reason": "OUTCOME_LIBRARY_NOT_CONFIGURED",
+        "detail": "",
+        "structural": false
+      },
+      "capabilities": {
+        "CATI_CYCLE_SHADOW": {
+          "capability": "CATI_CYCLE_SHADOW",
+          "scope": "GLOBAL",
+          "state": "ACTIVE",
+          "reason": null,
+          "reasons": [],
+          "override": "AUTO",
+          "authority": "EVIDENCE_ONLY",
+          "prerequisites": [
+            {
+              "name": "implementation",
+              "satisfied": true,
+              "reason": "",
+              "detail": "",
+              "structural": false
+            }
+          ],
+          "version": "auto-activation-v1",
+          "detail": {
+            "forecasting": "UNAVAILABLE:OUTCOME_LIBRARY_NOT_CONFIGURED"
+          }
+        },
+        "CATI_CAPITAL_ROUTING_SHADOW": {
+          "capability": "CATI_CAPITAL_ROUTING_SHADOW",
+          "scope": "GLOBAL",
+          "state": "ACTIVE",
+          "reason": null,
+          "reasons": [],
+          "override": "AUTO",
+          "authority": "EVIDENCE_ONLY",
+          "prerequisites": [
+            {
+              "name": "cycle_shadow_active",
+              "satisfied": true,
+              "reason": "CYCLE_SHADOW_None",
+              "detail": "",
+              "structural": false
+            }
+          ],
+          "version": "auto-activation-v1",
+          "detail": {}
+        },
+        "CATI_GLOBAL_MARKET_STATE": {
+          "capability": "CATI_GLOBAL_MARKET_STATE",
+          "scope": "GLOBAL",
+          "state": "ACTIVE",
+          "reason": null,
+          "reasons": [],
+          "override": "AUTO",
+          "authority": "EVIDENCE_ONLY",
+          "prerequisites": [
+            {
+              "name": "cycle_shadow_active",
+              "satisfied": true,
+              "reason": "CYCLE_SHADOW_None",
+              "detail": "",
+              "structural": false
+            }
+          ],
+          "version": "auto-activation-v1",
+          "detail": {}
+        },
+        "CATI_ACTIVE_EXECUTION@binance_usdm:DEMO:*": {
+          "capability": "CATI_ACTIVE_EXECUTION",
+          "scope": "binance_usdm:DEMO:*",
+          "state": "BLOCKED",
+          "reason": "GOVERNANCE_PHASE_M0_NO_CATI_AUTHORITY",
+          "reasons": [
+            "GOVERNANCE_PHASE_M0_NO_CATI_AUTHORITY"
+          ],
+          "override": "AUTO",
+          "authority": "NONE",
+          "prerequisites": [
+            {
+              "name": "governance_phase",
+              "satisfied": false,
+              "reason": "GOVERNANCE_PHASE_M0_NO_CATI_AUTHORITY",
+              "detail": "phase=M0",
+              "structural": false
+            },
+            {
+              "name": "environment_permitted",
+              "satisfied": true,
+              "reason": "",
+              "detail": "",
+              "structural": false
+            },
+            {
+              "name": "kill_switch_off",
+              "satisfied": true,
+              "reason": "CATI_NEW_ENTRY_KILL_SWITCH",
+              "detail": "",
+              "structural": false
+            },
+            {
+              "name": "economic_adapter_validated",
+              "satisfied": true,
+              "reason": "CATI_ECONOMIC_ADAPTER_NOT_VALIDATED_FOR_VENUE",
+              "detail": "DEMO_VALIDATED",
+              "structural": false
+            },
+            {
+              "name": "runtime_authority_switch",
+              "satisfied": true,
+              "reason": "RUNTIME_AUTHORITY_SWITCH_NOT_IMPLEMENTED",
+              "detail": "wired",
+              "structural": false
+            }
+          ],
+          "version": "auto-activation-v1",
+          "detail": {
+            "phase": "M0"
+          }
+        },
+        "CATI_ACTIVE_EXECUTION@binance_usdm:LIVE:*": {
+          "capability": "CATI_ACTIVE_EXECUTION",
+          "scope": "binance_usdm:LIVE:*",
+          "state": "BLOCKED",
+          "reason": "GOVERNANCE_PHASE_M0_NO_CATI_AUTHORITY",
+          "reasons": [
+            "GOVERNANCE_PHASE_M0_NO_CATI_AUTHORITY",
+            "LIVE_REQUIRES_M7_SCOPE"
+          ],
+          "override": "AUTO",
+          "authority": "NONE",
+          "prerequisites": [
+            {
+              "name": "governance_phase",
+              "satisfied": false,
+              "reason": "GOVERNANCE_PHASE_M0_NO_CATI_AUTHORITY",
+              "detail": "phase=M0",
+              "structural": false
+            },
+            {
+              "name": "environment_permitted",
+              "satisfied": false,
+              "reason": "LIVE_REQUIRES_M7_SCOPE",
+              "detail": "",
+              "structural": false
+            },
+            {
+              "name": "kill_switch_off",
+              "satisfied": true,
+              "reason": "CATI_NEW_ENTRY_KILL_SWITCH",
+              "detail": "",
+              "structural": false
+            },
+            {
+              "name": "economic_adapter_validated",
+              "satisfied": true,
+              "reason": "CATI_ECONOMIC_ADAPTER_NOT_VALIDATED_FOR_VENUE",
+              "detail": "SHADOW_VALIDATED",
+              "structural": false
+            },
+            {
+              "name": "runtime_authority_switch",
+              "satisfied": true,
+              "reason": "RUNTIME_AUTHORITY_SWITCH_NOT_IMPLEMENTED",
+              "detail": "wired",
+              "structural": false
+            }
+          ],
+          "version": "auto-activation-v1",
+          "detail": {
+            "phase": "M0"
+          }
+        },
+        "CATI_EXIT_INTENT_ROUTING@binance_usdm:DEMO:*": {
+          "capability": "CATI_EXIT_INTENT_ROUTING",
+          "scope": "binance_usdm:DEMO:*",
+          "state": "BLOCKED",
+          "reason": "ACTIVE_EXECUTION_GOVERNANCE_PHASE_M0_NO_CATI_AUTHORITY",
+          "reasons": [
+            "ACTIVE_EXECUTION_GOVERNANCE_PHASE_M0_NO_CATI_AUTHORITY"
+          ],
+          "override": "AUTO",
+          "authority": "NONE",
+          "prerequisites": [
+            {
+              "name": "active_execution",
+              "satisfied": false,
+              "reason": "ACTIVE_EXECUTION_GOVERNANCE_PHASE_M0_NO_CATI_AUTHORITY",
+              "detail": "",
+              "structural": false
+            }
+          ],
+          "version": "auto-activation-v1",
+          "detail": {}
+        },
+        "CATI_ML_AUTHORITY:REGIME": {
+          "capability": "CATI_ML_AUTHORITY:REGIME",
+          "scope": "GLOBAL",
+          "state": "BLOCKED",
+          "reason": "MODEL_PROMOTED_UNKNOWN",
+          "reasons": [
+            "MODEL_PROMOTED_UNKNOWN",
+            "GOVERNANCE_PHASE_M0_BELOW_M6"
+          ],
+          "override": "AUTO",
+          "authority": "NONE",
+          "prerequisites": [
+            {
+              "name": "model_promoted",
+              "satisfied": null,
+              "reason": "NO_PROMOTED_MODEL",
+              "detail": "",
+              "structural": false
+            },
+            {
+              "name": "governance_phase",
+              "satisfied": false,
+              "reason": "GOVERNANCE_PHASE_M0_BELOW_M6",
+              "detail": "",
+              "structural": false
+            }
+          ],
+          "version": "auto-activation-v1",
+          "detail": {
+            "fallback": "DETERMINISTIC_CATI_ESTIMATOR_NEVER_V2",
+            "phase": "M0"
+          }
+        },
+        "CATI_ML_AUTHORITY:OUTCOME": {
+          "capability": "CATI_ML_AUTHORITY:OUTCOME",
+          "scope": "GLOBAL",
+          "state": "BLOCKED",
+          "reason": "MODEL_PROMOTED_UNKNOWN",
+          "reasons": [
+            "MODEL_PROMOTED_UNKNOWN",
+            "GOVERNANCE_PHASE_M0_BELOW_M6"
+          ],
+          "override": "AUTO",
+          "authority": "NONE",
+          "prerequisites": [
+            {
+              "name": "model_promoted",
+              "satisfied": null,
+              "reason": "NO_PROMOTED_MODEL",
+              "detail": "",
+              "structural": false
+            },
+            {
+              "name": "governance_phase",
+              "satisfied": false,
+              "reason": "GOVERNANCE_PHASE_M0_BELOW_M6",
+              "detail": "",
+              "structural": false
+            }
+          ],
+          "version": "auto-activation-v1",
+          "detail": {
+            "fallback": "DETERMINISTIC_CATI_ESTIMATOR_NEVER_V2",
+            "phase": "M0"
+          }
+        },
+        "CATI_ML_AUTHORITY:SLIPPAGE": {
+          "capability": "CATI_ML_AUTHORITY:SLIPPAGE",
+          "scope": "GLOBAL",
+          "state": "BLOCKED",
+          "reason": "MODEL_PROMOTED_UNKNOWN",
+          "reasons": [
+            "MODEL_PROMOTED_UNKNOWN",
+            "GOVERNANCE_PHASE_M0_BELOW_M6"
+          ],
+          "override": "AUTO",
+          "authority": "NONE",
+          "prerequisites": [
+            {
+              "name": "model_promoted",
+              "satisfied": null,
+              "reason": "NO_PROMOTED_MODEL",
+              "detail": "",
+              "structural": false
+            },
+            {
+              "name": "governance_phase",
+              "satisfied": false,
+              "reason": "GOVERNANCE_PHASE_M0_BELOW_M6",
+              "detail": "",
+              "structural": false
+            }
+          ],
+          "version": "auto-activation-v1",
+          "detail": {
+            "fallback": "DETERMINISTIC_CATI_ESTIMATOR_NEVER_V2",
+            "phase": "M0"
+          }
+        },
+        "CATI_ML_AUTHORITY:RANKING": {
+          "capability": "CATI_ML_AUTHORITY:RANKING",
+          "scope": "GLOBAL",
+          "state": "BLOCKED",
+          "reason": "MODEL_PROMOTED_UNKNOWN",
+          "reasons": [
+            "MODEL_PROMOTED_UNKNOWN",
+            "GOVERNANCE_PHASE_M0_BELOW_M6"
+          ],
+          "override": "AUTO",
+          "authority": "NONE",
+          "prerequisites": [
+            {
+              "name": "model_promoted",
+              "satisfied": null,
+              "reason": "NO_PROMOTED_MODEL",
+              "detail": "",
+              "structural": false
+            },
+            {
+              "name": "governance_phase",
+              "satisfied": false,
+              "reason": "GOVERNANCE_PHASE_M0_BELOW_M6",
+              "detail": "",
+              "structural": false
+            }
+          ],
+          "version": "auto-activation-v1",
+          "detail": {
+            "fallback": "DETERMINISTIC_CATI_ESTIMATOR_NEVER_V2",
+            "phase": "M0"
+          }
+        },
+        "CATI_ML_AUTHORITY:EXIT": {
+          "capability": "CATI_ML_AUTHORITY:EXIT",
+          "scope": "GLOBAL",
+          "state": "BLOCKED",
+          "reason": "MODEL_PROMOTED_UNKNOWN",
+          "reasons": [
+            "MODEL_PROMOTED_UNKNOWN",
+            "GOVERNANCE_PHASE_M0_BELOW_M6"
+          ],
+          "override": "AUTO",
+          "authority": "NONE",
+          "prerequisites": [
+            {
+              "name": "model_promoted",
+              "satisfied": null,
+              "reason": "NO_PROMOTED_MODEL",
+              "detail": "",
+              "structural": false
+            },
+            {
+              "name": "governance_phase",
+              "satisfied": false,
+              "reason": "GOVERNANCE_PHASE_M0_BELOW_M6",
+              "detail": "",
+              "structural": false
+            }
+          ],
+          "version": "auto-activation-v1",
+          "detail": {
+            "fallback": "DETERMINISTIC_CATI_ESTIMATOR_NEVER_V2",
+            "phase": "M0"
+          }
+        },
+        "CATI_ML_AUTHORITY:OOD": {
+          "capability": "CATI_ML_AUTHORITY:OOD",
+          "scope": "GLOBAL",
+          "state": "BLOCKED",
+          "reason": "MODEL_PROMOTED_UNKNOWN",
+          "reasons": [
+            "MODEL_PROMOTED_UNKNOWN",
+            "GOVERNANCE_PHASE_M0_BELOW_M6"
+          ],
+          "override": "AUTO",
+          "authority": "NONE",
+          "prerequisites": [
+            {
+              "name": "model_promoted",
+              "satisfied": null,
+              "reason": "NO_PROMOTED_MODEL",
+              "detail": "",
+              "structural": false
+            },
+            {
+              "name": "governance_phase",
+              "satisfied": false,
+              "reason": "GOVERNANCE_PHASE_M0_BELOW_M6",
+              "detail": "",
+              "structural": false
+            }
+          ],
+          "version": "auto-activation-v1",
+          "detail": {
+            "fallback": "DETERMINISTIC_CATI_ESTIMATOR_NEVER_V2",
+            "phase": "M0"
+          }
+        }
+      },
+      "auto_capital_routing_independent": true,
+      "hard_daily_loss_cap_pct": 2.5
+    }
+  ],
+  "forward_observation": {
+    "source": "binance_public_forward_reference",
+    "rows": 340,
+    "by_feature": [
+      {
+        "venue_symbol": "BTCUSDT",
+        "feature": "aggregate_trade_quote_volume",
+        "status": "AVAILABLE",
+        "rows": 10,
+        "latest_at": 1791034632258
+      },
+      {
+        "venue_symbol": "BTCUSDT",
+        "feature": "aggressor_buy_quote_fraction",
+        "status": "AVAILABLE",
+        "rows": 10,
+        "latest_at": 1791034632258
+      },
+      {
+        "venue_symbol": "BTCUSDT",
+        "feature": "ask",
+        "status": "AVAILABLE",
+        "rows": 10,
+        "latest_at": 1791034630360
+      },
+      {
+        "venue_symbol": "BTCUSDT",
+        "feature": "basis_bps",
+        "status": "AVAILABLE",
+        "rows": 10,
+        "latest_at": 1791034631097
+      },
+      {
+        "venue_symbol": "BTCUSDT",
+        "feature": "bid",
+        "status": "AVAILABLE",
+        "rows": 10,
+        "latest_at": 1791034630360
+      },
+      {
+        "venue_symbol": "BTCUSDT",
+        "feature": "book_ask_depth",
+        "status": "AVAILABLE",
+        "rows": 10,
+        "latest_at": 1791034630360
+      },
+      {
+        "venue_symbol": "BTCUSDT",
+        "feature": "book_bid_depth",
+        "status": "AVAILABLE",
+        "rows": 10,
+        "latest_at": 1791034630360
+      },
+      {
+        "venue_symbol": "BTCUSDT",
+        "feature": "book_imbalance",
+        "status": "AVAILABLE",
+        "rows": 10,
+        "latest_at": 1791034630360
+      },
+      {
+        "venue_symbol": "BTCUSDT",
+        "feature": "execution_cost_proxy_bps",
+        "status": "AVAILABLE",
+        "rows": 10,
+        "latest_at": 1791034630360
+      },
+      {
+        "venue_symbol": "BTCUSDT",
+        "feature": "funding_rate",
+        "status": "AVAILABLE",
+        "rows": 10,
+        "latest_at": 1791034631097
+      },
+      {
+        "venue_symbol": "BTCUSDT",
+        "feature": "index_price",
+        "status": "AVAILABLE",
+        "rows": 10,
+        "latest_at": 1791034631097
+      },
+      {
+        "venue_symbol": "BTCUSDT",
+        "feature": "liquidations_long",
+        "status": "UNAVAILABLE",
+        "rows": 10,
+        "latest_at": 1791034632277
+      },
+      {
+        "venue_symbol": "BTCUSDT",
+        "feature": "liquidations_short",
+        "status": "UNAVAILABLE",
+        "rows": 10,
+        "latest_at": 1791034632285
+      },
+      {
+        "venue_symbol": "BTCUSDT",
+        "feature": "mark_price",
+        "status": "AVAILABLE",
+        "rows": 10,
+        "latest_at": 1791034631097
+      },
+      {
+        "venue_symbol": "BTCUSDT",
+        "feature": "next_funding_time",
+        "status": "AVAILABLE",
+        "rows": 10,
+        "latest_at": 1791034631097
+      },
+      {
+        "venue_symbol": "BTCUSDT",
+        "feature": "open_interest",
+        "status": "AVAILABLE",
+        "rows": 10,
+        "latest_at": 1791034631681
+      },
+      {
+        "venue_symbol": "BTCUSDT",
+        "feature": "spread_bps",
+        "status": "AVAILABLE",
+        "rows": 10,
+        "latest_at": 1791034630360
+      },
+      {
+        "venue_symbol": "ETHUSDT",
+        "feature": "aggregate_trade_quote_volume",
+        "status": "AVAILABLE",
+        "rows": 10,
+        "latest_at": 1791034635183
+      },
+      {
+        "venue_symbol": "ETHUSDT",
+        "feature": "aggressor_buy_quote_fraction",
+        "status": "AVAILABLE",
+        "rows": 10,
+        "latest_at": 1791034635183
+      },
+      {
+        "venue_symbol": "ETHUSDT",
+        "feature": "ask",
+        "status": "AVAILABLE",
+        "rows": 10,
+        "latest_at": 1791034632842
+      },
+      {
+        "venue_symbol": "ETHUSDT",
+        "feature": "basis_bps",
+        "status": "AVAILABLE",
+        "rows": 10,
+        "latest_at": 1791034633492
+      },
+      {
+        "venue_symbol": "ETHUSDT",
+        "feature": "bid",
+        "status": "AVAILABLE",
+        "rows": 10,
+        "latest_at": 1791034632842
+      },
+      {
+        "venue_symbol": "ETHUSDT",
+        "feature": "book_ask_depth",
+        "status": "AVAILABLE",
+        "rows": 10,
+        "latest_at": 1791034632842
+      },
+      {
+        "venue_symbol": "ETHUSDT",
+        "feature": "book_bid_depth",
+        "status": "AVAILABLE",
+        "rows": 10,
+        "latest_at": 1791034632842
+      },
+      {
+        "venue_symbol": "ETHUSDT",
+        "feature": "book_imbalance",
+        "status": "AVAILABLE",
+        "rows": 10,
+        "latest_at": 1791034632842
+      },
+      {
+        "venue_symbol": "ETHUSDT",
+        "feature": "execution_cost_proxy_bps",
+        "status": "AVAILABLE",
+        "rows": 10,
+        "latest_at": 1791034632842
+      },
+      {
+        "venue_symbol": "ETHUSDT",
+        "feature": "funding_rate",
+        "status": "AVAILABLE",
+        "rows": 10,
+        "latest_at": 1791034633492
+      },
+      {
+        "venue_symbol": "ETHUSDT",
+        "feature": "index_price",
+        "status": "AVAILABLE",
+        "rows": 10,
+        "latest_at": 1791034633492
+      },
+      {
+        "venue_symbol": "ETHUSDT",
+        "feature": "liquidations_long",
+        "status": "UNAVAILABLE",
+        "rows": 10,
+        "latest_at": 1791034635202
+      },
+      {
+        "venue_symbol": "ETHUSDT",
+        "feature": "liquidations_short",
+        "status": "UNAVAILABLE",
+        "rows": 10,
+        "latest_at": 1791034635208
+      },
+      {
+        "venue_symbol": "ETHUSDT",
+        "feature": "mark_price",
+        "status": "AVAILABLE",
+        "rows": 10,
+        "latest_at": 1791034633492
+      },
+      {
+        "venue_symbol": "ETHUSDT",
+        "feature": "next_funding_time",
+        "status": "AVAILABLE",
+        "rows": 10,
+        "latest_at": 1791034633492
+      },
+      {
+        "venue_symbol": "ETHUSDT",
+        "feature": "open_interest",
+        "status": "AVAILABLE",
+        "rows": 10,
+        "latest_at": 1791034634544
+      },
+      {
+        "venue_symbol": "ETHUSDT",
+        "feature": "spread_bps",
+        "status": "AVAILABLE",
+        "rows": 10,
+        "latest_at": 1791034632842
+      }
+    ],
+    "used_as_historical_inputs": false
+  },
+  "runtime_not_restarted": true,
+  "holdout_queries": 0
+}
