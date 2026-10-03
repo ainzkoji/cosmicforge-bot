@@ -114,7 +114,7 @@ def render(source, output, verification=None):
     add('Production forecast behavior is untouched. Runtime remains PAPER/M0, CATI OFF, PID 19436/session rts_a605e6301df149ccb931, startup revision 81aceaa6, hard daily loss cap 0.025. Current Git HEAD does not reload startup modules. No restart, pin, promotion or V2 fallback.');add()
     add('FX uses the existing supervisor PID 31396 and queued finalization PID 35444. No duplicate writer was started. Strict UNKNOWN_GAP classification and freeze only on PASS remain unchanged.');add()
     add('Remaining blockers: no demonstrated stable selectable positive net candidate economics; execution/cost/horizon semantics; unresolved causal origin of temporal deterioration; sparse positives and repeated development inspection; untouched holdout/governance before admission; separate FX strict-freeze completion. HOLDOUT_OPENED = NO; HOLDOUT_INSPECTED = NO; HOLDOUT_QUERY_COUNT = 0; GOVERNANCE = M0; CATI_EXECUTION = OFF.');add()
-    Path(output).write_text('\n'.join(lines)+'\n',encoding='utf-8')
+    Path(output).write_text('\n'.join(lines).rstrip()+'\n',encoding='utf-8')
 
 
 if __name__=='__main__':

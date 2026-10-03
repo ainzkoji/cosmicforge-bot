@@ -468,4 +468,3 @@ Production forecast behavior is untouched. Runtime remains PAPER/M0, CATI OFF, P
 FX uses the existing supervisor PID 31396 and queued finalization PID 35444. No duplicate writer was started. Strict UNKNOWN_GAP classification and freeze only on PASS remain unchanged.
 
 Remaining blockers: no demonstrated stable selectable positive net candidate economics; execution/cost/horizon semantics; unresolved causal origin of temporal deterioration; sparse positives and repeated development inspection; untouched holdout/governance before admission; separate FX strict-freeze completion. HOLDOUT_OPENED = NO; HOLDOUT_INSPECTED = NO; HOLDOUT_QUERY_COUNT = 0; GOVERNANCE = M0; CATI_EXECUTION = OFF.
-
