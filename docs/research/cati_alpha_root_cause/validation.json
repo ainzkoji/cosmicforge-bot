@@ -1,0 +1,18 @@
+{
+  "full_relevant_cati_runtime": {
+    "passed": 1412,
+    "failed": 0,
+    "warnings": 8,
+    "duration_seconds": 453.03
+  },
+  "focused_with_market_data": {
+    "passed": 53
+  },
+  "cycle_and_surface_followup": {
+    "passed": 29
+  },
+  "frontend": "TypeScript/Vite build PASS",
+  "notebook": "4 artifact-only cells executed; source hash, uniqueness and cutoff checks passed",
+  "immutable_V2_and_frozen_section22": "unchanged; no diff",
+  "next_registry": "frozen hash and all code source hashes verified; not evaluated"
+}

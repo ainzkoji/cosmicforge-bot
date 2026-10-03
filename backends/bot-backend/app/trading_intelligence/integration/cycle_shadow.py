@@ -454,6 +454,11 @@ def on_cycle_start(runner: Any) -> None:
     if not is_enabled():
         return
     try:
+        try:
+            from .forward_observe import schedule
+            schedule(runner)
+        except Exception as exc:
+            _error("forward_observe_schedule", exc, runner)
         bot = _bot_id(runner)
         if not bot or getattr(runner, "_universe_runtime", None) is None:
             return  # whole-universe batching only applies to broker-universe bots

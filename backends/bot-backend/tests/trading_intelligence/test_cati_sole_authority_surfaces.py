@@ -76,9 +76,10 @@ def test_m0_status_keeps_cati_runtime_selected_and_entry_blocked(tmp_path):
     service = SimpleNamespace(get_bot_instance=lambda _: instance, db=database)
     status = get_engine_status("bot", user={"id": "owner"}, service=service, _perm="bot:read")
     assert status["engine"] == "CATI"
-    assert status["cati_runtime_active"] is True
+    assert status["cati_runtime_active"] is False
+    assert status["runtime_process"] != "RUNNING"
     assert status["cati_entry_authority"] == "BLOCKED"
-    assert status["observe_mode"] is True
+    assert status["observe_mode"] is False
     assert status["historical_strategy_id"] == "master_ensemble"
     assert status["hard_daily_loss_cap_pct"] == 2.5
     assert status["auto_capital_routing_independent"] is True

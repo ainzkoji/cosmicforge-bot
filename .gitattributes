@@ -1,0 +1,9 @@
+# Keep newly hash-pinned research evidence and sources byte-for-byte.
+docs/research/cati_alpha_root_cause/** -text whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol
+scripts/diagnose_cati_alpha_v2.py -text whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol
+scripts/audit_cati_data_inventory.py -text whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol
+scripts/audit_cati_additional_inventory.py -text whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol
+scripts/audit_cati_feature_inventory.py -text whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol
+scripts/register_cati_next_edge_mandate.py -text whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol
+# Preserve the existing canonical policy bytes used by the source fingerprint.
+backends/bot-backend/app/trading_intelligence/research/certification/policy.py text eol=crlf

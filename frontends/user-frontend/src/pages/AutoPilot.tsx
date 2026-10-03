@@ -439,7 +439,7 @@ export default function AutoPilot() {
                                 <span className="text-gray-500 text-sm">Strategy</span>
                                 <span className="text-white font-medium flex items-center gap-2">
                                     <Zap className="w-4 h-4 text-purple-500" />
-                                    Master Ensemble
+                                    CATI
                                 </span>
                             </div>
 

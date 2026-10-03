@@ -87,14 +87,18 @@ def get_engine_status(
         cati_healthy=eligibility.active and library.satisfied is True,
     )
     payload = authority.to_dict()
-    # Architecture selection is not a claim that a particular bot is running.
+    from app.ops.runtime_status import runtime_process_status
+    runtime = runtime_process_status(service.db)
     payload.update({
         "engine": "CATI",
-        "cati_runtime_active": True,
+        "runtime_process": runtime["state"],
+        "runtime_health": runtime,
+        "cati_runtime_active": runtime["active"],
+        "cati_managed_instance": instance.strategy_id == "cati",
         "instance_status": instance.status,
         "historical_strategy_id": instance.strategy_id if instance.strategy_id != "cati" else None,
         "cati_entry_authority": authority.environment if authority.owner == "CATI" else "BLOCKED",
-        "observe_mode": authority.owner != "CATI",
+        "observe_mode": runtime["active"] and authority.owner != "CATI",
         "execution_eligibility": eligibility.to_dict(),
         "library_configuration": library.to_dict(),
         "capabilities": cati_status(service.db),

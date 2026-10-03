@@ -1,0 +1,217 @@
+{
+  "exclusive_upper_bound": 1783876499999,
+  "serialization": "compact JSON tuple + newline; order venue_symbol,feature,observed_at,source",
+  "sources": {
+    "1000BONKUSDT": {
+      "sha256": "c68f94a983c043398aaf7ad54b6bf119efde1216f3ce183a8e4f20d0ec563764",
+      "rows": 75054,
+      "first": 1700665199999,
+      "last": 1783875599999
+    },
+    "1000PEPEUSDT": {
+      "sha256": "ae97215117cd67606721f76c5599d511ee0b102144a33bfedfbbfb970325c73e",
+      "rows": 87238,
+      "first": 1683287999999,
+      "last": 1783875599999
+    },
+    "1000SHIBUSDT": {
+      "sha256": "9a1b5e378312c9874b427ebbc637cb8dce9087b372a83cec6f2d8a6a1dea09ad",
+      "rows": 131328,
+      "first": 1632441600000,
+      "last": 1783875599999
+    },
+    "AAVEUSDT": {
+      "sha256": "139a92d14c0b8927c5caf23dc706271cc877af9050d91ce9575019af17cc0e22",
+      "rows": 131328,
+      "first": 1632441600000,
+      "last": 1783875599999
+    },
+    "ADAUSDT": {
+      "sha256": "1eedc530df52f939e4ca45d47595f0720c330ee67f8f9d406144ff8aa899fb61",
+      "rows": 131328,
+      "first": 1632441600000,
+      "last": 1783875599999
+    },
+    "APTUSDT": {
+      "sha256": "20082f929f7a8e1dee312b125b486b4fec5bbf1934c84ae30a926232fd8af607",
+      "rows": 102106,
+      "first": 1666108800000,
+      "last": 1783875599999
+    },
+    "ARBUSDT": {
+      "sha256": "de54403c52d5fc1f1c8cf0ebfdadbd2f1439921e68620d7af80cb6b3766db89c",
+      "rows": 90455,
+      "first": 1679558400001,
+      "last": 1783875599999
+    },
+    "AVAXUSDT": {
+      "sha256": "2946b8546c26b10122b4970ba14950f7ddd9b6114e9157500eab7785a188da95",
+      "rows": 131328,
+      "first": 1632441600000,
+      "last": 1783875599999
+    },
+    "BCHUSDT": {
+      "sha256": "c142604d2f763170fd7fa410ccb03ecd3fd92f59e3b47aeb6f14988d30cfbb8b",
+      "rows": 131328,
+      "first": 1632441600000,
+      "last": 1783875599999
+    },
+    "BNBUSDT": {
+      "sha256": "3a91cd4558a2562806bece97d14d1e8789638739384daa45f4ec7f4a04adc581",
+      "rows": 131328,
+      "first": 1632441600000,
+      "last": 1783875599999
+    },
+    "BTCUSDT": {
+      "sha256": "13a4c3ff09a6caa55bdac9375fee7b191fcc69d68eaf879573430d8a19b63510",
+      "rows": 131328,
+      "first": 1632441600000,
+      "last": 1783875599999
+    },
+    "CRVUSDT": {
+      "sha256": "563b3c1e10f1d50efd1b5ca4cacebb9bf50c64595d5af3d95ff63e70616c47b6",
+      "rows": 131328,
+      "first": 1632441600000,
+      "last": 1783875599999
+    },
+    "DASHUSDT": {
+      "sha256": "223f587d3e484a4d92bf22b10aae25426d2bdc4eb560d257d106f45abeeb6e1b",
+      "rows": 131328,
+      "first": 1632441600000,
+      "last": 1783875599999
+    },
+    "DOGEUSDT": {
+      "sha256": "f24c7368f05beab7577a6dbe4ac642ae9cf3a427ccea6f02b7a78a541857058d",
+      "rows": 131328,
+      "first": 1632441600000,
+      "last": 1783875599999
+    },
+    "DOTUSDT": {
+      "sha256": "d44954540173b50d014aea2a4ed9a90a8f01722b4dc459d9098a7840f84f4af4",
+      "rows": 131328,
+      "first": 1632441600000,
+      "last": 1783875599999
+    },
+    "ENAUSDT": {
+      "sha256": "b94c671e8a9af3536474e982a7a6cd4afb9c12c7a80553588f0860558e75ae74",
+      "rows": 64773,
+      "first": 1712066399999,
+      "last": 1783875599999
+    },
+    "ETHUSDT": {
+      "sha256": "406921721397f6b7c41355be7ed63c6c6e09f1d7ec5a1edca6fde988bf849e7a",
+      "rows": 131328,
+      "first": 1632441600000,
+      "last": 1783875599999
+    },
+    "FETUSDT": {
+      "sha256": "96e8630d1d2007ff2b59c1f14bca12ccaf7258979d70c95bef8a0f0d82133326",
+      "rows": 95413,
+      "first": 1673769599999,
+      "last": 1783875599999
+    },
+    "FILUSDT": {
+      "sha256": "2d7f34d16d5045399d6c4450a982e999b1245161af37b55576c0dd7a64886819",
+      "rows": 131328,
+      "first": 1632441600000,
+      "last": 1783875599999
+    },
+    "HBARUSDT": {
+      "sha256": "b919feab6ec1a4ca855d7c0a3a96705405c97ca80de83730c21bb2864656a303",
+      "rows": 131328,
+      "first": 1632441600000,
+      "last": 1783875599999
+    },
+    "LINKUSDT": {
+      "sha256": "057a5fa6d41be9500f26cf34fcbe1946d23b1664045f25c65be5df3577fb7740",
+      "rows": 131328,
+      "first": 1632441600000,
+      "last": 1783875599999
+    },
+    "LTCUSDT": {
+      "sha256": "8ec3641e8eef61b53480e9b46e2b96ed87da9348fa1ecd788b853ee8efacf5b3",
+      "rows": 131328,
+      "first": 1632441600000,
+      "last": 1783875599999
+    },
+    "NEARUSDT": {
+      "sha256": "e22eba25d08d9654e687acf18740a20e60edad09fe486a58418481beab0a1f51",
+      "rows": 131328,
+      "first": 1632441600000,
+      "last": 1783875599999
+    },
+    "ONDOUSDT": {
+      "sha256": "019f8b2302dfd8140ed18ba43a2e7f09931c436ec329e7ae167b5d2223ddb5bd",
+      "rows": 70461,
+      "first": 1705759199999,
+      "last": 1783875599999
+    },
+    "OPUSDT": {
+      "sha256": "3cd2f57e5f6da2274bb36a16119db0f48cd190254c74cd3e99facad39b71ee80",
+      "rows": 112574,
+      "first": 1654070399999,
+      "last": 1783875599999
+    },
+    "SOLUSDT": {
+      "sha256": "adb02682d314c7e4d384a333a4e09b36ac59e0485f0cdc999cf708fc2dee62ee",
+      "rows": 131403,
+      "first": 1632441600000,
+      "last": 1783875599999
+    },
+    "SUIUSDT": {
+      "sha256": "d440b6cb830b08d0e5c3e360635d5664578b5b35eb1fb0032bc93cac56546d9d",
+      "rows": 87385,
+      "first": 1683118799999,
+      "last": 1783875599999
+    },
+    "TAOUSDT": {
+      "sha256": "c5e29201bc6e9c4b558fa9dcb5df7d16176f474951efc2a9b1b0848d004c3a5c",
+      "rows": 64065,
+      "first": 1712851199999,
+      "last": 1783875599999
+    },
+    "TRXUSDT": {
+      "sha256": "b275bd8e9074603dcdd8dc0e34aa757d49b854d8f385a6dfd669e4935c8eaeb0",
+      "rows": 131328,
+      "first": 1632441600000,
+      "last": 1783875599999
+    },
+    "UNIUSDT": {
+      "sha256": "a44ddff7d82542c5f183f64b9405321b23f8326d0b1f5992db1511581579e689",
+      "rows": 131328,
+      "first": 1632441600000,
+      "last": 1783875599999
+    },
+    "WIFUSDT": {
+      "sha256": "9fcad3b1da3eaf78303d2e70021f2ad2063d72ee50b64bc4cfdff274a0bdfbac",
+      "rows": 70611,
+      "first": 1705593599999,
+      "last": 1783875599999
+    },
+    "WLDUSDT": {
+      "sha256": "93d317a8df6c1536f6db73fad95dcb56d9eefcafaebd184ee397eb1c13e86c52",
+      "rows": 81241,
+      "first": 1690203599999,
+      "last": 1783875599999
+    },
+    "XLMUSDT": {
+      "sha256": "6c3a1308191629daa27ed78bb9350406401cf346a495e0af29bcd9de735073ca",
+      "rows": 131328,
+      "first": 1632441600000,
+      "last": 1783875599999
+    },
+    "XRPUSDT": {
+      "sha256": "64878889854d23416ad1681b184d3ffcb00c8d33b8263b68be9ec496ceb3aaaf",
+      "rows": 131328,
+      "first": 1632441600000,
+      "last": 1783875599999
+    },
+    "ZECUSDT": {
+      "sha256": "9222042ea1895f51eca07475479fd3522d28ca839f2866bbb7db9c4cd54435f9",
+      "rows": 131328,
+      "first": 1632441600000,
+      "last": 1783875599999
+    }
+  },
+  "holdout_queries": 0
+}

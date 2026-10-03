@@ -1,0 +1,17 @@
+{
+  "observed_at": "2026-10-03T12:52:06.279046+00:00",
+  "engine": "CATI",
+  "runtime_process": "RUNNING",
+  "runtime_health": {
+    "state": "RUNNING",
+    "active": true,
+    "reason": "CANONICAL_RUNTIME_SESSION_LEASE_HEARTBEAT_VALID",
+    "heartbeat_age_seconds": 5.8,
+    "session_valid": true,
+    "preflight_status": "ALREADY_RUNNING"
+  },
+  "observe_mode": true,
+  "cati_entry_authority": "BLOCKED",
+  "phase": "M0",
+  "cati_managed_instance": false
+}

@@ -22,6 +22,7 @@ FEATURES = frozenset({
     "funding_rate", "open_interest", "mark_price", "index_price", "basis_bps", "bid", "ask", "spread_bps",
     "book_bid_depth", "book_ask_depth", "liquidations_long", "liquidations_short", "turnover_24h", "volume_24h",
     "last_price", "next_funding_time",
+    "book_imbalance", "aggressor_buy_quote_fraction", "aggregate_trade_quote_volume", "execution_cost_proxy_bps",
 })
 REFERENCE_MARKET_PRICE = "REFERENCE_MARKET_PRICE"
 EXECUTION_VENUE_PRICE = "EXECUTION_VENUE_PRICE"

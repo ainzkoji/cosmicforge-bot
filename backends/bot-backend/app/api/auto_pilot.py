@@ -241,9 +241,9 @@ def get_auto_pilot_status(
     """Get aggregated status of all Auto Pilot instances."""
     from shared_lib.persistence.db import DB
     
-    # Every runtime instance now uses CATI; stored strategy labels are historical.
+    # Canonical CATI product instances only. Historical labels are read-only history.
     all_bots = service.get_user_bot_instances(user["id"])
-    ap_bots = all_bots
+    ap_bots = [b for b in all_bots if b.strategy_id == "cati"]
     
     active = sum(1 for b in ap_bots if b.status == "active")
     paused = sum(1 for b in ap_bots if b.status == "paused")
@@ -290,7 +290,7 @@ def pause_auto_pilot(
 ):
     """Pause all active Auto Pilot instances."""
     all_bots = service.get_user_bot_instances(user["id"])
-    ap_bots = [b for b in all_bots if b.status == "active"]
+    ap_bots = [b for b in all_bots if b.strategy_id == "cati" and b.status == "active"]
     
     paused = []
     for bot in ap_bots:
@@ -310,7 +310,7 @@ def resume_auto_pilot(
 ):
     """Resume all paused Auto Pilot instances."""
     all_bots = service.get_user_bot_instances(user["id"])
-    ap_bots = [b for b in all_bots if b.status == "paused"]
+    ap_bots = [b for b in all_bots if b.strategy_id == "cati" and b.status == "paused"]
     
     resumed = []
     for bot in ap_bots:

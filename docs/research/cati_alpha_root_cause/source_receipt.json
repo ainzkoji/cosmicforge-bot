@@ -1,0 +1,59 @@
+{
+  "title": "CATI Alpha V2 post-hoc economic diagnosis",
+  "classification": "DIAGNOSTIC_ONLY",
+  "grain": "one immutable label_id per V2 mechanism/instrument/decision; not independent executed trades",
+  "label_count": 40492,
+  "unique_label_ids": 40492,
+  "labels_sha256": "65c3aa355b12aad635479b27afb0a6ba113e43e3fe1ab24442bd73fefa42917c",
+  "source_close_exclusive_cutoff": 1783876499999,
+  "holdout_query_count": 0,
+  "historical_scope": "Only queries bounded strictly before reserved cutoff; whole-period manifests were read as declarative metadata only.",
+  "forward_scope": "New received-at public observations are independent observe evidence, not reserved historical holdout queries.",
+  "data_sources": [
+    "docs/research/artifacts/cati_alpha_v2_fixed/labels.jsonl.gz",
+    "canonical native15m historical_candles",
+    "data/research/crypto_deep_binance.db",
+    "bounded repository SQLite inventory and declarative manifests"
+  ],
+  "methods": [
+    "immutable label/source-hash check",
+    "exact closed-bar join",
+    "full numeric quantiles",
+    "all post-hoc subgroup tables",
+    "same-time and known-group clusters",
+    "closed15m cross-asset correlation",
+    "12h weighted block counts",
+    "7day UTC-day HAC variance approximation"
+  ],
+  "limitations": [
+    "MFE/MAE are terminal-bar censored bounds, not exact path ordering.",
+    "Holding time is a within-bar interval; modeled funding reserves the full 12h horizon.",
+    "Turnover is hypothetical candidate turnover, not executable portfolio turnover.",
+    "Regimes/deciles and all subgroup outcomes are post-hoc diagnostic only.",
+    "HAC variance-equivalent ESS and Kish block units are approximations, not certified independent evidence counts.",
+    "15m noise cannot be causally identified without a separately frozen timeframe experiment.",
+    "87.689% of combined labels have UNKNOWN static instrument group; unknown is excluded from group-cluster inference.",
+    "Historical feature ingestion occurred later than observation: reconstructed causal source time, not a proven historical data-vintage snapshot.",
+    "Candidate outcomes do not establish achievable portfolio turnover or actual broker costs."
+  ],
+  "provider_documentation": "https://developers.binance.com/en/docs/catalog/core-trading-derivatives-trading-usd-s-m-futures/api/rest-api/market-data",
+  "artifact_hashes": {
+    "additional_inventory.json": "f0ab99edc4d7ff6e9794b94864bdc2e88af494331a1b7152cd94e538aa3d6c9f",
+    "alpha_economics_dependence.png": "401a7dc39a14d141f81273ba3642834c9e68e429ae936197f9d8503a37482bf0",
+    "alpha_root_cause.ipynb": "e09bd2c2c127e76cf62db50e2cf1cbdca6be099c9b914bac9aad9c96566f582a",
+    "data_inventory.json": "2f7991f161539abe7920a58da68ae13526c8355270abc3b04a11c5159338cca4",
+    "diagnostics.json": "a43b8dea3ec7c28f467052347ad8c1a77e2625d3660460dadbf2c24f5029ea58",
+    "diagnostic_rows.csv.gz": "96bd85d76f3bd09871e249eaa27202b1e4b2923ad1d64a9aaf8cb97bae80517d",
+    "diagnostic_subgroups.csv": "b63f6302ec5edde61cb0858280d79c852188214ce13c67e9644328c19540e792",
+    "forward_observe_receipt.json": "a39a5ca8ed90cd52398d4f581d60dc5cecad40c376d085d76e3a0e111c8dfaea",
+    "fx_status_receipt.json": "482b57614c32276f35050fb7844db65aa75b179a32c8013239d2ea0e8ca29444",
+    "historical_feature_source_hashes.json": "9d7f3f674cf54540eb248abebafba829a40df8baaeb04c29fbc2fd4e52abc2ca",
+    "inventory_quality_summary.json": "b6f013f95ffee65fdde89ce199dff5f52a5c7bd6c6de673b6be7e5f823ca598b",
+    "native_1m_field_receipt.json": "07a975aa4ea8efd288b2d505ac16b3830eb1b0456d0b89524c646190a6312b36",
+    "next_edge_registry.json": "f3cac76976590fb59ae9f83252092dc484cf89e59b3880945288bc92458ce36f",
+    "next_edge_registry.sha256": "f0fd34a9a35188208549baab09a7184c8ec4af755a9d5523b686463b637d790f",
+    "runtime_status_receipt.json": "d9debe177d01cbe223fc3aafded077c026dfcb0c5adee0a2464c6f37ecda22c4",
+    "supplemental_inventory.json": "7868b5d234ebde6eb992d124adc574c324ecd07105cde10922670137accce592",
+    "validation.json": "aaacb0ae7e6617f740079e6a693a6da9db01872f3e950e635286b6313006b85e"
+  }
+}

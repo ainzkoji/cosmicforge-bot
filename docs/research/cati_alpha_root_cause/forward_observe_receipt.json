@@ -1,0 +1,282 @@
+{
+  "collection_at": "2026-10-03T12:26:22.589006+00:00",
+  "records_written": 34,
+  "source": "binance_public_forward_reference",
+  "classification": "FORWARD_OBSERVE_ONLY",
+  "reference_venue_not_execution_measurement": true,
+  "no_orders": true,
+  "rows": [
+    {
+      "venue_symbol": "ETHUSDT",
+      "feature": "liquidations_short",
+      "status": "UNAVAILABLE",
+      "value": null,
+      "unavailable_reason": "NO_CAUSAL_LIQUIDATION_STREAM_CONFIGURED",
+      "observed_at": 1791030382573
+    },
+    {
+      "venue_symbol": "ETHUSDT",
+      "feature": "liquidations_long",
+      "status": "UNAVAILABLE",
+      "value": null,
+      "unavailable_reason": "NO_CAUSAL_LIQUIDATION_STREAM_CONFIGURED",
+      "observed_at": 1791030382565
+    },
+    {
+      "venue_symbol": "ETHUSDT",
+      "feature": "aggressor_buy_quote_fraction",
+      "status": "AVAILABLE",
+      "value": 0.5435106264026504,
+      "unavailable_reason": null,
+      "observed_at": 1791030382531
+    },
+    {
+      "venue_symbol": "ETHUSDT",
+      "feature": "aggregate_trade_quote_volume",
+      "status": "AVAILABLE",
+      "value": 7995096.08804,
+      "unavailable_reason": null,
+      "observed_at": 1791030382531
+    },
+    {
+      "venue_symbol": "ETHUSDT",
+      "feature": "open_interest",
+      "status": "AVAILABLE",
+      "value": 2329624.59,
+      "unavailable_reason": null,
+      "observed_at": 1791030381889
+    },
+    {
+      "venue_symbol": "ETHUSDT",
+      "feature": "mark_price",
+      "status": "AVAILABLE",
+      "value": 2684.08,
+      "unavailable_reason": null,
+      "observed_at": 1791030381352
+    },
+    {
+      "venue_symbol": "ETHUSDT",
+      "feature": "index_price",
+      "status": "AVAILABLE",
+      "value": 2685.74674419,
+      "unavailable_reason": null,
+      "observed_at": 1791030381352
+    },
+    {
+      "venue_symbol": "ETHUSDT",
+      "feature": "basis_bps",
+      "status": "AVAILABLE",
+      "value": -6.205887407685351,
+      "unavailable_reason": null,
+      "observed_at": 1791030381352
+    },
+    {
+      "venue_symbol": "ETHUSDT",
+      "feature": "funding_rate",
+      "status": "AVAILABLE",
+      "value": 2.647e-05,
+      "unavailable_reason": null,
+      "observed_at": 1791030381352
+    },
+    {
+      "venue_symbol": "ETHUSDT",
+      "feature": "next_funding_time",
+      "status": "AVAILABLE",
+      "value": 1791043200000.0,
+      "unavailable_reason": null,
+      "observed_at": 1791030381352
+    },
+    {
+      "venue_symbol": "ETHUSDT",
+      "feature": "bid",
+      "status": "AVAILABLE",
+      "value": 2684.07,
+      "unavailable_reason": null,
+      "observed_at": 1791030380811
+    },
+    {
+      "venue_symbol": "ETHUSDT",
+      "feature": "ask",
+      "status": "AVAILABLE",
+      "value": 2684.08,
+      "unavailable_reason": null,
+      "observed_at": 1791030380811
+    },
+    {
+      "venue_symbol": "ETHUSDT",
+      "feature": "spread_bps",
+      "status": "AVAILABLE",
+      "value": 0.03725678306218542,
+      "unavailable_reason": null,
+      "observed_at": 1791030380811
+    },
+    {
+      "venue_symbol": "ETHUSDT",
+      "feature": "book_bid_depth",
+      "status": "AVAILABLE",
+      "value": 581014.22895,
+      "unavailable_reason": null,
+      "observed_at": 1791030380811
+    },
+    {
+      "venue_symbol": "ETHUSDT",
+      "feature": "book_ask_depth",
+      "status": "AVAILABLE",
+      "value": 88644.11156,
+      "unavailable_reason": null,
+      "observed_at": 1791030380811
+    },
+    {
+      "venue_symbol": "ETHUSDT",
+      "feature": "book_imbalance",
+      "status": "AVAILABLE",
+      "value": 0.7352557081795168,
+      "unavailable_reason": null,
+      "observed_at": 1791030380811
+    },
+    {
+      "venue_symbol": "ETHUSDT",
+      "feature": "execution_cost_proxy_bps",
+      "status": "AVAILABLE",
+      "value": 0.03725678306218542,
+      "unavailable_reason": null,
+      "observed_at": 1791030380811
+    },
+    {
+      "venue_symbol": "BTCUSDT",
+      "feature": "liquidations_short",
+      "status": "UNAVAILABLE",
+      "value": null,
+      "unavailable_reason": "NO_CAUSAL_LIQUIDATION_STREAM_CONFIGURED",
+      "observed_at": 1791030380290
+    },
+    {
+      "venue_symbol": "BTCUSDT",
+      "feature": "liquidations_long",
+      "status": "UNAVAILABLE",
+      "value": null,
+      "unavailable_reason": "NO_CAUSAL_LIQUIDATION_STREAM_CONFIGURED",
+      "observed_at": 1791030380286
+    },
+    {
+      "venue_symbol": "BTCUSDT",
+      "feature": "aggressor_buy_quote_fraction",
+      "status": "AVAILABLE",
+      "value": 0.6373797747103206,
+      "unavailable_reason": null,
+      "observed_at": 1791030380272
+    },
+    {
+      "venue_symbol": "BTCUSDT",
+      "feature": "aggregate_trade_quote_volume",
+      "status": "AVAILABLE",
+      "value": 15045227.1716,
+      "unavailable_reason": null,
+      "observed_at": 1791030380272
+    },
+    {
+      "venue_symbol": "BTCUSDT",
+      "feature": "open_interest",
+      "status": "AVAILABLE",
+      "value": 97327.886,
+      "unavailable_reason": null,
+      "observed_at": 1791030379746
+    },
+    {
+      "venue_symbol": "BTCUSDT",
+      "feature": "mark_price",
+      "status": "AVAILABLE",
+      "value": 84862.1,
+      "unavailable_reason": null,
+      "observed_at": 1791030379205
+    },
+    {
+      "venue_symbol": "BTCUSDT",
+      "feature": "index_price",
+      "status": "AVAILABLE",
+      "value": 84899.05304348,
+      "unavailable_reason": null,
+      "observed_at": 1791030379205
+    },
+    {
+      "venue_symbol": "BTCUSDT",
+      "feature": "basis_bps",
+      "status": "AVAILABLE",
+      "value": -4.352586060184516,
+      "unavailable_reason": null,
+      "observed_at": 1791030379205
+    },
+    {
+      "venue_symbol": "BTCUSDT",
+      "feature": "funding_rate",
+      "status": "AVAILABLE",
+      "value": 7.64e-06,
+      "unavailable_reason": null,
+      "observed_at": 1791030379205
+    },
+    {
+      "venue_symbol": "BTCUSDT",
+      "feature": "next_funding_time",
+      "status": "AVAILABLE",
+      "value": 1791043200000.0,
+      "unavailable_reason": null,
+      "observed_at": 1791030379205
+    },
+    {
+      "venue_symbol": "BTCUSDT",
+      "feature": "bid",
+      "status": "AVAILABLE",
+      "value": 84862.0,
+      "unavailable_reason": null,
+      "observed_at": 1791030378639
+    },
+    {
+      "venue_symbol": "BTCUSDT",
+      "feature": "ask",
+      "status": "AVAILABLE",
+      "value": 84862.1,
+      "unavailable_reason": null,
+      "observed_at": 1791030378639
+    },
+    {
+      "venue_symbol": "BTCUSDT",
+      "feature": "spread_bps",
+      "status": "AVAILABLE",
+      "value": 0.011783830346523654,
+      "unavailable_reason": null,
+      "observed_at": 1791030378639
+    },
+    {
+      "venue_symbol": "BTCUSDT",
+      "feature": "book_bid_depth",
+      "status": "AVAILABLE",
+      "value": 1122044.7615,
+      "unavailable_reason": null,
+      "observed_at": 1791030378639
+    },
+    {
+      "venue_symbol": "BTCUSDT",
+      "feature": "book_ask_depth",
+      "status": "AVAILABLE",
+      "value": 2324100.5455,
+      "unavailable_reason": null,
+      "observed_at": 1791030378639
+    },
+    {
+      "venue_symbol": "BTCUSDT",
+      "feature": "book_imbalance",
+      "status": "AVAILABLE",
+      "value": -0.34881169449190613,
+      "unavailable_reason": null,
+      "observed_at": 1791030378639
+    },
+    {
+      "venue_symbol": "BTCUSDT",
+      "feature": "execution_cost_proxy_bps",
+      "status": "AVAILABLE",
+      "value": 0.011783830346523654,
+      "unavailable_reason": null,
+      "observed_at": 1791030378639
+    }
+  ]
+}

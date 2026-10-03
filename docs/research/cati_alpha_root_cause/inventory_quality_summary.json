@@ -1,0 +1,1905 @@
+{
+  "classification": "DIAGNOSTIC_ONLY",
+  "scope": "Derived from bounded inventory aggregates; gaps do not imply a continuous listing universe",
+  "series": [
+    {
+      "database": "data\\research\\crypto_deep_binance.db",
+      "table": "market_candles",
+      "symbol": "1000BONKUSDT",
+      "source": "binance_fapi_klines",
+      "timeframe": "1m",
+      "duplicate_opens_within_reported_identity": 0,
+      "interior_missing_slots_vs_first_last": 0
+    },
+    {
+      "database": "data\\research\\crypto_deep_binance.db",
+      "table": "market_candles",
+      "symbol": "1000PEPEUSDT",
+      "source": "binance_fapi_klines",
+      "timeframe": "1m",
+      "duplicate_opens_within_reported_identity": 0,
+      "interior_missing_slots_vs_first_last": 0
+    },
+    {
+      "database": "data\\research\\crypto_deep_binance.db",
+      "table": "market_candles",
+      "symbol": "1000SHIBUSDT",
+      "source": "binance_fapi_klines",
+      "timeframe": "1m",
+      "duplicate_opens_within_reported_identity": 0,
+      "interior_missing_slots_vs_first_last": 0
+    },
+    {
+      "database": "data\\research\\crypto_deep_binance.db",
+      "table": "market_candles",
+      "symbol": "AAVEUSDT",
+      "source": "binance_fapi_klines",
+      "timeframe": "1m",
+      "duplicate_opens_within_reported_identity": 0,
+      "interior_missing_slots_vs_first_last": 0
+    },
+    {
+      "database": "data\\research\\crypto_deep_binance.db",
+      "table": "market_candles",
+      "symbol": "ADAUSDT",
+      "source": "binance_fapi_klines",
+      "timeframe": "1m",
+      "duplicate_opens_within_reported_identity": 0,
+      "interior_missing_slots_vs_first_last": 0
+    },
+    {
+      "database": "data\\research\\crypto_deep_binance.db",
+      "table": "market_candles",
+      "symbol": "APTUSDT",
+      "source": "binance_fapi_klines",
+      "timeframe": "1m",
+      "duplicate_opens_within_reported_identity": 0,
+      "interior_missing_slots_vs_first_last": 0
+    },
+    {
+      "database": "data\\research\\crypto_deep_binance.db",
+      "table": "market_candles",
+      "symbol": "ARBUSDT",
+      "source": "binance_fapi_klines",
+      "timeframe": "1m",
+      "duplicate_opens_within_reported_identity": 0,
+      "interior_missing_slots_vs_first_last": 0
+    },
+    {
+      "database": "data\\research\\crypto_deep_binance.db",
+      "table": "market_candles",
+      "symbol": "AVAXUSDT",
+      "source": "binance_fapi_klines",
+      "timeframe": "1m",
+      "duplicate_opens_within_reported_identity": 0,
+      "interior_missing_slots_vs_first_last": 0
+    },
+    {
+      "database": "data\\research\\crypto_deep_binance.db",
+      "table": "market_candles",
+      "symbol": "BCHUSDT",
+      "source": "binance_fapi_klines",
+      "timeframe": "1m",
+      "duplicate_opens_within_reported_identity": 0,
+      "interior_missing_slots_vs_first_last": 0
+    },
+    {
+      "database": "data\\research\\crypto_deep_binance.db",
+      "table": "market_candles",
+      "symbol": "BNBUSDT",
+      "source": "binance_fapi_klines",
+      "timeframe": "1m",
+      "duplicate_opens_within_reported_identity": 0,
+      "interior_missing_slots_vs_first_last": 0
+    },
+    {
+      "database": "data\\research\\crypto_deep_binance.db",
+      "table": "market_candles",
+      "symbol": "BTCUSDT",
+      "source": "binance_fapi_klines",
+      "timeframe": "1m",
+      "duplicate_opens_within_reported_identity": 0,
+      "interior_missing_slots_vs_first_last": 0
+    },
+    {
+      "database": "data\\research\\crypto_deep_binance.db",
+      "table": "market_candles",
+      "symbol": "CRVUSDT",
+      "source": "binance_fapi_klines",
+      "timeframe": "1m",
+      "duplicate_opens_within_reported_identity": 0,
+      "interior_missing_slots_vs_first_last": 0
+    },
+    {
+      "database": "data\\research\\crypto_deep_binance.db",
+      "table": "market_candles",
+      "symbol": "DASHUSDT",
+      "source": "binance_fapi_klines",
+      "timeframe": "1m",
+      "duplicate_opens_within_reported_identity": 0,
+      "interior_missing_slots_vs_first_last": 0
+    },
+    {
+      "database": "data\\research\\crypto_deep_binance.db",
+      "table": "market_candles",
+      "symbol": "DOGEUSDT",
+      "source": "binance_fapi_klines",
+      "timeframe": "1m",
+      "duplicate_opens_within_reported_identity": 0,
+      "interior_missing_slots_vs_first_last": 0
+    },
+    {
+      "database": "data\\research\\crypto_deep_binance.db",
+      "table": "market_candles",
+      "symbol": "DOTUSDT",
+      "source": "binance_fapi_klines",
+      "timeframe": "1m",
+      "duplicate_opens_within_reported_identity": 0,
+      "interior_missing_slots_vs_first_last": 0
+    },
+    {
+      "database": "data\\research\\crypto_deep_binance.db",
+      "table": "market_candles",
+      "symbol": "ENAUSDT",
+      "source": "binance_fapi_klines",
+      "timeframe": "1m",
+      "duplicate_opens_within_reported_identity": 0,
+      "interior_missing_slots_vs_first_last": 0
+    },
+    {
+      "database": "data\\research\\crypto_deep_binance.db",
+      "table": "market_candles",
+      "symbol": "ETHUSDT",
+      "source": "binance_fapi_klines",
+      "timeframe": "1m",
+      "duplicate_opens_within_reported_identity": 0,
+      "interior_missing_slots_vs_first_last": 0
+    },
+    {
+      "database": "data\\research\\crypto_deep_binance.db",
+      "table": "market_candles",
+      "symbol": "FETUSDT",
+      "source": "binance_fapi_klines",
+      "timeframe": "1m",
+      "duplicate_opens_within_reported_identity": 0,
+      "interior_missing_slots_vs_first_last": 0
+    },
+    {
+      "database": "data\\research\\crypto_deep_binance.db",
+      "table": "market_candles",
+      "symbol": "FILUSDT",
+      "source": "binance_fapi_klines",
+      "timeframe": "1m",
+      "duplicate_opens_within_reported_identity": 0,
+      "interior_missing_slots_vs_first_last": 0
+    },
+    {
+      "database": "data\\research\\crypto_deep_binance.db",
+      "table": "market_candles",
+      "symbol": "HBARUSDT",
+      "source": "binance_fapi_klines",
+      "timeframe": "1m",
+      "duplicate_opens_within_reported_identity": 0,
+      "interior_missing_slots_vs_first_last": 0
+    },
+    {
+      "database": "data\\research\\crypto_deep_binance.db",
+      "table": "market_candles",
+      "symbol": "LINKUSDT",
+      "source": "binance_fapi_klines",
+      "timeframe": "1m",
+      "duplicate_opens_within_reported_identity": 0,
+      "interior_missing_slots_vs_first_last": 0
+    },
+    {
+      "database": "data\\research\\crypto_deep_binance.db",
+      "table": "market_candles",
+      "symbol": "LTCUSDT",
+      "source": "binance_fapi_klines",
+      "timeframe": "1m",
+      "duplicate_opens_within_reported_identity": 0,
+      "interior_missing_slots_vs_first_last": 0
+    },
+    {
+      "database": "data\\research\\crypto_deep_binance.db",
+      "table": "market_candles",
+      "symbol": "NEARUSDT",
+      "source": "binance_fapi_klines",
+      "timeframe": "1m",
+      "duplicate_opens_within_reported_identity": 0,
+      "interior_missing_slots_vs_first_last": 0
+    },
+    {
+      "database": "data\\research\\crypto_deep_binance.db",
+      "table": "market_candles",
+      "symbol": "ONDOUSDT",
+      "source": "binance_fapi_klines",
+      "timeframe": "1m",
+      "duplicate_opens_within_reported_identity": 0,
+      "interior_missing_slots_vs_first_last": 0
+    },
+    {
+      "database": "data\\research\\crypto_deep_binance.db",
+      "table": "market_candles",
+      "symbol": "OPUSDT",
+      "source": "binance_fapi_klines",
+      "timeframe": "1m",
+      "duplicate_opens_within_reported_identity": 0,
+      "interior_missing_slots_vs_first_last": 0
+    },
+    {
+      "database": "data\\research\\crypto_deep_binance.db",
+      "table": "market_candles",
+      "symbol": "SOLUSDT",
+      "source": "binance_fapi_klines",
+      "timeframe": "1m",
+      "duplicate_opens_within_reported_identity": 0,
+      "interior_missing_slots_vs_first_last": 0
+    },
+    {
+      "database": "data\\research\\crypto_deep_binance.db",
+      "table": "market_candles",
+      "symbol": "SUIUSDT",
+      "source": "binance_fapi_klines",
+      "timeframe": "1m",
+      "duplicate_opens_within_reported_identity": 0,
+      "interior_missing_slots_vs_first_last": 0
+    },
+    {
+      "database": "data\\research\\crypto_deep_binance.db",
+      "table": "market_candles",
+      "symbol": "TAOUSDT",
+      "source": "binance_fapi_klines",
+      "timeframe": "1m",
+      "duplicate_opens_within_reported_identity": 0,
+      "interior_missing_slots_vs_first_last": 0
+    },
+    {
+      "database": "data\\research\\crypto_deep_binance.db",
+      "table": "market_candles",
+      "symbol": "TRXUSDT",
+      "source": "binance_fapi_klines",
+      "timeframe": "1m",
+      "duplicate_opens_within_reported_identity": 0,
+      "interior_missing_slots_vs_first_last": 0
+    },
+    {
+      "database": "data\\research\\crypto_deep_binance.db",
+      "table": "market_candles",
+      "symbol": "UNIUSDT",
+      "source": "binance_fapi_klines",
+      "timeframe": "1m",
+      "duplicate_opens_within_reported_identity": 0,
+      "interior_missing_slots_vs_first_last": 0
+    },
+    {
+      "database": "data\\research\\crypto_deep_binance.db",
+      "table": "market_candles",
+      "symbol": "WIFUSDT",
+      "source": "binance_fapi_klines",
+      "timeframe": "1m",
+      "duplicate_opens_within_reported_identity": 0,
+      "interior_missing_slots_vs_first_last": 0
+    },
+    {
+      "database": "data\\research\\crypto_deep_binance.db",
+      "table": "market_candles",
+      "symbol": "WLDUSDT",
+      "source": "binance_fapi_klines",
+      "timeframe": "1m",
+      "duplicate_opens_within_reported_identity": 0,
+      "interior_missing_slots_vs_first_last": 0
+    },
+    {
+      "database": "data\\research\\crypto_deep_binance.db",
+      "table": "market_candles",
+      "symbol": "XLMUSDT",
+      "source": "binance_fapi_klines",
+      "timeframe": "1m",
+      "duplicate_opens_within_reported_identity": 0,
+      "interior_missing_slots_vs_first_last": 0
+    },
+    {
+      "database": "data\\research\\crypto_deep_binance.db",
+      "table": "market_candles",
+      "symbol": "XRPUSDT",
+      "source": "binance_fapi_klines",
+      "timeframe": "1m",
+      "duplicate_opens_within_reported_identity": 0,
+      "interior_missing_slots_vs_first_last": 0
+    },
+    {
+      "database": "data\\research\\crypto_deep_binance.db",
+      "table": "market_candles",
+      "symbol": "ZECUSDT",
+      "source": "binance_fapi_klines",
+      "timeframe": "1m",
+      "duplicate_opens_within_reported_identity": 0,
+      "interior_missing_slots_vs_first_last": 0
+    },
+    {
+      "database": "data\\research\\crypto_deep_binance.db",
+      "table": "market_candles",
+      "symbol": "1000BONKUSDT",
+      "source": "binance_fapi_klines",
+      "timeframe": "5m",
+      "duplicate_opens_within_reported_identity": 0,
+      "interior_missing_slots_vs_first_last": 0
+    },
+    {
+      "database": "data\\research\\crypto_deep_binance.db",
+      "table": "market_candles",
+      "symbol": "1000PEPEUSDT",
+      "source": "binance_fapi_klines",
+      "timeframe": "5m",
+      "duplicate_opens_within_reported_identity": 0,
+      "interior_missing_slots_vs_first_last": 0
+    },
+    {
+      "database": "data\\research\\crypto_deep_binance.db",
+      "table": "market_candles",
+      "symbol": "1000SHIBUSDT",
+      "source": "binance_fapi_klines",
+      "timeframe": "5m",
+      "duplicate_opens_within_reported_identity": 0,
+      "interior_missing_slots_vs_first_last": 0
+    },
+    {
+      "database": "data\\research\\crypto_deep_binance.db",
+      "table": "market_candles",
+      "symbol": "AAVEUSDT",
+      "source": "binance_fapi_klines",
+      "timeframe": "5m",
+      "duplicate_opens_within_reported_identity": 0,
+      "interior_missing_slots_vs_first_last": 0
+    },
+    {
+      "database": "data\\research\\crypto_deep_binance.db",
+      "table": "market_candles",
+      "symbol": "ADAUSDT",
+      "source": "binance_fapi_klines",
+      "timeframe": "5m",
+      "duplicate_opens_within_reported_identity": 0,
+      "interior_missing_slots_vs_first_last": 0
+    },
+    {
+      "database": "data\\research\\crypto_deep_binance.db",
+      "table": "market_candles",
+      "symbol": "APTUSDT",
+      "source": "binance_fapi_klines",
+      "timeframe": "5m",
+      "duplicate_opens_within_reported_identity": 0,
+      "interior_missing_slots_vs_first_last": 0
+    },
+    {
+      "database": "data\\research\\crypto_deep_binance.db",
+      "table": "market_candles",
+      "symbol": "ARBUSDT",
+      "source": "binance_fapi_klines",
+      "timeframe": "5m",
+      "duplicate_opens_within_reported_identity": 0,
+      "interior_missing_slots_vs_first_last": 0
+    },
+    {
+      "database": "data\\research\\crypto_deep_binance.db",
+      "table": "market_candles",
+      "symbol": "AVAXUSDT",
+      "source": "binance_fapi_klines",
+      "timeframe": "5m",
+      "duplicate_opens_within_reported_identity": 0,
+      "interior_missing_slots_vs_first_last": 0
+    },
+    {
+      "database": "data\\research\\crypto_deep_binance.db",
+      "table": "market_candles",
+      "symbol": "BCHUSDT",
+      "source": "binance_fapi_klines",
+      "timeframe": "5m",
+      "duplicate_opens_within_reported_identity": 0,
+      "interior_missing_slots_vs_first_last": 0
+    },
+    {
+      "database": "data\\research\\crypto_deep_binance.db",
+      "table": "market_candles",
+      "symbol": "BNBUSDT",
+      "source": "binance_fapi_klines",
+      "timeframe": "5m",
+      "duplicate_opens_within_reported_identity": 0,
+      "interior_missing_slots_vs_first_last": 0
+    },
+    {
+      "database": "data\\research\\crypto_deep_binance.db",
+      "table": "market_candles",
+      "symbol": "BTCUSDT",
+      "source": "binance_fapi_klines",
+      "timeframe": "5m",
+      "duplicate_opens_within_reported_identity": 0,
+      "interior_missing_slots_vs_first_last": 0
+    },
+    {
+      "database": "data\\research\\crypto_deep_binance.db",
+      "table": "market_candles",
+      "symbol": "CRVUSDT",
+      "source": "binance_fapi_klines",
+      "timeframe": "5m",
+      "duplicate_opens_within_reported_identity": 0,
+      "interior_missing_slots_vs_first_last": 0
+    },
+    {
+      "database": "data\\research\\crypto_deep_binance.db",
+      "table": "market_candles",
+      "symbol": "DASHUSDT",
+      "source": "binance_fapi_klines",
+      "timeframe": "5m",
+      "duplicate_opens_within_reported_identity": 0,
+      "interior_missing_slots_vs_first_last": 0
+    },
+    {
+      "database": "data\\research\\crypto_deep_binance.db",
+      "table": "market_candles",
+      "symbol": "DOGEUSDT",
+      "source": "binance_fapi_klines",
+      "timeframe": "5m",
+      "duplicate_opens_within_reported_identity": 0,
+      "interior_missing_slots_vs_first_last": 0
+    },
+    {
+      "database": "data\\research\\crypto_deep_binance.db",
+      "table": "market_candles",
+      "symbol": "DOTUSDT",
+      "source": "binance_fapi_klines",
+      "timeframe": "5m",
+      "duplicate_opens_within_reported_identity": 0,
+      "interior_missing_slots_vs_first_last": 0
+    },
+    {
+      "database": "data\\research\\crypto_deep_binance.db",
+      "table": "market_candles",
+      "symbol": "ENAUSDT",
+      "source": "binance_fapi_klines",
+      "timeframe": "5m",
+      "duplicate_opens_within_reported_identity": 0,
+      "interior_missing_slots_vs_first_last": 0
+    },
+    {
+      "database": "data\\research\\crypto_deep_binance.db",
+      "table": "market_candles",
+      "symbol": "ETHUSDT",
+      "source": "binance_fapi_klines",
+      "timeframe": "5m",
+      "duplicate_opens_within_reported_identity": 0,
+      "interior_missing_slots_vs_first_last": 0
+    },
+    {
+      "database": "data\\research\\crypto_deep_binance.db",
+      "table": "market_candles",
+      "symbol": "FETUSDT",
+      "source": "binance_fapi_klines",
+      "timeframe": "5m",
+      "duplicate_opens_within_reported_identity": 0,
+      "interior_missing_slots_vs_first_last": 0
+    },
+    {
+      "database": "data\\research\\crypto_deep_binance.db",
+      "table": "market_candles",
+      "symbol": "FILUSDT",
+      "source": "binance_fapi_klines",
+      "timeframe": "5m",
+      "duplicate_opens_within_reported_identity": 0,
+      "interior_missing_slots_vs_first_last": 0
+    },
+    {
+      "database": "data\\research\\crypto_deep_binance.db",
+      "table": "market_candles",
+      "symbol": "HBARUSDT",
+      "source": "binance_fapi_klines",
+      "timeframe": "5m",
+      "duplicate_opens_within_reported_identity": 0,
+      "interior_missing_slots_vs_first_last": 0
+    },
+    {
+      "database": "data\\research\\crypto_deep_binance.db",
+      "table": "market_candles",
+      "symbol": "LINKUSDT",
+      "source": "binance_fapi_klines",
+      "timeframe": "5m",
+      "duplicate_opens_within_reported_identity": 0,
+      "interior_missing_slots_vs_first_last": 0
+    },
+    {
+      "database": "data\\research\\crypto_deep_binance.db",
+      "table": "market_candles",
+      "symbol": "LTCUSDT",
+      "source": "binance_fapi_klines",
+      "timeframe": "5m",
+      "duplicate_opens_within_reported_identity": 0,
+      "interior_missing_slots_vs_first_last": 0
+    },
+    {
+      "database": "data\\research\\crypto_deep_binance.db",
+      "table": "market_candles",
+      "symbol": "NEARUSDT",
+      "source": "binance_fapi_klines",
+      "timeframe": "5m",
+      "duplicate_opens_within_reported_identity": 0,
+      "interior_missing_slots_vs_first_last": 0
+    },
+    {
+      "database": "data\\research\\crypto_deep_binance.db",
+      "table": "market_candles",
+      "symbol": "ONDOUSDT",
+      "source": "binance_fapi_klines",
+      "timeframe": "5m",
+      "duplicate_opens_within_reported_identity": 0,
+      "interior_missing_slots_vs_first_last": 0
+    },
+    {
+      "database": "data\\research\\crypto_deep_binance.db",
+      "table": "market_candles",
+      "symbol": "OPUSDT",
+      "source": "binance_fapi_klines",
+      "timeframe": "5m",
+      "duplicate_opens_within_reported_identity": 0,
+      "interior_missing_slots_vs_first_last": 0
+    },
+    {
+      "database": "data\\research\\crypto_deep_binance.db",
+      "table": "market_candles",
+      "symbol": "SOLUSDT",
+      "source": "binance_fapi_klines",
+      "timeframe": "5m",
+      "duplicate_opens_within_reported_identity": 0,
+      "interior_missing_slots_vs_first_last": 0
+    },
+    {
+      "database": "data\\research\\crypto_deep_binance.db",
+      "table": "market_candles",
+      "symbol": "SUIUSDT",
+      "source": "binance_fapi_klines",
+      "timeframe": "5m",
+      "duplicate_opens_within_reported_identity": 0,
+      "interior_missing_slots_vs_first_last": 0
+    },
+    {
+      "database": "data\\research\\crypto_deep_binance.db",
+      "table": "market_candles",
+      "symbol": "TAOUSDT",
+      "source": "binance_fapi_klines",
+      "timeframe": "5m",
+      "duplicate_opens_within_reported_identity": 0,
+      "interior_missing_slots_vs_first_last": 0
+    },
+    {
+      "database": "data\\research\\crypto_deep_binance.db",
+      "table": "market_candles",
+      "symbol": "TRXUSDT",
+      "source": "binance_fapi_klines",
+      "timeframe": "5m",
+      "duplicate_opens_within_reported_identity": 0,
+      "interior_missing_slots_vs_first_last": 0
+    },
+    {
+      "database": "data\\research\\crypto_deep_binance.db",
+      "table": "market_candles",
+      "symbol": "UNIUSDT",
+      "source": "binance_fapi_klines",
+      "timeframe": "5m",
+      "duplicate_opens_within_reported_identity": 0,
+      "interior_missing_slots_vs_first_last": 0
+    },
+    {
+      "database": "data\\research\\crypto_deep_binance.db",
+      "table": "market_candles",
+      "symbol": "WIFUSDT",
+      "source": "binance_fapi_klines",
+      "timeframe": "5m",
+      "duplicate_opens_within_reported_identity": 0,
+      "interior_missing_slots_vs_first_last": 0
+    },
+    {
+      "database": "data\\research\\crypto_deep_binance.db",
+      "table": "market_candles",
+      "symbol": "WLDUSDT",
+      "source": "binance_fapi_klines",
+      "timeframe": "5m",
+      "duplicate_opens_within_reported_identity": 0,
+      "interior_missing_slots_vs_first_last": 0
+    },
+    {
+      "database": "data\\research\\crypto_deep_binance.db",
+      "table": "market_candles",
+      "symbol": "XLMUSDT",
+      "source": "binance_fapi_klines",
+      "timeframe": "5m",
+      "duplicate_opens_within_reported_identity": 0,
+      "interior_missing_slots_vs_first_last": 0
+    },
+    {
+      "database": "data\\research\\crypto_deep_binance.db",
+      "table": "market_candles",
+      "symbol": "XRPUSDT",
+      "source": "binance_fapi_klines",
+      "timeframe": "5m",
+      "duplicate_opens_within_reported_identity": 0,
+      "interior_missing_slots_vs_first_last": 0
+    },
+    {
+      "database": "data\\research\\crypto_deep_binance.db",
+      "table": "market_candles",
+      "symbol": "ZECUSDT",
+      "source": "binance_fapi_klines",
+      "timeframe": "5m",
+      "duplicate_opens_within_reported_identity": 0,
+      "interior_missing_slots_vs_first_last": 0
+    },
+    {
+      "database": "backends\\shared\\shared_lib\\persistence\\cosmicforge.db",
+      "table": "historical_candles",
+      "symbol": "1000BONKUSDT",
+      "source": "binance",
+      "timeframe": "15m",
+      "duplicate_opens_within_reported_identity": 0,
+      "interior_missing_slots_vs_first_last": 0
+    },
+    {
+      "database": "backends\\shared\\shared_lib\\persistence\\cosmicforge.db",
+      "table": "historical_candles",
+      "symbol": "1000FLOKIUSDT",
+      "source": "binance",
+      "timeframe": "15m",
+      "duplicate_opens_within_reported_identity": 0,
+      "interior_missing_slots_vs_first_last": 0
+    },
+    {
+      "database": "backends\\shared\\shared_lib\\persistence\\cosmicforge.db",
+      "table": "historical_candles",
+      "symbol": "1000LUNCUSDT",
+      "source": "binance",
+      "timeframe": "15m",
+      "duplicate_opens_within_reported_identity": 0,
+      "interior_missing_slots_vs_first_last": 0
+    },
+    {
+      "database": "backends\\shared\\shared_lib\\persistence\\cosmicforge.db",
+      "table": "historical_candles",
+      "symbol": "1000PEPEUSDT",
+      "source": "binance",
+      "timeframe": "15m",
+      "duplicate_opens_within_reported_identity": 0,
+      "interior_missing_slots_vs_first_last": 0
+    },
+    {
+      "database": "backends\\shared\\shared_lib\\persistence\\cosmicforge.db",
+      "table": "historical_candles",
+      "symbol": "1000SHIBUSDT",
+      "source": "binance",
+      "timeframe": "15m",
+      "duplicate_opens_within_reported_identity": 0,
+      "interior_missing_slots_vs_first_last": 0
+    },
+    {
+      "database": "backends\\shared\\shared_lib\\persistence\\cosmicforge.db",
+      "table": "historical_candles",
+      "symbol": "1INCHUSDT",
+      "source": "binance",
+      "timeframe": "15m",
+      "duplicate_opens_within_reported_identity": 0,
+      "interior_missing_slots_vs_first_last": 0
+    },
+    {
+      "database": "backends\\shared\\shared_lib\\persistence\\cosmicforge.db",
+      "table": "historical_candles",
+      "symbol": "AAVEUSDT",
+      "source": "binance",
+      "timeframe": "15m",
+      "duplicate_opens_within_reported_identity": 0,
+      "interior_missing_slots_vs_first_last": 0
+    },
+    {
+      "database": "backends\\shared\\shared_lib\\persistence\\cosmicforge.db",
+      "table": "historical_candles",
+      "symbol": "ACEUSDT",
+      "source": "binance",
+      "timeframe": "15m",
+      "duplicate_opens_within_reported_identity": 0,
+      "interior_missing_slots_vs_first_last": 0
+    },
+    {
+      "database": "backends\\shared\\shared_lib\\persistence\\cosmicforge.db",
+      "table": "historical_candles",
+      "symbol": "ADAUSDT",
+      "source": "binance",
+      "timeframe": "15m",
+      "duplicate_opens_within_reported_identity": 0,
+      "interior_missing_slots_vs_first_last": 0
+    },
+    {
+      "database": "backends\\shared\\shared_lib\\persistence\\cosmicforge.db",
+      "table": "historical_candles",
+      "symbol": "ALGOUSDT",
+      "source": "binance",
+      "timeframe": "15m",
+      "duplicate_opens_within_reported_identity": 0,
+      "interior_missing_slots_vs_first_last": 0
+    },
+    {
+      "database": "backends\\shared\\shared_lib\\persistence\\cosmicforge.db",
+      "table": "historical_candles",
+      "symbol": "ALICEUSDT",
+      "source": "binance",
+      "timeframe": "15m",
+      "duplicate_opens_within_reported_identity": 0,
+      "interior_missing_slots_vs_first_last": 0
+    },
+    {
+      "database": "backends\\shared\\shared_lib\\persistence\\cosmicforge.db",
+      "table": "historical_candles",
+      "symbol": "ALTUSDT",
+      "source": "binance",
+      "timeframe": "15m",
+      "duplicate_opens_within_reported_identity": 0,
+      "interior_missing_slots_vs_first_last": 0
+    },
+    {
+      "database": "backends\\shared\\shared_lib\\persistence\\cosmicforge.db",
+      "table": "historical_candles",
+      "symbol": "APEUSDT",
+      "source": "binance",
+      "timeframe": "15m",
+      "duplicate_opens_within_reported_identity": 0,
+      "interior_missing_slots_vs_first_last": 0
+    },
+    {
+      "database": "backends\\shared\\shared_lib\\persistence\\cosmicforge.db",
+      "table": "historical_candles",
+      "symbol": "APTUSDT",
+      "source": "binance",
+      "timeframe": "15m",
+      "duplicate_opens_within_reported_identity": 0,
+      "interior_missing_slots_vs_first_last": 0
+    },
+    {
+      "database": "backends\\shared\\shared_lib\\persistence\\cosmicforge.db",
+      "table": "historical_candles",
+      "symbol": "ARBUSDT",
+      "source": "binance",
+      "timeframe": "15m",
+      "duplicate_opens_within_reported_identity": 0,
+      "interior_missing_slots_vs_first_last": 0
+    },
+    {
+      "database": "backends\\shared\\shared_lib\\persistence\\cosmicforge.db",
+      "table": "historical_candles",
+      "symbol": "ARKMUSDT",
+      "source": "binance",
+      "timeframe": "15m",
+      "duplicate_opens_within_reported_identity": 0,
+      "interior_missing_slots_vs_first_last": 0
+    },
+    {
+      "database": "backends\\shared\\shared_lib\\persistence\\cosmicforge.db",
+      "table": "historical_candles",
+      "symbol": "ARKUSDT",
+      "source": "binance",
+      "timeframe": "15m",
+      "duplicate_opens_within_reported_identity": 0,
+      "interior_missing_slots_vs_first_last": 0
+    },
+    {
+      "database": "backends\\shared\\shared_lib\\persistence\\cosmicforge.db",
+      "table": "historical_candles",
+      "symbol": "ARUSDT",
+      "source": "binance",
+      "timeframe": "15m",
+      "duplicate_opens_within_reported_identity": 0,
+      "interior_missing_slots_vs_first_last": 0
+    },
+    {
+      "database": "backends\\shared\\shared_lib\\persistence\\cosmicforge.db",
+      "table": "historical_candles",
+      "symbol": "ATOMUSDT",
+      "source": "binance",
+      "timeframe": "15m",
+      "duplicate_opens_within_reported_identity": 0,
+      "interior_missing_slots_vs_first_last": 0
+    },
+    {
+      "database": "backends\\shared\\shared_lib\\persistence\\cosmicforge.db",
+      "table": "historical_candles",
+      "symbol": "AVAXUSDT",
+      "source": "binance",
+      "timeframe": "15m",
+      "duplicate_opens_within_reported_identity": 0,
+      "interior_missing_slots_vs_first_last": 0
+    },
+    {
+      "database": "backends\\shared\\shared_lib\\persistence\\cosmicforge.db",
+      "table": "historical_candles",
+      "symbol": "AXSUSDT",
+      "source": "binance",
+      "timeframe": "15m",
+      "duplicate_opens_within_reported_identity": 0,
+      "interior_missing_slots_vs_first_last": 0
+    },
+    {
+      "database": "backends\\shared\\shared_lib\\persistence\\cosmicforge.db",
+      "table": "historical_candles",
+      "symbol": "BBUSDT",
+      "source": "binance",
+      "timeframe": "15m",
+      "duplicate_opens_within_reported_identity": 0,
+      "interior_missing_slots_vs_first_last": 0
+    },
+    {
+      "database": "backends\\shared\\shared_lib\\persistence\\cosmicforge.db",
+      "table": "historical_candles",
+      "symbol": "BCHUSDT",
+      "source": "binance",
+      "timeframe": "15m",
+      "duplicate_opens_within_reported_identity": 0,
+      "interior_missing_slots_vs_first_last": 0
+    },
+    {
+      "database": "backends\\shared\\shared_lib\\persistence\\cosmicforge.db",
+      "table": "historical_candles",
+      "symbol": "BEAMXUSDT",
+      "source": "binance",
+      "timeframe": "15m",
+      "duplicate_opens_within_reported_identity": 0,
+      "interior_missing_slots_vs_first_last": 0
+    },
+    {
+      "database": "backends\\shared\\shared_lib\\persistence\\cosmicforge.db",
+      "table": "historical_candles",
+      "symbol": "BICOUSDT",
+      "source": "binance",
+      "timeframe": "15m",
+      "duplicate_opens_within_reported_identity": 0,
+      "interior_missing_slots_vs_first_last": 0
+    },
+    {
+      "database": "backends\\shared\\shared_lib\\persistence\\cosmicforge.db",
+      "table": "historical_candles",
+      "symbol": "BIGTIMEUSDT",
+      "source": "binance",
+      "timeframe": "15m",
+      "duplicate_opens_within_reported_identity": 0,
+      "interior_missing_slots_vs_first_last": 0
+    },
+    {
+      "database": "backends\\shared\\shared_lib\\persistence\\cosmicforge.db",
+      "table": "historical_candles",
+      "symbol": "BNBUSDT",
+      "source": "binance",
+      "timeframe": "15m",
+      "duplicate_opens_within_reported_identity": 0,
+      "interior_missing_slots_vs_first_last": 0
+    },
+    {
+      "database": "backends\\shared\\shared_lib\\persistence\\cosmicforge.db",
+      "table": "historical_candles",
+      "symbol": "BOMEUSDT",
+      "source": "binance",
+      "timeframe": "15m",
+      "duplicate_opens_within_reported_identity": 0,
+      "interior_missing_slots_vs_first_last": 0
+    },
+    {
+      "database": "backends\\shared\\shared_lib\\persistence\\cosmicforge.db",
+      "table": "historical_candles",
+      "symbol": "BTCUSDT",
+      "source": "binance",
+      "timeframe": "15m",
+      "duplicate_opens_within_reported_identity": 0,
+      "interior_missing_slots_vs_first_last": 0
+    },
+    {
+      "database": "backends\\shared\\shared_lib\\persistence\\cosmicforge.db",
+      "table": "historical_candles",
+      "symbol": "CAKEUSDT",
+      "source": "binance",
+      "timeframe": "15m",
+      "duplicate_opens_within_reported_identity": 0,
+      "interior_missing_slots_vs_first_last": 0
+    },
+    {
+      "database": "backends\\shared\\shared_lib\\persistence\\cosmicforge.db",
+      "table": "historical_candles",
+      "symbol": "CATIUSDT",
+      "source": "binance",
+      "timeframe": "15m",
+      "duplicate_opens_within_reported_identity": 0,
+      "interior_missing_slots_vs_first_last": 0
+    },
+    {
+      "database": "backends\\shared\\shared_lib\\persistence\\cosmicforge.db",
+      "table": "historical_candles",
+      "symbol": "CFXUSDT",
+      "source": "binance",
+      "timeframe": "15m",
+      "duplicate_opens_within_reported_identity": 0,
+      "interior_missing_slots_vs_first_last": 0
+    },
+    {
+      "database": "backends\\shared\\shared_lib\\persistence\\cosmicforge.db",
+      "table": "historical_candles",
+      "symbol": "CHZUSDT",
+      "source": "binance",
+      "timeframe": "15m",
+      "duplicate_opens_within_reported_identity": 0,
+      "interior_missing_slots_vs_first_last": 0
+    },
+    {
+      "database": "backends\\shared\\shared_lib\\persistence\\cosmicforge.db",
+      "table": "historical_candles",
+      "symbol": "COMPUSDT",
+      "source": "binance",
+      "timeframe": "15m",
+      "duplicate_opens_within_reported_identity": 0,
+      "interior_missing_slots_vs_first_last": 0
+    },
+    {
+      "database": "backends\\shared\\shared_lib\\persistence\\cosmicforge.db",
+      "table": "historical_candles",
+      "symbol": "COTIUSDT",
+      "source": "binance",
+      "timeframe": "15m",
+      "duplicate_opens_within_reported_identity": 0,
+      "interior_missing_slots_vs_first_last": 0
+    },
+    {
+      "database": "backends\\shared\\shared_lib\\persistence\\cosmicforge.db",
+      "table": "historical_candles",
+      "symbol": "CRVUSDT",
+      "source": "binance",
+      "timeframe": "15m",
+      "duplicate_opens_within_reported_identity": 0,
+      "interior_missing_slots_vs_first_last": 0
+    },
+    {
+      "database": "backends\\shared\\shared_lib\\persistence\\cosmicforge.db",
+      "table": "historical_candles",
+      "symbol": "DASHUSDT",
+      "source": "binance",
+      "timeframe": "15m",
+      "duplicate_opens_within_reported_identity": 0,
+      "interior_missing_slots_vs_first_last": 0
+    },
+    {
+      "database": "backends\\shared\\shared_lib\\persistence\\cosmicforge.db",
+      "table": "historical_candles",
+      "symbol": "DODOXUSDT",
+      "source": "binance",
+      "timeframe": "15m",
+      "duplicate_opens_within_reported_identity": 0,
+      "interior_missing_slots_vs_first_last": 0
+    },
+    {
+      "database": "backends\\shared\\shared_lib\\persistence\\cosmicforge.db",
+      "table": "historical_candles",
+      "symbol": "DOGEUSDT",
+      "source": "binance",
+      "timeframe": "15m",
+      "duplicate_opens_within_reported_identity": 0,
+      "interior_missing_slots_vs_first_last": 0
+    },
+    {
+      "database": "backends\\shared\\shared_lib\\persistence\\cosmicforge.db",
+      "table": "historical_candles",
+      "symbol": "DOGSUSDT",
+      "source": "binance",
+      "timeframe": "15m",
+      "duplicate_opens_within_reported_identity": 0,
+      "interior_missing_slots_vs_first_last": 0
+    },
+    {
+      "database": "backends\\shared\\shared_lib\\persistence\\cosmicforge.db",
+      "table": "historical_candles",
+      "symbol": "DOTUSDT",
+      "source": "binance",
+      "timeframe": "15m",
+      "duplicate_opens_within_reported_identity": 0,
+      "interior_missing_slots_vs_first_last": 0
+    },
+    {
+      "database": "backends\\shared\\shared_lib\\persistence\\cosmicforge.db",
+      "table": "historical_candles",
+      "symbol": "DUSKUSDT",
+      "source": "binance",
+      "timeframe": "15m",
+      "duplicate_opens_within_reported_identity": 0,
+      "interior_missing_slots_vs_first_last": 0
+    },
+    {
+      "database": "backends\\shared\\shared_lib\\persistence\\cosmicforge.db",
+      "table": "historical_candles",
+      "symbol": "DYDXUSDT",
+      "source": "binance",
+      "timeframe": "15m",
+      "duplicate_opens_within_reported_identity": 0,
+      "interior_missing_slots_vs_first_last": 0
+    },
+    {
+      "database": "backends\\shared\\shared_lib\\persistence\\cosmicforge.db",
+      "table": "historical_candles",
+      "symbol": "EGLDUSDT",
+      "source": "binance",
+      "timeframe": "15m",
+      "duplicate_opens_within_reported_identity": 0,
+      "interior_missing_slots_vs_first_last": 0
+    },
+    {
+      "database": "backends\\shared\\shared_lib\\persistence\\cosmicforge.db",
+      "table": "historical_candles",
+      "symbol": "ENAUSDT",
+      "source": "binance",
+      "timeframe": "15m",
+      "duplicate_opens_within_reported_identity": 0,
+      "interior_missing_slots_vs_first_last": 0
+    },
+    {
+      "database": "backends\\shared\\shared_lib\\persistence\\cosmicforge.db",
+      "table": "historical_candles",
+      "symbol": "ENJUSDT",
+      "source": "binance",
+      "timeframe": "15m",
+      "duplicate_opens_within_reported_identity": 0,
+      "interior_missing_slots_vs_first_last": 0
+    },
+    {
+      "database": "backends\\shared\\shared_lib\\persistence\\cosmicforge.db",
+      "table": "historical_candles",
+      "symbol": "ENSUSDT",
+      "source": "binance",
+      "timeframe": "15m",
+      "duplicate_opens_within_reported_identity": 0,
+      "interior_missing_slots_vs_first_last": 0
+    },
+    {
+      "database": "backends\\shared\\shared_lib\\persistence\\cosmicforge.db",
+      "table": "historical_candles",
+      "symbol": "ETCUSDT",
+      "source": "binance",
+      "timeframe": "15m",
+      "duplicate_opens_within_reported_identity": 0,
+      "interior_missing_slots_vs_first_last": 0
+    },
+    {
+      "database": "backends\\shared\\shared_lib\\persistence\\cosmicforge.db",
+      "table": "historical_candles",
+      "symbol": "ETHFIUSDT",
+      "source": "binance",
+      "timeframe": "15m",
+      "duplicate_opens_within_reported_identity": 0,
+      "interior_missing_slots_vs_first_last": 0
+    },
+    {
+      "database": "backends\\shared\\shared_lib\\persistence\\cosmicforge.db",
+      "table": "historical_candles",
+      "symbol": "ETHUSDT",
+      "source": "binance",
+      "timeframe": "15m",
+      "duplicate_opens_within_reported_identity": 0,
+      "interior_missing_slots_vs_first_last": 0
+    },
+    {
+      "database": "backends\\shared\\shared_lib\\persistence\\cosmicforge.db",
+      "table": "historical_candles",
+      "symbol": "FETUSDT",
+      "source": "binance",
+      "timeframe": "15m",
+      "duplicate_opens_within_reported_identity": 0,
+      "interior_missing_slots_vs_first_last": 0
+    },
+    {
+      "database": "backends\\shared\\shared_lib\\persistence\\cosmicforge.db",
+      "table": "historical_candles",
+      "symbol": "FILUSDT",
+      "source": "binance",
+      "timeframe": "15m",
+      "duplicate_opens_within_reported_identity": 0,
+      "interior_missing_slots_vs_first_last": 0
+    },
+    {
+      "database": "backends\\shared\\shared_lib\\persistence\\cosmicforge.db",
+      "table": "historical_candles",
+      "symbol": "GALAUSDT",
+      "source": "binance",
+      "timeframe": "15m",
+      "duplicate_opens_within_reported_identity": 0,
+      "interior_missing_slots_vs_first_last": 0
+    },
+    {
+      "database": "backends\\shared\\shared_lib\\persistence\\cosmicforge.db",
+      "table": "historical_candles",
+      "symbol": "GRTUSDT",
+      "source": "binance",
+      "timeframe": "15m",
+      "duplicate_opens_within_reported_identity": 0,
+      "interior_missing_slots_vs_first_last": 0
+    },
+    {
+      "database": "backends\\shared\\shared_lib\\persistence\\cosmicforge.db",
+      "table": "historical_candles",
+      "symbol": "HBARUSDT",
+      "source": "binance",
+      "timeframe": "15m",
+      "duplicate_opens_within_reported_identity": 0,
+      "interior_missing_slots_vs_first_last": 0
+    },
+    {
+      "database": "backends\\shared\\shared_lib\\persistence\\cosmicforge.db",
+      "table": "historical_candles",
+      "symbol": "ICPUSDT",
+      "source": "binance",
+      "timeframe": "15m",
+      "duplicate_opens_within_reported_identity": 0,
+      "interior_missing_slots_vs_first_last": 0
+    },
+    {
+      "database": "backends\\shared\\shared_lib\\persistence\\cosmicforge.db",
+      "table": "historical_candles",
+      "symbol": "IDUSDT",
+      "source": "binance",
+      "timeframe": "15m",
+      "duplicate_opens_within_reported_identity": 0,
+      "interior_missing_slots_vs_first_last": 0
+    },
+    {
+      "database": "backends\\shared\\shared_lib\\persistence\\cosmicforge.db",
+      "table": "historical_candles",
+      "symbol": "IMXUSDT",
+      "source": "binance",
+      "timeframe": "15m",
+      "duplicate_opens_within_reported_identity": 0,
+      "interior_missing_slots_vs_first_last": 0
+    },
+    {
+      "database": "backends\\shared\\shared_lib\\persistence\\cosmicforge.db",
+      "table": "historical_candles",
+      "symbol": "INJUSDT",
+      "source": "binance",
+      "timeframe": "15m",
+      "duplicate_opens_within_reported_identity": 0,
+      "interior_missing_slots_vs_first_last": 0
+    },
+    {
+      "database": "backends\\shared\\shared_lib\\persistence\\cosmicforge.db",
+      "table": "historical_candles",
+      "symbol": "IOSTUSDT",
+      "source": "binance",
+      "timeframe": "15m",
+      "duplicate_opens_within_reported_identity": 0,
+      "interior_missing_slots_vs_first_last": 0
+    },
+    {
+      "database": "backends\\shared\\shared_lib\\persistence\\cosmicforge.db",
+      "table": "historical_candles",
+      "symbol": "IOTAUSDT",
+      "source": "binance",
+      "timeframe": "15m",
+      "duplicate_opens_within_reported_identity": 0,
+      "interior_missing_slots_vs_first_last": 0
+    },
+    {
+      "database": "backends\\shared\\shared_lib\\persistence\\cosmicforge.db",
+      "table": "historical_candles",
+      "symbol": "IOUSDT",
+      "source": "binance",
+      "timeframe": "15m",
+      "duplicate_opens_within_reported_identity": 0,
+      "interior_missing_slots_vs_first_last": 0
+    },
+    {
+      "database": "backends\\shared\\shared_lib\\persistence\\cosmicforge.db",
+      "table": "historical_candles",
+      "symbol": "JASMYUSDT",
+      "source": "binance",
+      "timeframe": "15m",
+      "duplicate_opens_within_reported_identity": 0,
+      "interior_missing_slots_vs_first_last": 0
+    },
+    {
+      "database": "backends\\shared\\shared_lib\\persistence\\cosmicforge.db",
+      "table": "historical_candles",
+      "symbol": "JTOUSDT",
+      "source": "binance",
+      "timeframe": "15m",
+      "duplicate_opens_within_reported_identity": 0,
+      "interior_missing_slots_vs_first_last": 0
+    },
+    {
+      "database": "backends\\shared\\shared_lib\\persistence\\cosmicforge.db",
+      "table": "historical_candles",
+      "symbol": "JUPUSDT",
+      "source": "binance",
+      "timeframe": "15m",
+      "duplicate_opens_within_reported_identity": 0,
+      "interior_missing_slots_vs_first_last": 0
+    },
+    {
+      "database": "backends\\shared\\shared_lib\\persistence\\cosmicforge.db",
+      "table": "historical_candles",
+      "symbol": "KASUSDT",
+      "source": "binance",
+      "timeframe": "15m",
+      "duplicate_opens_within_reported_identity": 0,
+      "interior_missing_slots_vs_first_last": 0
+    },
+    {
+      "database": "backends\\shared\\shared_lib\\persistence\\cosmicforge.db",
+      "table": "historical_candles",
+      "symbol": "KAVAUSDT",
+      "source": "binance",
+      "timeframe": "15m",
+      "duplicate_opens_within_reported_identity": 0,
+      "interior_missing_slots_vs_first_last": 0
+    },
+    {
+      "database": "backends\\shared\\shared_lib\\persistence\\cosmicforge.db",
+      "table": "historical_candles",
+      "symbol": "KSMUSDT",
+      "source": "binance",
+      "timeframe": "15m",
+      "duplicate_opens_within_reported_identity": 0,
+      "interior_missing_slots_vs_first_last": 0
+    },
+    {
+      "database": "backends\\shared\\shared_lib\\persistence\\cosmicforge.db",
+      "table": "historical_candles",
+      "symbol": "LDOUSDT",
+      "source": "binance",
+      "timeframe": "15m",
+      "duplicate_opens_within_reported_identity": 0,
+      "interior_missing_slots_vs_first_last": 0
+    },
+    {
+      "database": "backends\\shared\\shared_lib\\persistence\\cosmicforge.db",
+      "table": "historical_candles",
+      "symbol": "LINKUSDT",
+      "source": "binance",
+      "timeframe": "15m",
+      "duplicate_opens_within_reported_identity": 0,
+      "interior_missing_slots_vs_first_last": 0
+    },
+    {
+      "database": "backends\\shared\\shared_lib\\persistence\\cosmicforge.db",
+      "table": "historical_candles",
+      "symbol": "LPTUSDT",
+      "source": "binance",
+      "timeframe": "15m",
+      "duplicate_opens_within_reported_identity": 0,
+      "interior_missing_slots_vs_first_last": 0
+    },
+    {
+      "database": "backends\\shared\\shared_lib\\persistence\\cosmicforge.db",
+      "table": "historical_candles",
+      "symbol": "LSKUSDT",
+      "source": "binance",
+      "timeframe": "15m",
+      "duplicate_opens_within_reported_identity": 0,
+      "interior_missing_slots_vs_first_last": 0
+    },
+    {
+      "database": "backends\\shared\\shared_lib\\persistence\\cosmicforge.db",
+      "table": "historical_candles",
+      "symbol": "LTCUSDT",
+      "source": "binance",
+      "timeframe": "15m",
+      "duplicate_opens_within_reported_identity": 0,
+      "interior_missing_slots_vs_first_last": 0
+    },
+    {
+      "database": "backends\\shared\\shared_lib\\persistence\\cosmicforge.db",
+      "table": "historical_candles",
+      "symbol": "MANAUSDT",
+      "source": "binance",
+      "timeframe": "15m",
+      "duplicate_opens_within_reported_identity": 0,
+      "interior_missing_slots_vs_first_last": 0
+    },
+    {
+      "database": "backends\\shared\\shared_lib\\persistence\\cosmicforge.db",
+      "table": "historical_candles",
+      "symbol": "MEMEUSDT",
+      "source": "binance",
+      "timeframe": "15m",
+      "duplicate_opens_within_reported_identity": 0,
+      "interior_missing_slots_vs_first_last": 0
+    },
+    {
+      "database": "backends\\shared\\shared_lib\\persistence\\cosmicforge.db",
+      "table": "historical_candles",
+      "symbol": "MINAUSDT",
+      "source": "binance",
+      "timeframe": "15m",
+      "duplicate_opens_within_reported_identity": 0,
+      "interior_missing_slots_vs_first_last": 0
+    },
+    {
+      "database": "backends\\shared\\shared_lib\\persistence\\cosmicforge.db",
+      "table": "historical_candles",
+      "symbol": "MOVRUSDT",
+      "source": "binance",
+      "timeframe": "15m",
+      "duplicate_opens_within_reported_identity": 0,
+      "interior_missing_slots_vs_first_last": 0
+    },
+    {
+      "database": "backends\\shared\\shared_lib\\persistence\\cosmicforge.db",
+      "table": "historical_candles",
+      "symbol": "NEARUSDT",
+      "source": "binance",
+      "timeframe": "15m",
+      "duplicate_opens_within_reported_identity": 0,
+      "interior_missing_slots_vs_first_last": 0
+    },
+    {
+      "database": "backends\\shared\\shared_lib\\persistence\\cosmicforge.db",
+      "table": "historical_candles",
+      "symbol": "NEIROUSDT",
+      "source": "binance",
+      "timeframe": "15m",
+      "duplicate_opens_within_reported_identity": 0,
+      "interior_missing_slots_vs_first_last": 0
+    },
+    {
+      "database": "backends\\shared\\shared_lib\\persistence\\cosmicforge.db",
+      "table": "historical_candles",
+      "symbol": "NEOUSDT",
+      "source": "binance",
+      "timeframe": "15m",
+      "duplicate_opens_within_reported_identity": 0,
+      "interior_missing_slots_vs_first_last": 0
+    },
+    {
+      "database": "backends\\shared\\shared_lib\\persistence\\cosmicforge.db",
+      "table": "historical_candles",
+      "symbol": "NOTUSDT",
+      "source": "binance",
+      "timeframe": "15m",
+      "duplicate_opens_within_reported_identity": 0,
+      "interior_missing_slots_vs_first_last": 0
+    },
+    {
+      "database": "backends\\shared\\shared_lib\\persistence\\cosmicforge.db",
+      "table": "historical_candles",
+      "symbol": "ONDOUSDT",
+      "source": "binance",
+      "timeframe": "15m",
+      "duplicate_opens_within_reported_identity": 0,
+      "interior_missing_slots_vs_first_last": 0
+    },
+    {
+      "database": "backends\\shared\\shared_lib\\persistence\\cosmicforge.db",
+      "table": "historical_candles",
+      "symbol": "ONEUSDT",
+      "source": "binance",
+      "timeframe": "15m",
+      "duplicate_opens_within_reported_identity": 0,
+      "interior_missing_slots_vs_first_last": 0
+    },
+    {
+      "database": "backends\\shared\\shared_lib\\persistence\\cosmicforge.db",
+      "table": "historical_candles",
+      "symbol": "ONGUSDT",
+      "source": "binance",
+      "timeframe": "15m",
+      "duplicate_opens_within_reported_identity": 0,
+      "interior_missing_slots_vs_first_last": 0
+    },
+    {
+      "database": "backends\\shared\\shared_lib\\persistence\\cosmicforge.db",
+      "table": "historical_candles",
+      "symbol": "ONTUSDT",
+      "source": "binance",
+      "timeframe": "15m",
+      "duplicate_opens_within_reported_identity": 0,
+      "interior_missing_slots_vs_first_last": 0
+    },
+    {
+      "database": "backends\\shared\\shared_lib\\persistence\\cosmicforge.db",
+      "table": "historical_candles",
+      "symbol": "OPUSDT",
+      "source": "binance",
+      "timeframe": "15m",
+      "duplicate_opens_within_reported_identity": 0,
+      "interior_missing_slots_vs_first_last": 0
+    },
+    {
+      "database": "backends\\shared\\shared_lib\\persistence\\cosmicforge.db",
+      "table": "historical_candles",
+      "symbol": "ORDIUSDT",
+      "source": "binance",
+      "timeframe": "15m",
+      "duplicate_opens_within_reported_identity": 0,
+      "interior_missing_slots_vs_first_last": 0
+    },
+    {
+      "database": "backends\\shared\\shared_lib\\persistence\\cosmicforge.db",
+      "table": "historical_candles",
+      "symbol": "PENDLEUSDT",
+      "source": "binance",
+      "timeframe": "15m",
+      "duplicate_opens_within_reported_identity": 0,
+      "interior_missing_slots_vs_first_last": 0
+    },
+    {
+      "database": "backends\\shared\\shared_lib\\persistence\\cosmicforge.db",
+      "table": "historical_candles",
+      "symbol": "PEOPLEUSDT",
+      "source": "binance",
+      "timeframe": "15m",
+      "duplicate_opens_within_reported_identity": 0,
+      "interior_missing_slots_vs_first_last": 0
+    },
+    {
+      "database": "backends\\shared\\shared_lib\\persistence\\cosmicforge.db",
+      "table": "historical_candles",
+      "symbol": "POLUSDT",
+      "source": "binance",
+      "timeframe": "15m",
+      "duplicate_opens_within_reported_identity": 0,
+      "interior_missing_slots_vs_first_last": 0
+    },
+    {
+      "database": "backends\\shared\\shared_lib\\persistence\\cosmicforge.db",
+      "table": "historical_candles",
+      "symbol": "POPCATUSDT",
+      "source": "binance",
+      "timeframe": "15m",
+      "duplicate_opens_within_reported_identity": 0,
+      "interior_missing_slots_vs_first_last": 0
+    },
+    {
+      "database": "backends\\shared\\shared_lib\\persistence\\cosmicforge.db",
+      "table": "historical_candles",
+      "symbol": "PORTALUSDT",
+      "source": "binance",
+      "timeframe": "15m",
+      "duplicate_opens_within_reported_identity": 0,
+      "interior_missing_slots_vs_first_last": 0
+    },
+    {
+      "database": "backends\\shared\\shared_lib\\persistence\\cosmicforge.db",
+      "table": "historical_candles",
+      "symbol": "PYTHUSDT",
+      "source": "binance",
+      "timeframe": "15m",
+      "duplicate_opens_within_reported_identity": 0,
+      "interior_missing_slots_vs_first_last": 0
+    },
+    {
+      "database": "backends\\shared\\shared_lib\\persistence\\cosmicforge.db",
+      "table": "historical_candles",
+      "symbol": "QNTUSDT",
+      "source": "binance",
+      "timeframe": "15m",
+      "duplicate_opens_within_reported_identity": 0,
+      "interior_missing_slots_vs_first_last": 0
+    },
+    {
+      "database": "backends\\shared\\shared_lib\\persistence\\cosmicforge.db",
+      "table": "historical_candles",
+      "symbol": "RENDERUSDT",
+      "source": "binance",
+      "timeframe": "15m",
+      "duplicate_opens_within_reported_identity": 0,
+      "interior_missing_slots_vs_first_last": 0
+    },
+    {
+      "database": "backends\\shared\\shared_lib\\persistence\\cosmicforge.db",
+      "table": "historical_candles",
+      "symbol": "REZUSDT",
+      "source": "binance",
+      "timeframe": "15m",
+      "duplicate_opens_within_reported_identity": 0,
+      "interior_missing_slots_vs_first_last": 0
+    },
+    {
+      "database": "backends\\shared\\shared_lib\\persistence\\cosmicforge.db",
+      "table": "historical_candles",
+      "symbol": "RIFUSDT",
+      "source": "binance",
+      "timeframe": "15m",
+      "duplicate_opens_within_reported_identity": 0,
+      "interior_missing_slots_vs_first_last": 0
+    },
+    {
+      "database": "backends\\shared\\shared_lib\\persistence\\cosmicforge.db",
+      "table": "historical_candles",
+      "symbol": "ROSEUSDT",
+      "source": "binance",
+      "timeframe": "15m",
+      "duplicate_opens_within_reported_identity": 0,
+      "interior_missing_slots_vs_first_last": 0
+    },
+    {
+      "database": "backends\\shared\\shared_lib\\persistence\\cosmicforge.db",
+      "table": "historical_candles",
+      "symbol": "RSRUSDT",
+      "source": "binance",
+      "timeframe": "15m",
+      "duplicate_opens_within_reported_identity": 0,
+      "interior_missing_slots_vs_first_last": 0
+    },
+    {
+      "database": "backends\\shared\\shared_lib\\persistence\\cosmicforge.db",
+      "table": "historical_candles",
+      "symbol": "RUNEUSDT",
+      "source": "binance",
+      "timeframe": "15m",
+      "duplicate_opens_within_reported_identity": 0,
+      "interior_missing_slots_vs_first_last": 0
+    },
+    {
+      "database": "backends\\shared\\shared_lib\\persistence\\cosmicforge.db",
+      "table": "historical_candles",
+      "symbol": "RVNUSDT",
+      "source": "binance",
+      "timeframe": "15m",
+      "duplicate_opens_within_reported_identity": 0,
+      "interior_missing_slots_vs_first_last": 0
+    },
+    {
+      "database": "backends\\shared\\shared_lib\\persistence\\cosmicforge.db",
+      "table": "historical_candles",
+      "symbol": "SAGAUSDT",
+      "source": "binance",
+      "timeframe": "15m",
+      "duplicate_opens_within_reported_identity": 0,
+      "interior_missing_slots_vs_first_last": 0
+    },
+    {
+      "database": "backends\\shared\\shared_lib\\persistence\\cosmicforge.db",
+      "table": "historical_candles",
+      "symbol": "SANDUSDT",
+      "source": "binance",
+      "timeframe": "15m",
+      "duplicate_opens_within_reported_identity": 0,
+      "interior_missing_slots_vs_first_last": 0
+    },
+    {
+      "database": "backends\\shared\\shared_lib\\persistence\\cosmicforge.db",
+      "table": "historical_candles",
+      "symbol": "SEIUSDT",
+      "source": "binance",
+      "timeframe": "15m",
+      "duplicate_opens_within_reported_identity": 0,
+      "interior_missing_slots_vs_first_last": 0
+    },
+    {
+      "database": "backends\\shared\\shared_lib\\persistence\\cosmicforge.db",
+      "table": "historical_candles",
+      "symbol": "SNXUSDT",
+      "source": "binance",
+      "timeframe": "15m",
+      "duplicate_opens_within_reported_identity": 0,
+      "interior_missing_slots_vs_first_last": 0
+    },
+    {
+      "database": "backends\\shared\\shared_lib\\persistence\\cosmicforge.db",
+      "table": "historical_candles",
+      "symbol": "SOLUSDT",
+      "source": "binance",
+      "timeframe": "15m",
+      "duplicate_opens_within_reported_identity": 0,
+      "interior_missing_slots_vs_first_last": 0
+    },
+    {
+      "database": "backends\\shared\\shared_lib\\persistence\\cosmicforge.db",
+      "table": "historical_candles",
+      "symbol": "STRKUSDT",
+      "source": "binance",
+      "timeframe": "15m",
+      "duplicate_opens_within_reported_identity": 0,
+      "interior_missing_slots_vs_first_last": 0
+    },
+    {
+      "database": "backends\\shared\\shared_lib\\persistence\\cosmicforge.db",
+      "table": "historical_candles",
+      "symbol": "STXUSDT",
+      "source": "binance",
+      "timeframe": "15m",
+      "duplicate_opens_within_reported_identity": 0,
+      "interior_missing_slots_vs_first_last": 0
+    },
+    {
+      "database": "backends\\shared\\shared_lib\\persistence\\cosmicforge.db",
+      "table": "historical_candles",
+      "symbol": "SUIUSDT",
+      "source": "binance",
+      "timeframe": "15m",
+      "duplicate_opens_within_reported_identity": 0,
+      "interior_missing_slots_vs_first_last": 0
+    },
+    {
+      "database": "backends\\shared\\shared_lib\\persistence\\cosmicforge.db",
+      "table": "historical_candles",
+      "symbol": "SUPERUSDT",
+      "source": "binance",
+      "timeframe": "15m",
+      "duplicate_opens_within_reported_identity": 0,
+      "interior_missing_slots_vs_first_last": 0
+    },
+    {
+      "database": "backends\\shared\\shared_lib\\persistence\\cosmicforge.db",
+      "table": "historical_candles",
+      "symbol": "SUSHIUSDT",
+      "source": "binance",
+      "timeframe": "15m",
+      "duplicate_opens_within_reported_identity": 0,
+      "interior_missing_slots_vs_first_last": 0
+    },
+    {
+      "database": "backends\\shared\\shared_lib\\persistence\\cosmicforge.db",
+      "table": "historical_candles",
+      "symbol": "SYNUSDT",
+      "source": "binance",
+      "timeframe": "15m",
+      "duplicate_opens_within_reported_identity": 0,
+      "interior_missing_slots_vs_first_last": 0
+    },
+    {
+      "database": "backends\\shared\\shared_lib\\persistence\\cosmicforge.db",
+      "table": "historical_candles",
+      "symbol": "TAOUSDT",
+      "source": "binance",
+      "timeframe": "15m",
+      "duplicate_opens_within_reported_identity": 0,
+      "interior_missing_slots_vs_first_last": 0
+    },
+    {
+      "database": "backends\\shared\\shared_lib\\persistence\\cosmicforge.db",
+      "table": "historical_candles",
+      "symbol": "THETAUSDT",
+      "source": "binance",
+      "timeframe": "15m",
+      "duplicate_opens_within_reported_identity": 0,
+      "interior_missing_slots_vs_first_last": 0
+    },
+    {
+      "database": "backends\\shared\\shared_lib\\persistence\\cosmicforge.db",
+      "table": "historical_candles",
+      "symbol": "TIAUSDT",
+      "source": "binance",
+      "timeframe": "15m",
+      "duplicate_opens_within_reported_identity": 0,
+      "interior_missing_slots_vs_first_last": 0
+    },
+    {
+      "database": "backends\\shared\\shared_lib\\persistence\\cosmicforge.db",
+      "table": "historical_candles",
+      "symbol": "TLMUSDT",
+      "source": "binance",
+      "timeframe": "15m",
+      "duplicate_opens_within_reported_identity": 0,
+      "interior_missing_slots_vs_first_last": 0
+    },
+    {
+      "database": "backends\\shared\\shared_lib\\persistence\\cosmicforge.db",
+      "table": "historical_candles",
+      "symbol": "TRBUSDT",
+      "source": "binance",
+      "timeframe": "15m",
+      "duplicate_opens_within_reported_identity": 0,
+      "interior_missing_slots_vs_first_last": 0
+    },
+    {
+      "database": "backends\\shared\\shared_lib\\persistence\\cosmicforge.db",
+      "table": "historical_candles",
+      "symbol": "TRXUSDT",
+      "source": "binance",
+      "timeframe": "15m",
+      "duplicate_opens_within_reported_identity": 0,
+      "interior_missing_slots_vs_first_last": 0
+    },
+    {
+      "database": "backends\\shared\\shared_lib\\persistence\\cosmicforge.db",
+      "table": "historical_candles",
+      "symbol": "TURBOUSDT",
+      "source": "binance",
+      "timeframe": "15m",
+      "duplicate_opens_within_reported_identity": 0,
+      "interior_missing_slots_vs_first_last": 0
+    },
+    {
+      "database": "backends\\shared\\shared_lib\\persistence\\cosmicforge.db",
+      "table": "historical_candles",
+      "symbol": "TUSDT",
+      "source": "binance",
+      "timeframe": "15m",
+      "duplicate_opens_within_reported_identity": 0,
+      "interior_missing_slots_vs_first_last": 0
+    },
+    {
+      "database": "backends\\shared\\shared_lib\\persistence\\cosmicforge.db",
+      "table": "historical_candles",
+      "symbol": "TWTUSDT",
+      "source": "binance",
+      "timeframe": "15m",
+      "duplicate_opens_within_reported_identity": 0,
+      "interior_missing_slots_vs_first_last": 0
+    },
+    {
+      "database": "backends\\shared\\shared_lib\\persistence\\cosmicforge.db",
+      "table": "historical_candles",
+      "symbol": "UNIUSDT",
+      "source": "binance",
+      "timeframe": "15m",
+      "duplicate_opens_within_reported_identity": 0,
+      "interior_missing_slots_vs_first_last": 0
+    },
+    {
+      "database": "backends\\shared\\shared_lib\\persistence\\cosmicforge.db",
+      "table": "historical_candles",
+      "symbol": "VETUSDT",
+      "source": "binance",
+      "timeframe": "15m",
+      "duplicate_opens_within_reported_identity": 0,
+      "interior_missing_slots_vs_first_last": 0
+    },
+    {
+      "database": "backends\\shared\\shared_lib\\persistence\\cosmicforge.db",
+      "table": "historical_candles",
+      "symbol": "WIFUSDT",
+      "source": "binance",
+      "timeframe": "15m",
+      "duplicate_opens_within_reported_identity": 0,
+      "interior_missing_slots_vs_first_last": 0
+    },
+    {
+      "database": "backends\\shared\\shared_lib\\persistence\\cosmicforge.db",
+      "table": "historical_candles",
+      "symbol": "WLDUSDT",
+      "source": "binance",
+      "timeframe": "15m",
+      "duplicate_opens_within_reported_identity": 0,
+      "interior_missing_slots_vs_first_last": 0
+    },
+    {
+      "database": "backends\\shared\\shared_lib\\persistence\\cosmicforge.db",
+      "table": "historical_candles",
+      "symbol": "WUSDT",
+      "source": "binance",
+      "timeframe": "15m",
+      "duplicate_opens_within_reported_identity": 0,
+      "interior_missing_slots_vs_first_last": 0
+    },
+    {
+      "database": "backends\\shared\\shared_lib\\persistence\\cosmicforge.db",
+      "table": "historical_candles",
+      "symbol": "XLMUSDT",
+      "source": "binance",
+      "timeframe": "15m",
+      "duplicate_opens_within_reported_identity": 0,
+      "interior_missing_slots_vs_first_last": 0
+    },
+    {
+      "database": "backends\\shared\\shared_lib\\persistence\\cosmicforge.db",
+      "table": "historical_candles",
+      "symbol": "XMRUSDT",
+      "source": "binance",
+      "timeframe": "15m",
+      "duplicate_opens_within_reported_identity": 0,
+      "interior_missing_slots_vs_first_last": 0
+    },
+    {
+      "database": "backends\\shared\\shared_lib\\persistence\\cosmicforge.db",
+      "table": "historical_candles",
+      "symbol": "XRPUSDT",
+      "source": "binance",
+      "timeframe": "15m",
+      "duplicate_opens_within_reported_identity": 0,
+      "interior_missing_slots_vs_first_last": 0
+    },
+    {
+      "database": "backends\\shared\\shared_lib\\persistence\\cosmicforge.db",
+      "table": "historical_candles",
+      "symbol": "XTZUSDT",
+      "source": "binance",
+      "timeframe": "15m",
+      "duplicate_opens_within_reported_identity": 0,
+      "interior_missing_slots_vs_first_last": 0
+    },
+    {
+      "database": "backends\\shared\\shared_lib\\persistence\\cosmicforge.db",
+      "table": "historical_candles",
+      "symbol": "XVGUSDT",
+      "source": "binance",
+      "timeframe": "15m",
+      "duplicate_opens_within_reported_identity": 0,
+      "interior_missing_slots_vs_first_last": 0
+    },
+    {
+      "database": "backends\\shared\\shared_lib\\persistence\\cosmicforge.db",
+      "table": "historical_candles",
+      "symbol": "ZECUSDT",
+      "source": "binance",
+      "timeframe": "15m",
+      "duplicate_opens_within_reported_identity": 0,
+      "interior_missing_slots_vs_first_last": 0
+    },
+    {
+      "database": "backends\\shared\\shared_lib\\persistence\\cosmicforge.db",
+      "table": "historical_candles",
+      "symbol": "ZENUSDT",
+      "source": "binance",
+      "timeframe": "15m",
+      "duplicate_opens_within_reported_identity": 0,
+      "interior_missing_slots_vs_first_last": 0
+    },
+    {
+      "database": "backends\\shared\\shared_lib\\persistence\\cosmicforge.db",
+      "table": "historical_candles",
+      "symbol": "ZILUSDT",
+      "source": "binance",
+      "timeframe": "15m",
+      "duplicate_opens_within_reported_identity": 0,
+      "interior_missing_slots_vs_first_last": 0
+    },
+    {
+      "database": "backends\\shared\\shared_lib\\persistence\\cosmicforge.db",
+      "table": "historical_candles",
+      "symbol": "ZKUSDT",
+      "source": "binance",
+      "timeframe": "15m",
+      "duplicate_opens_within_reported_identity": 0,
+      "interior_missing_slots_vs_first_last": 0
+    },
+    {
+      "database": "backends\\shared\\shared_lib\\persistence\\cosmicforge.db",
+      "table": "historical_candles",
+      "symbol": "ZROUSDT",
+      "source": "binance",
+      "timeframe": "15m",
+      "duplicate_opens_within_reported_identity": 0,
+      "interior_missing_slots_vs_first_last": 0
+    },
+    {
+      "database": "backends\\shared\\shared_lib\\persistence\\cosmicforge.db",
+      "table": "historical_candles",
+      "symbol": "BNBUSDT",
+      "source": "binance",
+      "timeframe": "1h",
+      "duplicate_opens_within_reported_identity": 0,
+      "interior_missing_slots_vs_first_last": 0
+    },
+    {
+      "database": "backends\\shared\\shared_lib\\persistence\\cosmicforge.db",
+      "table": "historical_candles",
+      "symbol": "BTCUSDT",
+      "source": "binance",
+      "timeframe": "1h",
+      "duplicate_opens_within_reported_identity": 0,
+      "interior_missing_slots_vs_first_last": 0
+    },
+    {
+      "database": "backends\\shared\\shared_lib\\persistence\\cosmicforge.db",
+      "table": "historical_candles",
+      "symbol": "ETHUSDT",
+      "source": "binance",
+      "timeframe": "1h",
+      "duplicate_opens_within_reported_identity": 0,
+      "interior_missing_slots_vs_first_last": 0
+    },
+    {
+      "database": "backends\\shared\\shared_lib\\persistence\\cosmicforge.db",
+      "table": "historical_candles",
+      "symbol": "SOLUSDT",
+      "source": "binance",
+      "timeframe": "1h",
+      "duplicate_opens_within_reported_identity": 0,
+      "interior_missing_slots_vs_first_last": 0
+    },
+    {
+      "database": "backends\\shared\\shared_lib\\persistence\\cosmicforge.db",
+      "table": "historical_candles",
+      "symbol": "XRPUSDT",
+      "source": "binance",
+      "timeframe": "1h",
+      "duplicate_opens_within_reported_identity": 0,
+      "interior_missing_slots_vs_first_last": 0
+    }
+  ]
+}

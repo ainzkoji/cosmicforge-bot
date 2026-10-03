@@ -1794,6 +1794,7 @@ export const api = {
 
     getBotEngineStatus: async (instanceId: string): Promise<{
         engine: string; cati_runtime_active: boolean; cati_entry_authority: string;
+        runtime_process: 'RUNNING' | 'STOPPED' | 'STALE'; cati_managed_instance: boolean;
         phase: string | null; observe_mode: boolean; reason: string;
     }> => {
         const res = await fetch(`${API_BASE}/api/bot-instances/${instanceId}/engine-status`, {

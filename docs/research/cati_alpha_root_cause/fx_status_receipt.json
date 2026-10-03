@@ -1,0 +1,216 @@
+{
+  "observed_at": "2026-10-03T12:50:05.217282+00:00",
+  "status": "ACQUISITION_IN_PROGRESS",
+  "remaining_periods": 1715,
+  "frozen": false,
+  "no_duplicate_writer_started": true,
+  "existing_completion_pipeline_retained": true,
+  "plan": {
+    "pairs": 50,
+    "market_days": 652,
+    "per_pair": {
+      "AUDCAD": {
+        "done": 652,
+        "remaining": 0
+      },
+      "AUDCHF": {
+        "done": 652,
+        "remaining": 0
+      },
+      "AUDJPY": {
+        "done": 652,
+        "remaining": 0
+      },
+      "AUDNZD": {
+        "done": 652,
+        "remaining": 0
+      },
+      "AUDUSD": {
+        "done": 652,
+        "remaining": 0
+      },
+      "CADCHF": {
+        "done": 652,
+        "remaining": 0
+      },
+      "CADJPY": {
+        "done": 652,
+        "remaining": 0
+      },
+      "CHFJPY": {
+        "done": 652,
+        "remaining": 0
+      },
+      "EURAUD": {
+        "done": 652,
+        "remaining": 0
+      },
+      "EURCAD": {
+        "done": 652,
+        "remaining": 0
+      },
+      "EURCHF": {
+        "done": 652,
+        "remaining": 0
+      },
+      "EURCNH": {
+        "done": 652,
+        "remaining": 0
+      },
+      "EURDKK": {
+        "done": 652,
+        "remaining": 0
+      },
+      "EURGBP": {
+        "done": 652,
+        "remaining": 0
+      },
+      "EURHKD": {
+        "done": 652,
+        "remaining": 0
+      },
+      "EURILS": {
+        "done": 652,
+        "remaining": 0
+      },
+      "EURJPY": {
+        "done": 652,
+        "remaining": 0
+      },
+      "EURMXN": {
+        "done": 652,
+        "remaining": 0
+      },
+      "EURNOK": {
+        "done": 652,
+        "remaining": 0
+      },
+      "EURNZD": {
+        "done": 652,
+        "remaining": 0
+      },
+      "EURPLN": {
+        "done": 652,
+        "remaining": 0
+      },
+      "EURSEK": {
+        "done": 652,
+        "remaining": 0
+      },
+      "EURSGD": {
+        "done": 652,
+        "remaining": 0
+      },
+      "EURTRY": {
+        "done": 652,
+        "remaining": 0
+      },
+      "EURUSD": {
+        "done": 652,
+        "remaining": 0
+      },
+      "EURZAR": {
+        "done": 652,
+        "remaining": 0
+      },
+      "GBPAUD": {
+        "done": 652,
+        "remaining": 0
+      },
+      "GBPCAD": {
+        "done": 652,
+        "remaining": 0
+      },
+      "GBPCHF": {
+        "done": 652,
+        "remaining": 0
+      },
+      "GBPJPY": {
+        "done": 652,
+        "remaining": 0
+      },
+      "GBPNZD": {
+        "done": 652,
+        "remaining": 0
+      },
+      "GBPUSD": {
+        "done": 652,
+        "remaining": 0
+      },
+      "NZDCAD": {
+        "done": 241,
+        "remaining": 411
+      },
+      "NZDCHF": {
+        "done": 0,
+        "remaining": 652
+      },
+      "NZDJPY": {
+        "done": 0,
+        "remaining": 652
+      },
+      "NZDUSD": {
+        "done": 652,
+        "remaining": 0
+      },
+      "USDCAD": {
+        "done": 652,
+        "remaining": 0
+      },
+      "USDCHF": {
+        "done": 652,
+        "remaining": 0
+      },
+      "USDCNH": {
+        "done": 652,
+        "remaining": 0
+      },
+      "USDDKK": {
+        "done": 652,
+        "remaining": 0
+      },
+      "USDHKD": {
+        "done": 652,
+        "remaining": 0
+      },
+      "USDILS": {
+        "done": 652,
+        "remaining": 0
+      },
+      "USDJPY": {
+        "done": 652,
+        "remaining": 0
+      },
+      "USDMXN": {
+        "done": 652,
+        "remaining": 0
+      },
+      "USDNOK": {
+        "done": 652,
+        "remaining": 0
+      },
+      "USDPLN": {
+        "done": 652,
+        "remaining": 0
+      },
+      "USDSEK": {
+        "done": 652,
+        "remaining": 0
+      },
+      "USDSGD": {
+        "done": 652,
+        "remaining": 0
+      },
+      "USDTRY": {
+        "done": 652,
+        "remaining": 0
+      },
+      "USDZAR": {
+        "done": 652,
+        "remaining": 0
+      }
+    },
+    "remaining_periods": 1715,
+    "remaining_requests_estimate": 3430
+  }
+}

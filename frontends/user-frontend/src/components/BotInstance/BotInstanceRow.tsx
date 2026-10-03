@@ -87,7 +87,7 @@ export const BotInstanceRow = ({ bot, onStart, onPause, onStop, onDelete, onView
                         </div>
                         <div className="mt-2 text-xs text-muted-foreground" aria-live="polite">
                             {engineStatus.data
-                                ? `CATI ${engineStatus.data.observe_mode ? 'observe' : engineStatus.data.cati_entry_authority.toLowerCase()} · Entry authority: ${engineStatus.data.cati_entry_authority} · Governance: ${engineStatus.data.phase || 'unavailable'}`
+                                ? `CATI · Runtime: ${engineStatus.data.runtime_process} · ${engineStatus.data.observe_mode ? 'Observe' : engineStatus.data.cati_runtime_active ? 'Governed execution' : 'Observation inactive'} · Entry authority: ${engineStatus.data.cati_entry_authority} · Governance: ${engineStatus.data.phase || 'unavailable'}`
                                 : 'CATI entry authority: unavailable — new entries fail closed'}
                         </div>
                         {bot.block_category && (
