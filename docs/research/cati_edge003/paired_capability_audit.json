@@ -1,0 +1,61 @@
+{
+  "PAIRED_EXECUTION_RESEARCH_CAPABLE": "NO",
+  "RUNTIME_CAPABILITY_BLOCKED": true,
+  "diagnostic_historical_evaluation_allowed": true,
+  "no_broker_orders_sent": true,
+  "checks": {
+    "two_leg_synchronized_intent": {
+      "paired_capability": "NOT_IMPLEMENTED",
+      "existing_single_instrument_primitive": "TradePlan contains one instrument; no paired intent/transaction object."
+    },
+    "two_leg_sizing": {
+      "paired_capability": "NOT_IMPLEMENTED",
+      "existing_single_instrument_primitive": "Existing PolicyEngine and executor size one approved TradePlan."
+    },
+    "paired_exposure_accounting": {
+      "paired_capability": "NOT_IMPLEMENTED",
+      "existing_single_instrument_primitive": "Position and reservation records represent instruments, not a jointly owned basket."
+    },
+    "margin_aggregation": {
+      "paired_capability": "NOT_IMPLEMENTED",
+      "existing_single_instrument_primitive": "Account margin reservation exists per submission; no atomic two-leg reserve/commit."
+    },
+    "position_ownership": {
+      "paired_capability": "NOT_IMPLEMENTED",
+      "existing_single_instrument_primitive": "Single position ownership and unresolved reservations exist; no shared paired lifecycle owner."
+    },
+    "leg_protection": {
+      "paired_capability": "NOT_IMPLEMENTED",
+      "existing_single_instrument_primitive": "Mandatory single-leg protection at authoritative fill quantity; no coordinated pair protection."
+    },
+    "partial_fill_handling": {
+      "paired_capability": "NOT_IMPLEMENTED",
+      "existing_single_instrument_primitive": "PARTIALLY_FILLED state exists for one attempt; no matched-leg imbalance policy."
+    },
+    "one_leg_failure_handling": {
+      "paired_capability": "NOT_IMPLEMENTED",
+      "existing_single_instrument_primitive": "Single-entry rollback exists; no paired other-leg cancel/compensating unwind state machine."
+    },
+    "unknown_outcome_reconciliation": {
+      "paired_capability": "NOT_IMPLEMENTED",
+      "existing_single_instrument_primitive": "SUBMIT_UNKNOWN retains single-instrument ownership; no coupled unresolved basket reconciliation."
+    },
+    "paired_close_unwind": {
+      "paired_capability": "NOT_IMPLEMENTED",
+      "existing_single_instrument_primitive": "Close/reconcile operates per position; no paired terminal close/unwind intent."
+    },
+    "no_naked_leg_fallback": {
+      "paired_capability": "NOT_IMPLEMENTED",
+      "existing_single_instrument_primitive": "No validated paired mechanism to prove this guarantee."
+    }
+  },
+  "evidence_sha256": {
+    "backends/bot-backend/app/trading_intelligence/contracts/trade_plan.py": "cfb247c3efb196c583f20a127578c3e208e6ceadeb29c429e33eaa3c90ca92fe",
+    "backends/bot-backend/app/trading_intelligence/contracts/execution.py": "95273b1f45043c5dd671cd48e9be62c2fded4953c65aea9fba11c1a7359c82d7",
+    "backends/bot-backend/app/trading_intelligence/execution/boundary.py": "967869c0deb0506bd998b47fb2c596a61142bf6521adb2e0a605c8d2cb0956ed",
+    "backends/bot-backend/app/trading_intelligence/execution/binance_adapter.py": "e93f136b675345e500655f958d305e6889999c4bfd010d89295446291490f898",
+    "backends/bot-backend/app/trading_intelligence/portfolio/reservation_store.py": "c776b29ab1d6ce4ab58b84391b1bfa78050559d3344535fa663770fbb1b17a6d",
+    "backends/bot-backend/app/execution/executor.py": "831d7129c47514177e72841392c56345d1ff7ebe0987224e8caf92bfb5f7fc33"
+  },
+  "interpretation": "Paired historical basket arithmetic is allowed by the frozen research-only mandate; single-instrument safety primitives do not prove synchronized paired execution. No architecture change or naked-leg substitution is made."
+}

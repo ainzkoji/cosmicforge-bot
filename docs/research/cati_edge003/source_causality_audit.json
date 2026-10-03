@@ -1,0 +1,1322 @@
+{
+  "SOURCE_CAUSALITY_AUDIT": "PASS",
+  "registry_id": "CATI_NEXT_EDGE_DISCOVERY_MANDATE_003",
+  "registry_hash": "f3cac76976590fb59ae9f83252092dc484cf89e59b3880945288bc92458ce36f",
+  "holdout_query_count": 0,
+  "outcomes_evaluated": false,
+  "native_source_start_ms": 1726123499999,
+  "native_source_close_stop_ms": 1783833299998,
+  "feature_source_exclusive_upper_bound": 1783876499999,
+  "price_sources": {
+    "1000BONKUSDT": "46aead4d319e1602281a1d38f2956782f117b6c42b3697efd7b607ded03a6032",
+    "1000FLOKIUSDT": "0241c88a19c17ed74e790e1f62f99bb90cfcd1fdbe719a2036845130b624d5af",
+    "1000LUNCUSDT": "edfe6136800c4576448d20b409c3c12e37e8f99a56ae2db195260d351a0c223c",
+    "1000PEPEUSDT": "a607bc95ff6b85334894cf44052829e00978d48f283e6292cc962a016130a04a",
+    "1000SHIBUSDT": "648d775b41003f1dec64fbfc730a21b231949690df6e6e5e89ee0e61e987703c",
+    "1INCHUSDT": "5372bb5c2162ee02498f5624676d9b167a1322ace58838f24f44fc61341f1e28",
+    "AAVEUSDT": "e9d0bfdab7462040dd1517801fbf3a0cf80eefad0c66d7e256fbfc212514c44f",
+    "ACEUSDT": "cee732c582f2e20fa6b8d35c10a6294ad56b1fd922a38bb990a1ebc1ce7ed59a",
+    "ADAUSDT": "479e5f310086934f2932c6aed7787904b79696a2e84bad6d7a3b42dc0f57dcd3",
+    "ALGOUSDT": "da8ac743af82f6d17ee452c1db6e7b134a94d435fd2d086a74d619ba9f4b1fd4",
+    "ALICEUSDT": "0ce0c4ba8dac1667edf55211a911b336d4bfbc9345e50bf03e5efd1da8bdd109",
+    "ALTUSDT": "3fd06c672fb69217bceb480708ece2a88ce9683cdff06ce9843d5335e68db3e4",
+    "APEUSDT": "c2318dcc3b14fa9387bfda529223738e1a049868677530d9c353ee44cc096d8c",
+    "APTUSDT": "354165a61186f8cf4257fe3f464234dfed5748da6f9cdd5660096c36ef64a5ec",
+    "ARBUSDT": "6f70e2418702915fec4edc5d4c2e7318a743752a5e409cb9feabcbe91c1f14dc",
+    "ARKMUSDT": "baf8c7ba055c004d60ce9064f7994a1dca8cd1e94b732bcd992bd49301c9b305",
+    "ARKUSDT": "6376ff89f27c2bd44ffd1d823950e31c30b44836f8f277018edc8e29895e14c9",
+    "ARUSDT": "e7f9ca6c4b29069a175173ba09c21517e5aacf8e8d19863ecf1825c3ec0df1ea",
+    "ATOMUSDT": "1631a4610857dfd354e82b9f979c1d72dfded617e8d5b437bde8a9828a9bad25",
+    "AVAXUSDT": "556ac3b60d4ec39e9c13fb7ef5d76b2af061fdee203942b4d268249eb53358f3",
+    "AXSUSDT": "858fb83c070f12a4b3c47130d7808ebed3ef8da9a9ad01984846f2a12ab4545b",
+    "BBUSDT": "ad360d7e078b0695583fc3700d904effcb0f351f4b41f4b7c3ee06de35e6a75f",
+    "BCHUSDT": "cf5fbeafd72fef681032f892f71eabafc6487b573b3f15286ead2e3c83eb2cc5",
+    "BEAMXUSDT": "7476739fd8f4677b42865a089a4988a5db13861de6f122862d22c6d8a2c1ab42",
+    "BICOUSDT": "4f0f8d7c4394e21c57043386a166b0df267d908f267306ed855f2ac1093d42ca",
+    "BIGTIMEUSDT": "120f3e878583ffed62d433730e83cdd68c5b2ef5527ffb1b2e6f531ff19f24bb",
+    "BNBUSDT": "11119b7ac03dccf23b6d464070bfd6f051113bd23b7c2ed70953b79a28acd5c5",
+    "BOMEUSDT": "9bd781fb83a3a56f6da058adfeff119908a159e1ece7188de53f735a6961d7a3",
+    "BTCUSDT": "94377911e27e57c29c66421c0fed1902de04263a8c34e2a24f272889405fc92a",
+    "CAKEUSDT": "378d1a60bfc4d815fd3ad0713acbdcc0af71d2f83f0155cf183ac0dfea6c93e0",
+    "CATIUSDT": "2f9df69b70ad27b09089d0988c66f827e8109e99511a383ce17332db3722a507",
+    "CFXUSDT": "cf91071a993c11d559413b0787da4d355ab020a3b3e2c6656f0ee560e9d8d55d",
+    "CHZUSDT": "36896d12080af382ce5f10a4877c1f25d141ef05a748587cbf58d61276510fb1",
+    "COMPUSDT": "566862548aa72c9bde5e620b302b019720e8e43d4a9ec6f311d60ad30255fbb1",
+    "COTIUSDT": "9aa1e822b29e96d7189ce1ce8b6c917390a5d80dfc1c53433247f0d088158ce8",
+    "CRVUSDT": "b3512c58e0eab795654ac5fdbf868963bf4deecd92be93f61109315a223dcb08",
+    "DASHUSDT": "e40284782eb832d35d2b4de5ce0a0d08a726e0857c86f4efaa51f96852e8afa0",
+    "DODOXUSDT": "20f42092248c6ffedddbd098cdbef8a65df2318deea4f9a684c0299f143ec4cc",
+    "DOGEUSDT": "505148526068ca39f3962436e6d486ac47c0d0fa60b5b4395f03c7d6257fe48f",
+    "DOGSUSDT": "ecfced42c1b90773c5579cc26d992fc977ba19e8f61f686ea1df5047b3b63a59",
+    "DOTUSDT": "4744da942f4756975727285af8d95dd7c4a6dd30e45ff9c2cd1915eed383b084",
+    "DUSKUSDT": "d8a6f91efc4bad4c0da2e834fb1c75281da502c8a19bbe42afb846ac747e55e2",
+    "DYDXUSDT": "a166e3ab0b03b00233404812b024693747601fc51ac76c2b42abe438855a963c",
+    "EGLDUSDT": "a006d9eb297209f9ed6256987b8c4585a2bbdcfa96ab3e303b927ab2d535ccb7",
+    "ENAUSDT": "fab9f72fd9d5c705e72767193814d4db471502aa805220d1198c34fb7f41162a",
+    "ENJUSDT": "566aacb665cc03723430c04b0e6cba36d3b9f012ad75a1efdec967955c24eb31",
+    "ENSUSDT": "f93fca31d12fe92a1b134b709ca3682b9b15f3488eca634a11bae470d66947de",
+    "ETCUSDT": "c8599896fb888a946b38b219fa86157a672a9aa8bde6c096f67e507f4221a3d0",
+    "ETHFIUSDT": "8b5ab9c70bd1706f1e9bbeb966d33260154886d3f67fbbe33983ee0290a6641d",
+    "ETHUSDT": "d3dab8cd6ac361cb9f6b13c5110d83c48d5e7a49fb2ecb0bd16ef8ae1c10db36",
+    "FETUSDT": "8215d8d0c841ccc563bfcbb4d04e87aa4d87efe621219805bd98159bed5a5816",
+    "FILUSDT": "6ae284410592a61d2bc7e2fbef62b9b8250042cdab3e085065dd11ef6a02c297",
+    "GALAUSDT": "1caa13b2a0c94f6d50808ef00187e870a776e302d3fb66e1a1d0ba30f838191e",
+    "GRTUSDT": "b80c63722f24d1cb48f3e4e4a2afc7f8f163aa3105f31eb5ff80b9fe63816625",
+    "HBARUSDT": "70847fa72d88bc3ec82fabc4dc8850b48c6f7a275e84ff4a21a4f880fe7671a4",
+    "ICPUSDT": "9a6a076b6a7d087f86d794e3164b0a0ede10184591af062f0bc8ed1210bc6d56",
+    "IDUSDT": "3cc1fd4c9512328f59924926c9ae799bce59cee1802f3f5aac6f61935de220ea",
+    "IMXUSDT": "e3f74e71e6df318661b4b8ccc402f2952404a7b7042eb0a0a090c7b21161b2ff",
+    "INJUSDT": "f9e856a75d5566c4566f912b9d76b3b360bdf4bb84696b37368260acd9dcfc74",
+    "IOSTUSDT": "278ee54bb41020d2053c2c1f0679c3f08ff189f2e1dd2ddd0c7a96b198e49d33",
+    "IOTAUSDT": "b423eb5803ad20dfdafafdf6111e474f38b021d1cc750537babaad0769429069",
+    "IOUSDT": "0ea1dcaa7cd9f24cc8e633c873099b8095f0dae55afd2e3ba1d7b1780183f3d2",
+    "JASMYUSDT": "f3ebc12d1fe651b0151968e4e345d9bfd45fcabd7cc6c81b1c9650f1d2d5e748",
+    "JTOUSDT": "584c512c7366974630793e64b33f7e22f166e5d56ecac543b925ee1c92755a1d",
+    "JUPUSDT": "474fdd8d0dcbf47e99b719f258fc20f2afd260998590bb5f6e6aa2644ce09e33",
+    "KASUSDT": "3d9d623af78cc0753a4abd9c409af248bc078c7dace052c3e7a29a3bc69eb824",
+    "KAVAUSDT": "51d9f27216011f72ae7cdf68ca1001ce3f6b0e50844ebaeff92fd14fb3e395b8",
+    "KSMUSDT": "8deb7c2bf7d9c913cc10d385fb71ad6e96fcb912eff31e6ce830adbb3b50cf6c",
+    "LDOUSDT": "f2af84bf3f07577dbf0023158fc908ead2701949026b4f7a56995211a6981c6b",
+    "LINKUSDT": "c16bb41ed75cfa6ec985ae3cf71c54fc9f051595557e54ab280624a30c17ddd4",
+    "LPTUSDT": "6f955840e58d0cf1735e8b2a6cccd6fb11841204a89e25c48198d775fc4d87e5",
+    "LSKUSDT": "5a1bf2dc80178603e9d2af7011d9dfa1e83cf28b81f1191d690fb800d2afd32f",
+    "LTCUSDT": "ffe38deeaa7c018a10f23bf0f457779eac71655d4668c4f8b5adfd7a4c521e89",
+    "MANAUSDT": "07c2c96ce03731d41bf53cd5f01d5b9fda69dfb8c4c4de26490c93d86b866ce3",
+    "MEMEUSDT": "8d60080bc1f7fb74563ac0ac61f2f5af50b80adc5c68d15eee8b5a5a927c8866",
+    "MINAUSDT": "6a60f8e1310a21d5eb9dd647c95ba8151944c0b360a6ca97b28877bfa1321f59",
+    "MOVRUSDT": "cd3f28a6eada6f8faa7b2609fbdaefb05642583032e8490e7fa22be36ccf6aaa",
+    "NEARUSDT": "33f409d3b85f4c7dd4a8a8f6e0e4d6e46349cb7763ca853aaeb0157263d6e60b",
+    "NEIROUSDT": "42efc001e15e6e16a908d6ba08fd91835c414d48e95b8dd734dd50357010a077",
+    "NEOUSDT": "ac22dab9d001f376b0cfd30bac4449c59a02237fc47c3d6ba54f4e734b97ce52",
+    "NOTUSDT": "5bd1264ba73bfb21a7b7f93245cc586393a3bb7427a1959554aa5c6d2552a34c",
+    "ONDOUSDT": "77e58529306ce62966a7cb2aa78b2ead83d4b457f82216bdc26f8f18a5056042",
+    "ONEUSDT": "051be00b1a95e13072ed63b0bccba552e26e053e4b769d255fd52f28b0491ec1",
+    "ONGUSDT": "2f8ef80f90cc6b9b42b091f7fdd2d7a3f5b5fa87fceb91dc8ec1e7d11cdb28d2",
+    "ONTUSDT": "29a13a022b175487887741a7e899cf3a6ca2e653959012960436d97e45584f81",
+    "OPUSDT": "912fea8c9dfbb9ee6e36bf5e024dbff87ed452763149401a7f4069511130f32a",
+    "ORDIUSDT": "ba2f25d41d440993d66993e61fa53c678d9179d5c9ec4beced8cd4ba86ef892d",
+    "PENDLEUSDT": "70e281e86f0435e4830ee912115ffd36f610b44e64bcb00f4610d9613289f695",
+    "PEOPLEUSDT": "3f40e4b26355b76ee175bceef1ea0945a1a4cb75c31bb25d170331d73b407e5c",
+    "POLUSDT": "25b2a46f91a4041c1a1c9218e1dd0c7f73fcb2ff6e65cf13f5ca413c0454ccb0",
+    "POPCATUSDT": "ef643207c31b6c7e6caaf8aa5032d3b9dd38ba84a3f0fb561063a5dc89732f65",
+    "PORTALUSDT": "d89d7b6d0cd1b6b1527fd6c2354cd191254022718d07460e47e34659ec372bae",
+    "PYTHUSDT": "0c52cac5ba23279997f2ba1ca04e081ff8af3735e19b47d607f82ad128c1d065",
+    "QNTUSDT": "ccf58bdbc0a4f47928d1bf7dde359f5af502e3d017732161b6523f247a3a66d5",
+    "RENDERUSDT": "6d5c0792a02241b6da14ebf4c240dee98e91cb88dd045f519bc5318d6ec44a18",
+    "REZUSDT": "f40d1bcee269d894f283d622b2416769a9eab042c8649aac584c0123717e65c9",
+    "RIFUSDT": "54b19fab25fab3416ae9a7276f74ac40f5a024b59c474766c009b69e90d61ee7",
+    "ROSEUSDT": "1cf9798d4233115db19349520df3cadee34c2fb10c83935c018153df6d83604e",
+    "RSRUSDT": "106e07fb7cd95abf70b7a47e477aaafe298c5251625404af1c8fa84d05ec26b4",
+    "RUNEUSDT": "33b4648480df5481a1211d6ed216e3b498e733aff3b07dac7f3f7a0b1fbb5e2d",
+    "RVNUSDT": "668c92f0600778ea1d7628905c80a49e2563a5cf48d76e1902476eedb4415e86",
+    "SAGAUSDT": "c9fc6322fd878460c52380567cd417ee3f788bfb615074695055b65f13bd0a31",
+    "SANDUSDT": "aac751b7224d0b5187b9b5be5c83619a43d13e12f14e3ba295ab7fa5553f7ef0",
+    "SEIUSDT": "e33137e79fcecbd28fa12e6e4e942b0be2c67b930c8f53ed81e13fbb3766fe12",
+    "SNXUSDT": "4c5c59ca5127509b5b4bd14c94c3548115ff5bb3ddd79fb05a72a231669ec519",
+    "SOLUSDT": "211d637a4fc32c53b550c573a3b18fc17dbdfbb4a24c5afe2a2c3ba089239cb9",
+    "STRKUSDT": "7a724cd91a68ddee413581f141ad16d38da09c239ec61ad8e1615b1d75f9e6bf",
+    "STXUSDT": "f591981923ad6a8adb7f238eb8d108417c43ccaebf0ad724eb431fea91030d81",
+    "SUIUSDT": "6d9c41168948c4f87a3c2dc49ae617074f7f93168086f8902611447492d9fce5",
+    "SUPERUSDT": "6657530f0d9cc13a7ad291ff0dd03155bccdb68744eb278e89b59a9ae421abc4",
+    "SUSHIUSDT": "d7c263bf6e3906b45f667e44d997e5d4ebba8bcfa7f46332285d687d671c2341",
+    "SYNUSDT": "aac3d6a5ed361a0d5013c9e63c20136f2ef3282d72a5ac0aa32893ea5c1df3ad",
+    "TAOUSDT": "7eb014d6c2e36450e8dad158c22656350af61cb3a5201a06cee4bb52e23c4367",
+    "THETAUSDT": "743868ac38cbb18b2e36620aa26c6d27e80007cb31e2f690d2526da5916a9860",
+    "TIAUSDT": "9278adbc6bf7e6a9e3a32a7725595edeadbd0c13c3061989e7a3c72866cd4c4f",
+    "TLMUSDT": "e06dcf154fd6b706b96b40ca6f3900b5ea90aed90011098f45ee4990d575b607",
+    "TRBUSDT": "13e1a709f2bdf5c9a8147f2ee794486e9e34e68edec9bd2b2cbc29a8c7e7ec9a",
+    "TRXUSDT": "40a0f03a9e724cb0826c5132e7f1313aa100c50cffb6be95329c4124bc51996a",
+    "TURBOUSDT": "c29685f00c0d9b5ac5b0c5b1e0b49c500423fd8ded9e2b46d8e978616e1c05f3",
+    "TUSDT": "e9007d06ea0d09a5cd7435231f7f281ad5869a6ad4ae42fb6470109bd9609ee0",
+    "TWTUSDT": "fb48e7d193e3a610f1b22da8973502e0aa3740fd9d24cc5e62185869eb8b7095",
+    "UNIUSDT": "82e0232491d7ad0e2b875f4f14b5fdcd75018722d6d147d825b300531f0b77e3",
+    "VETUSDT": "69981e8569f437582d9e87051d8aa070305f68be662d512959259ad49498675d",
+    "WIFUSDT": "7f946c36356f932d92c4b2ec5daf9e6880f26b21649422480c1a83db7f1246aa",
+    "WLDUSDT": "6e37afd634b3885356c6c9b3499464952414251d6861a4768058ec23f4238cca",
+    "WUSDT": "4b88870e49ca07a3b2bf9f02885c565bfdec9937761fb6c888b43ecbc3aaf575",
+    "XLMUSDT": "b03b7e33d6a601ffbd91cee9979b7237f568cd0f29d446e5cd8642cd7bf93dd7",
+    "XMRUSDT": "7dfe7bb8f601bb5f15f67b589c2acfacb5ea6c4901b405497525ef5ee7a0405f",
+    "XRPUSDT": "a3f76962dcd2555029b546ce9eaf45a64c5aabe80e3261cb748d8651ba5b073a",
+    "XTZUSDT": "62e7000f0d823013c0e07c84d576ac5792a0c83cf3982d309c650bc2682d097a",
+    "XVGUSDT": "a63f5bd8c0cbc2a5d227b35aa915aad4703dbb5de7091fb71485df36948f4499",
+    "ZECUSDT": "3f7db7e682f17fd95d48bf8c192d40b1ba6e33847904404b73a3d81fbfa520ff",
+    "ZENUSDT": "9893116c9bba41d5853d828c434faf0be3b796d3fe74e1510ebbe87ed4077b73",
+    "ZILUSDT": "deaab5689608b1f224f6ce2a7958f8836f11100292208e247e28d8fca8297ec2",
+    "ZKUSDT": "af30274a3edd9b2b1b54e543b1753d5fe4b6ae024e8f01cad012bac1f1908b4f",
+    "ZROUSDT": "f16d170b2f392bd43351c904b3c5066dc77638657421cc0b4d9e79383170a45e"
+  },
+  "feature_sources": {
+    "1000BONKUSDT": "c68f94a983c043398aaf7ad54b6bf119efde1216f3ce183a8e4f20d0ec563764",
+    "1000PEPEUSDT": "ae97215117cd67606721f76c5599d511ee0b102144a33bfedfbbfb970325c73e",
+    "1000SHIBUSDT": "9a1b5e378312c9874b427ebbc637cb8dce9087b372a83cec6f2d8a6a1dea09ad",
+    "AAVEUSDT": "139a92d14c0b8927c5caf23dc706271cc877af9050d91ce9575019af17cc0e22",
+    "ADAUSDT": "1eedc530df52f939e4ca45d47595f0720c330ee67f8f9d406144ff8aa899fb61",
+    "APTUSDT": "20082f929f7a8e1dee312b125b486b4fec5bbf1934c84ae30a926232fd8af607",
+    "ARBUSDT": "de54403c52d5fc1f1c8cf0ebfdadbd2f1439921e68620d7af80cb6b3766db89c",
+    "AVAXUSDT": "2946b8546c26b10122b4970ba14950f7ddd9b6114e9157500eab7785a188da95",
+    "BCHUSDT": "c142604d2f763170fd7fa410ccb03ecd3fd92f59e3b47aeb6f14988d30cfbb8b",
+    "BNBUSDT": "3a91cd4558a2562806bece97d14d1e8789638739384daa45f4ec7f4a04adc581",
+    "BTCUSDT": "13a4c3ff09a6caa55bdac9375fee7b191fcc69d68eaf879573430d8a19b63510",
+    "CRVUSDT": "563b3c1e10f1d50efd1b5ca4cacebb9bf50c64595d5af3d95ff63e70616c47b6",
+    "DASHUSDT": "223f587d3e484a4d92bf22b10aae25426d2bdc4eb560d257d106f45abeeb6e1b",
+    "DOGEUSDT": "f24c7368f05beab7577a6dbe4ac642ae9cf3a427ccea6f02b7a78a541857058d",
+    "DOTUSDT": "d44954540173b50d014aea2a4ed9a90a8f01722b4dc459d9098a7840f84f4af4",
+    "ENAUSDT": "b94c671e8a9af3536474e982a7a6cd4afb9c12c7a80553588f0860558e75ae74",
+    "ETHUSDT": "406921721397f6b7c41355be7ed63c6c6e09f1d7ec5a1edca6fde988bf849e7a",
+    "FETUSDT": "96e8630d1d2007ff2b59c1f14bca12ccaf7258979d70c95bef8a0f0d82133326",
+    "FILUSDT": "2d7f34d16d5045399d6c4450a982e999b1245161af37b55576c0dd7a64886819",
+    "HBARUSDT": "b919feab6ec1a4ca855d7c0a3a96705405c97ca80de83730c21bb2864656a303",
+    "LINKUSDT": "057a5fa6d41be9500f26cf34fcbe1946d23b1664045f25c65be5df3577fb7740",
+    "LTCUSDT": "8ec3641e8eef61b53480e9b46e2b96ed87da9348fa1ecd788b853ee8efacf5b3",
+    "NEARUSDT": "e22eba25d08d9654e687acf18740a20e60edad09fe486a58418481beab0a1f51",
+    "ONDOUSDT": "019f8b2302dfd8140ed18ba43a2e7f09931c436ec329e7ae167b5d2223ddb5bd",
+    "OPUSDT": "3cd2f57e5f6da2274bb36a16119db0f48cd190254c74cd3e99facad39b71ee80",
+    "SOLUSDT": "adb02682d314c7e4d384a333a4e09b36ac59e0485f0cdc999cf708fc2dee62ee",
+    "SUIUSDT": "d440b6cb830b08d0e5c3e360635d5664578b5b35eb1fb0032bc93cac56546d9d",
+    "TAOUSDT": "c5e29201bc6e9c4b558fa9dcb5df7d16176f474951efc2a9b1b0848d004c3a5c",
+    "TRXUSDT": "b275bd8e9074603dcdd8dc0e34aa757d49b854d8f385a6dfd669e4935c8eaeb0",
+    "UNIUSDT": "a44ddff7d82542c5f183f64b9405321b23f8326d0b1f5992db1511581579e689",
+    "WIFUSDT": "9fcad3b1da3eaf78303d2e70021f2ad2063d72ee50b64bc4cfdff274a0bdfbac",
+    "WLDUSDT": "93d317a8df6c1536f6db73fad95dcb56d9eefcafaebd184ee397eb1c13e86c52",
+    "XLMUSDT": "6c3a1308191629daa27ed78bb9350406401cf346a495e0af29bcd9de735073ca",
+    "XRPUSDT": "64878889854d23416ad1681b184d3ffcb00c8d33b8263b68be9ec496ceb3aaaf",
+    "ZECUSDT": "9222042ea1895f51eca07475479fd3522d28ca839f2866bbb7db9c4cd54435f9"
+  },
+  "bar_counts": {
+    "1000BONKUSDT": {
+      "native15m": 63092,
+      "complete1h": 15773,
+      "discarded_partial_or_gap_groups": "No approximation permitted"
+    },
+    "1000FLOKIUSDT": {
+      "native15m": 63092,
+      "complete1h": 15773,
+      "discarded_partial_or_gap_groups": "No approximation permitted"
+    },
+    "1000LUNCUSDT": {
+      "native15m": 63092,
+      "complete1h": 15773,
+      "discarded_partial_or_gap_groups": "No approximation permitted"
+    },
+    "1000PEPEUSDT": {
+      "native15m": 63092,
+      "complete1h": 15773,
+      "discarded_partial_or_gap_groups": "No approximation permitted"
+    },
+    "1000SHIBUSDT": {
+      "native15m": 63092,
+      "complete1h": 15773,
+      "discarded_partial_or_gap_groups": "No approximation permitted"
+    },
+    "1INCHUSDT": {
+      "native15m": 63092,
+      "complete1h": 15773,
+      "discarded_partial_or_gap_groups": "No approximation permitted"
+    },
+    "AAVEUSDT": {
+      "native15m": 63092,
+      "complete1h": 15773,
+      "discarded_partial_or_gap_groups": "No approximation permitted"
+    },
+    "ACEUSDT": {
+      "native15m": 63092,
+      "complete1h": 15773,
+      "discarded_partial_or_gap_groups": "No approximation permitted"
+    },
+    "ADAUSDT": {
+      "native15m": 63092,
+      "complete1h": 15773,
+      "discarded_partial_or_gap_groups": "No approximation permitted"
+    },
+    "ALGOUSDT": {
+      "native15m": 63092,
+      "complete1h": 15773,
+      "discarded_partial_or_gap_groups": "No approximation permitted"
+    },
+    "ALICEUSDT": {
+      "native15m": 63092,
+      "complete1h": 15773,
+      "discarded_partial_or_gap_groups": "No approximation permitted"
+    },
+    "ALTUSDT": {
+      "native15m": 63092,
+      "complete1h": 15773,
+      "discarded_partial_or_gap_groups": "No approximation permitted"
+    },
+    "APEUSDT": {
+      "native15m": 63092,
+      "complete1h": 15773,
+      "discarded_partial_or_gap_groups": "No approximation permitted"
+    },
+    "APTUSDT": {
+      "native15m": 63092,
+      "complete1h": 15773,
+      "discarded_partial_or_gap_groups": "No approximation permitted"
+    },
+    "ARBUSDT": {
+      "native15m": 63092,
+      "complete1h": 15773,
+      "discarded_partial_or_gap_groups": "No approximation permitted"
+    },
+    "ARKMUSDT": {
+      "native15m": 63092,
+      "complete1h": 15773,
+      "discarded_partial_or_gap_groups": "No approximation permitted"
+    },
+    "ARKUSDT": {
+      "native15m": 63092,
+      "complete1h": 15773,
+      "discarded_partial_or_gap_groups": "No approximation permitted"
+    },
+    "ARUSDT": {
+      "native15m": 63092,
+      "complete1h": 15773,
+      "discarded_partial_or_gap_groups": "No approximation permitted"
+    },
+    "ATOMUSDT": {
+      "native15m": 63092,
+      "complete1h": 15773,
+      "discarded_partial_or_gap_groups": "No approximation permitted"
+    },
+    "AVAXUSDT": {
+      "native15m": 63092,
+      "complete1h": 15773,
+      "discarded_partial_or_gap_groups": "No approximation permitted"
+    },
+    "AXSUSDT": {
+      "native15m": 63092,
+      "complete1h": 15773,
+      "discarded_partial_or_gap_groups": "No approximation permitted"
+    },
+    "BBUSDT": {
+      "native15m": 63092,
+      "complete1h": 15773,
+      "discarded_partial_or_gap_groups": "No approximation permitted"
+    },
+    "BCHUSDT": {
+      "native15m": 63092,
+      "complete1h": 15773,
+      "discarded_partial_or_gap_groups": "No approximation permitted"
+    },
+    "BEAMXUSDT": {
+      "native15m": 63092,
+      "complete1h": 15773,
+      "discarded_partial_or_gap_groups": "No approximation permitted"
+    },
+    "BICOUSDT": {
+      "native15m": 63092,
+      "complete1h": 15773,
+      "discarded_partial_or_gap_groups": "No approximation permitted"
+    },
+    "BIGTIMEUSDT": {
+      "native15m": 63092,
+      "complete1h": 15773,
+      "discarded_partial_or_gap_groups": "No approximation permitted"
+    },
+    "BNBUSDT": {
+      "native15m": 63092,
+      "complete1h": 15773,
+      "discarded_partial_or_gap_groups": "No approximation permitted"
+    },
+    "BOMEUSDT": {
+      "native15m": 63092,
+      "complete1h": 15773,
+      "discarded_partial_or_gap_groups": "No approximation permitted"
+    },
+    "BTCUSDT": {
+      "native15m": 63092,
+      "complete1h": 15773,
+      "discarded_partial_or_gap_groups": "No approximation permitted"
+    },
+    "CAKEUSDT": {
+      "native15m": 63092,
+      "complete1h": 15773,
+      "discarded_partial_or_gap_groups": "No approximation permitted"
+    },
+    "CATIUSDT": {
+      "native15m": 63092,
+      "complete1h": 15773,
+      "discarded_partial_or_gap_groups": "No approximation permitted"
+    },
+    "CFXUSDT": {
+      "native15m": 63092,
+      "complete1h": 15773,
+      "discarded_partial_or_gap_groups": "No approximation permitted"
+    },
+    "CHZUSDT": {
+      "native15m": 63092,
+      "complete1h": 15773,
+      "discarded_partial_or_gap_groups": "No approximation permitted"
+    },
+    "COMPUSDT": {
+      "native15m": 63092,
+      "complete1h": 15773,
+      "discarded_partial_or_gap_groups": "No approximation permitted"
+    },
+    "COTIUSDT": {
+      "native15m": 63092,
+      "complete1h": 15773,
+      "discarded_partial_or_gap_groups": "No approximation permitted"
+    },
+    "CRVUSDT": {
+      "native15m": 63092,
+      "complete1h": 15773,
+      "discarded_partial_or_gap_groups": "No approximation permitted"
+    },
+    "DASHUSDT": {
+      "native15m": 63092,
+      "complete1h": 15773,
+      "discarded_partial_or_gap_groups": "No approximation permitted"
+    },
+    "DODOXUSDT": {
+      "native15m": 63092,
+      "complete1h": 15773,
+      "discarded_partial_or_gap_groups": "No approximation permitted"
+    },
+    "DOGEUSDT": {
+      "native15m": 63092,
+      "complete1h": 15773,
+      "discarded_partial_or_gap_groups": "No approximation permitted"
+    },
+    "DOGSUSDT": {
+      "native15m": 63092,
+      "complete1h": 15773,
+      "discarded_partial_or_gap_groups": "No approximation permitted"
+    },
+    "DOTUSDT": {
+      "native15m": 63092,
+      "complete1h": 15773,
+      "discarded_partial_or_gap_groups": "No approximation permitted"
+    },
+    "DUSKUSDT": {
+      "native15m": 63092,
+      "complete1h": 15773,
+      "discarded_partial_or_gap_groups": "No approximation permitted"
+    },
+    "DYDXUSDT": {
+      "native15m": 63092,
+      "complete1h": 15773,
+      "discarded_partial_or_gap_groups": "No approximation permitted"
+    },
+    "EGLDUSDT": {
+      "native15m": 63092,
+      "complete1h": 15773,
+      "discarded_partial_or_gap_groups": "No approximation permitted"
+    },
+    "ENAUSDT": {
+      "native15m": 63092,
+      "complete1h": 15773,
+      "discarded_partial_or_gap_groups": "No approximation permitted"
+    },
+    "ENJUSDT": {
+      "native15m": 63092,
+      "complete1h": 15773,
+      "discarded_partial_or_gap_groups": "No approximation permitted"
+    },
+    "ENSUSDT": {
+      "native15m": 63092,
+      "complete1h": 15773,
+      "discarded_partial_or_gap_groups": "No approximation permitted"
+    },
+    "ETCUSDT": {
+      "native15m": 63092,
+      "complete1h": 15773,
+      "discarded_partial_or_gap_groups": "No approximation permitted"
+    },
+    "ETHFIUSDT": {
+      "native15m": 63092,
+      "complete1h": 15773,
+      "discarded_partial_or_gap_groups": "No approximation permitted"
+    },
+    "ETHUSDT": {
+      "native15m": 63092,
+      "complete1h": 15773,
+      "discarded_partial_or_gap_groups": "No approximation permitted"
+    },
+    "FETUSDT": {
+      "native15m": 63092,
+      "complete1h": 15773,
+      "discarded_partial_or_gap_groups": "No approximation permitted"
+    },
+    "FILUSDT": {
+      "native15m": 63092,
+      "complete1h": 15773,
+      "discarded_partial_or_gap_groups": "No approximation permitted"
+    },
+    "GALAUSDT": {
+      "native15m": 63092,
+      "complete1h": 15773,
+      "discarded_partial_or_gap_groups": "No approximation permitted"
+    },
+    "GRTUSDT": {
+      "native15m": 63092,
+      "complete1h": 15773,
+      "discarded_partial_or_gap_groups": "No approximation permitted"
+    },
+    "HBARUSDT": {
+      "native15m": 63092,
+      "complete1h": 15773,
+      "discarded_partial_or_gap_groups": "No approximation permitted"
+    },
+    "ICPUSDT": {
+      "native15m": 63092,
+      "complete1h": 15773,
+      "discarded_partial_or_gap_groups": "No approximation permitted"
+    },
+    "IDUSDT": {
+      "native15m": 63092,
+      "complete1h": 15773,
+      "discarded_partial_or_gap_groups": "No approximation permitted"
+    },
+    "IMXUSDT": {
+      "native15m": 63092,
+      "complete1h": 15773,
+      "discarded_partial_or_gap_groups": "No approximation permitted"
+    },
+    "INJUSDT": {
+      "native15m": 63092,
+      "complete1h": 15773,
+      "discarded_partial_or_gap_groups": "No approximation permitted"
+    },
+    "IOSTUSDT": {
+      "native15m": 63092,
+      "complete1h": 15773,
+      "discarded_partial_or_gap_groups": "No approximation permitted"
+    },
+    "IOTAUSDT": {
+      "native15m": 63092,
+      "complete1h": 15773,
+      "discarded_partial_or_gap_groups": "No approximation permitted"
+    },
+    "IOUSDT": {
+      "native15m": 63092,
+      "complete1h": 15773,
+      "discarded_partial_or_gap_groups": "No approximation permitted"
+    },
+    "JASMYUSDT": {
+      "native15m": 63092,
+      "complete1h": 15773,
+      "discarded_partial_or_gap_groups": "No approximation permitted"
+    },
+    "JTOUSDT": {
+      "native15m": 63092,
+      "complete1h": 15773,
+      "discarded_partial_or_gap_groups": "No approximation permitted"
+    },
+    "JUPUSDT": {
+      "native15m": 63092,
+      "complete1h": 15773,
+      "discarded_partial_or_gap_groups": "No approximation permitted"
+    },
+    "KASUSDT": {
+      "native15m": 63092,
+      "complete1h": 15773,
+      "discarded_partial_or_gap_groups": "No approximation permitted"
+    },
+    "KAVAUSDT": {
+      "native15m": 63092,
+      "complete1h": 15773,
+      "discarded_partial_or_gap_groups": "No approximation permitted"
+    },
+    "KSMUSDT": {
+      "native15m": 63092,
+      "complete1h": 15773,
+      "discarded_partial_or_gap_groups": "No approximation permitted"
+    },
+    "LDOUSDT": {
+      "native15m": 63092,
+      "complete1h": 15773,
+      "discarded_partial_or_gap_groups": "No approximation permitted"
+    },
+    "LINKUSDT": {
+      "native15m": 63092,
+      "complete1h": 15773,
+      "discarded_partial_or_gap_groups": "No approximation permitted"
+    },
+    "LPTUSDT": {
+      "native15m": 63092,
+      "complete1h": 15773,
+      "discarded_partial_or_gap_groups": "No approximation permitted"
+    },
+    "LSKUSDT": {
+      "native15m": 63092,
+      "complete1h": 15773,
+      "discarded_partial_or_gap_groups": "No approximation permitted"
+    },
+    "LTCUSDT": {
+      "native15m": 63092,
+      "complete1h": 15773,
+      "discarded_partial_or_gap_groups": "No approximation permitted"
+    },
+    "MANAUSDT": {
+      "native15m": 63092,
+      "complete1h": 15773,
+      "discarded_partial_or_gap_groups": "No approximation permitted"
+    },
+    "MEMEUSDT": {
+      "native15m": 63092,
+      "complete1h": 15773,
+      "discarded_partial_or_gap_groups": "No approximation permitted"
+    },
+    "MINAUSDT": {
+      "native15m": 63092,
+      "complete1h": 15773,
+      "discarded_partial_or_gap_groups": "No approximation permitted"
+    },
+    "MOVRUSDT": {
+      "native15m": 63092,
+      "complete1h": 15773,
+      "discarded_partial_or_gap_groups": "No approximation permitted"
+    },
+    "NEARUSDT": {
+      "native15m": 63092,
+      "complete1h": 15773,
+      "discarded_partial_or_gap_groups": "No approximation permitted"
+    },
+    "NEIROUSDT": {
+      "native15m": 63092,
+      "complete1h": 15773,
+      "discarded_partial_or_gap_groups": "No approximation permitted"
+    },
+    "NEOUSDT": {
+      "native15m": 63092,
+      "complete1h": 15773,
+      "discarded_partial_or_gap_groups": "No approximation permitted"
+    },
+    "NOTUSDT": {
+      "native15m": 63092,
+      "complete1h": 15773,
+      "discarded_partial_or_gap_groups": "No approximation permitted"
+    },
+    "ONDOUSDT": {
+      "native15m": 63092,
+      "complete1h": 15773,
+      "discarded_partial_or_gap_groups": "No approximation permitted"
+    },
+    "ONEUSDT": {
+      "native15m": 63092,
+      "complete1h": 15773,
+      "discarded_partial_or_gap_groups": "No approximation permitted"
+    },
+    "ONGUSDT": {
+      "native15m": 63092,
+      "complete1h": 15773,
+      "discarded_partial_or_gap_groups": "No approximation permitted"
+    },
+    "ONTUSDT": {
+      "native15m": 63092,
+      "complete1h": 15773,
+      "discarded_partial_or_gap_groups": "No approximation permitted"
+    },
+    "OPUSDT": {
+      "native15m": 63092,
+      "complete1h": 15773,
+      "discarded_partial_or_gap_groups": "No approximation permitted"
+    },
+    "ORDIUSDT": {
+      "native15m": 63092,
+      "complete1h": 15773,
+      "discarded_partial_or_gap_groups": "No approximation permitted"
+    },
+    "PENDLEUSDT": {
+      "native15m": 63092,
+      "complete1h": 15773,
+      "discarded_partial_or_gap_groups": "No approximation permitted"
+    },
+    "PEOPLEUSDT": {
+      "native15m": 63092,
+      "complete1h": 15773,
+      "discarded_partial_or_gap_groups": "No approximation permitted"
+    },
+    "POLUSDT": {
+      "native15m": 63092,
+      "complete1h": 15773,
+      "discarded_partial_or_gap_groups": "No approximation permitted"
+    },
+    "POPCATUSDT": {
+      "native15m": 63092,
+      "complete1h": 15773,
+      "discarded_partial_or_gap_groups": "No approximation permitted"
+    },
+    "PORTALUSDT": {
+      "native15m": 63092,
+      "complete1h": 15773,
+      "discarded_partial_or_gap_groups": "No approximation permitted"
+    },
+    "PYTHUSDT": {
+      "native15m": 63092,
+      "complete1h": 15773,
+      "discarded_partial_or_gap_groups": "No approximation permitted"
+    },
+    "QNTUSDT": {
+      "native15m": 63092,
+      "complete1h": 15773,
+      "discarded_partial_or_gap_groups": "No approximation permitted"
+    },
+    "RENDERUSDT": {
+      "native15m": 63092,
+      "complete1h": 15773,
+      "discarded_partial_or_gap_groups": "No approximation permitted"
+    },
+    "REZUSDT": {
+      "native15m": 63092,
+      "complete1h": 15773,
+      "discarded_partial_or_gap_groups": "No approximation permitted"
+    },
+    "RIFUSDT": {
+      "native15m": 63092,
+      "complete1h": 15773,
+      "discarded_partial_or_gap_groups": "No approximation permitted"
+    },
+    "ROSEUSDT": {
+      "native15m": 63092,
+      "complete1h": 15773,
+      "discarded_partial_or_gap_groups": "No approximation permitted"
+    },
+    "RSRUSDT": {
+      "native15m": 63092,
+      "complete1h": 15773,
+      "discarded_partial_or_gap_groups": "No approximation permitted"
+    },
+    "RUNEUSDT": {
+      "native15m": 63092,
+      "complete1h": 15773,
+      "discarded_partial_or_gap_groups": "No approximation permitted"
+    },
+    "RVNUSDT": {
+      "native15m": 63092,
+      "complete1h": 15773,
+      "discarded_partial_or_gap_groups": "No approximation permitted"
+    },
+    "SAGAUSDT": {
+      "native15m": 63092,
+      "complete1h": 15773,
+      "discarded_partial_or_gap_groups": "No approximation permitted"
+    },
+    "SANDUSDT": {
+      "native15m": 63092,
+      "complete1h": 15773,
+      "discarded_partial_or_gap_groups": "No approximation permitted"
+    },
+    "SEIUSDT": {
+      "native15m": 63092,
+      "complete1h": 15773,
+      "discarded_partial_or_gap_groups": "No approximation permitted"
+    },
+    "SNXUSDT": {
+      "native15m": 63092,
+      "complete1h": 15773,
+      "discarded_partial_or_gap_groups": "No approximation permitted"
+    },
+    "SOLUSDT": {
+      "native15m": 63092,
+      "complete1h": 15773,
+      "discarded_partial_or_gap_groups": "No approximation permitted"
+    },
+    "STRKUSDT": {
+      "native15m": 63092,
+      "complete1h": 15773,
+      "discarded_partial_or_gap_groups": "No approximation permitted"
+    },
+    "STXUSDT": {
+      "native15m": 63092,
+      "complete1h": 15773,
+      "discarded_partial_or_gap_groups": "No approximation permitted"
+    },
+    "SUIUSDT": {
+      "native15m": 63092,
+      "complete1h": 15773,
+      "discarded_partial_or_gap_groups": "No approximation permitted"
+    },
+    "SUPERUSDT": {
+      "native15m": 63092,
+      "complete1h": 15773,
+      "discarded_partial_or_gap_groups": "No approximation permitted"
+    },
+    "SUSHIUSDT": {
+      "native15m": 63092,
+      "complete1h": 15773,
+      "discarded_partial_or_gap_groups": "No approximation permitted"
+    },
+    "SYNUSDT": {
+      "native15m": 63092,
+      "complete1h": 15773,
+      "discarded_partial_or_gap_groups": "No approximation permitted"
+    },
+    "TAOUSDT": {
+      "native15m": 63092,
+      "complete1h": 15773,
+      "discarded_partial_or_gap_groups": "No approximation permitted"
+    },
+    "THETAUSDT": {
+      "native15m": 63092,
+      "complete1h": 15773,
+      "discarded_partial_or_gap_groups": "No approximation permitted"
+    },
+    "TIAUSDT": {
+      "native15m": 63092,
+      "complete1h": 15773,
+      "discarded_partial_or_gap_groups": "No approximation permitted"
+    },
+    "TLMUSDT": {
+      "native15m": 63092,
+      "complete1h": 15773,
+      "discarded_partial_or_gap_groups": "No approximation permitted"
+    },
+    "TRBUSDT": {
+      "native15m": 63092,
+      "complete1h": 15773,
+      "discarded_partial_or_gap_groups": "No approximation permitted"
+    },
+    "TRXUSDT": {
+      "native15m": 63092,
+      "complete1h": 15773,
+      "discarded_partial_or_gap_groups": "No approximation permitted"
+    },
+    "TURBOUSDT": {
+      "native15m": 63092,
+      "complete1h": 15773,
+      "discarded_partial_or_gap_groups": "No approximation permitted"
+    },
+    "TUSDT": {
+      "native15m": 63092,
+      "complete1h": 15773,
+      "discarded_partial_or_gap_groups": "No approximation permitted"
+    },
+    "TWTUSDT": {
+      "native15m": 63092,
+      "complete1h": 15773,
+      "discarded_partial_or_gap_groups": "No approximation permitted"
+    },
+    "UNIUSDT": {
+      "native15m": 63092,
+      "complete1h": 15773,
+      "discarded_partial_or_gap_groups": "No approximation permitted"
+    },
+    "VETUSDT": {
+      "native15m": 63092,
+      "complete1h": 15773,
+      "discarded_partial_or_gap_groups": "No approximation permitted"
+    },
+    "WIFUSDT": {
+      "native15m": 63092,
+      "complete1h": 15773,
+      "discarded_partial_or_gap_groups": "No approximation permitted"
+    },
+    "WLDUSDT": {
+      "native15m": 63092,
+      "complete1h": 15773,
+      "discarded_partial_or_gap_groups": "No approximation permitted"
+    },
+    "WUSDT": {
+      "native15m": 63092,
+      "complete1h": 15773,
+      "discarded_partial_or_gap_groups": "No approximation permitted"
+    },
+    "XLMUSDT": {
+      "native15m": 63092,
+      "complete1h": 15773,
+      "discarded_partial_or_gap_groups": "No approximation permitted"
+    },
+    "XMRUSDT": {
+      "native15m": 63092,
+      "complete1h": 15773,
+      "discarded_partial_or_gap_groups": "No approximation permitted"
+    },
+    "XRPUSDT": {
+      "native15m": 63092,
+      "complete1h": 15773,
+      "discarded_partial_or_gap_groups": "No approximation permitted"
+    },
+    "XTZUSDT": {
+      "native15m": 63092,
+      "complete1h": 15773,
+      "discarded_partial_or_gap_groups": "No approximation permitted"
+    },
+    "XVGUSDT": {
+      "native15m": 63092,
+      "complete1h": 15773,
+      "discarded_partial_or_gap_groups": "No approximation permitted"
+    },
+    "ZECUSDT": {
+      "native15m": 63092,
+      "complete1h": 15773,
+      "discarded_partial_or_gap_groups": "No approximation permitted"
+    },
+    "ZENUSDT": {
+      "native15m": 63092,
+      "complete1h": 15773,
+      "discarded_partial_or_gap_groups": "No approximation permitted"
+    },
+    "ZILUSDT": {
+      "native15m": 63092,
+      "complete1h": 15773,
+      "discarded_partial_or_gap_groups": "No approximation permitted"
+    },
+    "ZKUSDT": {
+      "native15m": 63092,
+      "complete1h": 15773,
+      "discarded_partial_or_gap_groups": "No approximation permitted"
+    },
+    "ZROUSDT": {
+      "native15m": 63092,
+      "complete1h": 15773,
+      "discarded_partial_or_gap_groups": "No approximation permitted"
+    }
+  },
+  "feature_counts": {
+    "1000BONKUSDT": {
+      "funding_rate": 5778,
+      "mark_price": 23092,
+      "index_price": 23092,
+      "basis_bps": 23092
+    },
+    "1000PEPEUSDT": {
+      "funding_rate": 3493,
+      "mark_price": 27915,
+      "index_price": 27915,
+      "basis_bps": 27915
+    },
+    "1000SHIBUSDT": {
+      "funding_rate": 5259,
+      "mark_price": 42023,
+      "index_price": 42023,
+      "basis_bps": 42023
+    },
+    "AAVEUSDT": {
+      "funding_rate": 5259,
+      "mark_price": 42023,
+      "index_price": 42023,
+      "basis_bps": 42023
+    },
+    "ADAUSDT": {
+      "funding_rate": 5259,
+      "mark_price": 42023,
+      "index_price": 42023,
+      "basis_bps": 42023
+    },
+    "APTUSDT": {
+      "funding_rate": 4090,
+      "mark_price": 32672,
+      "index_price": 32672,
+      "basis_bps": 32672
+    },
+    "ARBUSDT": {
+      "funding_rate": 3623,
+      "mark_price": 28944,
+      "index_price": 28944,
+      "basis_bps": 28944
+    },
+    "AVAXUSDT": {
+      "funding_rate": 5259,
+      "mark_price": 42023,
+      "index_price": 42023,
+      "basis_bps": 42023
+    },
+    "BCHUSDT": {
+      "funding_rate": 5259,
+      "mark_price": 42023,
+      "index_price": 42023,
+      "basis_bps": 42023
+    },
+    "BNBUSDT": {
+      "funding_rate": 5259,
+      "mark_price": 42023,
+      "index_price": 42023,
+      "basis_bps": 42023
+    },
+    "BTCUSDT": {
+      "funding_rate": 5259,
+      "mark_price": 42023,
+      "index_price": 42023,
+      "basis_bps": 42023
+    },
+    "CRVUSDT": {
+      "funding_rate": 5259,
+      "mark_price": 42023,
+      "index_price": 42023,
+      "basis_bps": 42023
+    },
+    "DASHUSDT": {
+      "funding_rate": 5259,
+      "mark_price": 42023,
+      "index_price": 42023,
+      "basis_bps": 42023
+    },
+    "DOGEUSDT": {
+      "funding_rate": 5259,
+      "mark_price": 42023,
+      "index_price": 42023,
+      "basis_bps": 42023
+    },
+    "DOTUSDT": {
+      "funding_rate": 5259,
+      "mark_price": 42023,
+      "index_price": 42023,
+      "basis_bps": 42023
+    },
+    "ENAUSDT": {
+      "funding_rate": 4986,
+      "mark_price": 19929,
+      "index_price": 19929,
+      "basis_bps": 19929
+    },
+    "ETHUSDT": {
+      "funding_rate": 5259,
+      "mark_price": 42023,
+      "index_price": 42023,
+      "basis_bps": 42023
+    },
+    "FETUSDT": {
+      "funding_rate": 3821,
+      "mark_price": 30533,
+      "index_price": 30556,
+      "basis_bps": 30503
+    },
+    "FILUSDT": {
+      "funding_rate": 5259,
+      "mark_price": 42023,
+      "index_price": 42023,
+      "basis_bps": 42023
+    },
+    "HBARUSDT": {
+      "funding_rate": 5259,
+      "mark_price": 42023,
+      "index_price": 42023,
+      "basis_bps": 42023
+    },
+    "LINKUSDT": {
+      "funding_rate": 5259,
+      "mark_price": 42023,
+      "index_price": 42023,
+      "basis_bps": 42023
+    },
+    "LTCUSDT": {
+      "funding_rate": 5259,
+      "mark_price": 42023,
+      "index_price": 42023,
+      "basis_bps": 42023
+    },
+    "NEARUSDT": {
+      "funding_rate": 5259,
+      "mark_price": 42023,
+      "index_price": 42023,
+      "basis_bps": 42023
+    },
+    "ONDOUSDT": {
+      "funding_rate": 5424,
+      "mark_price": 21679,
+      "index_price": 21679,
+      "basis_bps": 21679
+    },
+    "OPUSDT": {
+      "funding_rate": 4508,
+      "mark_price": 36022,
+      "index_price": 36022,
+      "basis_bps": 36022
+    },
+    "SOLUSDT": {
+      "funding_rate": 5334,
+      "mark_price": 42023,
+      "index_price": 42023,
+      "basis_bps": 42023
+    },
+    "SUIUSDT": {
+      "funding_rate": 3499,
+      "mark_price": 27962,
+      "index_price": 27962,
+      "basis_bps": 27962
+    },
+    "TAOUSDT": {
+      "funding_rate": 4932,
+      "mark_price": 19711,
+      "index_price": 19711,
+      "basis_bps": 19711
+    },
+    "TRXUSDT": {
+      "funding_rate": 5259,
+      "mark_price": 42023,
+      "index_price": 42023,
+      "basis_bps": 42023
+    },
+    "UNIUSDT": {
+      "funding_rate": 5259,
+      "mark_price": 42023,
+      "index_price": 42023,
+      "basis_bps": 42023
+    },
+    "WIFUSDT": {
+      "funding_rate": 5436,
+      "mark_price": 21725,
+      "index_price": 21725,
+      "basis_bps": 21725
+    },
+    "WLDUSDT": {
+      "funding_rate": 3253,
+      "mark_price": 25996,
+      "index_price": 25996,
+      "basis_bps": 25996
+    },
+    "XLMUSDT": {
+      "funding_rate": 5259,
+      "mark_price": 42023,
+      "index_price": 42023,
+      "basis_bps": 42023
+    },
+    "XRPUSDT": {
+      "funding_rate": 5259,
+      "mark_price": 42023,
+      "index_price": 42023,
+      "basis_bps": 42023
+    },
+    "ZECUSDT": {
+      "funding_rate": 5259,
+      "mark_price": 42023,
+      "index_price": 42023,
+      "basis_bps": 42023
+    }
+  },
+  "decision_join_coverage": {
+    "1000BONKUSDT": {
+      "decision_hours": 15711,
+      "known_three_strictly_prior_funding": 15711,
+      "fresh_exact_mark_index_basis": 15711,
+      "causality_violations": 0
+    },
+    "1000PEPEUSDT": {
+      "decision_hours": 15711,
+      "known_three_strictly_prior_funding": 15711,
+      "fresh_exact_mark_index_basis": 15711,
+      "causality_violations": 0
+    },
+    "1000SHIBUSDT": {
+      "decision_hours": 15711,
+      "known_three_strictly_prior_funding": 15711,
+      "fresh_exact_mark_index_basis": 15711,
+      "causality_violations": 0
+    },
+    "AAVEUSDT": {
+      "decision_hours": 15711,
+      "known_three_strictly_prior_funding": 15711,
+      "fresh_exact_mark_index_basis": 15711,
+      "causality_violations": 0
+    },
+    "ADAUSDT": {
+      "decision_hours": 15711,
+      "known_three_strictly_prior_funding": 15711,
+      "fresh_exact_mark_index_basis": 15711,
+      "causality_violations": 0
+    },
+    "APTUSDT": {
+      "decision_hours": 15711,
+      "known_three_strictly_prior_funding": 15711,
+      "fresh_exact_mark_index_basis": 15711,
+      "causality_violations": 0
+    },
+    "ARBUSDT": {
+      "decision_hours": 15711,
+      "known_three_strictly_prior_funding": 15711,
+      "fresh_exact_mark_index_basis": 15711,
+      "causality_violations": 0
+    },
+    "AVAXUSDT": {
+      "decision_hours": 15711,
+      "known_three_strictly_prior_funding": 15711,
+      "fresh_exact_mark_index_basis": 15711,
+      "causality_violations": 0
+    },
+    "BCHUSDT": {
+      "decision_hours": 15711,
+      "known_three_strictly_prior_funding": 15711,
+      "fresh_exact_mark_index_basis": 15711,
+      "causality_violations": 0
+    },
+    "BNBUSDT": {
+      "decision_hours": 15711,
+      "known_three_strictly_prior_funding": 15711,
+      "fresh_exact_mark_index_basis": 15711,
+      "causality_violations": 0
+    },
+    "BTCUSDT": {
+      "decision_hours": 15711,
+      "known_three_strictly_prior_funding": 15711,
+      "fresh_exact_mark_index_basis": 15711,
+      "causality_violations": 0
+    },
+    "CRVUSDT": {
+      "decision_hours": 15711,
+      "known_three_strictly_prior_funding": 15711,
+      "fresh_exact_mark_index_basis": 15711,
+      "causality_violations": 0
+    },
+    "DASHUSDT": {
+      "decision_hours": 15711,
+      "known_three_strictly_prior_funding": 15711,
+      "fresh_exact_mark_index_basis": 15711,
+      "causality_violations": 0
+    },
+    "DOGEUSDT": {
+      "decision_hours": 15711,
+      "known_three_strictly_prior_funding": 15711,
+      "fresh_exact_mark_index_basis": 15711,
+      "causality_violations": 0
+    },
+    "DOTUSDT": {
+      "decision_hours": 15711,
+      "known_three_strictly_prior_funding": 15711,
+      "fresh_exact_mark_index_basis": 15711,
+      "causality_violations": 0
+    },
+    "ENAUSDT": {
+      "decision_hours": 15711,
+      "known_three_strictly_prior_funding": 15711,
+      "fresh_exact_mark_index_basis": 15711,
+      "causality_violations": 0
+    },
+    "ETHUSDT": {
+      "decision_hours": 15711,
+      "known_three_strictly_prior_funding": 15711,
+      "fresh_exact_mark_index_basis": 15711,
+      "causality_violations": 0
+    },
+    "FETUSDT": {
+      "decision_hours": 15711,
+      "known_three_strictly_prior_funding": 15711,
+      "fresh_exact_mark_index_basis": 15679,
+      "causality_violations": 0
+    },
+    "FILUSDT": {
+      "decision_hours": 15711,
+      "known_three_strictly_prior_funding": 15711,
+      "fresh_exact_mark_index_basis": 15711,
+      "causality_violations": 0
+    },
+    "HBARUSDT": {
+      "decision_hours": 15711,
+      "known_three_strictly_prior_funding": 15711,
+      "fresh_exact_mark_index_basis": 15711,
+      "causality_violations": 0
+    },
+    "LINKUSDT": {
+      "decision_hours": 15711,
+      "known_three_strictly_prior_funding": 15711,
+      "fresh_exact_mark_index_basis": 15711,
+      "causality_violations": 0
+    },
+    "LTCUSDT": {
+      "decision_hours": 15711,
+      "known_three_strictly_prior_funding": 15711,
+      "fresh_exact_mark_index_basis": 15711,
+      "causality_violations": 0
+    },
+    "NEARUSDT": {
+      "decision_hours": 15711,
+      "known_three_strictly_prior_funding": 15711,
+      "fresh_exact_mark_index_basis": 15711,
+      "causality_violations": 0
+    },
+    "ONDOUSDT": {
+      "decision_hours": 15711,
+      "known_three_strictly_prior_funding": 15711,
+      "fresh_exact_mark_index_basis": 15711,
+      "causality_violations": 0
+    },
+    "OPUSDT": {
+      "decision_hours": 15711,
+      "known_three_strictly_prior_funding": 15711,
+      "fresh_exact_mark_index_basis": 15711,
+      "causality_violations": 0
+    },
+    "SOLUSDT": {
+      "decision_hours": 15711,
+      "known_three_strictly_prior_funding": 15711,
+      "fresh_exact_mark_index_basis": 15711,
+      "causality_violations": 0
+    },
+    "SUIUSDT": {
+      "decision_hours": 15711,
+      "known_three_strictly_prior_funding": 15711,
+      "fresh_exact_mark_index_basis": 15711,
+      "causality_violations": 0
+    },
+    "TAOUSDT": {
+      "decision_hours": 15711,
+      "known_three_strictly_prior_funding": 15711,
+      "fresh_exact_mark_index_basis": 15711,
+      "causality_violations": 0
+    },
+    "TRXUSDT": {
+      "decision_hours": 15711,
+      "known_three_strictly_prior_funding": 15711,
+      "fresh_exact_mark_index_basis": 15711,
+      "causality_violations": 0
+    },
+    "UNIUSDT": {
+      "decision_hours": 15711,
+      "known_three_strictly_prior_funding": 15711,
+      "fresh_exact_mark_index_basis": 15711,
+      "causality_violations": 0
+    },
+    "WIFUSDT": {
+      "decision_hours": 15711,
+      "known_three_strictly_prior_funding": 15711,
+      "fresh_exact_mark_index_basis": 15711,
+      "causality_violations": 0
+    },
+    "WLDUSDT": {
+      "decision_hours": 15711,
+      "known_three_strictly_prior_funding": 15711,
+      "fresh_exact_mark_index_basis": 15711,
+      "causality_violations": 0
+    },
+    "XLMUSDT": {
+      "decision_hours": 15711,
+      "known_three_strictly_prior_funding": 15711,
+      "fresh_exact_mark_index_basis": 15711,
+      "causality_violations": 0
+    },
+    "XRPUSDT": {
+      "decision_hours": 15711,
+      "known_three_strictly_prior_funding": 15711,
+      "fresh_exact_mark_index_basis": 15711,
+      "causality_violations": 0
+    },
+    "ZECUSDT": {
+      "decision_hours": 15711,
+      "known_three_strictly_prior_funding": 15711,
+      "fresh_exact_mark_index_basis": 15711,
+      "causality_violations": 0
+    }
+  },
+  "checks": [
+    "15m positive finite OHLCV, sorted unique aligned opens and closed upper bound",
+    "exact complete aligned4x15m hourly aggregation, gaps/partial groups omitted",
+    "672 contiguous finite returns required per asset and both factors, full-rank OLS, current-window coefficients only",
+    "mark/index/basis exact timestamp join and closed-hour stamp, age <=1h+1ms at decision and convergence exit",
+    "funding settlements strictly before decision, three prior settlements, latest age<=12h; realized future cashflow confined to label path",
+    "fold purge uses entire registered horizon before any outcome",
+    "forward-only observations excluded by DB/source/feature identity"
+  ],
+  "provenance_limit": "Historical provider closed-hour/settlement timestamps are reconstructed causal availability, not contemporaneous ingestion-vintage proof; late backfill ingestion is explicitly disclosed by the frozen registry.",
+  "evaluator_source_sha256": {
+    "scripts\\evaluate_cati_edge003.py": "c93ce5804d4554ed69f03ec470f27553616a7d59034e062a89f9e1665c53c7a3",
+    "scripts\\evaluate_cati_alpha.py": "27b6812f733eeaa0860d541da0b57ddf7341aa6422760015a8f56eb702dff848",
+    "backends\\bot-backend\\app\\trading_intelligence\\setups\\alpha_v2.py": "0bb9b64e15c9da1523a9412785727adb386013fabd415457a952355b2206423d",
+    "backends\\bot-backend\\tests\\test_cati_edge003.py": "95b9256210a8b072a1cac01ba2335fc42c597c8396fac6d1bd233e6a2fd580bc"
+  },
+  "python": "3.12.2 (tags/v3.12.2:6abddd9, Feb  6 2024, 21:26:36) [MSC v.1937 64 bit (AMD64)]",
+  "numpy": "2.4.1",
+  "pandas": "3.0.0",
+  "authorizing_brief_sha256": "6e2524b861f7fdd19c959f1268509472dcba48e12fdacca7de4d7335b24f9101",
+  "implementation_choices_fixed_before_outcomes": [
+    "Existing CATI simple14-hour ATR; prior24-hour swings exclude current hour.",
+    "OLS residual variance uses ddof1; inverse-volatility weights normalize gross notional1.",
+    "Prior168-hour dispersion median excludes current hour; sample dispersion ddof1.",
+    "Current coefficient estimates reconstruct both672h residual variance and24h residual sum.",
+    "Pair stop evaluated before target/convergence on synchronized hourly closes only.",
+    "Funding cashflow reference marks use latest causal hourly close; no broker-payment evidence is claimed.",
+    "Carry gross=non-basis native-price remainder + historical mark/index basis attribution + funding contribution; basis is never double-counted.",
+    "Nonpositive stop/target or next-open gap geometry is non-executable, never resized."
+  ],
+  "audit_at": "2026-10-03T13:27:48.605229+00:00"
+}

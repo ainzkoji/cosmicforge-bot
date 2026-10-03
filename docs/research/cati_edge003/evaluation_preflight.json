@@ -1,0 +1,21 @@
+{
+  "registry_id": "CATI_NEXT_EDGE_DISCOVERY_MANDATE_003",
+  "registry_hash": "f3cac76976590fb59ae9f83252092dc484cf89e59b3880945288bc92458ce36f",
+  "source_causality_audit": "PASS",
+  "outcome_evaluation_runs_before_start": 0,
+  "outcomes_queried": false,
+  "paired_runtime_capability": "NO",
+  "historical_paired_evaluation": "DIAGNOSTIC_RESEARCH_ONLY_ALLOWED",
+  "source_hashes": {
+    "scripts/evaluate_cati_edge003.py": "c93ce5804d4554ed69f03ec470f27553616a7d59034e062a89f9e1665c53c7a3",
+    "scripts/report_cati_edge003.py": "5336a2f326a7a48d9e0d2150b56706521d5178dbf8d3862386fcf193ba146216",
+    "scripts/evaluate_cati_alpha.py": "27b6812f733eeaa0860d541da0b57ddf7341aa6422760015a8f56eb702dff848",
+    "backends/bot-backend/app/trading_intelligence/setups/alpha_v2.py": "0bb9b64e15c9da1523a9412785727adb386013fabd415457a952355b2206423d",
+    "backends/bot-backend/tests/test_cati_edge003.py": "95b9256210a8b072a1cac01ba2335fc42c597c8396fac6d1bd233e6a2fd580bc"
+  },
+  "audit_sha256": "d0933e0b30b3375ba5de29c7b729622f9e28ef94e464d5aec62cea8934ee5cd5",
+  "capability_sha256": "9025d5e837c2d977340a26cdcd106563f745fdfbb891ba1448fe561bcc93092b",
+  "fixed_before_outcomes_at": "2026-10-03T13:31:34.078416+00:00",
+  "source_commit_before_implementation": "e4d3cd16e19a16eb385a1d96e9d7dabd838f07df",
+  "minimum_evidence_and_gates": "Frozen registry, unchanged; selected portfolio economics determine economic gate. Counterfactual counts never substituted for selected-trade economics."
+}
