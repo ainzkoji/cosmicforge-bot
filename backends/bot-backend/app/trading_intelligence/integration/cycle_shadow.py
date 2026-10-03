@@ -459,6 +459,11 @@ def on_cycle_start(runner: Any) -> None:
             schedule(runner)
         except Exception as exc:
             _error("forward_observe_schedule", exc, runner)
+        try:
+            from .residual_prospective import schedule as schedule_residual
+            schedule_residual(runner)
+        except Exception as exc:
+            _error("residual_prospective_schedule", exc, runner)
         bot = _bot_id(runner)
         if not bot or getattr(runner, "_universe_runtime", None) is None:
             return  # whole-universe batching only applies to broker-universe bots
