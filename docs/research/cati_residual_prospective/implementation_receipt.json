@@ -1,0 +1,29 @@
+{
+  "start_commit": "bf23a957924fb3d3a6e7d3009f0fd9cc55039d6b",
+  "runtime_source_commit": "ddccfa1c2565c7e263cd96adc152f0c93afac7c8",
+  "registry_id": "CATI_NEXT_EDGE_DISCOVERY_MANDATE_003",
+  "registry_sha256": "f3cac76976590fb59ae9f83252092dc484cf89e59b3880945288bc92458ce36f",
+  "source_sha256": {
+    "backends/bot-backend/app/trading_intelligence/integration/residual_prospective.py": "20c1df0a63796203e70546302e04cd2969c4edafb0c44c70cff78ed5d7fc18b8",
+    "backends/bot-backend/app/trading_intelligence/integration/cycle_shadow.py": "b19161653a346376df83c6817db126def3400c5aa1c2e0465419c3d0147c3812",
+    "backends/bot-backend/tests/test_cati_residual_prospective.py": "4551e428b1f45bbe2d8c7a0ce4b1c3949516827a406d7a40e29a50fc4ec12864",
+    "scripts/cati_residual_prospective_status.py": "aedc955d4510a41278ab51c3ec7dab4952de545e13aad65ee385af6f985300e8"
+  },
+  "validation": {
+    "focused_tests_passed": 16,
+    "full_cati_runtime_tests_passed": 1442,
+    "existing_warnings": 8,
+    "full_suite_seconds": 464.72,
+    "frozen_evaluator_synthetic_parity": "PASS",
+    "registry_and_registered_source_hashes_unchanged": true
+  },
+  "no_orders": true,
+  "no_new_forecast_model": true,
+  "no_new_alpha_family": true,
+  "no_mandate004": true,
+  "no_holdout_access": true,
+  "historical_run_budget_reinvoked": false,
+  "recent_closed_candles_role": "TRAILING_NUISANCE_INPUT_WARMUP_ONLY_NOT_BACKFILLED_DECISIONS",
+  "overlap_counterfactuals_credited_as_portfolio_trades": false,
+  "controlled_restart": "Graceful release and supervised restart; one canonical runtime verified; FX processes retained."
+}

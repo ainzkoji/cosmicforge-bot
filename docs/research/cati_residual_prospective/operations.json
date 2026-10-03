@@ -1,0 +1,341 @@
+{
+  "observed_at_utc": "2026-10-03T18:02:09.893200+00:00",
+  "code_revision": "ddccfa1c2565c7e263cd96adc152f0c93afac7c8",
+  "working_tree_clean": false,
+  "runtime_components": {
+    "runtime_owns_lease": true,
+    "signal_scheduler_running": true,
+    "signal_scheduler_jobs": 2,
+    "calendar_sync_running": true,
+    "event_ingestion_running": true,
+    "adaptive_daily_risk_enabled": true,
+    "daily_hard_loss_fraction": 0.025
+  },
+  "running_sessions": [
+    {
+      "runtime_session_id": "rts_5f2d057c45b84cf89f9b",
+      "pid": 1316,
+      "started_at": "2026-10-03T17:54:17.668004+00:00",
+      "code_revision": "ddccfa1c2565c7e263cd96adc152f0c93afac7c8",
+      "working_tree_dirty": null,
+      "status": "RUNNING"
+    }
+  ],
+  "latest_cycles": [
+    {
+      "started_at": "2026-10-03T18:01:35.864232+00:00",
+      "completed_at": "2026-10-03T18:02:05.105965+00:00",
+      "symbols_seen": 57,
+      "symbols_managed": 0,
+      "new_candle_evaluations": 13,
+      "execution_attempt_count": 0,
+      "fill_count": 0,
+      "error_count": 0,
+      "reason_counts_json": "{\"CATI_OBSERVE\": 13, \"NO_NEW_CANDLE\": 44}"
+    },
+    {
+      "started_at": "2026-10-03T18:01:03.846184+00:00",
+      "completed_at": "2026-10-03T18:01:33.420619+00:00",
+      "symbols_seen": 44,
+      "symbols_managed": 0,
+      "new_candle_evaluations": 16,
+      "execution_attempt_count": 0,
+      "fill_count": 0,
+      "error_count": 0,
+      "reason_counts_json": "{\"CATI_OBSERVE\": 16, \"NO_NEW_CANDLE\": 28}"
+    },
+    {
+      "started_at": "2026-10-03T18:00:32.572774+00:00",
+      "completed_at": "2026-10-03T18:01:01.702226+00:00",
+      "symbols_seen": 28,
+      "symbols_managed": 0,
+      "new_candle_evaluations": 15,
+      "execution_attempt_count": 0,
+      "fill_count": 0,
+      "error_count": 0,
+      "reason_counts_json": "{\"CATI_OBSERVE\": 15, \"NO_NEW_CANDLE\": 13}"
+    }
+  ],
+  "latest_snapshot": {
+    "fetched_at": "2026-10-03T18:01:59.958327+00:00",
+    "closed_candle_close_time": 1791050399999,
+    "higher_timeframe_aligned": 1,
+    "source_environment": null
+  },
+  "broker_connections": [
+    {
+      "broker_id": "binance",
+      "environment": "demo",
+      "status": "connected"
+    }
+  ],
+  "global_market_state_rows": 0,
+  "process_tree": [
+    {
+      "pid": 1316,
+      "ppid": 14024,
+      "name": "python.exe",
+      "create_time": 1791050048.1191692,
+      "role": "RUNTIME"
+    },
+    {
+      "pid": 4712,
+      "ppid": 12076,
+      "name": "python.exe",
+      "create_time": 1791047955.2977662,
+      "role": "FX_WRITER"
+    },
+    {
+      "pid": 12076,
+      "ppid": 15892,
+      "name": "powershell.exe",
+      "create_time": 1791016049.386325,
+      "role": "FX_SUPERVISOR"
+    },
+    {
+      "pid": 14024,
+      "ppid": 34912,
+      "name": "python.exe",
+      "create_time": 1791050048.1100917,
+      "role": "RUNTIME"
+    },
+    {
+      "pid": 19436,
+      "ppid": 15892,
+      "name": "powershell.exe",
+      "create_time": 1791016049.4113867,
+      "role": "FX_COMPLETION"
+    },
+    {
+      "pid": 27104,
+      "ppid": 4712,
+      "name": "python.exe",
+      "create_time": 1791047955.3103852,
+      "role": "FX_WRITER"
+    }
+  ],
+  "fx_logical_writer_count": 1,
+  "fx_acquisition_plan": {
+    "pairs": 50,
+    "market_days": 652,
+    "per_pair": {
+      "AUDCAD": {
+        "done": 652,
+        "remaining": 0
+      },
+      "AUDCHF": {
+        "done": 652,
+        "remaining": 0
+      },
+      "AUDJPY": {
+        "done": 652,
+        "remaining": 0
+      },
+      "AUDNZD": {
+        "done": 652,
+        "remaining": 0
+      },
+      "AUDUSD": {
+        "done": 652,
+        "remaining": 0
+      },
+      "CADCHF": {
+        "done": 652,
+        "remaining": 0
+      },
+      "CADJPY": {
+        "done": 652,
+        "remaining": 0
+      },
+      "CHFJPY": {
+        "done": 652,
+        "remaining": 0
+      },
+      "EURAUD": {
+        "done": 652,
+        "remaining": 0
+      },
+      "EURCAD": {
+        "done": 652,
+        "remaining": 0
+      },
+      "EURCHF": {
+        "done": 652,
+        "remaining": 0
+      },
+      "EURCNH": {
+        "done": 652,
+        "remaining": 0
+      },
+      "EURDKK": {
+        "done": 652,
+        "remaining": 0
+      },
+      "EURGBP": {
+        "done": 652,
+        "remaining": 0
+      },
+      "EURHKD": {
+        "done": 652,
+        "remaining": 0
+      },
+      "EURILS": {
+        "done": 652,
+        "remaining": 0
+      },
+      "EURJPY": {
+        "done": 652,
+        "remaining": 0
+      },
+      "EURMXN": {
+        "done": 652,
+        "remaining": 0
+      },
+      "EURNOK": {
+        "done": 652,
+        "remaining": 0
+      },
+      "EURNZD": {
+        "done": 652,
+        "remaining": 0
+      },
+      "EURPLN": {
+        "done": 652,
+        "remaining": 0
+      },
+      "EURSEK": {
+        "done": 652,
+        "remaining": 0
+      },
+      "EURSGD": {
+        "done": 652,
+        "remaining": 0
+      },
+      "EURTRY": {
+        "done": 652,
+        "remaining": 0
+      },
+      "EURUSD": {
+        "done": 652,
+        "remaining": 0
+      },
+      "EURZAR": {
+        "done": 652,
+        "remaining": 0
+      },
+      "GBPAUD": {
+        "done": 652,
+        "remaining": 0
+      },
+      "GBPCAD": {
+        "done": 652,
+        "remaining": 0
+      },
+      "GBPCHF": {
+        "done": 652,
+        "remaining": 0
+      },
+      "GBPJPY": {
+        "done": 652,
+        "remaining": 0
+      },
+      "GBPNZD": {
+        "done": 652,
+        "remaining": 0
+      },
+      "GBPUSD": {
+        "done": 652,
+        "remaining": 0
+      },
+      "NZDCAD": {
+        "done": 652,
+        "remaining": 0
+      },
+      "NZDCHF": {
+        "done": 652,
+        "remaining": 0
+      },
+      "NZDJPY": {
+        "done": 502,
+        "remaining": 150
+      },
+      "NZDUSD": {
+        "done": 652,
+        "remaining": 0
+      },
+      "USDCAD": {
+        "done": 652,
+        "remaining": 0
+      },
+      "USDCHF": {
+        "done": 652,
+        "remaining": 0
+      },
+      "USDCNH": {
+        "done": 652,
+        "remaining": 0
+      },
+      "USDDKK": {
+        "done": 652,
+        "remaining": 0
+      },
+      "USDHKD": {
+        "done": 652,
+        "remaining": 0
+      },
+      "USDILS": {
+        "done": 652,
+        "remaining": 0
+      },
+      "USDJPY": {
+        "done": 652,
+        "remaining": 0
+      },
+      "USDMXN": {
+        "done": 652,
+        "remaining": 0
+      },
+      "USDNOK": {
+        "done": 652,
+        "remaining": 0
+      },
+      "USDPLN": {
+        "done": 652,
+        "remaining": 0
+      },
+      "USDSEK": {
+        "done": 652,
+        "remaining": 0
+      },
+      "USDSGD": {
+        "done": 652,
+        "remaining": 0
+      },
+      "USDTRY": {
+        "done": 652,
+        "remaining": 0
+      },
+      "USDZAR": {
+        "done": 652,
+        "remaining": 0
+      }
+    },
+    "remaining_periods": 150,
+    "remaining_requests_estimate": 300
+  },
+  "cati_runtime_log_evidence": [
+    "2026-10-03 20:01:49,510 INFO app.trading_intelligence.integration.cycle_shadow [CATI_OBSERVE] bot=bot_a8117dc719fc symbol=GOATUSDT kind=NO_CANDIDATES market_state=mkst_5e09b49243326f7a91a5c103 candidates=0 library=OUTCOME_LIBRARY_NOT_CONFIGURED reasons=- error=None execution_attempted=False",
+    "2026-10-03 20:01:51,473 INFO app.trading_intelligence.integration.cycle_shadow [CATI_OBSERVE] bot=bot_a8117dc719fc symbol=1000000MOGUSDT kind=EVALUATED market_state=mkst_9de9a07b5edac4acc2776838 candidates=1 library=OUTCOME_LIBRARY_NOT_CONFIGURED reasons=COST_UNCERTAINTY_HIGH,EVENT_SOURCE_STALE,INSUFFICIENT_SUPPORT,UNCALIBRATED_PROBABILITY error=None execution_attempted=False",
+    "2026-10-03 20:01:52,659 INFO app.trading_intelligence.integration.cycle_shadow [CATI_OBSERVE] bot=bot_a8117dc719fc symbol=APEUSDT kind=NO_CANDIDATES market_state=mkst_df73bfcac78ee955c0e237a6 candidates=0 library=OUTCOME_LIBRARY_NOT_CONFIGURED reasons=- error=None execution_attempted=False",
+    "2026-10-03 20:01:53,925 INFO app.trading_intelligence.integration.cycle_shadow [CATI_OBSERVE] bot=bot_a8117dc719fc symbol=MERLUSDT kind=NO_CANDIDATES market_state=mkst_a225e5bcddc85e5e3e24f420 candidates=0 library=OUTCOME_LIBRARY_NOT_CONFIGURED reasons=- error=None execution_attempted=False",
+    "2026-10-03 20:01:55,813 INFO app.trading_intelligence.integration.cycle_shadow [CATI_OBSERVE] bot=bot_a8117dc719fc symbol=LDOUSDT kind=EVALUATED market_state=mkst_587bda64dc97cbc8aa8d8166 candidates=1 library=OUTCOME_LIBRARY_NOT_CONFIGURED reasons=EVENT_SOURCE_STALE,INSUFFICIENT_SUPPORT,UNCALIBRATED_PROBABILITY error=None execution_attempted=False",
+    "2026-10-03 20:01:57,006 INFO app.trading_intelligence.integration.cycle_shadow [CATI_OBSERVE] bot=bot_a8117dc719fc symbol=SOPHUSDT kind=NO_CANDIDATES market_state=mkst_16dc88bf7aa303b14cdb6767 candidates=0 library=OUTCOME_LIBRARY_NOT_CONFIGURED reasons=- error=None execution_attempted=False",
+    "2026-10-03 20:01:58,890 INFO app.trading_intelligence.integration.cycle_shadow [CATI_OBSERVE] bot=bot_a8117dc719fc symbol=ATOMUSDT kind=EVALUATED market_state=mkst_b18a6ea77e500ffe15fe160b candidates=1 library=OUTCOME_LIBRARY_NOT_CONFIGURED reasons=EVENT_SOURCE_STALE,INSUFFICIENT_SUPPORT,UNCALIBRATED_PROBABILITY error=None execution_attempted=False",
+    "2026-10-03 20:02:00,084 INFO app.trading_intelligence.integration.cycle_shadow [CATI_OBSERVE] bot=bot_a8117dc719fc symbol=ESPORTSUSDT kind=NO_CANDIDATES market_state=mkst_495834a1b5e94798af0d9b95 candidates=0 library=OUTCOME_LIBRARY_NOT_CONFIGURED reasons=- error=None execution_attempted=False",
+    "2026-10-03 20:02:10,737 INFO app.trading_intelligence.integration.cycle_shadow [CATI_OBSERVE] bot=bot_a8117dc719fc symbol=BIOUSDT kind=NO_CANDIDATES market_state=mkst_5dde30bcd0b01f8215fdc5e7 candidates=0 library=OUTCOME_LIBRARY_NOT_CONFIGURED reasons=- error=None execution_attempted=False",
+    "2026-10-03 20:02:11,780 INFO app.trading_intelligence.integration.cycle_shadow [CATI_OBSERVE] bot=bot_a8117dc719fc symbol=ZILUSDT kind=NO_CANDIDATES market_state=mkst_87e45f89670a46ba530e6a47 candidates=0 library=OUTCOME_LIBRARY_NOT_CONFIGURED reasons=- error=None execution_attempted=False",
+    "2026-10-03 20:02:12,816 INFO app.trading_intelligence.integration.cycle_shadow [CATI_OBSERVE] bot=bot_a8117dc719fc symbol=RAREUSDT kind=NO_CANDIDATES market_state=mkst_1f9ca90991d20183da3810f3 candidates=0 library=OUTCOME_LIBRARY_NOT_CONFIGURED reasons=- error=None execution_attempted=False",
+    "2026-10-03 20:02:13,862 INFO app.trading_intelligence.integration.cycle_shadow [CATI_OBSERVE] bot=bot_a8117dc719fc symbol=FETUSDT kind=NO_CANDIDATES market_state=mkst_bf2a26365f1f07141736ee3a candidates=0 library=OUTCOME_LIBRARY_NOT_CONFIGURED reasons=- error=None execution_attempted=False"
+  ],
+  "holdout_queries_by_this_capture": 0
+}
