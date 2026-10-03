@@ -1,0 +1,105 @@
+{
+  "pooled": {
+    "samples": 1469,
+    "gross_R": -0.04092357318872507,
+    "net_R": -0.13813763514562288,
+    "cost_R": 0.09721406195689782,
+    "net_lower_95_R": -0.22928269436463428,
+    "days": 402,
+    "net_2x_cost_R": -0.23535169710252074,
+    "TARGET_rate": 0.28795098706603134,
+    "STOP_rate": 0.48672566371681414,
+    "TIMEOUT_rate": 0.22532334921715452,
+    "profit_rate": 0.3975493533015657,
+    "long_rate": 0.4172906739278421
+  },
+  "folds": [
+    {
+      "samples": 350,
+      "gross_R": -0.08349549602084892,
+      "net_R": -0.17738496824976688,
+      "cost_R": 0.09388947222891797,
+      "net_lower_95_R": -0.35654302947730865,
+      "days": 96,
+      "net_2x_cost_R": -0.2712744404786849,
+      "TARGET_rate": 0.2885714285714286,
+      "STOP_rate": 0.5142857142857142,
+      "TIMEOUT_rate": 0.19714285714285715,
+      "profit_rate": 0.38285714285714284,
+      "long_rate": 0.46
+    },
+    {
+      "samples": 330,
+      "gross_R": 0.011478909502727685,
+      "net_R": -0.08714863711750526,
+      "cost_R": 0.09862754662023292,
+      "net_lower_95_R": -0.27793438085280586,
+      "days": 87,
+      "net_2x_cost_R": -0.1857761837377382,
+      "TARGET_rate": 0.3,
+      "STOP_rate": 0.48484848484848486,
+      "TIMEOUT_rate": 0.21515151515151515,
+      "profit_rate": 0.43333333333333335,
+      "long_rate": 0.4484848484848485
+    },
+    {
+      "samples": 300,
+      "gross_R": -0.11822067345002767,
+      "net_R": -0.2140597429025316,
+      "cost_R": 0.09583906945250395,
+      "net_lower_95_R": -0.3923251891992444,
+      "days": 80,
+      "net_2x_cost_R": -0.3098988123550356,
+      "TARGET_rate": 0.25666666666666665,
+      "STOP_rate": 0.49666666666666665,
+      "TIMEOUT_rate": 0.24666666666666667,
+      "profit_rate": 0.36,
+      "long_rate": 0.39666666666666667
+    },
+    {
+      "samples": 285,
+      "gross_R": 0.04499939476304558,
+      "net_R": -0.0523333546368914,
+      "cost_R": 0.09733274939993697,
+      "net_lower_95_R": -0.27730314302195924,
+      "days": 72,
+      "net_2x_cost_R": -0.1496661040368284,
+      "TARGET_rate": 0.3157894736842105,
+      "STOP_rate": 0.43859649122807015,
+      "TIMEOUT_rate": 0.24561403508771928,
+      "profit_rate": 0.4245614035087719,
+      "long_rate": 0.312280701754386
+    },
+    {
+      "samples": 204,
+      "gross_R": -0.05901946576127367,
+      "net_R": -0.1615071958355458,
+      "cost_R": 0.10248773007427213,
+      "net_lower_95_R": -0.43463522134549665,
+      "days": 68,
+      "net_2x_cost_R": -0.263994925909818,
+      "TARGET_rate": 0.27450980392156865,
+      "STOP_rate": 0.4950980392156863,
+      "TIMEOUT_rate": 0.23039215686274508,
+      "profit_rate": 0.38235294117647056,
+      "long_rate": 0.47058823529411764
+    }
+  ],
+  "meaning": "Descriptive union of all four available fixed hypotheses; overlapping opportunities, no selection or portfolio interpretation.",
+  "ECONOMIC_VIABILITY_GATE": "FAIL",
+  "NEXT_CATI_MODEL_TRAINING_ALLOWED": "NO",
+  "compressed_labels_sha256": "b1046748a03bfef65335e4496caf607667426984d5642ea541d26a4adc0f6607",
+  "attempts": [
+    {
+      "attempt": 1,
+      "status": "ABORTED_SOURCE_DISCOVERY",
+      "labels": 0,
+      "reason": "No 5m panel history; original script stopped before labeling any candidate."
+    },
+    {
+      "attempt": 2,
+      "status": "COMPLETED",
+      "change": "Record missing 5m as FAIL; derive only complete 1h bars from 15m. No entry, geometry, cost, horizon or gate parameter changed."
+    }
+  ]
+}

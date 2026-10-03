@@ -1,0 +1,24 @@
+{
+  "observed_at": "2026-10-03T07:12:09.881210+00:00",
+  "runtime": {
+    "status": "STALE_LEASE",
+    "running": false,
+    "lease_owner_alive": false,
+    "authority_phase": "M0",
+    "restart_performed": false,
+    "reason": "Existing M0 router would allow legacy V2 new entries; preserved runtime/router and CATI-only requirement."
+  },
+  "fx": {
+    "status": "WAITING_ACQUISITION",
+    "remaining_periods": 3103,
+    "updated_at": "2026-10-03T06:43:48.9951135Z"
+  },
+  "fx_writer_started": false,
+  "holdout_metadata_events": {
+    "data/research/certification.db": {
+      "RESERVED": 1
+    },
+    "backends/shared/shared_lib/persistence/cosmicforge.db": {}
+  },
+  "holdout_price_query_count": 0
+}

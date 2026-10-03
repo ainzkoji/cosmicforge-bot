@@ -1,0 +1,95 @@
+{
+  "generator_id": "CATI_ALPHA_CONFIRMED_STRUCTURE_V1",
+  "label_version": "CATI_ALPHA_NEXT_OPEN_GAP_AWARE_V1",
+  "hypotheses": [
+    {
+      "family": "BREAKOUT_ACCEPTANCE",
+      "timeframe": "5m",
+      "horizon": 72,
+      "maximum_cost_R": 0.15,
+      "minimum_risk_fraction": 0.003,
+      "atr_stop_multiple": 1.5,
+      "target_atr_multiple": 3.0,
+      "minimum_target_R": 1.25
+    },
+    {
+      "family": "TREND_RECLAIM",
+      "timeframe": "5m",
+      "horizon": 72,
+      "maximum_cost_R": 0.15,
+      "minimum_risk_fraction": 0.003,
+      "atr_stop_multiple": 1.5,
+      "target_atr_multiple": 3.0,
+      "minimum_target_R": 1.25
+    },
+    {
+      "family": "BREAKOUT_ACCEPTANCE",
+      "timeframe": "15m",
+      "horizon": 32,
+      "maximum_cost_R": 0.15,
+      "minimum_risk_fraction": 0.003,
+      "atr_stop_multiple": 1.5,
+      "target_atr_multiple": 3.0,
+      "minimum_target_R": 1.25
+    },
+    {
+      "family": "TREND_RECLAIM",
+      "timeframe": "15m",
+      "horizon": 32,
+      "maximum_cost_R": 0.15,
+      "minimum_risk_fraction": 0.003,
+      "atr_stop_multiple": 1.5,
+      "target_atr_multiple": 3.0,
+      "minimum_target_R": 1.25
+    },
+    {
+      "family": "BREAKOUT_ACCEPTANCE",
+      "timeframe": "1h",
+      "horizon": 16,
+      "maximum_cost_R": 0.15,
+      "minimum_risk_fraction": 0.003,
+      "atr_stop_multiple": 1.5,
+      "target_atr_multiple": 3.0,
+      "minimum_target_R": 1.25
+    },
+    {
+      "family": "TREND_RECLAIM",
+      "timeframe": "1h",
+      "horizon": 16,
+      "maximum_cost_R": 0.15,
+      "minimum_risk_fraction": 0.003,
+      "atr_stop_multiple": 1.5,
+      "target_atr_multiple": 3.0,
+      "minimum_target_R": 1.25
+    }
+  ],
+  "costs": {
+    "fee": 0.0004,
+    "half_spread": 0.0001,
+    "slippage": 0.0002,
+    "funding_per_8h": 0.0001
+  },
+  "symbols": [
+    "ADAUSDT",
+    "BNBUSDT",
+    "BTCUSDT",
+    "DOGEUSDT",
+    "ETHUSDT",
+    "LINKUSDT",
+    "SOLUSDT",
+    "XRPUSDT"
+  ],
+  "development_start_ms": 1727275499999,
+  "development_stop_ms": 1783833299999,
+  "holdout_start_ms": 1783876499999,
+  "maximum_hypotheses": 6,
+  "maximum_evaluation_runs": 1,
+  "minimum_fold_samples": 300,
+  "minimum_fold_days": 60,
+  "gate": "Every fold gross>0 and net day-clustered 95% lower bound>0; pooled 2x-cost net>0",
+  "DEVELOPMENT_RANGE_ADAPTIVELY_INSPECTED": "YES",
+  "universe_limitation": "Fixed eight-symbol feasibility panel; not whole-universe certification. Survivorship and previously inspected development range prevent confirmation claims.",
+  "runtime_eligible": false,
+  "model_fits": 0,
+  "holdout_query_count": 0
+}

@@ -1,0 +1,1076 @@
+{
+  "generator_id": "CATI_ALPHA_CONFIRMED_STRUCTURE_V1",
+  "registry_hash": "9d0c00c72a866591eac3deae26de552ef36e8344c88bf77713a095ce7d87fb1c",
+  "results": {
+    "BREAKOUT_ACCEPTANCE_V1_5m_H72": {
+      "folds": [
+        {
+          "samples": 0,
+          "gross_R": null,
+          "net_R": null,
+          "cost_R": null,
+          "net_lower_95_R": null,
+          "days": 0
+        },
+        {
+          "samples": 0,
+          "gross_R": null,
+          "net_R": null,
+          "cost_R": null,
+          "net_lower_95_R": null,
+          "days": 0
+        },
+        {
+          "samples": 0,
+          "gross_R": null,
+          "net_R": null,
+          "cost_R": null,
+          "net_lower_95_R": null,
+          "days": 0
+        },
+        {
+          "samples": 0,
+          "gross_R": null,
+          "net_R": null,
+          "cost_R": null,
+          "net_lower_95_R": null,
+          "days": 0
+        },
+        {
+          "samples": 0,
+          "gross_R": null,
+          "net_R": null,
+          "cost_R": null,
+          "net_lower_95_R": null,
+          "days": 0
+        }
+      ],
+      "pooled": {
+        "samples": 0,
+        "gross_R": null,
+        "net_R": null,
+        "cost_R": null,
+        "net_lower_95_R": null,
+        "days": 0
+      },
+      "status": "DATA_UNAVAILABLE",
+      "reason": "missing real history: ADAUSDT/5m",
+      "ECONOMIC_VIABILITY_GATE": "FAIL",
+      "NEXT_CATI_MODEL_TRAINING_ALLOWED": "NO"
+    },
+    "TREND_RECLAIM_V1_5m_H72": {
+      "folds": [
+        {
+          "samples": 0,
+          "gross_R": null,
+          "net_R": null,
+          "cost_R": null,
+          "net_lower_95_R": null,
+          "days": 0
+        },
+        {
+          "samples": 0,
+          "gross_R": null,
+          "net_R": null,
+          "cost_R": null,
+          "net_lower_95_R": null,
+          "days": 0
+        },
+        {
+          "samples": 0,
+          "gross_R": null,
+          "net_R": null,
+          "cost_R": null,
+          "net_lower_95_R": null,
+          "days": 0
+        },
+        {
+          "samples": 0,
+          "gross_R": null,
+          "net_R": null,
+          "cost_R": null,
+          "net_lower_95_R": null,
+          "days": 0
+        },
+        {
+          "samples": 0,
+          "gross_R": null,
+          "net_R": null,
+          "cost_R": null,
+          "net_lower_95_R": null,
+          "days": 0
+        }
+      ],
+      "pooled": {
+        "samples": 0,
+        "gross_R": null,
+        "net_R": null,
+        "cost_R": null,
+        "net_lower_95_R": null,
+        "days": 0
+      },
+      "status": "DATA_UNAVAILABLE",
+      "reason": "missing real history: ADAUSDT/5m",
+      "ECONOMIC_VIABILITY_GATE": "FAIL",
+      "NEXT_CATI_MODEL_TRAINING_ALLOWED": "NO"
+    },
+    "BREAKOUT_ACCEPTANCE_V1_15m_H32": {
+      "folds": [
+        {
+          "samples": 9,
+          "gross_R": -0.24673374775423676,
+          "net_R": -0.36198461167942947,
+          "cost_R": 0.11525086392519267,
+          "net_lower_95_R": -1.0729534959611022,
+          "days": 8,
+          "net_2x_cost_R": -0.47723547560462215,
+          "TARGET_rate": 0.2222222222222222,
+          "STOP_rate": 0.5555555555555556,
+          "TIMEOUT_rate": 0.2222222222222222,
+          "profit_rate": 0.3333333333333333,
+          "long_rate": 0.5555555555555556
+        },
+        {
+          "samples": 11,
+          "gross_R": 0.5094070396942624,
+          "net_R": 0.39311121850207337,
+          "cost_R": 0.11629582119218901,
+          "net_lower_95_R": -0.4207208040251977,
+          "days": 10,
+          "net_2x_cost_R": 0.27681539730988436,
+          "TARGET_rate": 0.6363636363636364,
+          "STOP_rate": 0.36363636363636365,
+          "TIMEOUT_rate": 0.0,
+          "profit_rate": 0.6363636363636364,
+          "long_rate": 0.36363636363636365
+        },
+        {
+          "samples": 7,
+          "gross_R": 0.047179326724017034,
+          "net_R": -0.060476342005880736,
+          "cost_R": 0.10765566872989782,
+          "net_lower_95_R": -1.1556850290167064,
+          "days": 6,
+          "net_2x_cost_R": -0.16813201073577858,
+          "TARGET_rate": 0.42857142857142855,
+          "STOP_rate": 0.42857142857142855,
+          "TIMEOUT_rate": 0.14285714285714285,
+          "profit_rate": 0.42857142857142855,
+          "long_rate": 0.5714285714285714
+        },
+        {
+          "samples": 5,
+          "gross_R": 0.20297859950728459,
+          "net_R": 0.10428310929580378,
+          "cost_R": 0.0986954902114808,
+          "net_lower_95_R": -0.9429396282219852,
+          "days": 5,
+          "net_2x_cost_R": 0.005587619084323059,
+          "TARGET_rate": 0.4,
+          "STOP_rate": 0.4,
+          "TIMEOUT_rate": 0.2,
+          "profit_rate": 0.6,
+          "long_rate": 0.6
+        },
+        {
+          "samples": 3,
+          "gross_R": -1.0177494357233157,
+          "net_R": -1.1260484537662656,
+          "cost_R": 0.10829901804294999,
+          "net_lower_95_R": -1.1925843538206207,
+          "days": 3,
+          "net_2x_cost_R": -1.2343474718092158,
+          "TARGET_rate": 0.0,
+          "STOP_rate": 1.0,
+          "TIMEOUT_rate": 0.0,
+          "profit_rate": 0.0,
+          "long_rate": 0.3333333333333333
+        }
+      ],
+      "pooled": {
+        "samples": 35,
+        "gross_R": 0.04785067669381001,
+        "net_R": -0.06324863744151436,
+        "cost_R": 0.11109931413532433,
+        "net_lower_95_R": -0.4731901648336252,
+        "days": 32,
+        "net_2x_cost_R": -0.1743479515768387,
+        "TARGET_rate": 0.4,
+        "STOP_rate": 0.4857142857142857,
+        "TIMEOUT_rate": 0.11428571428571428,
+        "profit_rate": 0.45714285714285713,
+        "long_rate": 0.4857142857142857
+      },
+      "counts": {
+        "signals": 518,
+        "geometry_cost_rejected": 483,
+        "incomplete_or_boundary": 0
+      },
+      "by_instrument": {
+        "ADAUSDT": {
+          "samples": 7,
+          "gross_R": 0.527117773901593,
+          "net_R": 0.4264817479942771,
+          "cost_R": 0.10063602590731577,
+          "net_lower_95_R": -0.4091314974262588,
+          "days": 7,
+          "net_2x_cost_R": 0.32584572208696144,
+          "TARGET_rate": 0.5714285714285714,
+          "STOP_rate": 0.2857142857142857,
+          "TIMEOUT_rate": 0.14285714285714285,
+          "profit_rate": 0.7142857142857143,
+          "long_rate": 0.7142857142857143
+        },
+        "BNBUSDT": {
+          "samples": 2,
+          "gross_R": 0.15067965797424548,
+          "net_R": 0.050299704139939116,
+          "cost_R": 0.10037995383430637,
+          "net_lower_95_R": -2.1761108088088914,
+          "days": 2,
+          "net_2x_cost_R": -0.050080249694367196,
+          "TARGET_rate": 0.5,
+          "STOP_rate": 0.5,
+          "TIMEOUT_rate": 0.0,
+          "profit_rate": 0.5,
+          "long_rate": 0.5
+        },
+        "BTCUSDT": {
+          "samples": 3,
+          "gross_R": -0.20639236286839088,
+          "net_R": -0.32855792935787037,
+          "cost_R": 0.12216556648947947,
+          "net_lower_95_R": -1.8850409853505412,
+          "days": 3,
+          "net_2x_cost_R": -0.45072349584734983,
+          "TARGET_rate": 0.3333333333333333,
+          "STOP_rate": 0.6666666666666666,
+          "TIMEOUT_rate": 0.0,
+          "profit_rate": 0.3333333333333333,
+          "long_rate": 1.0
+        },
+        "DOGEUSDT": {
+          "samples": 5,
+          "gross_R": -0.26392596599241513,
+          "net_R": -0.3751742785220788,
+          "cost_R": 0.11124831252966372,
+          "net_lower_95_R": -1.3364286249349144,
+          "days": 5,
+          "net_2x_cost_R": -0.4864225910517426,
+          "TARGET_rate": 0.2,
+          "STOP_rate": 0.6,
+          "TIMEOUT_rate": 0.2,
+          "profit_rate": 0.4,
+          "long_rate": 0.4
+        },
+        "ETHUSDT": {
+          "samples": 2,
+          "gross_R": -0.5993529088578249,
+          "net_R": -0.6899064021357327,
+          "cost_R": 0.0905534932779078,
+          "net_lower_95_R": -1.4548900316965252,
+          "days": 2,
+          "net_2x_cost_R": -0.7804598954136406,
+          "TARGET_rate": 0.0,
+          "STOP_rate": 0.5,
+          "TIMEOUT_rate": 0.5,
+          "profit_rate": 0.0,
+          "long_rate": 0.0
+        },
+        "LINKUSDT": {
+          "samples": 8,
+          "gross_R": 0.24007288260353815,
+          "net_R": 0.12969306034253367,
+          "cost_R": 0.11037982226100441,
+          "net_lower_95_R": -0.857366194541396,
+          "days": 7,
+          "net_2x_cost_R": 0.019313238081529294,
+          "TARGET_rate": 0.5,
+          "STOP_rate": 0.375,
+          "TIMEOUT_rate": 0.125,
+          "profit_rate": 0.5,
+          "long_rate": 0.375
+        },
+        "SOLUSDT": {
+          "samples": 6,
+          "gross_R": -0.6229647833387812,
+          "net_R": -0.7433134664808031,
+          "cost_R": 0.1203486831420218,
+          "net_lower_95_R": -1.4795694922574212,
+          "days": 6,
+          "net_2x_cost_R": -0.8636621496228248,
+          "TARGET_rate": 0.16666666666666666,
+          "STOP_rate": 0.8333333333333334,
+          "TIMEOUT_rate": 0.0,
+          "profit_rate": 0.16666666666666666,
+          "long_rate": 0.3333333333333333
+        },
+        "XRPUSDT": {
+          "samples": 2,
+          "gross_R": 1.3191541632554946,
+          "net_R": 1.1820101732035997,
+          "cost_R": 0.13714399005189504,
+          "net_lower_95_R": 1.104600849782922,
+          "days": 2,
+          "net_2x_cost_R": 1.0448661831517048,
+          "TARGET_rate": 1.0,
+          "STOP_rate": 0.0,
+          "TIMEOUT_rate": 0.0,
+          "profit_rate": 1.0,
+          "long_rate": 0.5
+        }
+      },
+      "ECONOMIC_VIABILITY_GATE": "FAIL",
+      "NEXT_CATI_MODEL_TRAINING_ALLOWED": "NO"
+    },
+    "TREND_RECLAIM_V1_15m_H32": {
+      "folds": [
+        {
+          "samples": 229,
+          "gross_R": -0.04746883563740397,
+          "net_R": -0.1541459746199675,
+          "cost_R": 0.10667713898256351,
+          "net_lower_95_R": -0.3679964465765814,
+          "days": 83,
+          "net_2x_cost_R": -0.260823113602531,
+          "TARGET_rate": 0.3056768558951965,
+          "STOP_rate": 0.5109170305676856,
+          "TIMEOUT_rate": 0.18340611353711792,
+          "profit_rate": 0.3930131004366812,
+          "long_rate": 0.48034934497816595
+        },
+        {
+          "samples": 200,
+          "gross_R": -0.006927317321510378,
+          "net_R": -0.11668640405942508,
+          "cost_R": 0.1097590867379147,
+          "net_lower_95_R": -0.332576818408588,
+          "days": 74,
+          "net_2x_cost_R": -0.22644549079733978,
+          "TARGET_rate": 0.325,
+          "STOP_rate": 0.505,
+          "TIMEOUT_rate": 0.17,
+          "profit_rate": 0.415,
+          "long_rate": 0.4
+        },
+        {
+          "samples": 184,
+          "gross_R": -0.1710703088970986,
+          "net_R": -0.282056349488753,
+          "cost_R": 0.11098604059165451,
+          "net_lower_95_R": -0.5260658941874118,
+          "days": 63,
+          "net_2x_cost_R": -0.3930423900804076,
+          "TARGET_rate": 0.2717391304347826,
+          "STOP_rate": 0.592391304347826,
+          "TIMEOUT_rate": 0.1358695652173913,
+          "profit_rate": 0.34782608695652173,
+          "long_rate": 0.3858695652173913
+        },
+        {
+          "samples": 167,
+          "gross_R": 0.05996180484563331,
+          "net_R": -0.043868109802026524,
+          "cost_R": 0.10382991464765985,
+          "net_lower_95_R": -0.2596099883581827,
+          "days": 54,
+          "net_2x_cost_R": -0.14769802444968638,
+          "TARGET_rate": 0.32934131736526945,
+          "STOP_rate": 0.4251497005988024,
+          "TIMEOUT_rate": 0.24550898203592814,
+          "profit_rate": 0.437125748502994,
+          "long_rate": 0.3712574850299401
+        },
+        {
+          "samples": 92,
+          "gross_R": -0.033765232559432534,
+          "net_R": -0.15189630267284007,
+          "cost_R": 0.11813107011340752,
+          "net_lower_95_R": -0.5978854284066504,
+          "days": 45,
+          "net_2x_cost_R": -0.2700273727862476,
+          "TARGET_rate": 0.32608695652173914,
+          "STOP_rate": 0.532608695652174,
+          "TIMEOUT_rate": 0.14130434782608695,
+          "profit_rate": 0.3804347826086957,
+          "long_rate": 0.4782608695652174
+        }
+      ],
+      "pooled": {
+        "samples": 872,
+        "gross_R": -0.04223112803736326,
+        "net_R": -0.15118751317503193,
+        "cost_R": 0.10895638513766868,
+        "net_lower_95_R": -0.26125762568508815,
+        "days": 319,
+        "net_2x_cost_R": -0.2601438983127006,
+        "TARGET_rate": 0.30963302752293576,
+        "STOP_rate": 0.5126146788990825,
+        "TIMEOUT_rate": 0.17775229357798164,
+        "profit_rate": 0.3956422018348624,
+        "long_rate": 0.4208715596330275
+      },
+      "counts": {
+        "signals": 5122,
+        "geometry_cost_rejected": 4241,
+        "incomplete_or_boundary": 9
+      },
+      "by_instrument": {
+        "ADAUSDT": {
+          "samples": 149,
+          "gross_R": -0.019696729147938755,
+          "net_R": -0.12661494434289092,
+          "cost_R": 0.10691821519495216,
+          "net_lower_95_R": -0.3362892988833024,
+          "days": 126,
+          "net_2x_cost_R": -0.2335331595378431,
+          "TARGET_rate": 0.33557046979865773,
+          "STOP_rate": 0.5167785234899329,
+          "TIMEOUT_rate": 0.1476510067114094,
+          "profit_rate": 0.40268456375838924,
+          "long_rate": 0.436241610738255
+        },
+        "BNBUSDT": {
+          "samples": 39,
+          "gross_R": -0.1841309005169361,
+          "net_R": -0.29856546185356475,
+          "cost_R": 0.1144345613366286,
+          "net_lower_95_R": -0.629642783589009,
+          "days": 33,
+          "net_2x_cost_R": -0.4130000231901934,
+          "TARGET_rate": 0.28205128205128205,
+          "STOP_rate": 0.5384615384615384,
+          "TIMEOUT_rate": 0.1794871794871795,
+          "profit_rate": 0.3333333333333333,
+          "long_rate": 0.28205128205128205
+        },
+        "BTCUSDT": {
+          "samples": 35,
+          "gross_R": 0.24561781999764867,
+          "net_R": 0.1335959904682261,
+          "cost_R": 0.11202182952942265,
+          "net_lower_95_R": -0.2505683943730249,
+          "days": 34,
+          "net_2x_cost_R": 0.021574160938803422,
+          "TARGET_rate": 0.37142857142857144,
+          "STOP_rate": 0.34285714285714286,
+          "TIMEOUT_rate": 0.2857142857142857,
+          "profit_rate": 0.5428571428571428,
+          "long_rate": 0.34285714285714286
+        },
+        "DOGEUSDT": {
+          "samples": 137,
+          "gross_R": -0.10250952552474327,
+          "net_R": -0.21086818589814355,
+          "cost_R": 0.10835866037340026,
+          "net_lower_95_R": -0.41730083267605955,
+          "days": 107,
+          "net_2x_cost_R": -0.3192268462715438,
+          "TARGET_rate": 0.30656934306569344,
+          "STOP_rate": 0.583941605839416,
+          "TIMEOUT_rate": 0.10948905109489052,
+          "profit_rate": 0.38686131386861317,
+          "long_rate": 0.4744525547445255
+        },
+        "ETHUSDT": {
+          "samples": 117,
+          "gross_R": -0.020468158531376342,
+          "net_R": -0.1311112830272051,
+          "cost_R": 0.11064312449582873,
+          "net_lower_95_R": -0.3467261086463399,
+          "days": 97,
+          "net_2x_cost_R": -0.2417544075230338,
+          "TARGET_rate": 0.3076923076923077,
+          "STOP_rate": 0.48717948717948717,
+          "TIMEOUT_rate": 0.20512820512820512,
+          "profit_rate": 0.4017094017094017,
+          "long_rate": 0.41025641025641024
+        },
+        "LINKUSDT": {
+          "samples": 131,
+          "gross_R": -0.0032680183446420694,
+          "net_R": -0.10871529276044879,
+          "cost_R": 0.10544727441580672,
+          "net_lower_95_R": -0.3149828347802577,
+          "days": 106,
+          "net_2x_cost_R": -0.21416256717625554,
+          "TARGET_rate": 0.29770992366412213,
+          "STOP_rate": 0.4961832061068702,
+          "TIMEOUT_rate": 0.20610687022900764,
+          "profit_rate": 0.40458015267175573,
+          "long_rate": 0.48091603053435117
+        },
+        "SOLUSDT": {
+          "samples": 147,
+          "gross_R": -0.1484660603022445,
+          "net_R": -0.2583419565743534,
+          "cost_R": 0.10987589627210888,
+          "net_lower_95_R": -0.4359497147065565,
+          "days": 118,
+          "net_2x_cost_R": -0.36821785284646225,
+          "TARGET_rate": 0.2585034013605442,
+          "STOP_rate": 0.5374149659863946,
+          "TIMEOUT_rate": 0.20408163265306123,
+          "profit_rate": 0.3333333333333333,
+          "long_rate": 0.4421768707482993
+        },
+        "XRPUSDT": {
+          "samples": 117,
+          "gross_R": 0.028931207071314857,
+          "net_R": -0.0816646058577658,
+          "cost_R": 0.11059581292908066,
+          "net_lower_95_R": -0.29715435552441755,
+          "days": 98,
+          "net_2x_cost_R": -0.19226041878684647,
+          "TARGET_rate": 0.3504273504273504,
+          "STOP_rate": 0.47863247863247865,
+          "TIMEOUT_rate": 0.17094017094017094,
+          "profit_rate": 0.4358974358974359,
+          "long_rate": 0.3247863247863248
+        }
+      },
+      "ECONOMIC_VIABILITY_GATE": "FAIL",
+      "NEXT_CATI_MODEL_TRAINING_ALLOWED": "NO"
+    },
+    "BREAKOUT_ACCEPTANCE_V1_1h_H16": {
+      "folds": [
+        {
+          "samples": 2,
+          "gross_R": 0.11993721018513792,
+          "net_R": 0.07031495897222735,
+          "cost_R": 0.04962225121291058,
+          "net_lower_95_R": -0.05163429978461827,
+          "days": 2,
+          "net_2x_cost_R": 0.020692707759316774,
+          "TARGET_rate": 0.0,
+          "STOP_rate": 0.0,
+          "TIMEOUT_rate": 1.0,
+          "profit_rate": 1.0,
+          "long_rate": 0.5
+        },
+        {
+          "samples": 3,
+          "gross_R": -0.40176133000781095,
+          "net_R": -0.4744278609372361,
+          "cost_R": 0.07266653092942514,
+          "net_lower_95_R": -1.6553102165551032,
+          "days": 3,
+          "net_2x_cost_R": -0.5470943918666612,
+          "TARGET_rate": 0.0,
+          "STOP_rate": 0.6666666666666666,
+          "TIMEOUT_rate": 0.3333333333333333,
+          "profit_rate": 0.3333333333333333,
+          "long_rate": 0.6666666666666666
+        },
+        {
+          "samples": 3,
+          "gross_R": 0.4284716813986713,
+          "net_R": 0.36317255934501097,
+          "cost_R": 0.06529912205366036,
+          "net_lower_95_R": -0.41096145167599246,
+          "days": 2,
+          "net_2x_cost_R": 0.2978734372913506,
+          "TARGET_rate": 0.3333333333333333,
+          "STOP_rate": 0.0,
+          "TIMEOUT_rate": 0.6666666666666666,
+          "profit_rate": 0.6666666666666666,
+          "long_rate": 0.6666666666666666
+        },
+        {
+          "samples": 0,
+          "gross_R": null,
+          "net_R": null,
+          "cost_R": null,
+          "net_lower_95_R": null,
+          "days": 0
+        },
+        {
+          "samples": 2,
+          "gross_R": -0.4215089814718758,
+          "net_R": -0.5360476868017212,
+          "cost_R": 0.11453870532984536,
+          "net_lower_95_R": -1.6786157017568228,
+          "days": 2,
+          "net_2x_cost_R": -0.6505863921315665,
+          "TARGET_rate": 0.0,
+          "STOP_rate": 0.5,
+          "TIMEOUT_rate": 0.5,
+          "profit_rate": 0.5,
+          "long_rate": 0.5
+        }
+      ],
+      "pooled": {
+        "samples": 10,
+        "gross_R": -0.052301248840089486,
+        "net_R": -0.1265231360435663,
+        "cost_R": 0.07422188720347685,
+        "net_lower_95_R": -0.6409234181960026,
+        "days": 9,
+        "net_2x_cost_R": -0.20074502324704313,
+        "TARGET_rate": 0.1,
+        "STOP_rate": 0.3,
+        "TIMEOUT_rate": 0.6,
+        "profit_rate": 0.6,
+        "long_rate": 0.6
+      },
+      "counts": {
+        "signals": 100,
+        "geometry_cost_rejected": 88,
+        "incomplete_or_boundary": 2
+      },
+      "by_instrument": {
+        "ADAUSDT": {
+          "samples": 1,
+          "gross_R": 0.18335729116754476,
+          "net_R": 0.11895192461268134,
+          "cost_R": 0.06440536655486342,
+          "net_lower_95_R": null,
+          "days": 1,
+          "net_2x_cost_R": 0.05454655805781791,
+          "TARGET_rate": 0.0,
+          "STOP_rate": 0.0,
+          "TIMEOUT_rate": 1.0,
+          "profit_rate": 1.0,
+          "long_rate": 1.0
+        },
+        "BNBUSDT": {
+          "samples": 1,
+          "gross_R": 0.14765025901924977,
+          "net_R": 0.04689517797128988,
+          "cost_R": 0.1007550810479599,
+          "net_lower_95_R": null,
+          "days": 1,
+          "net_2x_cost_R": -0.05385990307667002,
+          "TARGET_rate": 0.0,
+          "STOP_rate": 0.0,
+          "TIMEOUT_rate": 1.0,
+          "profit_rate": 1.0,
+          "long_rate": 1.0
+        },
+        "BTCUSDT": {
+          "samples": 0,
+          "gross_R": null,
+          "net_R": null,
+          "cost_R": null,
+          "net_lower_95_R": null,
+          "days": 0
+        },
+        "DOGEUSDT": {
+          "samples": 1,
+          "gross_R": -0.16988794832900522,
+          "net_R": -0.2292769388853488,
+          "cost_R": 0.059388990556343585,
+          "net_lower_95_R": null,
+          "days": 1,
+          "net_2x_cost_R": -0.2886659294416924,
+          "TARGET_rate": 0.0,
+          "STOP_rate": 0.0,
+          "TIMEOUT_rate": 1.0,
+          "profit_rate": 0.0,
+          "long_rate": 0.0
+        },
+        "ETHUSDT": {
+          "samples": 2,
+          "gross_R": 1.0322560962101424,
+          "net_R": 0.9650802928408294,
+          "cost_R": 0.06717580336931289,
+          "net_lower_95_R": 0.5049459898857624,
+          "days": 2,
+          "net_2x_cost_R": 0.8979044894715165,
+          "TARGET_rate": 0.5,
+          "STOP_rate": 0.0,
+          "TIMEOUT_rate": 0.5,
+          "profit_rate": 1.0,
+          "long_rate": 0.5
+        },
+        "LINKUSDT": {
+          "samples": 2,
+          "gross_R": 0.11993721018513792,
+          "net_R": 0.07031495897222735,
+          "cost_R": 0.04962225121291058,
+          "net_lower_95_R": -0.05163429978461827,
+          "days": 2,
+          "net_2x_cost_R": 0.020692707759316774,
+          "TARGET_rate": 0.0,
+          "STOP_rate": 0.0,
+          "TIMEOUT_rate": 1.0,
+          "profit_rate": 1.0,
+          "long_rate": 0.5
+        },
+        "SOLUSDT": {
+          "samples": 2,
+          "gross_R": -0.993648277999384,
+          "net_R": -1.1082271229786491,
+          "cost_R": 0.11457884497926502,
+          "net_lower_95_R": -1.129323443026972,
+          "days": 2,
+          "net_2x_cost_R": -1.222805967957914,
+          "TARGET_rate": 0.0,
+          "STOP_rate": 1.0,
+          "TIMEOUT_rate": 0.0,
+          "profit_rate": 0.0,
+          "long_rate": 0.5
+        },
+        "XRPUSDT": {
+          "samples": 1,
+          "gross_R": -1.0012221470504763,
+          "net_R": -1.0561377818031008,
+          "cost_R": 0.05491563475262451,
+          "net_lower_95_R": null,
+          "days": 1,
+          "net_2x_cost_R": -1.1110534165557253,
+          "TARGET_rate": 0.0,
+          "STOP_rate": 1.0,
+          "TIMEOUT_rate": 0.0,
+          "profit_rate": 0.0,
+          "long_rate": 1.0
+        }
+      },
+      "ECONOMIC_VIABILITY_GATE": "FAIL",
+      "NEXT_CATI_MODEL_TRAINING_ALLOWED": "NO"
+    },
+    "TREND_RECLAIM_V1_1h_H16": {
+      "folds": [
+        {
+          "samples": 110,
+          "gross_R": -0.14883937215376142,
+          "net_R": -0.21516435556614041,
+          "cost_R": 0.06632498341237898,
+          "net_lower_95_R": -0.508965769210951,
+          "days": 51,
+          "net_2x_cost_R": -0.28148933897851935,
+          "TARGET_rate": 0.2636363636363636,
+          "STOP_rate": 0.5272727272727272,
+          "TIMEOUT_rate": 0.20909090909090908,
+          "profit_rate": 0.35454545454545455,
+          "long_rate": 0.4090909090909091
+        },
+        {
+          "samples": 116,
+          "gross_R": 0.006683708220592725,
+          "net_R": -0.07174749360002428,
+          "cost_R": 0.07843120182061697,
+          "net_lower_95_R": -0.3609148938189074,
+          "days": 50,
+          "net_2x_cost_R": -0.15017869542064124,
+          "TARGET_rate": 0.23275862068965517,
+          "STOP_rate": 0.45689655172413796,
+          "TIMEOUT_rate": 0.3103448275862069,
+          "profit_rate": 0.4482758620689655,
+          "long_rate": 0.5344827586206896
+        },
+        {
+          "samples": 106,
+          "gross_R": -0.05287675027553109,
+          "net_R": -0.1225069608379508,
+          "cost_R": 0.06963021056241969,
+          "net_lower_95_R": -0.3564461773543977,
+          "days": 43,
+          "net_2x_cost_R": -0.19213717140037048,
+          "TARGET_rate": 0.2169811320754717,
+          "STOP_rate": 0.3490566037735849,
+          "TIMEOUT_rate": 0.4339622641509434,
+          "profit_rate": 0.36792452830188677,
+          "long_rate": 0.39622641509433965
+        },
+        {
+          "samples": 113,
+          "gross_R": 0.01589657611248498,
+          "net_R": -0.07177386974384635,
+          "cost_R": 0.08767044585633134,
+          "net_lower_95_R": -0.47315763721952675,
+          "days": 42,
+          "net_2x_cost_R": -0.15944431560017772,
+          "TARGET_rate": 0.2920353982300885,
+          "STOP_rate": 0.46017699115044247,
+          "TIMEOUT_rate": 0.24778761061946902,
+          "profit_rate": 0.39823008849557523,
+          "long_rate": 0.21238938053097345
+        },
+        {
+          "samples": 107,
+          "gross_R": -0.04707760139923678,
+          "net_R": -0.1357267978471759,
+          "cost_R": 0.08864919644793912,
+          "net_lower_95_R": -0.44062116352637176,
+          "days": 46,
+          "net_2x_cost_R": -0.224375994295115,
+          "TARGET_rate": 0.24299065420560748,
+          "STOP_rate": 0.4485981308411215,
+          "TIMEOUT_rate": 0.308411214953271,
+          "profit_rate": 0.3925233644859813,
+          "long_rate": 0.4672897196261682
+        }
+      ],
+      "pooled": {
+        "samples": 552,
+        "gross_R": -0.04428070029264281,
+        "net_R": -0.12248141461848462,
+        "cost_R": 0.07820071432584179,
+        "net_lower_95_R": -0.26085122038329367,
+        "days": 232,
+        "net_2x_cost_R": -0.20068212894432644,
+        "TARGET_rate": 0.25,
+        "STOP_rate": 0.4492753623188406,
+        "TIMEOUT_rate": 0.3007246376811594,
+        "profit_rate": 0.39311594202898553,
+        "long_rate": 0.40398550724637683
+      },
+      "counts": {
+        "signals": 1419,
+        "geometry_cost_rejected": 860,
+        "incomplete_or_boundary": 7
+      },
+      "by_instrument": {
+        "ADAUSDT": {
+          "samples": 74,
+          "gross_R": -0.11663319168402783,
+          "net_R": -0.18229333108235168,
+          "cost_R": 0.06566013939832385,
+          "net_lower_95_R": -0.4532647100871595,
+          "days": 64,
+          "net_2x_cost_R": -0.24795347048067554,
+          "TARGET_rate": 0.21621621621621623,
+          "STOP_rate": 0.4864864864864865,
+          "TIMEOUT_rate": 0.2972972972972973,
+          "profit_rate": 0.3783783783783784,
+          "long_rate": 0.33783783783783783
+        },
+        "BNBUSDT": {
+          "samples": 56,
+          "gross_R": -0.018964608074274424,
+          "net_R": -0.11056986503595823,
+          "cost_R": 0.09160525696168377,
+          "net_lower_95_R": -0.39717476572163046,
+          "days": 47,
+          "net_2x_cost_R": -0.202175121997642,
+          "TARGET_rate": 0.23214285714285715,
+          "STOP_rate": 0.375,
+          "TIMEOUT_rate": 0.39285714285714285,
+          "profit_rate": 0.39285714285714285,
+          "long_rate": 0.44642857142857145
+        },
+        "BTCUSDT": {
+          "samples": 40,
+          "gross_R": -0.13537546175062268,
+          "net_R": -0.23985383131510876,
+          "cost_R": 0.10447836956448606,
+          "net_lower_95_R": -0.5822110448794177,
+          "days": 38,
+          "net_2x_cost_R": -0.3443322008795948,
+          "TARGET_rate": 0.25,
+          "STOP_rate": 0.475,
+          "TIMEOUT_rate": 0.275,
+          "profit_rate": 0.325,
+          "long_rate": 0.425
+        },
+        "DOGEUSDT": {
+          "samples": 77,
+          "gross_R": -0.1145100375545338,
+          "net_R": -0.1854644638835655,
+          "cost_R": 0.07095442632903169,
+          "net_lower_95_R": -0.4218433379099633,
+          "days": 71,
+          "net_2x_cost_R": -0.2564188902125972,
+          "TARGET_rate": 0.22077922077922077,
+          "STOP_rate": 0.45454545454545453,
+          "TIMEOUT_rate": 0.3246753246753247,
+          "profit_rate": 0.33766233766233766,
+          "long_rate": 0.35064935064935066
+        },
+        "ETHUSDT": {
+          "samples": 73,
+          "gross_R": -0.021110123043151765,
+          "net_R": -0.10514787951165847,
+          "cost_R": 0.08403775646850671,
+          "net_lower_95_R": -0.3774864466867448,
+          "days": 66,
+          "net_2x_cost_R": -0.1891856359801652,
+          "TARGET_rate": 0.2602739726027397,
+          "STOP_rate": 0.4794520547945205,
+          "TIMEOUT_rate": 0.2602739726027397,
+          "profit_rate": 0.3972602739726027,
+          "long_rate": 0.3972602739726027
+        },
+        "LINKUSDT": {
+          "samples": 80,
+          "gross_R": -0.18538323526592948,
+          "net_R": -0.2564792694005482,
+          "cost_R": 0.07109603413461876,
+          "net_lower_95_R": -0.4714431601336593,
+          "days": 69,
+          "net_2x_cost_R": -0.327575303535167,
+          "TARGET_rate": 0.15,
+          "STOP_rate": 0.475,
+          "TIMEOUT_rate": 0.375,
+          "profit_rate": 0.375,
+          "long_rate": 0.3875
+        },
+        "SOLUSDT": {
+          "samples": 77,
+          "gross_R": 0.11086994319862205,
+          "net_R": 0.03714740125479494,
+          "cost_R": 0.07372254194382712,
+          "net_lower_95_R": -0.2212227003779244,
+          "days": 69,
+          "net_2x_cost_R": -0.036575140689032164,
+          "TARGET_rate": 0.33766233766233766,
+          "STOP_rate": 0.38961038961038963,
+          "TIMEOUT_rate": 0.2727272727272727,
+          "profit_rate": 0.45454545454545453,
+          "long_rate": 0.5194805194805194
+        },
+        "XRPUSDT": {
+          "samples": 75,
+          "gross_R": 0.09755908285457535,
+          "net_R": 0.017074425388250596,
+          "cost_R": 0.08048465746632476,
+          "net_lower_95_R": -0.24248750818959053,
+          "days": 70,
+          "net_2x_cost_R": -0.06341023207807417,
+          "TARGET_rate": 0.3333333333333333,
+          "STOP_rate": 0.4533333333333333,
+          "TIMEOUT_rate": 0.21333333333333335,
+          "profit_rate": 0.4533333333333333,
+          "long_rate": 0.38666666666666666
+        }
+      },
+      "ECONOMIC_VIABILITY_GATE": "FAIL",
+      "NEXT_CATI_MODEL_TRAINING_ALLOWED": "NO"
+    }
+  },
+  "source_queries": {
+    "ADAUSDT/15m": {
+      "rows": 62921,
+      "hash": "72ec99d169d0d1187299269d0ecf88296c61eaa3974710fa75289f1a6b4b6e41",
+      "first_open": 1727203500000,
+      "last_close": 1783832399999,
+      "derivation": "native"
+    },
+    "BNBUSDT/15m": {
+      "rows": 62921,
+      "hash": "4f002c244cac2c5b059d003da50c280408cedee210b4d1ccce8190ca95628360",
+      "first_open": 1727203500000,
+      "last_close": 1783832399999,
+      "derivation": "native"
+    },
+    "BTCUSDT/15m": {
+      "rows": 62921,
+      "hash": "3e1b8bd27bf4fd491613091a8bd99264de215a426f99430b2ddee82238f0fe25",
+      "first_open": 1727203500000,
+      "last_close": 1783832399999,
+      "derivation": "native"
+    },
+    "DOGEUSDT/15m": {
+      "rows": 62921,
+      "hash": "75105aff4c9ed22a8d9f23b44a7ad1defe3c31c6b0b03989f5fb815a3f55341e",
+      "first_open": 1727203500000,
+      "last_close": 1783832399999,
+      "derivation": "native"
+    },
+    "ETHUSDT/15m": {
+      "rows": 62921,
+      "hash": "3665b1e973f2cb912fc86df6fc11866f5e0b76ff25b20fe17e74407af4bd35cc",
+      "first_open": 1727203500000,
+      "last_close": 1783832399999,
+      "derivation": "native"
+    },
+    "LINKUSDT/15m": {
+      "rows": 62921,
+      "hash": "d4157ce16d2d64785e655d24e52f68d002505ae9879503b1bf401867950d0f4e",
+      "first_open": 1727203500000,
+      "last_close": 1783832399999,
+      "derivation": "native"
+    },
+    "SOLUSDT/15m": {
+      "rows": 62921,
+      "hash": "a15c991281229c5adfdfd08db71429b3342400798d46ce62a628d83372ade227",
+      "first_open": 1727203500000,
+      "last_close": 1783832399999,
+      "derivation": "native"
+    },
+    "XRPUSDT/15m": {
+      "rows": 62921,
+      "hash": "635bef9190b00d410a06c70d625efeab04e773b93ae93a2386b1c1e352ccb5c4",
+      "first_open": 1727203500000,
+      "last_close": 1783832399999,
+      "derivation": "native"
+    },
+    "ADAUSDT/1h": {
+      "rows": 15773,
+      "hash": "8245ab4f9e9f41a684ca1fcb18ec280a74d94b692985c52a91d367b3ce87f97d",
+      "first_open": 1727049600000,
+      "last_close": 1783832399999,
+      "derivation": "4 complete 15m bars"
+    },
+    "BNBUSDT/1h": {
+      "rows": 15773,
+      "hash": "70566ec732bdc88cff9fb83fd8df4238a99e3347993ed57990575d093763cd30",
+      "first_open": 1727049600000,
+      "last_close": 1783832399999,
+      "derivation": "4 complete 15m bars"
+    },
+    "BTCUSDT/1h": {
+      "rows": 15773,
+      "hash": "f2483b29524c62d42678d37f6cdc5867e8039652fa6a95e1e754ef5e9ea63954",
+      "first_open": 1727049600000,
+      "last_close": 1783832399999,
+      "derivation": "4 complete 15m bars"
+    },
+    "DOGEUSDT/1h": {
+      "rows": 15773,
+      "hash": "332952124d7830b019315bb0eb4fefc922d21f3fb1033329eba5aa9209c5d01b",
+      "first_open": 1727049600000,
+      "last_close": 1783832399999,
+      "derivation": "4 complete 15m bars"
+    },
+    "ETHUSDT/1h": {
+      "rows": 15773,
+      "hash": "2879c1d58b8e027cae35e56051a1c02697d8b0c0cc94dc2eb41ae6e320202338",
+      "first_open": 1727049600000,
+      "last_close": 1783832399999,
+      "derivation": "4 complete 15m bars"
+    },
+    "LINKUSDT/1h": {
+      "rows": 15773,
+      "hash": "17659423f442458d708aa86582bba4c901cda514800f77d0beef09719844a3c3",
+      "first_open": 1727049600000,
+      "last_close": 1783832399999,
+      "derivation": "4 complete 15m bars"
+    },
+    "SOLUSDT/1h": {
+      "rows": 15773,
+      "hash": "ed931f809f5a0c17eaaea39bcabb931013120792c6f367041af637d98aae10cb",
+      "first_open": 1727049600000,
+      "last_close": 1783832399999,
+      "derivation": "4 complete 15m bars"
+    },
+    "XRPUSDT/1h": {
+      "rows": 15773,
+      "hash": "d77ee1ba5f000fd776e1362e08241a682931a87429a97670fa366a86f8b67b1d",
+      "first_open": 1727049600000,
+      "last_close": 1783832399999,
+      "derivation": "4 complete 15m bars"
+    }
+  },
+  "boundary": {
+    "HOLDOUT_OPENED": "NO",
+    "HOLDOUT_QUERY_COUNT": 0,
+    "CATI_AUTHORITY": "OFF",
+    "LEGACY_V2_AUTHORITY_USED": "NO",
+    "model_fits": 0,
+    "DEVELOPMENT_RANGE_ADAPTIVELY_INSPECTED": "YES"
+  },
+  "source_commit": "e615b04d135e875a6e45976272280a232ad29a14",
+  "source_tree_dirty": true,
+  "generator_source_sha256": "310816bd9c12b58c9f285c9a0424ffe269dfd6e71f0d9a9f21f9cbe89dcd99ee",
+  "evaluator_source_sha256": "27b6812f733eeaa0860d541da0b57ddf7341aa6422760015a8f56eb702dff848",
+  "labels_sha256": "6a4a790b00575572f72b736219e257b04ef936add7b3a6b0fc0038eed63cb433",
+  "limitations": [
+    "Hypothetical overlapping per-candidate returns, not portfolio P&L or broker fills.",
+    "UTC-day normal intervals do not remove serial dependence or multiple testing.",
+    "OHLC same-bar stop first; terminal-bar excursions are censored bounds.",
+    "Modeled costs; no observed spread, slippage, funding, liquidity, breadth or borrow.",
+    "Eight-symbol panel; gate PASS alone cannot authorize runtime, training on a broader universe, holdout or production."
+  ]
+}
