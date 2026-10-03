@@ -174,3 +174,8 @@ folds, residuals, payoff diagnostics, provenance, tests and resource measurement
 ## V5 development closure
 
 V5 candidate `cati_v5_b131674954a223230581dbbc` fixes coherent joint outcome/path/event generation and meets pooled skill/ECE/sample thresholds, but fails registered late-fold robustness (folds 3 and 5). Every fold’s top expectancy bucket realizes negative net R. MODEL_READY = NO; DECISION_PAYOFF_READY = NO; REJECTED_PRE_HOLDOUT / RESEARCH_ONLY. No runtime pin or CATI authority; M0 paper runtime remains unchanged at a 2.5% hard daily loss cap. Holdout opened/inspected = NO, query count = 0. See [V5 report](cati_v5_development_report.md) and [structured result](cati_v5_development_result.json).
+
+
+## Economic edge viability audit
+
+The existing V5 audit yields primary diagnosis MIXED: weak/slightly negative gross alpha, substantial cost/geometry burden, temporal deterioration and optimistic high-score payoff estimates. All seven fixed pooled expectancy tails lose net; isolated positive threshold/group cells do not establish stable selectable edge. The full 3,007,222-candidate parent check averages -0.015416 gross and -0.155809 net R. No V6, new fit, production filter, threshold change, pin, holdout query or runtime change. M0 / CATI OFF continues. Next research: separately versioned setup/geometry alpha and execution-cost realism before further ML. See [audit report](cati_economic_edge_viability_audit.md).

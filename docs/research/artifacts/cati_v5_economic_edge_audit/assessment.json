@@ -1,0 +1,34 @@
+{
+  "PRIMARY_DIAGNOSIS": "MIXED",
+  "TEMPORAL_CLASSIFICATION": "MIXED",
+  "RANK_QUALITY_CLASSIFICATION": "D. mixed",
+  "GROSS_EDGE_POSITIVE": false,
+  "EDGE_KILLED_BY_COSTS": false,
+  "edge_killed_by_costs_scope": "Pooled gross expectancy is already negative; costs erase small early and selected-tail gross means.",
+  "pooled_cost_share_of_observed_net_loss": 0.9453721146367516,
+  "early_to_late_gross_change_R": -0.031687572433670534,
+  "early_to_late_cost_change_R": 0.02168952654542694,
+  "early_to_late_net_change_R": -0.05337709897909744,
+  "early_required_cost_reduction_fraction": 0.9231061701863542,
+  "recommended_next_research_direction": "Versioned causal setup/geometry alpha and execution-cost realism hypotheses first; no V6 on unchanged generator yet. No group exclusions or production threshold.",
+  "DEVELOPMENT_RANGE_ADAPTIVELY_INSPECTED": true,
+  "holdout_query_count": 0,
+  "governance": "M0",
+  "cati_execution": "OFF",
+  "verification_summary": "198 tests passed in 17.71 s: diagnostic arithmetic and published-evidence conservation, V5 coherence, runtime authority, adaptive daily risk, execution responsibility and hard-risk controls. Exact audit-tool/input identities and all three original frozen fingerprints are unchanged. Production forecast files were not modified.",
+  "runtime_fx_observation": "Final observation: healthy runtime PID 19436, fresh lease and all health components, paper M0, hard-loss fraction 0.025, startup-loaded revision 81aceaa6 unchanged. Existing FX supervisor 31396 and queued completion 35444 remain active; one venv writer chain (redirector 9916 \u2192 worker 19300). Latest queued status WAITING_ACQUISITION, 3,137 periods remaining at 2026-10-03T06:23:47.9146643Z. No restart, new writer or freeze claim.",
+  "tests": {
+    "passed": 198,
+    "seconds": 17.71
+  },
+  "final_report_values": {
+    "POOLED_GROSS_R": -0.008316431462944227,
+    "POOLED_COST_R": 0.14392141204214565,
+    "POOLED_NET_R": -0.15223784350508984,
+    "POOLED_SCOPE": "Exact 51,887 matched nested outer predictions",
+    "FULL_PARENT_GROSS_R": -0.01541571036405612,
+    "FULL_PARENT_NET_R": -0.15580875477756786,
+    "PRED_EXPECTED_R_SPEARMAN": 0.312094000285038,
+    "TOP_DECILE_MINUS_POPULATION_R": 0.09675281487245711
+  }
+}
