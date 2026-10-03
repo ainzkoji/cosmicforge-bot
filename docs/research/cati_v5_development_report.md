@@ -1,16 +1,12 @@
 # CATI V5 coherent joint outcome development result
 
-> Benchmark archive pending the versioned final support repair: GEN1 timeout-loss
-> atoms could exceed the closing-price upper bound when cost exceeds room. This
-> report will be replaced by the GEN2 replay result. The classifier fits and
-> inner selections are fixed; no candidate is admitted or runtime-pinned.
-
 **Joint coherence is fixed by construction. V5 remains REJECTED_PRE_HOLDOUT / RESEARCH_ONLY. MODEL_READY = NO; DECISION_PAYOFF_READY = NO.** The nested procedure meets the frozen pooled numerical thresholds (skill 0.02009139, ECE 0.01304056, n=51,887), but fails the separately registered temporal guard in folds 3 and 5. The payoff estimator improves RMSE and passes its registered statistical checks; every fold’s top expectancy bucket nevertheless realizes a negative return. No runtime pin, authority, threshold, label, cost or holdout boundary changed.
 
 ## Identity and research boundary
 
-- Candidate: `cati_v5_2130b8e979e2c5d27ea97cf8`; hash `2130b8e979e2c5d27ea97cf8c35e45cc569f50e2da3f4c4f329d26d7a65ff48e`.
+- Candidate: `cati_v5_b131674954a223230581dbbc`; hash `b131674954a223230581dbbc9d988cf9a98842055986386f29b02376cd3c7e31`.
 - Source fit/evaluation commit: `dd700907cc7211bb9749eb1c1aaa038ea12c65a8`, clean main at run start.
+- Final generator replay commit: `600dc7ccc780e46841560ee36b7208aede9de1e2`; fitted numbers remain from `dd700907cc7211bb9749eb1c1aaa038ea12c65a8`. Generation policy: `CAUSAL_TERMINAL_SUPPORT_V5_3`.
 - Feature schema: `cati-v5-joint-closed-context-geometry-1`.
 - Main start: `03b462e6a87bee4b1765ba8ebb0e39b84c9aac89`. Work and commits directly on main.
 - Existing V1–V4 and all inspected pre-holdout history remain DEVELOPMENT evidence. Outer predictions are untouched relative to their own inner fit; this is not pristine final confirmation. V4’s observed hybrid was neither promoted nor retroactively selected.
@@ -47,6 +43,8 @@ MFE/MAE distributions use state-conditioned bounded histogram means and empirica
 | state_payoff_sign_violation_count | 0 |
 
 **Profit/stop incoherence is 0%, compared with V4’s 16.4107%.** Probability normalization and conditional expectation differences are at floating-point roundoff (≤4.44e−16), within the registered 1e−12 engineering tolerance. Profit, terminal and state-weighted expected-R identities have zero measured error. No negative probabilities, probabilities over 1 or conditional payoff sign violations occur.
+
+GEN3 enforces TIMEOUT net R strictly inside touch bounds, MFE below target room and MAE below stop distance, while containing the closing payoff. TARGET requires MFE at least target room; STOP requires MAE at least one R. A TARGET atom with a subsequent stop excursion cannot target on the final bar; its event-time prior is truncated accordingly. These dependencies use the same fitted means, empirical atoms, classifier coefficients and time priors. GEN2 fixed only the TIMEOUT closing-price bound; GEN3 completes path/censoring support. No relabeling or additional fit occurred.
 
 ## Registered search and temporal selection
 
@@ -98,19 +96,21 @@ Fixed ten-bin descriptive resolution gain versus V4 is +0.00035543; reliability 
 
 ## Payoff and expectancy validation
 
+The registered statistical payoff checks PASS. Decision payoff readiness FAILS: every fold and the pooled top expectancy quintile realize negative net R. Four folds have small adjacent reversals; all remain within the registered 0.05 R inversion allowance. Neither improved RMSE nor pooled ordering establishes profitable decisions.
+
 | Quantity | MAE | RMSE | Bias |
 |---|---:|---:|---:|
-| expected_net_R | 1.13177561 | 1.35838222 | -0.01280051 |
+| expected_net_R | 1.13177561 | 1.35838222 | -0.01280052 |
 | causal_baseline_net_R | 1.15634181 | 1.38979093 | 0.00450570 |
 | conditional_positive_net_R | 0.48918125 | 0.71843956 | 0.03932589 |
-| conditional_loss_net_R | 0.12646301 | 0.23636814 | -0.01332026 |
+| conditional_loss_net_R | 0.12646301 | 0.23636814 | -0.01332027 |
 
-Terminal multiclass Brier 0.51239254 versus causal frequency baseline 0.59911512. Pooled maximum expected-R bucket bias is 0.09112145 R. Registered payoff statistical checks PASS, separately from decision readiness.
+Terminal multiclass Brier 0.51239254 versus causal frequency baseline 0.59911512. Maximum pooled quintile bias 0.09112145 R.
 
-| Path quantity | q10 / q50 / q90 coverage | 10–90 interval coverage |
+| Path quantity | q10 / q50 / q90 coverage | 10�90 interval coverage |
 |---|---|---:|
-| MFE | 0.10576830 / 0.51918592 / 0.90238403 | 0.79663500 |
-| MAE | 0.11659953 / 0.54138802 / 0.90822364 | 0.79162411 |
+| MAE | 0.11659953 / 0.54079056 / 0.90822364 | 0.79162411 |
+| MFE | 0.10576830 / 0.51837647 / 0.90196003 | 0.79621100 |
 
 | Fold | Expected-R RMSE | Causal baseline RMSE | Strict monotonicity | Largest inversion R | Top predicted R | Top realized R |
 |---|---:|---:|---|---:|---:|---:|
@@ -120,11 +120,9 @@ Terminal multiclass Brier 0.51239254 versus causal frequency baseline 0.59911512
 | 4 | 1.37601937 | 1.39234681 | False | 0.04984637 | 0.01297104 | -0.07264224 |
 | 5 | 1.35254664 | 1.36444426 | False | 0.01146148 | 0.00461336 | -0.10185519 |
 
-**Every fold’s top expectancy bucket is negative.** Four folds have strict monotonicity reversals (all below the registered 0.05 R inversion tolerance). Decision readiness fails the explicitly registered nonnegative top-bucket requirement in every fold and pooled. Pooled ranking improves, but pooled top predicted +0.01804069 R realizes −0.06606187 R. Do not infer profitable trading or hide these temporal reversals.
-
 | Fold / pooled | Quintile | Predicted mean R | Realized mean R | Samples |
 |---|---:|---:|---:|---:|
-| 1 | 1 | -0.43888932 | -0.33183057 | 2168 |
+| 1 | 1 | -0.43888934 | -0.33183057 | 2168 |
 | 1 | 2 | -0.21628669 | -0.12170480 | 2168 |
 | 1 | 3 | -0.15267054 | -0.05167611 | 2168 |
 | 1 | 4 | -0.09163887 | -0.02923530 | 2168 |
@@ -144,18 +142,18 @@ Terminal multiclass Brier 0.51239254 versus causal frequency baseline 0.59911512
 | 4 | 3 | -0.13493254 | -0.06574212 | 1962 |
 | 4 | 4 | -0.07365558 | -0.11558848 | 1963 |
 | 4 | 5 | 0.01297104 | -0.07264224 | 1963 |
-| 5 | 1 | -0.43250350 | -0.36544587 | 2006 |
+| 5 | 1 | -0.43250351 | -0.36544587 | 2006 |
 | 5 | 2 | -0.21901394 | -0.19142835 | 2005 |
 | 5 | 3 | -0.13657224 | -0.13902733 | 2005 |
 | 5 | 4 | -0.07794396 | -0.15048880 | 2005 |
 | 5 | 5 | 0.00461336 | -0.10185519 | 2006 |
-| POOLED | 1 | -0.43079841 | -0.33967696 | 10378 |
+| POOLED | 1 | -0.43079842 | -0.33967696 | 10378 |
 | POOLED | 2 | -0.21075134 | -0.16353431 | 10377 |
 | POOLED | 3 | -0.13126781 | -0.09674736 | 10377 |
 | POOLED | 4 | -0.07040695 | -0.09515896 | 10377 |
 | POOLED | 5 | 0.01804069 | -0.06606187 | 10378 |
 
-All architectures’ pooled and per-fold expectancy tables and conditional errors are also included in `architecture_results`; no candidate’s temporal reversal is omitted from the numeric evidence.
+Every architecture�s fold and pooled errors, bucket tables, quantile coverage and timing scores are retained in the numeric artifact.
 
 ## Event-time model and validation
 
@@ -165,12 +163,12 @@ Validation scores time distributions conditional on the observed terminal type (
 
 | Fold | Time MAE / baseline (bars) | CRPS / baseline | Log loss / baseline | q10 / q50 / q90 coverage |
 |---|---|---|---|---|
-| 1 | 10.128034 / 10.127485 | 6.625159 / 6.625407 | 3.571586 / 3.571634 | 0.151174 / 0.530408 / 0.910136 |
-| 2 | 10.107448 / 10.116066 | 6.615877 / 6.616653 | 3.558276 / 3.557452 | 0.163930 / 0.544935 / 0.906117 |
-| 3 | 10.354095 / 10.341005 | 6.830564 / 6.830897 | 3.588299 / 3.588263 | 0.162197 / 0.513925 / 0.896467 |
-| 4 | 10.185407 / 10.173230 | 6.744688 / 6.745057 | 3.581779 / 3.581014 | 0.162819 / 0.506711 / 0.901879 |
-| 5 | 10.143440 / 10.141136 | 6.689150 / 6.689327 | 3.581583 / 3.580362 | 0.155975 / 0.513446 / 0.905287 |
-| POOLED | 10.182424 / 10.178761 | 6.699123 / 6.699508 | 3.575989 / 3.575435 | 0.159190 / 0.522380 / 0.904067 |
+| 1 | 10.118342 / 10.127485 | 6.622210 / 6.625407 | 3.571062 / 3.571634 | 0.151174 / 0.530408 / 0.910012 |
+| 2 | 10.095978 / 10.116066 | 6.611763 / 6.616653 | 3.557688 / 3.557452 | 0.163930 / 0.544935 / 0.903442 |
+| 3 | 10.343134 / 10.341005 | 6.826553 / 6.830897 | 3.587687 / 3.588263 | 0.162197 / 0.513925 / 0.896467 |
+| 4 | 10.175187 / 10.173230 | 6.740921 / 6.745057 | 3.581693 / 3.581014 | 0.162819 / 0.506711 / 0.901879 |
+| 5 | 10.132753 / 10.141136 | 6.685390 / 6.689327 | 3.581373 / 3.580362 | 0.155975 / 0.511478 / 0.905287 |
+| POOLED | 10.171812 / 10.178761 | 6.695405 / 6.699508 | 3.575578 / 3.575435 | 0.159190 / 0.521997 / 0.903480 |
 
 Registered relative-baseline time checks PASS. Timing is near the empirical frequency baseline, not a demonstrated feature-conditioned timing edge or a fitted survival model. Discrete first-bar mass makes nominal quantile coverage coarse. Time distributions are causally fitted and bounded, with censoring reported explicitly; decision readiness remains NO for the reasons above.
 
@@ -182,14 +180,17 @@ Registered relative-baseline time checks PASS. Timing is near the empirical freq
 - The final repeat verifies memory changes only: shared category string references, read-only memmaps, sparse effects, released fit objects, streamed numeric model components with SHA-256 identity, and streamed manifest serialization. All 50 inner records, five fold reports, three architecture result sets and all 68 prediction arrays are bit-exact against the first complete run. No new hyperparameter or architecture was tried. There were 50 completed inner fits in each full run, in addition to the 30 completed records of the aborted technical run; the repeated computation is disclosed rather than hidden in the search budget.
 - First complete V5 peak: 2,171,478,016 bytes (2.02 GiB), 609.93 s. Final complete repeat: 1,879,846,912 bytes (**1.75 GiB**), 625.09 s, one fitting worker. This improves on V4’s 2.70 GiB, but **the <1.5 GiB target was not met**. No numeric precision, sample set or correctness check was weakened to claim a lower peak.
 - Compressed numeric components are plain JSON, not executable pickle/joblib. Component SHA-256 and root candidate identity are checked. Runtime mode rejects V5 regardless of statistical readiness.
-- Serialized replay and final regression totals are recorded below when complete.
+- GEN2 and final GEN3 support replays each performed zero new fits. All fitted conditional numbers and classifier parameters are unchanged; all probability vectors are bit-exact. The final repair changes expected R on only 56 selected rows and yields zero net-R support violations. GEN3 repair peak 688,836,608 bytes (0.64 GiB), 63.10 s.
+- Final serialized GEN3 replay reproduces all 15 outer classifiers and 51,887 selected joint/payoff/path forecasts exactly, including nested maturity and runtime rejection. Peak 345,088,000 bytes (0.32 GiB), 24.86 s.
+- Archived candidates cati_v5_2130b8e979e2c5d27ea97cf8 (GEN1) and cati_v5_42975f7898e66a0ef5a12fda (GEN2) are superseded research benchmarks, never runtime eligible. Their versioned generators remain reproducible. Performance/memory-parity files beside the final artifact describe the original full-fit benchmark, not a new GEN3 fit.
+- Final regression: **1,162 CATI tests passed in 389.48 s**, eight existing LightGBM feature-name warnings. Additional hard-risk and authority suites: **151 passed** (117 plus 34). Final exact serialized replay passed.
 
 ## Runtime, FX and remaining blockers
 
 The canonical paper runtime remains owner PID 19436/session rts_a605e6301df149ccb931, startup-loaded revision 81aceaa6. It was not restarted, stopped or reconfigured for this research. Current Git HEAD in a health fingerprint is not evidence that startup-loaded modules changed. Lease/scheduler/calendar/event services remain healthy; adaptive daily hard-loss cap is 0.025. Governance is M0, CATI authority/execution OFF, no library pin. The established V2 demo path at M0 is distinct from fallback; scoped CATI denial never falls back to V2.
 
-FX continues under existing supervisor PID 31396 and queued completion PID 35444. Its provider circuit breaker stopped one acquisition run after six consecutive failures; the same supervisor waited 600 seconds and resumed with one redirected venv writer. Latest recorded remaining periods: 5,705 (2026-10-02 23:23 UTC). No additional supervisor/writer was launched by this task. Completion remains acquisition → derive 5m/15m/4h → QA → strict gap classification → freeze only if PASS. UNKNOWN_GAP rules were not weakened; no acquisition/freeze completion is claimed.
+FX continues under existing supervisor PID 31396 and queued completion PID 35444. Its provider circuit breaker stopped one acquisition run after six consecutive failures; the same supervisor waited 600 seconds and resumed with one redirected venv writer. Latest recorded remaining periods: 5,564 (2026-10-02 23:53 UTC). No additional supervisor/writer was launched by this task. Completion remains acquisition → derive 5m/15m/4h → QA → strict gap classification → freeze only if PASS. UNKNOWN_GAP rules were not weakened; no acquisition/freeze completion is claimed.
 
 Remaining blockers: temporal probability admission (folds 3 and 5); negative top-bucket realized expectancy and temporal reversals; limited rare-state support and empirical timing/context integration evidence; unmet 1.5 GiB memory target; untouched reserved holdout and explicit governance before any pin/authority; separate FX completion/strict freeze dependency. No holdout was opened, inspected or queried. There is no admission checkpoint to authorize because both readiness flags remain NO.
 
-Published [root artifact](artifacts/cati_v5_2130b8e979e2c5d27ea97cf8/v5_model.json) contains all metrics, attempts, prefix provenance and component hashes; its sibling files contain the final and all outer numeric models plus memory parity evidence. [Structured result](cati_v5_development_result.json). Local preparation/prediction arrays remain reusable under `data/research/calibration_diagnostics`; no additional 3M-row reload is necessary.
+Published [root artifact](artifacts/cati_v5_b131674954a223230581dbbc/v5_model.json) contains all metrics, attempts, prefix provenance and component hashes; its sibling files contain the final and all outer numeric models plus memory parity evidence. [Structured result](cati_v5_development_result.json). Local preparation/prediction arrays remain reusable under `data/research/calibration_diagnostics`; no additional 3M-row reload is necessary.

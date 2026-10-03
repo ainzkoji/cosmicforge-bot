@@ -1,7 +1,7 @@
 {
-  "candidate_id": "cati_v5_2130b8e979e2c5d27ea97cf8",
-  "library_hash": "2130b8e979e2c5d27ea97cf8c35e45cc569f50e2da3f4c4f329d26d7a65ff48e",
-  "code_revision": "dd700907cc7211bb9749eb1c1aaa038ea12c65a8",
+  "candidate_id": "cati_v5_b131674954a223230581dbbc",
+  "library_hash": "b131674954a223230581dbbc9d988cf9a98842055986386f29b02376cd3c7e31",
+  "code_revision": "600dc7ccc780e46841560ee36b7208aede9de1e2",
   "feature_schema": "cati-v5-joint-closed-context-geometry-1",
   "metrics": {
     "brier": 0.22612597058962955,
@@ -28,9 +28,9 @@
       },
       "causal_terminal_baseline_brier": 0.599115119285731,
       "conditional_loss_net_R": {
-        "bias": -0.013320263366584878,
-        "mae": 0.12646301422635872,
-        "rmse": 0.23636814067015197
+        "bias": -0.013320266031774042,
+        "mae": 0.12646301178437985,
+        "rmse": 0.23636813958297848
       },
       "conditional_positive_net_R": {
         "bias": 0.03932588708886222,
@@ -40,11 +40,11 @@
       "expectancy_monotonic": true,
       "expected_R_buckets": [
         {
-          "bias": -0.09112144507295337,
-          "mae": 1.3586517419373312,
-          "prediction_mean": -0.4307984067036081,
+          "bias": -0.09112145358650957,
+          "mae": 1.3586517341367876,
+          "prediction_mean": -0.4307984152171643,
           "realized_mean": -0.33967696163065475,
-          "rmse": 1.6892630561173025,
+          "rmse": 1.6892630556313728,
           "samples": 10378
         },
         {
@@ -81,11 +81,11 @@
         }
       ],
       "expected_net_R": {
-        "bias": -0.012800513933962532,
-        "mae": 1.1317756073696532,
-        "rmse": 1.3583822180848375
+        "bias": -0.012800515636772217,
+        "mae": 1.1317756058094544,
+        "rmse": 1.3583822179639717
       },
-      "maximum_bucket_absolute_bias": 0.09112144507295337,
+      "maximum_bucket_absolute_bias": 0.09112145358650957,
       "maximum_expectancy_quintile_inversion_R": 0.0,
       "quantile_crossings": {},
       "quantiles": {
@@ -93,17 +93,17 @@
           "0.1": {
             "coverage": 0.11659953360186559,
             "coverage_error": 0.016599533601865585,
-            "pinball_loss": 0.22617501883691302
+            "pinball_loss": 0.22616130942507684
           },
           "0.5": {
-            "coverage": 0.5413880162661168,
-            "coverage_error": 0.04138801626611677,
-            "pinball_loss": 0.7793258781526982
+            "coverage": 0.5407905641104709,
+            "coverage_error": 0.040790564110470884,
+            "pinball_loss": 0.7793412637441741
           },
           "0.9": {
             "coverage": 0.9082236398327134,
             "coverage_error": 0.008223639832713348,
-            "pinball_loss": 0.553466575072634
+            "pinball_loss": 0.5534658125895117
           },
           "interval_10_90_coverage": 0.7916241062308478
         },
@@ -111,19 +111,19 @@
           "0.1": {
             "coverage": 0.10576830419951047,
             "coverage_error": 0.005768304199510466,
-            "pinball_loss": 0.21987343298523535
+            "pinball_loss": 0.21986827361600095
           },
           "0.5": {
-            "coverage": 0.519185923256307,
-            "coverage_error": 0.01918592325630697,
-            "pinball_loss": 0.7772573138221675
+            "coverage": 0.5183764719486577,
+            "coverage_error": 0.018376471948657658,
+            "pinball_loss": 0.7771883749104539
           },
           "0.9": {
-            "coverage": 0.902384026827529,
-            "coverage_error": 0.002384026827529029,
-            "pinball_loss": 0.5416675508391992
+            "coverage": 0.9019600285235223,
+            "coverage_error": 0.0019600285235222836,
+            "pinball_loss": 0.5417100277646592
           },
-          "interval_10_90_coverage": 0.7966349952782007
+          "interval_10_90_coverage": 0.796210996974194
         }
       },
       "terminal_multiclass_brier": 0.5123925363226631
@@ -138,12 +138,12 @@
       "causal_terminal_frequency_CRPS": 6.699507920389243,
       "causal_terminal_frequency_MAE": 10.178760538641367,
       "causal_terminal_frequency_log_loss": 3.575434548584268,
-      "conditional_CRPS": 6.699122506014313,
-      "conditional_MAE": 10.182423664717875,
-      "conditional_log_loss": 3.5759886025029886,
+      "conditional_CRPS": 6.695404908179494,
+      "conditional_MAE": 10.171812418596675,
+      "conditional_log_loss": 3.5755784076199313,
       "coverage_0.1": 0.15918961729088957,
-      "coverage_0.5": 0.5223800521179296,
-      "coverage_0.9": 0.9040672423483725,
+      "coverage_0.5": 0.5219968320474171,
+      "coverage_0.9": 0.9034796382402535,
       "event_rows": 39142,
       "timeout_censoring_rows": 12745
     },
@@ -178,9 +178,9 @@
         },
         "causal_terminal_baseline_brier": 0.6078251114011387,
         "conditional_loss_net_R": {
-          "bias": -0.007763721570202931,
-          "mae": 0.1259350550417832,
-          "rmse": 0.2283997897331164
+          "bias": -0.007763730241987759,
+          "mae": 0.12593504636999836,
+          "rmse": 0.22839978248729287
         },
         "conditional_positive_net_R": {
           "bias": -0.0012018077982673906,
@@ -190,11 +190,11 @@
         "expectancy_monotonic": false,
         "expected_R_buckets": [
           {
-            "bias": -0.1070587468065737,
-            "mae": 1.28211353083971,
-            "prediction_mean": -0.4388893173681801,
+            "bias": -0.10705877389390159,
+            "mae": 1.2821135037523823,
+            "prediction_mean": -0.43888934445550803,
             "realized_mean": -0.3318305705616064,
-            "rmse": 1.6165942868584064,
+            "rmse": 1.6165942836606892,
             "samples": 2168
           },
           {
@@ -216,7 +216,7 @@
           {
             "bias": -0.062403572650167466,
             "mae": 1.0551937884129212,
-            "prediction_mean": -0.09163886819039112,
+            "prediction_mean": -0.09163886819039113,
             "realized_mean": -0.029235295540223673,
             "rmse": 1.230837526113661,
             "samples": 2168
@@ -224,18 +224,18 @@
           {
             "bias": 0.06171996206955013,
             "mae": 1.0193294690435635,
-            "prediction_mean": 0.011558918443098984,
+            "prediction_mean": 0.01155891844309898,
             "realized_mean": -0.05016104362645116,
             "rmse": 1.1762893557947858,
             "samples": 2168
           }
         ],
         "expected_net_R": {
-          "bias": -0.06066373491665375,
-          "mae": 1.1180196542999805,
-          "rmse": 1.3382699394676678
+          "bias": -0.06066374033411933,
+          "mae": 1.118019648882515,
+          "rmse": 1.3382699386951162
         },
-        "maximum_bucket_absolute_bias": 0.1070587468065737,
+        "maximum_bucket_absolute_bias": 0.10705877389390159,
         "maximum_expectancy_quintile_inversion_R": 0.020925748086227484,
         "quantile_crossings": {},
         "quantiles": {
@@ -243,17 +243,17 @@
             "0.1": {
               "coverage": 0.12453874538745388,
               "coverage_error": 0.024538745387453875,
-              "pinball_loss": 0.22962889040761392
+              "pinball_loss": 0.22961248335000273
             },
             "0.5": {
-              "coverage": 0.5487084870848709,
-              "coverage_error": 0.048708487084870855,
-              "pinball_loss": 0.8014923301522182
+              "coverage": 0.5480627306273063,
+              "coverage_error": 0.04806273062730626,
+              "pinball_loss": 0.8014728905289813
             },
             "0.9": {
               "coverage": 0.8982472324723247,
               "coverage_error": 0.0017527675276752808,
-              "pinball_loss": 0.610165447847199
+              "pinball_loss": 0.6101633423290596
             },
             "interval_10_90_coverage": 0.7737084870848708
           },
@@ -261,19 +261,19 @@
             "0.1": {
               "coverage": 0.09861623616236162,
               "coverage_error": 0.0013837638376383854,
-              "pinball_loss": 0.22562611127545
+              "pinball_loss": 0.22560919356598783
             },
             "0.5": {
-              "coverage": 0.49584870848708484,
-              "coverage_error": 0.004151291512915156,
-              "pinball_loss": 0.801009484200585
+              "coverage": 0.49511070110701105,
+              "coverage_error": 0.004889298892988947,
+              "pinball_loss": 0.8009801705431953
             },
             "0.9": {
-              "coverage": 0.8847785977859779,
-              "coverage_error": 0.015221402214022128,
-              "pinball_loss": 0.5658708448284425
+              "coverage": 0.8841328413284133,
+              "coverage_error": 0.015867158671586723,
+              "pinball_loss": 0.5662388067701363
             },
-            "interval_10_90_coverage": 0.7862546125461255
+            "interval_10_90_coverage": 0.7856088560885609
           }
         },
         "terminal_multiclass_brier": 0.5168436480702874
@@ -288,12 +288,12 @@
         "causal_terminal_frequency_CRPS": 6.625407462370487,
         "causal_terminal_frequency_MAE": 10.127485282513637,
         "causal_terminal_frequency_log_loss": 3.5716335337263216,
-        "conditional_CRPS": 6.625158616376976,
-        "conditional_MAE": 10.128033933326588,
-        "conditional_log_loss": 3.5715860257617726,
+        "conditional_CRPS": 6.622210048752289,
+        "conditional_MAE": 10.118342234467754,
+        "conditional_log_loss": 3.5710622119834685,
         "coverage_0.1": 0.1511742892459827,
         "coverage_0.5": 0.5304079110012361,
-        "coverage_0.9": 0.9101359703337454,
+        "coverage_0.9": 0.9100123609394314,
         "event_rows": 8090,
         "timeout_censoring_rows": 2750
       },
@@ -329,9 +329,9 @@
         },
         "causal_terminal_baseline_brier": 0.5996076248591862,
         "conditional_loss_net_R": {
-          "bias": -0.010603867131815787,
-          "mae": 0.12010276730829623,
-          "rmse": 0.22659819136402767
+          "bias": -0.010603867249837395,
+          "mae": 0.12010276719027463,
+          "rmse": 0.22659819118890362
         },
         "conditional_positive_net_R": {
           "bias": 0.03656401570264494,
@@ -341,11 +341,11 @@
         "expectancy_monotonic": true,
         "expected_R_buckets": [
           {
-            "bias": -0.09080111713994025,
-            "mae": 1.386747001486408,
-            "prediction_mean": -0.4046541337529659,
+            "bias": -0.09080111751101229,
+            "mae": 1.3867470011153362,
+            "prediction_mean": -0.40465413412403795,
             "realized_mean": -0.31385301661302567,
-            "rmse": 1.7363238471760878,
+            "rmse": 1.736323847104231,
             "samples": 2179
           },
           {
@@ -373,20 +373,20 @@
             "samples": 2179
           },
           {
-            "bias": 0.004933272473676094,
+            "bias": 0.004933272473676087,
             "mae": 0.9635904569836341,
-            "prediction_mean": 0.003749991647842498,
+            "prediction_mean": 0.0037499916478424965,
             "realized_mean": -0.0011832808258336112,
             "rmse": 1.1420246083218704,
             "samples": 2179
           }
         ],
         "expected_net_R": {
-          "bias": -0.028123149089460744,
-          "mae": 1.1448710709955874,
-          "rmse": 1.3743708906051861
+          "bias": -0.028123149163675164,
+          "mae": 1.144871070921373,
+          "rmse": 1.37437089058703
         },
-        "maximum_bucket_absolute_bias": 0.09080111713994025,
+        "maximum_bucket_absolute_bias": 0.09080111751101229,
         "maximum_expectancy_quintile_inversion_R": 0.0,
         "quantile_crossings": {},
         "quantiles": {
@@ -394,17 +394,17 @@
             "0.1": {
               "coverage": 0.11730151445617255,
               "coverage_error": 0.017301514456172548,
-              "pinball_loss": 0.2191568278089024
+              "pinball_loss": 0.21914991633651532
             },
             "0.5": {
-              "coverage": 0.5447452960073428,
-              "coverage_error": 0.04474529600734278,
-              "pinball_loss": 0.747696411934805
+              "coverage": 0.5438274437815511,
+              "coverage_error": 0.04382744378155112,
+              "pinball_loss": 0.7477200556692754
             },
             "0.9": {
               "coverage": 0.9012391005048187,
               "coverage_error": 0.0012391005048186798,
-              "pinball_loss": 0.48342070265064774
+              "pinball_loss": 0.4834203186716368
             },
             "interval_10_90_coverage": 0.7839375860486462
           },
@@ -412,19 +412,19 @@
             "0.1": {
               "coverage": 0.10224873795318953,
               "coverage_error": 0.002248737953189528,
-              "pinball_loss": 0.21598771208462728
+              "pinball_loss": 0.21598996438995624
             },
             "0.5": {
-              "coverage": 0.5112436897659477,
-              "coverage_error": 0.011243689765947695,
-              "pinball_loss": 0.7674565436026636
+              "coverage": 0.5105094079853144,
+              "coverage_error": 0.010509407985314412,
+              "pinball_loss": 0.7673882198256023
             },
             "0.9": {
-              "coverage": 0.9054612207434602,
-              "coverage_error": 0.005461220743460227,
-              "pinball_loss": 0.5177366265671163
+              "coverage": 0.9050940798531436,
+              "coverage_error": 0.005094079853143585,
+              "pinball_loss": 0.5177184509135278
             },
-            "interval_10_90_coverage": 0.8032124827902708
+            "interval_10_90_coverage": 0.8028453418999542
           }
         },
         "terminal_multiclass_brier": 0.510093273942091
@@ -439,12 +439,12 @@
         "causal_terminal_frequency_CRPS": 6.616652850814879,
         "causal_terminal_frequency_MAE": 10.116065555057324,
         "causal_terminal_frequency_log_loss": 3.5574521654890856,
-        "conditional_CRPS": 6.615876650506379,
-        "conditional_MAE": 10.107448124964389,
-        "conditional_log_loss": 3.5582762684875675,
+        "conditional_CRPS": 6.611762547464386,
+        "conditional_MAE": 10.095977960812318,
+        "conditional_log_loss": 3.557688306616643,
         "coverage_0.1": 0.16393043901252585,
         "coverage_0.5": 0.5449349385868905,
-        "coverage_0.9": 0.9061169889334793,
+        "coverage_0.9": 0.9034415663383194,
         "event_rows": 8223,
         "timeout_censoring_rows": 2672
       },
@@ -480,9 +480,9 @@
         },
         "causal_terminal_baseline_brier": 0.5988532262077163,
         "conditional_loss_net_R": {
-          "bias": -0.012372074827137298,
-          "mae": 0.12936095500844713,
-          "rmse": 0.2438442704856083
+          "bias": -0.012372074914303494,
+          "mae": 0.12936095497091793,
+          "rmse": 0.24384427069302167
         },
         "conditional_positive_net_R": {
           "bias": 0.04460181040526803,
@@ -492,11 +492,11 @@
         "expectancy_monotonic": false,
         "expected_R_buckets": [
           {
-            "bias": -0.12080437343008762,
-            "mae": 1.3848882023671267,
-            "prediction_mean": -0.43497353981496595,
+            "bias": -0.12080437370972118,
+            "mae": 1.3848882022467315,
+            "prediction_mean": -0.4349735400945995,
             "realized_mean": -0.3141691663848783,
-            "rmse": 1.6915460432514202,
+            "rmse": 1.6915460433473397,
             "samples": 2062
           },
           {
@@ -508,7 +508,7 @@
             "samples": 2062
           },
           {
-            "bias": 0.041182994339567416,
+            "bias": 0.04118299433956741,
             "mae": 1.1115808198360786,
             "prediction_mean": -0.11318533386879744,
             "realized_mean": -0.15436832820836485,
@@ -516,7 +516,7 @@
             "samples": 2063
           },
           {
-            "bias": 0.07484200395258284,
+            "bias": 0.07484200395258282,
             "mae": 0.9709006855065455,
             "prediction_mean": -0.04366460095829881,
             "realized_mean": -0.11850660491088165,
@@ -533,9 +533,9 @@
           }
         ],
         "expected_net_R": {
-          "bias": 0.011303082268767514,
-          "mae": 1.1307945791314973,
-          "rmse": 1.3511234004137114
+          "bias": 0.01130308221284623,
+          "mae": 1.1307945791074203,
+          "rmse": 1.3511234004377266
         },
         "maximum_bucket_absolute_bias": 0.13200356099271668,
         "maximum_expectancy_quintile_inversion_R": 0.010337143802404913,
@@ -545,17 +545,17 @@
             "0.1": {
               "coverage": 0.11279216370866066,
               "coverage_error": 0.012792163708660653,
-              "pinball_loss": 0.22766873585143868
+              "pinball_loss": 0.227661869040201
             },
             "0.5": {
-              "coverage": 0.5406847056541557,
-              "coverage_error": 0.04068470565415572,
-              "pinball_loss": 0.8006903907914249
+              "coverage": 0.5401997866356318,
+              "coverage_error": 0.04019978663563184,
+              "pinball_loss": 0.8006997632525571
             },
             "0.9": {
               "coverage": 0.9074774512656386,
               "coverage_error": 0.0074774512656385905,
-              "pinball_loss": 0.6035218400778193
+              "pinball_loss": 0.6035206563684169
             },
             "interval_10_90_coverage": 0.794685287556978
           },
@@ -563,19 +563,19 @@
             "0.1": {
               "coverage": 0.10600329744932596,
               "coverage_error": 0.006003297449325956,
-              "pinball_loss": 0.22825961330888184
+              "pinball_loss": 0.22825493328667512
             },
             "0.5": {
-              "coverage": 0.529046649209582,
-              "coverage_error": 0.029046649209582,
-              "pinball_loss": 0.7989898314066005
+              "coverage": 0.5283677625836485,
+              "coverage_error": 0.02836776258364848,
+              "pinball_loss": 0.798958748989788
             },
             "0.9": {
-              "coverage": 0.8991368441470274,
-              "coverage_error": 0.0008631558529725858,
-              "pinball_loss": 0.5860792344619336
+              "coverage": 0.8988458927359131,
+              "coverage_error": 0.0011541072640869343,
+              "pinball_loss": 0.5859324576151189
             },
-            "interval_10_90_coverage": 0.7931335466977015
+            "interval_10_90_coverage": 0.7928425952865872
           }
         },
         "terminal_multiclass_brier": 0.51370794156879
@@ -590,9 +590,9 @@
         "causal_terminal_frequency_CRPS": 6.830897448123744,
         "causal_terminal_frequency_MAE": 10.341005424362152,
         "causal_terminal_frequency_log_loss": 3.588262609520162,
-        "conditional_CRPS": 6.830563812964964,
-        "conditional_MAE": 10.35409525810927,
-        "conditional_log_loss": 3.588298996943611,
+        "conditional_CRPS": 6.82655314358815,
+        "conditional_MAE": 10.343134488597915,
+        "conditional_log_loss": 3.5876873638770674,
         "coverage_0.1": 0.1621970087674059,
         "coverage_0.5": 0.5139247034553894,
         "coverage_0.9": 0.8964672511603919,
@@ -631,9 +631,9 @@
         },
         "causal_terminal_baseline_brier": 0.5953002935024193,
         "conditional_loss_net_R": {
-          "bias": -0.018766730019520277,
-          "mae": 0.12716145054848213,
-          "rmse": 0.2400327299629015
+          "bias": -0.018766731957497087,
+          "mae": 0.12716144913527472,
+          "rmse": 0.24003273060178876
         },
         "conditional_positive_net_R": {
           "bias": 0.04893179439464748,
@@ -643,15 +643,15 @@
         "expectancy_monotonic": false,
         "expected_R_buckets": [
           {
-            "bias": -0.050312159175203715,
-            "mae": 1.3760150337146688,
-            "prediction_mean": -0.44132846526971536,
+            "bias": -0.050312165465977145,
+            "mae": 1.3760150291273243,
+            "prediction_mean": -0.4413284715604888,
             "realized_mean": -0.39101630609451166,
-            "rmse": 1.7205042695481472,
+            "rmse": 1.7205042698374777,
             "samples": 1963
           },
           {
-            "bias": -0.0034195375303692674,
+            "bias": -0.003419537530369269,
             "mae": 1.2453294451311392,
             "prediction_mean": -0.21666135163725975,
             "realized_mean": -0.2132418141068905,
@@ -684,9 +684,9 @@
           }
         ],
         "expected_net_R": {
-          "bias": 0.0009319560618930859,
-          "mae": 1.1385852702689225,
-          "rmse": 1.3760193671491205
+          "bias": 0.0009319548036102003,
+          "mae": 1.13858526935136,
+          "rmse": 1.3760193672214807
         },
         "maximum_bucket_absolute_bias": 0.08561327351638551,
         "maximum_expectancy_quintile_inversion_R": 0.04984636780953264,
@@ -696,17 +696,17 @@
             "0.1": {
               "coverage": 0.11096392908090483,
               "coverage_error": 0.010963929080904822,
-              "pinball_loss": 0.2363827085551662
+              "pinball_loss": 0.23638123046113932
             },
             "0.5": {
-              "coverage": 0.5344405950682698,
-              "coverage_error": 0.0344405950682698,
-              "pinball_loss": 0.8162911563301545
+              "coverage": 0.5338292235581822,
+              "coverage_error": 0.033829223558182187,
+              "pinball_loss": 0.8162608996330214
             },
             "0.9": {
               "coverage": 0.9093132260036683,
               "coverage_error": 0.00931322600366824,
-              "pinball_loss": 0.5863077160093509
+              "pinball_loss": 0.586306915583164
             },
             "interval_10_90_coverage": 0.7983492969227634
           },
@@ -717,16 +717,16 @@
               "pinball_loss": 0.21578825437486476
             },
             "0.5": {
-              "coverage": 0.5328102710413695,
-              "coverage_error": 0.032810271041369465,
-              "pinball_loss": 0.7690830766486136
+              "coverage": 0.531893213776238,
+              "coverage_error": 0.031893213776237994,
+              "pinball_loss": 0.7689303691819213
             },
             "0.9": {
-              "coverage": 0.910332178520481,
-              "coverage_error": 0.010332178520480961,
-              "pinball_loss": 0.524970283688058
+              "coverage": 0.9098227022620746,
+              "coverage_error": 0.0098227022620746,
+              "pinball_loss": 0.5250455423086899
             },
-            "interval_10_90_coverage": 0.7988587731811697
+            "interval_10_90_coverage": 0.7983492969227634
           }
         },
         "terminal_multiclass_brier": 0.5119711465369841
@@ -741,9 +741,9 @@
         "causal_terminal_frequency_CRPS": 6.745057125764229,
         "causal_terminal_frequency_MAE": 10.17323042772622,
         "causal_terminal_frequency_log_loss": 3.581013811084437,
-        "conditional_CRPS": 6.744687771788378,
-        "conditional_MAE": 10.1854071696142,
-        "conditional_log_loss": 3.5817787576172564,
+        "conditional_CRPS": 6.740920988811065,
+        "conditional_MAE": 10.175186770274925,
+        "conditional_log_loss": 3.5816930891145184,
         "coverage_0.1": 0.16281879194630872,
         "coverage_0.5": 0.5067114093959731,
         "coverage_0.9": 0.9018791946308725,
@@ -782,9 +782,9 @@
         },
         "causal_terminal_baseline_brier": 0.5931668712565119,
         "conditional_loss_net_R": {
-          "bias": -0.01757134322065045,
-          "mae": 0.1300601823528694,
-          "rmse": 0.24312587940526115
+          "bias": -0.01757134565061537,
+          "mae": 0.13006018049276608,
+          "rmse": 0.2431258804418661
         },
         "conditional_positive_net_R": {
           "bias": 0.07474537221874096,
@@ -794,11 +794,11 @@
         "expectancy_monotonic": false,
         "expected_R_buckets": [
           {
-            "bias": -0.06705763320727526,
-            "mae": 1.3706257596292197,
-            "prediction_mean": -0.43250349990850145,
+            "bias": -0.06705764113070524,
+            "mae": 1.3706257535639474,
+            "prediction_mean": -0.4325035078319314,
             "realized_mean": -0.3654458667012262,
-            "rmse": 1.6937412407750763,
+            "rmse": 1.6937412412602648,
             "samples": 2006
           },
           {
@@ -835,9 +835,9 @@
           }
         ],
         "expected_net_R": {
-          "bias": 0.017365516233171136,
-          "mae": 1.1267616256743211,
-          "rmse": 1.3525466412071558
+          "bias": 0.01736551464801101,
+          "mae": 1.1267616244609038,
+          "rmse": 1.3525466413287086
         },
         "maximum_bucket_absolute_bias": 0.1064685444215447,
         "maximum_expectancy_quintile_inversion_R": 0.011461477025716038,
@@ -847,17 +847,17 @@
             "0.1": {
               "coverage": 0.11668495063329011,
               "coverage_error": 0.016684950633290105,
-              "pinball_loss": 0.21853995754161692
+              "pinball_loss": 0.21850277019242684
             },
             "0.5": {
-              "coverage": 0.5373491572753566,
-              "coverage_error": 0.03734915727535659,
-              "pinball_loss": 0.7315799885464039
+              "coverage": 0.5370499650942455,
+              "coverage_error": 0.03704996509424552,
+              "pinball_loss": 0.7316749061680927
             },
             "0.9": {
               "coverage": 0.9262989927196569,
               "coverage_error": 0.026298992719656855,
-              "pinball_loss": 0.484663463926713
+              "pinball_loss": 0.48466421239748503
             },
             "interval_10_90_coverage": 0.8096140420863668
           },
@@ -865,19 +865,19 @@
             "0.1": {
               "coverage": 0.1114989528273661,
               "coverage_error": 0.011498952827366099,
-              "pinball_loss": 0.21325110667739217
+              "pinball_loss": 0.21324506305731836
             },
             "0.5": {
-              "coverage": 0.5295701605664705,
-              "coverage_error": 0.02957016056647055,
-              "pinball_loss": 0.747881013777051
+              "coverage": 0.5285728532961005,
+              "coverage_error": 0.028572853296100487,
+              "pinball_loss": 0.7478116287329681
             },
             "0.9": {
-              "coverage": 0.9136331903859579,
-              "coverage_error": 0.013633190385957894,
-              "pinball_loss": 0.5121773566722726
+              "coverage": 0.913333998204847,
+              "coverage_error": 0.01333399820484693,
+              "pinball_loss": 0.5120963897323962
             },
-            "interval_10_90_coverage": 0.8021342375585918
+            "interval_10_90_coverage": 0.8018350453774808
           }
         },
         "terminal_multiclass_brier": 0.5091386007642635
@@ -892,11 +892,11 @@
         "causal_terminal_frequency_CRPS": 6.689327044792926,
         "causal_terminal_frequency_MAE": 10.141135675038107,
         "causal_terminal_frequency_log_loss": 3.5803616639125373,
-        "conditional_CRPS": 6.689149861423182,
-        "conditional_MAE": 10.143439642748467,
-        "conditional_log_loss": 3.5815834199715035,
+        "conditional_CRPS": 6.685390088606056,
+        "conditional_MAE": 10.132752683719465,
+        "conditional_log_loss": 3.581373354672796,
         "coverage_0.1": 0.1559753377935196,
-        "coverage_0.5": 0.5134461498097862,
+        "coverage_0.5": 0.5114784205693297,
         "coverage_0.9": 0.9052866325593598,
         "event_rows": 7623,
         "timeout_censoring_rows": 2404
@@ -938,23 +938,23 @@
             },
             "causal_terminal_baseline_brier": 0.6078251114011387,
             "conditional_loss_net_R": {
-              "bias": -0.001452866865873264,
-              "mae": 0.12893814771877224,
-              "rmse": 0.23146017773377386
+              "bias": -0.0015246442956452764,
+              "mae": 0.12886637028900022,
+              "rmse": 0.2311787642100796
             },
             "conditional_positive_net_R": {
-              "bias": -0.007499830111011929,
+              "bias": -0.00749983011101193,
               "mae": 0.4965658934837869,
               "rmse": 0.7126024236645153
             },
             "expectancy_monotonic": true,
             "expected_R_buckets": [
               {
-                "bias": -0.19676957513037854,
-                "mae": 1.2116154006139779,
-                "prediction_mean": -0.4956796794974938,
+                "bias": -0.19699378027540437,
+                "mae": 1.211391195468952,
+                "prediction_mean": -0.4959038846425196,
                 "realized_mean": -0.2989101043671153,
-                "rmse": 1.5272792281645322,
+                "rmse": 1.5271460860924881,
                 "samples": 2168
               },
               {
@@ -974,7 +974,7 @@
                 "samples": 2168
               },
               {
-                "bias": 0.014462602518873335,
+                "bias": 0.014462602518873331,
                 "mae": 1.0692842584626086,
                 "prediction_mean": -0.050380573379722446,
                 "realized_mean": -0.0648431758985958,
@@ -991,29 +991,29 @@
               }
             ],
             "expected_net_R": {
-              "bias": -0.0484660582832897,
-              "mae": 1.1238551093308742,
-              "rmse": 1.3452952237814848
+              "bias": -0.048510899312294874,
+              "mae": 1.123810268301869,
+              "rmse": 1.3452649942023418
             },
-            "maximum_bucket_absolute_bias": 0.19676957513037854,
+            "maximum_bucket_absolute_bias": 0.19699378027540437,
             "maximum_expectancy_quintile_inversion_R": 0.0,
             "quantile_crossings": {},
             "quantiles": {
               "mae": {
                 "0.1": {
-                  "coverage": 0.12416974169741697,
-                  "coverage_error": 0.024169741697416966,
-                  "pinball_loss": 0.23007344941269356
+                  "coverage": 0.12407749077490775,
+                  "coverage_error": 0.024077490774907742,
+                  "pinball_loss": 0.23006771892970967
                 },
                 "0.5": {
-                  "coverage": 0.5419741697416974,
-                  "coverage_error": 0.04197416974169743,
-                  "pinball_loss": 0.8040546358682938
+                  "coverage": 0.5412361623616236,
+                  "coverage_error": 0.04123616236162364,
+                  "pinball_loss": 0.8040233937364789
                 },
                 "0.9": {
-                  "coverage": 0.8941881918819188,
-                  "coverage_error": 0.005811808118081241,
-                  "pinball_loss": 0.6038052587888393
+                  "coverage": 0.8940959409594096,
+                  "coverage_error": 0.005904059040590437,
+                  "pinball_loss": 0.6038082832943366
                 },
                 "interval_10_90_coverage": 0.7700184501845019
               },
@@ -1021,19 +1021,19 @@
                 "0.1": {
                   "coverage": 0.10064575645756457,
                   "coverage_error": 0.0006457564575645669,
-                  "pinball_loss": 0.2249328446497834
+                  "pinball_loss": 0.22492113511271677
                 },
                 "0.5": {
-                  "coverage": 0.4959409594095941,
-                  "coverage_error": 0.004059040590405905,
-                  "pinball_loss": 0.8021375091853604
+                  "coverage": 0.4948339483394834,
+                  "coverage_error": 0.005166051660516591,
+                  "pinball_loss": 0.8020735652804376
                 },
                 "0.9": {
-                  "coverage": 0.8788745387453875,
-                  "coverage_error": 0.021125461254612565,
-                  "pinball_loss": 0.5771116435894793
+                  "coverage": 0.8784132841328414,
+                  "coverage_error": 0.021586715867158657,
+                  "pinball_loss": 0.5774525687351788
                 },
-                "interval_10_90_coverage": 0.7783210332103321
+                "interval_10_90_coverage": 0.777859778597786
               }
             },
             "terminal_multiclass_brier": 0.5205300618916887
@@ -1048,12 +1048,12 @@
             "causal_terminal_frequency_CRPS": 6.625407462370487,
             "causal_terminal_frequency_MAE": 10.127485282513637,
             "causal_terminal_frequency_log_loss": 3.5716335337263216,
-            "conditional_CRPS": 6.625158616376976,
-            "conditional_MAE": 10.128033933326588,
-            "conditional_log_loss": 3.5715860257617726,
+            "conditional_CRPS": 6.622210048752289,
+            "conditional_MAE": 10.118342234467754,
+            "conditional_log_loss": 3.5710622119834685,
             "coverage_0.1": 0.1511742892459827,
             "coverage_0.5": 0.5304079110012361,
-            "coverage_0.9": 0.9101359703337454,
+            "coverage_0.9": 0.9100123609394314,
             "event_rows": 8090,
             "timeout_censoring_rows": 2750
           },
@@ -1089,9 +1089,9 @@
             },
             "causal_terminal_baseline_brier": 0.5996076248591862,
             "conditional_loss_net_R": {
-              "bias": -0.00810455941634817,
-              "mae": 0.12154279558082695,
-              "rmse": 0.22997540732162197
+              "bias": -0.0081263135154622,
+              "mae": 0.1215210414817129,
+              "rmse": 0.22988519043711064
             },
             "conditional_positive_net_R": {
               "bias": 0.047005503672617556,
@@ -1101,11 +1101,11 @@
             "expectancy_monotonic": false,
             "expected_R_buckets": [
               {
-                "bias": -0.10850426826487244,
-                "mae": 1.3334236649184237,
-                "prediction_mean": -0.4211724163464126,
+                "bias": -0.10857266538879634,
+                "mae": 1.3333552677945,
+                "prediction_mean": -0.42124081347033654,
                 "realized_mean": -0.31266814808154014,
-                "rmse": 1.6606413980806314,
+                "rmse": 1.6606021236369635,
                 "samples": 2179
               },
               {
@@ -1142,11 +1142,11 @@
               }
             ],
             "expected_net_R": {
-              "bias": -0.023732001560830943,
-              "mae": 1.147996137008516,
-              "rmse": 1.3764394083835594
+              "bias": -0.023745680985615723,
+              "mae": 1.1479824575837314,
+              "rmse": 1.3764299317266253
             },
-            "maximum_bucket_absolute_bias": 0.10850426826487244,
+            "maximum_bucket_absolute_bias": 0.10857266538879634,
             "maximum_expectancy_quintile_inversion_R": 0.005650381665765314,
             "quantile_crossings": {},
             "quantiles": {
@@ -1154,17 +1154,17 @@
                 "0.1": {
                   "coverage": 0.11941257457549334,
                   "coverage_error": 0.019412574575493335,
-                  "pinball_loss": 0.21984541458362722
+                  "pinball_loss": 0.21981278309833424
                 },
                 "0.5": {
-                  "coverage": 0.5418081688848095,
-                  "coverage_error": 0.04180816888480954,
-                  "pinball_loss": 0.7490707776450374
+                  "coverage": 0.5412574575493345,
+                  "coverage_error": 0.04125745754933452,
+                  "pinball_loss": 0.7491343695884282
                 },
                 "0.9": {
                   "coverage": 0.9011473152822396,
                   "coverage_error": 0.0011473152822395472,
-                  "pinball_loss": 0.4836368603814266
+                  "pinball_loss": 0.4836352736713299
                 },
                 "interval_10_90_coverage": 0.7817347407067462
               },
@@ -1172,19 +1172,19 @@
                 "0.1": {
                   "coverage": 0.10307480495640202,
                   "coverage_error": 0.0030748049564020136,
-                  "pinball_loss": 0.21494951950467314
+                  "pinball_loss": 0.21494534797708875
                 },
                 "0.5": {
-                  "coverage": 0.511427260211106,
-                  "coverage_error": 0.01142726021110596,
-                  "pinball_loss": 0.7676364084220425
+                  "coverage": 0.5111519045433686,
+                  "coverage_error": 0.011151904543368563,
+                  "pinball_loss": 0.7676021270648374
                 },
                 "0.9": {
-                  "coverage": 0.9042680128499312,
-                  "coverage_error": 0.004268012849931169,
-                  "pinball_loss": 0.5176143846197306
+                  "coverage": 0.9037173015144562,
+                  "coverage_error": 0.0037173015144561505,
+                  "pinball_loss": 0.5177257180999888
                 },
-                "interval_10_90_coverage": 0.8011932078935291
+                "interval_10_90_coverage": 0.8006424965580542
               }
             },
             "terminal_multiclass_brier": 0.5136595019557922
@@ -1199,12 +1199,12 @@
             "causal_terminal_frequency_CRPS": 6.616652850814879,
             "causal_terminal_frequency_MAE": 10.116065555057324,
             "causal_terminal_frequency_log_loss": 3.5574521654890856,
-            "conditional_CRPS": 6.615876650506379,
-            "conditional_MAE": 10.107448124964389,
-            "conditional_log_loss": 3.5582762684875675,
+            "conditional_CRPS": 6.611762547464386,
+            "conditional_MAE": 10.095977960812318,
+            "conditional_log_loss": 3.557688306616643,
             "coverage_0.1": 0.16393043901252585,
             "coverage_0.5": 0.5449349385868905,
-            "coverage_0.9": 0.9061169889334793,
+            "coverage_0.9": 0.9034415663383194,
             "event_rows": 8223,
             "timeout_censoring_rows": 2672
           },
@@ -1240,9 +1240,9 @@
             },
             "causal_terminal_baseline_brier": 0.5988532262077163,
             "conditional_loss_net_R": {
-              "bias": -0.007285398828436035,
-              "mae": 0.13052384792632118,
-              "rmse": 0.2419143596556809
+              "bias": -0.007306880978030769,
+              "mae": 0.13052838522992333,
+              "rmse": 0.24199304830119864
             },
             "conditional_positive_net_R": {
               "bias": 0.05298033667817827,
@@ -1252,11 +1252,11 @@
             "expectancy_monotonic": false,
             "expected_R_buckets": [
               {
-                "bias": -0.13776789993246932,
-                "mae": 1.3393442433040137,
-                "prediction_mean": -0.43566217574169136,
+                "bias": -0.137836815751853,
+                "mae": 1.3393587992028149,
+                "prediction_mean": -0.43573109156107503,
                 "realized_mean": -0.297894275809222,
-                "rmse": 1.626166334472308,
+                "rmse": 1.626203893604653,
                 "samples": 2062
               },
               {
@@ -1293,9 +1293,9 @@
               }
             ],
             "expected_net_R": {
-              "bias": 0.022517051259394846,
-              "mae": 1.1363962283381845,
-              "rmse": 1.3546320268180398
+              "bias": 0.02250326943226177,
+              "mae": 1.1363991392356076,
+              "rmse": 1.3546410435803582
             },
             "maximum_bucket_absolute_bias": 0.21117275679273992,
             "maximum_expectancy_quintile_inversion_R": 0.020423691507093833,
@@ -1305,37 +1305,37 @@
                 "0.1": {
                   "coverage": 0.11211327708272718,
                   "coverage_error": 0.012113277082727178,
-                  "pinball_loss": 0.2269365366973712
+                  "pinball_loss": 0.2269303982233761
                 },
                 "0.5": {
-                  "coverage": 0.5417515274949084,
-                  "coverage_error": 0.0417515274949084,
-                  "pinball_loss": 0.8004275297784623
+                  "coverage": 0.5411696246726797,
+                  "coverage_error": 0.041169624672679705,
+                  "pinball_loss": 0.8004504595256773
                 },
                 "0.9": {
                   "coverage": 0.9049558723693143,
                   "coverage_error": 0.004955872369314274,
-                  "pinball_loss": 0.606157629447911
+                  "pinball_loss": 0.6061567048366645
                 },
                 "interval_10_90_coverage": 0.7928425952865872
               },
               "mfe": {
                 "0.1": {
-                  "coverage": 0.10648821646784987,
-                  "coverage_error": 0.006488216467849861,
-                  "pinball_loss": 0.22747084497574757
+                  "coverage": 0.10639123266414509,
+                  "coverage_error": 0.006391232664145083,
+                  "pinball_loss": 0.22735210675110137
                 },
                 "0.5": {
-                  "coverage": 0.5302104548540394,
-                  "coverage_error": 0.030210454854039392,
-                  "pinball_loss": 0.7979300914634879
+                  "coverage": 0.5295315682281059,
+                  "coverage_error": 0.029531568228105876,
+                  "pinball_loss": 0.7978018720079333
                 },
                 "0.9": {
-                  "coverage": 0.9008825526137135,
-                  "coverage_error": 0.0008825526137135054,
-                  "pinball_loss": 0.5858052009425916
+                  "coverage": 0.9000096983803705,
+                  "coverage_error": 9.69838037045978e-06,
+                  "pinball_loss": 0.5858415196077374
                 },
-                "interval_10_90_coverage": 0.7943943361458636
+                "interval_10_90_coverage": 0.7936184657162254
               }
             },
             "terminal_multiclass_brier": 0.5134688431441394
@@ -1350,9 +1350,9 @@
             "causal_terminal_frequency_CRPS": 6.830897448123744,
             "causal_terminal_frequency_MAE": 10.341005424362152,
             "causal_terminal_frequency_log_loss": 3.588262609520162,
-            "conditional_CRPS": 6.830563812964964,
-            "conditional_MAE": 10.35409525810927,
-            "conditional_log_loss": 3.588298996943611,
+            "conditional_CRPS": 6.82655314358815,
+            "conditional_MAE": 10.343134488597915,
+            "conditional_log_loss": 3.5876873638770674,
             "coverage_0.1": 0.1621970087674059,
             "coverage_0.5": 0.5139247034553894,
             "coverage_0.9": 0.8964672511603919,
@@ -1391,23 +1391,23 @@
             },
             "causal_terminal_baseline_brier": 0.5953002935024193,
             "conditional_loss_net_R": {
-              "bias": -0.011804189299732962,
-              "mae": 0.1311514096525114,
-              "rmse": 0.24330707090239773
+              "bias": -0.01181828932021024,
+              "mae": 0.13113935741688681,
+              "rmse": 0.24326696931237196
             },
             "conditional_positive_net_R": {
-              "bias": 0.04288243198061584,
+              "bias": 0.04288243198061583,
               "mae": 0.5205459752180761,
               "rmse": 0.7577333196800716
             },
             "expectancy_monotonic": true,
             "expected_R_buckets": [
               {
-                "bias": -0.07725019958269165,
-                "mae": 1.3556112540369305,
-                "prediction_mean": -0.4345583323212847,
+                "bias": -0.07729596898181607,
+                "mae": 1.3555721318538434,
+                "prediction_mean": -0.43460410172040914,
                 "realized_mean": -0.357308132738593,
-                "rmse": 1.6890057876318836,
+                "rmse": 1.6889870373728386,
                 "samples": 1963
               },
               {
@@ -1444,9 +1444,9 @@
               }
             ],
             "expected_net_R": {
-              "bias": 0.017913289353587585,
-              "mae": 1.1454108725565546,
-              "rmse": 1.379628226959509
+              "bias": 0.01790413454102581,
+              "mae": 1.1454030473226644,
+              "rmse": 1.3796236355196883
             },
             "maximum_bucket_absolute_bias": 0.13647485345265414,
             "maximum_expectancy_quintile_inversion_R": 0.0,
@@ -1456,17 +1456,17 @@
                 "0.1": {
                   "coverage": 0.10872223354391686,
                   "coverage_error": 0.008722233543916852,
-                  "pinball_loss": 0.23677177672651065
+                  "pinball_loss": 0.23676092021134737
                 },
                 "0.5": {
-                  "coverage": 0.5285306704707561,
-                  "coverage_error": 0.02853067047075608,
-                  "pinball_loss": 0.8186794329740655
+                  "coverage": 0.5279192989606685,
+                  "coverage_error": 0.02791929896066847,
+                  "pinball_loss": 0.8186667911373321
                 },
                 "0.9": {
                   "coverage": 0.9062563684532301,
                   "coverage_error": 0.006256368453230077,
-                  "pinball_loss": 0.5874699123869652
+                  "pinball_loss": 0.5874699355225325
                 },
                 "interval_10_90_coverage": 0.7975341349093132
               },
@@ -1474,19 +1474,19 @@
                 "0.1": {
                   "coverage": 0.11126961483594865,
                   "coverage_error": 0.011269614835948641,
-                  "pinball_loss": 0.21570362333872933
+                  "pinball_loss": 0.21570509219084863
                 },
                 "0.5": {
-                  "coverage": 0.5346443855716324,
-                  "coverage_error": 0.03464438557163241,
-                  "pinball_loss": 0.7705509416277866
+                  "coverage": 0.5343386998165885,
+                  "coverage_error": 0.03433869981658855,
+                  "pinball_loss": 0.7705015374649626
                 },
                 "0.9": {
-                  "coverage": 0.9082942734868555,
-                  "coverage_error": 0.008294273486855519,
-                  "pinball_loss": 0.5268390393648984
+                  "coverage": 0.9077847972284492,
+                  "coverage_error": 0.0077847972284491584,
+                  "pinball_loss": 0.5269544489275698
                 },
-                "interval_10_90_coverage": 0.7970246586509069
+                "interval_10_90_coverage": 0.7965151823925005
               }
             },
             "terminal_multiclass_brier": 0.5173183704534692
@@ -1501,9 +1501,9 @@
             "causal_terminal_frequency_CRPS": 6.745057125764229,
             "causal_terminal_frequency_MAE": 10.17323042772622,
             "causal_terminal_frequency_log_loss": 3.581013811084437,
-            "conditional_CRPS": 6.744687771788378,
-            "conditional_MAE": 10.1854071696142,
-            "conditional_log_loss": 3.5817787576172564,
+            "conditional_CRPS": 6.740920988811065,
+            "conditional_MAE": 10.175186770274925,
+            "conditional_log_loss": 3.5816930891145184,
             "coverage_0.1": 0.16281879194630872,
             "coverage_0.5": 0.5067114093959731,
             "coverage_0.9": 0.9018791946308725,
@@ -1542,9 +1542,9 @@
             },
             "causal_terminal_baseline_brier": 0.5931668712565119,
             "conditional_loss_net_R": {
-              "bias": -0.012691656716380643,
-              "mae": 0.1323986869108252,
-              "rmse": 0.24372458777408534
+              "bias": -0.012704236191394552,
+              "mae": 0.13238757196940637,
+              "rmse": 0.2436800685243353
             },
             "conditional_positive_net_R": {
               "bias": 0.07783035784737019,
@@ -1554,11 +1554,11 @@
             "expectancy_monotonic": true,
             "expected_R_buckets": [
               {
-                "bias": -0.12041635519155698,
-                "mae": 1.3421297435550077,
-                "prediction_mean": -0.44046504560514166,
+                "bias": -0.12045737331023394,
+                "mae": 1.342093500867161,
+                "prediction_mean": -0.4405060637238186,
                 "realized_mean": -0.3200486904135847,
-                "rmse": 1.6448280400889732,
+                "rmse": 1.6448065319381153,
                 "samples": 2006
               },
               {
@@ -1595,9 +1595,9 @@
               }
             ],
             "expected_net_R": {
-              "bias": 0.02626665058396311,
-              "mae": 1.132396916071914,
-              "rmse": 1.3569274472097352
+              "bias": 0.02625844450576764,
+              "mae": 1.1323896653656387,
+              "rmse": 1.3569222313625768
             },
             "maximum_bucket_absolute_bias": 0.20048579690960455,
             "maximum_expectancy_quintile_inversion_R": 0.0,
@@ -1607,37 +1607,37 @@
                 "0.1": {
                   "coverage": 0.11528872045477212,
                   "coverage_error": 0.015288720454772114,
-                  "pinball_loss": 0.21761740486047718
+                  "pinball_loss": 0.21761101146100184
                 },
                 "0.5": {
-                  "coverage": 0.5323626209235065,
-                  "coverage_error": 0.0323626209235065,
-                  "pinball_loss": 0.7311374179799266
+                  "coverage": 0.5319636980153585,
+                  "coverage_error": 0.03196369801535848,
+                  "pinball_loss": 0.7312265853900329
                 },
                 "0.9": {
-                  "coverage": 0.925002493268176,
-                  "coverage_error": 0.02500249326817594,
-                  "pinball_loss": 0.4803648377624476
+                  "coverage": 0.9249027625411389,
+                  "coverage_error": 0.02490276254113888,
+                  "pinball_loss": 0.48036680161465234
                 },
-                "interval_10_90_coverage": 0.8097137728134038
+                "interval_10_90_coverage": 0.8096140420863668
               },
               "mfe": {
                 "0.1": {
-                  "coverage": 0.11289518300588411,
-                  "coverage_error": 0.012895183005884103,
-                  "pinball_loss": 0.21278003134829404
+                  "coverage": 0.11279545227884712,
+                  "coverage_error": 0.012795452278847111,
+                  "pinball_loss": 0.21274570815297758
                 },
                 "0.5": {
-                  "coverage": 0.5308666600179516,
-                  "coverage_error": 0.030866660017951575,
-                  "pinball_loss": 0.7477791267737101
+                  "coverage": 0.5297696220205446,
+                  "coverage_error": 0.02976962202054456,
+                  "pinball_loss": 0.7476191679854024
                 },
                 "0.9": {
-                  "coverage": 0.914431036202254,
-                  "coverage_error": 0.014431036202253944,
-                  "pinball_loss": 0.5138558110674926
+                  "coverage": 0.9141318440211429,
+                  "coverage_error": 0.01413184402114287,
+                  "pinball_loss": 0.513846448815203
                 },
-                "interval_10_90_coverage": 0.8015358531963698
+                "interval_10_90_coverage": 0.8013363917422958
               }
             },
             "terminal_multiclass_brier": 0.5099653959001855
@@ -1652,11 +1652,11 @@
             "causal_terminal_frequency_CRPS": 6.689327044792926,
             "causal_terminal_frequency_MAE": 10.141135675038107,
             "causal_terminal_frequency_log_loss": 3.5803616639125373,
-            "conditional_CRPS": 6.689149861423183,
-            "conditional_MAE": 10.143439642748467,
-            "conditional_log_loss": 3.5815834199715035,
+            "conditional_CRPS": 6.685390088606056,
+            "conditional_MAE": 10.132752683719465,
+            "conditional_log_loss": 3.581373354672796,
             "coverage_0.1": 0.1559753377935196,
-            "coverage_0.5": 0.5134461498097862,
+            "coverage_0.5": 0.5114784205693297,
             "coverage_0.9": 0.9052866325593598,
             "event_rows": 7623,
             "timeout_censoring_rows": 2404
@@ -1691,9 +1691,9 @@
           },
           "causal_terminal_baseline_brier": 0.599115119285731,
           "conditional_loss_net_R": {
-            "bias": -0.008198500347710285,
-            "mae": 0.1288344447014538,
-            "rmse": 0.23801405925096136
+            "bias": -0.008227137377771601,
+            "mae": 0.12881168220556113,
+            "rmse": 0.23793925575849093
           },
           "conditional_positive_net_R": {
             "bias": 0.04132761692230081,
@@ -1703,11 +1703,11 @@
           "expectancy_monotonic": true,
           "expected_R_buckets": [
             {
-              "bias": -0.13617737143934883,
-              "mae": 1.3093525646723119,
-              "prediction_mean": -0.44735892004020716,
+              "bias": -0.13626884823483568,
+              "mae": 1.3092798532152552,
+              "prediction_mean": -0.447450396835694,
               "realized_mean": -0.31118154860085834,
-              "rmse": 1.624379801427939,
+              "rmse": 1.6243447943145228,
               "samples": 10378
             },
             {
@@ -1729,7 +1729,7 @@
             {
               "bias": 0.04842785863112673,
               "mae": 1.031852229907581,
-              "prediction_mean": -0.05110558773043626,
+              "prediction_mean": -0.05110558773043625,
               "realized_mean": -0.099533446361563,
               "rmse": 1.2130928392780997,
               "samples": 10377
@@ -1744,9 +1744,9 @@
             }
           ],
           "expected_net_R": {
-            "bias": -0.0021697570901957485,
-            "mae": 1.137144082120234,
-            "rmse": 1.3624965945578142
+            "bias": -0.0021880535070932855,
+            "mae": 1.1371295389880172,
+            "rmse": 1.362488246985072
           },
           "maximum_bucket_absolute_bias": 0.16402293431784173,
           "maximum_expectancy_quintile_inversion_R": 0.0,
@@ -1754,39 +1754,39 @@
           "quantiles": {
             "mae": {
               "0.1": {
-                "coverage": 0.11613698999749456,
-                "coverage_error": 0.01613698999749455,
-                "pinball_loss": 0.22616228629018428
+                "coverage": 0.11611771734731242,
+                "coverage_error": 0.01611771734731242,
+                "pinball_loss": 0.2261497285256281
               },
               "0.5": {
-                "coverage": 0.5374949409293271,
-                "coverage_error": 0.03749494092932715,
-                "pinball_loss": 0.780463728488695
+                "coverage": 0.5369167614238634,
+                "coverage_error": 0.03691676142386335,
+                "pinball_loss": 0.7804899511027089
               },
               "0.9": {
-                "coverage": 0.906026557711951,
-                "coverage_error": 0.006026557711950931,
-                "pinball_loss": 0.5520961293729414
+                "coverage": 0.9059880124115867,
+                "coverage_error": 0.005988012411586641,
+                "pinball_loss": 0.5520966282139813
               },
-              "interval_10_90_coverage": 0.7898895677144564
+              "interval_10_90_coverage": 0.7898702950642743
             },
             "mfe": {
               "0.1": {
-                "coverage": 0.10669339140825256,
-                "coverage_error": 0.00669339140825255,
-                "pinball_loss": 0.21924681841940435
+                "coverage": 0.1066548461078883,
+                "coverage_error": 0.0066548461078882876,
+                "pinball_loss": 0.2192135454729264
               },
               "0.5": {
-                "coverage": 0.5200724651646847,
-                "coverage_error": 0.02007246516468475,
-                "pinball_loss": 0.7775780963960641
+                "coverage": 0.5193786497581282,
+                "coverage_error": 0.019378649758128197,
+                "pinball_loss": 0.7774918035414635
               },
               "0.9": {
-                "coverage": 0.901015668664598,
-                "coverage_error": 0.0010156686645980129,
-                "pinball_loss": 0.5446136202471109
+                "coverage": 0.9004760344594985,
+                "coverage_error": 0.00047603445949850887,
+                "pinball_loss": 0.5447354589108891
               },
-              "interval_10_90_coverage": 0.7943415499065276
+              "interval_10_90_coverage": 0.7938404610017924
             }
           },
           "terminal_multiclass_brier": 0.5150351513615162
@@ -1801,12 +1801,12 @@
           "causal_terminal_frequency_CRPS": 6.699507920389243,
           "causal_terminal_frequency_MAE": 10.178760538641367,
           "causal_terminal_frequency_log_loss": 3.575434548584268,
-          "conditional_CRPS": 6.699122506014315,
-          "conditional_MAE": 10.182423664717875,
-          "conditional_log_loss": 3.5759886025029886,
+          "conditional_CRPS": 6.695404908179494,
+          "conditional_MAE": 10.171812418596675,
+          "conditional_log_loss": 3.5755784076199313,
           "coverage_0.1": 0.15918961729088957,
-          "coverage_0.5": 0.5223800521179296,
-          "coverage_0.9": 0.9040672423483725,
+          "coverage_0.5": 0.5219968320474171,
+          "coverage_0.9": 0.9034796382402535,
           "event_rows": 39142,
           "timeout_censoring_rows": 12745
         },
@@ -1845,9 +1845,9 @@
             },
             "causal_terminal_baseline_brier": 0.6078251114011387,
             "conditional_loss_net_R": {
-              "bias": -0.007763721570202931,
-              "mae": 0.1259350550417832,
-              "rmse": 0.2283997897331164
+              "bias": -0.007763730241987759,
+              "mae": 0.12593504636999836,
+              "rmse": 0.22839978248729287
             },
             "conditional_positive_net_R": {
               "bias": -0.0012018077982673906,
@@ -1857,11 +1857,11 @@
             "expectancy_monotonic": false,
             "expected_R_buckets": [
               {
-                "bias": -0.1070587468065737,
-                "mae": 1.28211353083971,
-                "prediction_mean": -0.4388893173681801,
+                "bias": -0.10705877389390159,
+                "mae": 1.2821135037523823,
+                "prediction_mean": -0.43888934445550803,
                 "realized_mean": -0.3318305705616064,
-                "rmse": 1.6165942868584064,
+                "rmse": 1.6165942836606892,
                 "samples": 2168
               },
               {
@@ -1883,7 +1883,7 @@
               {
                 "bias": -0.062403572650167466,
                 "mae": 1.0551937884129212,
-                "prediction_mean": -0.09163886819039112,
+                "prediction_mean": -0.09163886819039113,
                 "realized_mean": -0.029235295540223673,
                 "rmse": 1.230837526113661,
                 "samples": 2168
@@ -1891,18 +1891,18 @@
               {
                 "bias": 0.06171996206955013,
                 "mae": 1.0193294690435635,
-                "prediction_mean": 0.011558918443098984,
+                "prediction_mean": 0.01155891844309898,
                 "realized_mean": -0.05016104362645116,
                 "rmse": 1.1762893557947858,
                 "samples": 2168
               }
             ],
             "expected_net_R": {
-              "bias": -0.06066373491665375,
-              "mae": 1.1180196542999805,
-              "rmse": 1.3382699394676678
+              "bias": -0.06066374033411933,
+              "mae": 1.118019648882515,
+              "rmse": 1.3382699386951162
             },
-            "maximum_bucket_absolute_bias": 0.1070587468065737,
+            "maximum_bucket_absolute_bias": 0.10705877389390159,
             "maximum_expectancy_quintile_inversion_R": 0.020925748086227484,
             "quantile_crossings": {},
             "quantiles": {
@@ -1910,17 +1910,17 @@
                 "0.1": {
                   "coverage": 0.12453874538745388,
                   "coverage_error": 0.024538745387453875,
-                  "pinball_loss": 0.22962889040761392
+                  "pinball_loss": 0.22961248335000273
                 },
                 "0.5": {
-                  "coverage": 0.5487084870848709,
-                  "coverage_error": 0.048708487084870855,
-                  "pinball_loss": 0.8014923301522182
+                  "coverage": 0.5480627306273063,
+                  "coverage_error": 0.04806273062730626,
+                  "pinball_loss": 0.8014728905289813
                 },
                 "0.9": {
                   "coverage": 0.8982472324723247,
                   "coverage_error": 0.0017527675276752808,
-                  "pinball_loss": 0.610165447847199
+                  "pinball_loss": 0.6101633423290596
                 },
                 "interval_10_90_coverage": 0.7737084870848708
               },
@@ -1928,19 +1928,19 @@
                 "0.1": {
                   "coverage": 0.09861623616236162,
                   "coverage_error": 0.0013837638376383854,
-                  "pinball_loss": 0.22562611127545
+                  "pinball_loss": 0.22560919356598783
                 },
                 "0.5": {
-                  "coverage": 0.49584870848708484,
-                  "coverage_error": 0.004151291512915156,
-                  "pinball_loss": 0.801009484200585
+                  "coverage": 0.49511070110701105,
+                  "coverage_error": 0.004889298892988947,
+                  "pinball_loss": 0.8009801705431953
                 },
                 "0.9": {
-                  "coverage": 0.8847785977859779,
-                  "coverage_error": 0.015221402214022128,
-                  "pinball_loss": 0.5658708448284425
+                  "coverage": 0.8841328413284133,
+                  "coverage_error": 0.015867158671586723,
+                  "pinball_loss": 0.5662388067701363
                 },
-                "interval_10_90_coverage": 0.7862546125461255
+                "interval_10_90_coverage": 0.7856088560885609
               }
             },
             "terminal_multiclass_brier": 0.5168436480702874
@@ -1955,12 +1955,12 @@
             "causal_terminal_frequency_CRPS": 6.625407462370487,
             "causal_terminal_frequency_MAE": 10.127485282513637,
             "causal_terminal_frequency_log_loss": 3.5716335337263216,
-            "conditional_CRPS": 6.625158616376976,
-            "conditional_MAE": 10.128033933326588,
-            "conditional_log_loss": 3.5715860257617726,
+            "conditional_CRPS": 6.622210048752289,
+            "conditional_MAE": 10.118342234467754,
+            "conditional_log_loss": 3.5710622119834685,
             "coverage_0.1": 0.1511742892459827,
             "coverage_0.5": 0.5304079110012361,
-            "coverage_0.9": 0.9101359703337454,
+            "coverage_0.9": 0.9100123609394314,
             "event_rows": 8090,
             "timeout_censoring_rows": 2750
           },
@@ -1996,9 +1996,9 @@
             },
             "causal_terminal_baseline_brier": 0.5996076248591862,
             "conditional_loss_net_R": {
-              "bias": -0.010603867131815787,
-              "mae": 0.12010276730829623,
-              "rmse": 0.22659819136402767
+              "bias": -0.010603867249837395,
+              "mae": 0.12010276719027463,
+              "rmse": 0.22659819118890362
             },
             "conditional_positive_net_R": {
               "bias": 0.03656401570264494,
@@ -2008,11 +2008,11 @@
             "expectancy_monotonic": true,
             "expected_R_buckets": [
               {
-                "bias": -0.09080111713994025,
-                "mae": 1.386747001486408,
-                "prediction_mean": -0.4046541337529659,
+                "bias": -0.09080111751101229,
+                "mae": 1.3867470011153362,
+                "prediction_mean": -0.40465413412403795,
                 "realized_mean": -0.31385301661302567,
-                "rmse": 1.7363238471760878,
+                "rmse": 1.736323847104231,
                 "samples": 2179
               },
               {
@@ -2040,20 +2040,20 @@
                 "samples": 2179
               },
               {
-                "bias": 0.004933272473676094,
+                "bias": 0.004933272473676087,
                 "mae": 0.9635904569836341,
-                "prediction_mean": 0.003749991647842498,
+                "prediction_mean": 0.0037499916478424965,
                 "realized_mean": -0.0011832808258336112,
                 "rmse": 1.1420246083218704,
                 "samples": 2179
               }
             ],
             "expected_net_R": {
-              "bias": -0.028123149089460744,
-              "mae": 1.1448710709955874,
-              "rmse": 1.3743708906051861
+              "bias": -0.028123149163675164,
+              "mae": 1.144871070921373,
+              "rmse": 1.37437089058703
             },
-            "maximum_bucket_absolute_bias": 0.09080111713994025,
+            "maximum_bucket_absolute_bias": 0.09080111751101229,
             "maximum_expectancy_quintile_inversion_R": 0.0,
             "quantile_crossings": {},
             "quantiles": {
@@ -2061,17 +2061,17 @@
                 "0.1": {
                   "coverage": 0.11730151445617255,
                   "coverage_error": 0.017301514456172548,
-                  "pinball_loss": 0.2191568278089024
+                  "pinball_loss": 0.21914991633651532
                 },
                 "0.5": {
-                  "coverage": 0.5447452960073428,
-                  "coverage_error": 0.04474529600734278,
-                  "pinball_loss": 0.747696411934805
+                  "coverage": 0.5438274437815511,
+                  "coverage_error": 0.04382744378155112,
+                  "pinball_loss": 0.7477200556692754
                 },
                 "0.9": {
                   "coverage": 0.9012391005048187,
                   "coverage_error": 0.0012391005048186798,
-                  "pinball_loss": 0.48342070265064774
+                  "pinball_loss": 0.4834203186716368
                 },
                 "interval_10_90_coverage": 0.7839375860486462
               },
@@ -2079,19 +2079,19 @@
                 "0.1": {
                   "coverage": 0.10224873795318953,
                   "coverage_error": 0.002248737953189528,
-                  "pinball_loss": 0.21598771208462728
+                  "pinball_loss": 0.21598996438995624
                 },
                 "0.5": {
-                  "coverage": 0.5112436897659477,
-                  "coverage_error": 0.011243689765947695,
-                  "pinball_loss": 0.7674565436026636
+                  "coverage": 0.5105094079853144,
+                  "coverage_error": 0.010509407985314412,
+                  "pinball_loss": 0.7673882198256023
                 },
                 "0.9": {
-                  "coverage": 0.9054612207434602,
-                  "coverage_error": 0.005461220743460227,
-                  "pinball_loss": 0.5177366265671163
+                  "coverage": 0.9050940798531436,
+                  "coverage_error": 0.005094079853143585,
+                  "pinball_loss": 0.5177184509135278
                 },
-                "interval_10_90_coverage": 0.8032124827902708
+                "interval_10_90_coverage": 0.8028453418999542
               }
             },
             "terminal_multiclass_brier": 0.510093273942091
@@ -2106,12 +2106,12 @@
             "causal_terminal_frequency_CRPS": 6.616652850814879,
             "causal_terminal_frequency_MAE": 10.116065555057324,
             "causal_terminal_frequency_log_loss": 3.5574521654890856,
-            "conditional_CRPS": 6.615876650506379,
-            "conditional_MAE": 10.107448124964389,
-            "conditional_log_loss": 3.5582762684875675,
+            "conditional_CRPS": 6.611762547464386,
+            "conditional_MAE": 10.095977960812318,
+            "conditional_log_loss": 3.557688306616643,
             "coverage_0.1": 0.16393043901252585,
             "coverage_0.5": 0.5449349385868905,
-            "coverage_0.9": 0.9061169889334793,
+            "coverage_0.9": 0.9034415663383194,
             "event_rows": 8223,
             "timeout_censoring_rows": 2672
           },
@@ -2147,9 +2147,9 @@
             },
             "causal_terminal_baseline_brier": 0.5988532262077163,
             "conditional_loss_net_R": {
-              "bias": -0.013991114324259892,
-              "mae": 0.1291192015496096,
-              "rmse": 0.2437274791201936
+              "bias": -0.013991114560550343,
+              "mae": 0.12911920144361094,
+              "rmse": 0.24372747961769237
             },
             "conditional_positive_net_R": {
               "bias": 0.051285912418448494,
@@ -2159,11 +2159,11 @@
             "expectancy_monotonic": false,
             "expected_R_buckets": [
               {
-                "bias": -0.11157796999228857,
-                "mae": 1.3787792476455876,
-                "prediction_mean": -0.4336394886100419,
+                "bias": -0.11157797075032024,
+                "mae": 1.3787792473055387,
+                "prediction_mean": -0.4336394893680736,
                 "realized_mean": -0.3220615186177534,
-                "rmse": 1.6790908030658955,
+                "rmse": 1.6790908032975622,
                 "samples": 2062
               },
               {
@@ -2200,9 +2200,9 @@
               }
             ],
             "expected_net_R": {
-              "bias": 0.009625659231374553,
-              "mae": 1.1309596679211626,
-              "rmse": 1.3506401119884759
+              "bias": 0.009625659079782916,
+              "mae": 1.1309596678531593,
+              "rmse": 1.3506401120460707
             },
             "maximum_bucket_absolute_bias": 0.12388656268290432,
             "maximum_expectancy_quintile_inversion_R": 0.04627498775091449,
@@ -2212,17 +2212,17 @@
                 "0.1": {
                   "coverage": 0.11240422849384153,
                   "coverage_error": 0.012404228493841526,
-                  "pinball_loss": 0.22762396409390434
+                  "pinball_loss": 0.22761858427938425
                 },
                 "0.5": {
-                  "coverage": 0.5430123169430705,
-                  "coverage_error": 0.043012316943070505,
-                  "pinball_loss": 0.8006856436272104
+                  "coverage": 0.5424304141208418,
+                  "coverage_error": 0.04243041412084181,
+                  "pinball_loss": 0.8007278880525112
                 },
                 "0.9": {
                   "coverage": 0.9090291921249152,
                   "coverage_error": 0.009029192124915153,
-                  "pinball_loss": 0.6038757359947479
+                  "pinball_loss": 0.6038791608413271
                 },
                 "interval_10_90_coverage": 0.7966249636310736
               },
@@ -2230,19 +2230,19 @@
                 "0.1": {
                   "coverage": 0.10483949180486858,
                   "coverage_error": 0.004839491804868576,
-                  "pinball_loss": 0.22817374690891729
+                  "pinball_loss": 0.22815240879746318
                 },
                 "0.5": {
-                  "coverage": 0.5278828435651246,
-                  "coverage_error": 0.027882843565124604,
-                  "pinball_loss": 0.7988953080558127
+                  "coverage": 0.5274949083503055,
+                  "coverage_error": 0.027494908350305547,
+                  "pinball_loss": 0.7988359489438603
                 },
                 "0.9": {
-                  "coverage": 0.8995247793618466,
-                  "coverage_error": 0.0004752206381534174,
-                  "pinball_loss": 0.5860477409126034
+                  "coverage": 0.8991368441470274,
+                  "coverage_error": 0.0008631558529725858,
+                  "pinball_loss": 0.5859110474668748
                 },
-                "interval_10_90_coverage": 0.794685287556978
+                "interval_10_90_coverage": 0.7942973523421588
               }
             },
             "terminal_multiclass_brier": 0.5138052541082507
@@ -2257,9 +2257,9 @@
             "causal_terminal_frequency_CRPS": 6.830897448123744,
             "causal_terminal_frequency_MAE": 10.341005424362152,
             "causal_terminal_frequency_log_loss": 3.588262609520162,
-            "conditional_CRPS": 6.830563812964964,
-            "conditional_MAE": 10.35409525810927,
-            "conditional_log_loss": 3.588298996943611,
+            "conditional_CRPS": 6.82655314358815,
+            "conditional_MAE": 10.343134488597915,
+            "conditional_log_loss": 3.5876873638770674,
             "coverage_0.1": 0.1621970087674059,
             "coverage_0.5": 0.5139247034553894,
             "coverage_0.9": 0.8964672511603919,
@@ -2298,9 +2298,9 @@
             },
             "causal_terminal_baseline_brier": 0.5953002935024193,
             "conditional_loss_net_R": {
-              "bias": -0.018766730019520277,
-              "mae": 0.12716145054848213,
-              "rmse": 0.2400327299629015
+              "bias": -0.018766731957497087,
+              "mae": 0.12716144913527472,
+              "rmse": 0.24003273060178876
             },
             "conditional_positive_net_R": {
               "bias": 0.04893179439464748,
@@ -2310,15 +2310,15 @@
             "expectancy_monotonic": false,
             "expected_R_buckets": [
               {
-                "bias": -0.050312159175203715,
-                "mae": 1.3760150337146688,
-                "prediction_mean": -0.44132846526971536,
+                "bias": -0.050312165465977145,
+                "mae": 1.3760150291273243,
+                "prediction_mean": -0.4413284715604888,
                 "realized_mean": -0.39101630609451166,
-                "rmse": 1.7205042695481472,
+                "rmse": 1.7205042698374777,
                 "samples": 1963
               },
               {
-                "bias": -0.0034195375303692674,
+                "bias": -0.003419537530369269,
                 "mae": 1.2453294451311392,
                 "prediction_mean": -0.21666135163725975,
                 "realized_mean": -0.2132418141068905,
@@ -2351,9 +2351,9 @@
               }
             ],
             "expected_net_R": {
-              "bias": 0.0009319560618930859,
-              "mae": 1.1385852702689225,
-              "rmse": 1.3760193671491205
+              "bias": 0.0009319548036102003,
+              "mae": 1.13858526935136,
+              "rmse": 1.3760193672214807
             },
             "maximum_bucket_absolute_bias": 0.08561327351638551,
             "maximum_expectancy_quintile_inversion_R": 0.04984636780953264,
@@ -2363,17 +2363,17 @@
                 "0.1": {
                   "coverage": 0.11096392908090483,
                   "coverage_error": 0.010963929080904822,
-                  "pinball_loss": 0.2363827085551662
+                  "pinball_loss": 0.23638123046113932
                 },
                 "0.5": {
-                  "coverage": 0.5344405950682698,
-                  "coverage_error": 0.0344405950682698,
-                  "pinball_loss": 0.8162911563301545
+                  "coverage": 0.5338292235581822,
+                  "coverage_error": 0.033829223558182187,
+                  "pinball_loss": 0.8162608996330214
                 },
                 "0.9": {
                   "coverage": 0.9093132260036683,
                   "coverage_error": 0.00931322600366824,
-                  "pinball_loss": 0.5863077160093509
+                  "pinball_loss": 0.586306915583164
                 },
                 "interval_10_90_coverage": 0.7983492969227634
               },
@@ -2384,16 +2384,16 @@
                   "pinball_loss": 0.21578825437486476
                 },
                 "0.5": {
-                  "coverage": 0.5328102710413695,
-                  "coverage_error": 0.032810271041369465,
-                  "pinball_loss": 0.7690830766486136
+                  "coverage": 0.531893213776238,
+                  "coverage_error": 0.031893213776237994,
+                  "pinball_loss": 0.7689303691819213
                 },
                 "0.9": {
-                  "coverage": 0.910332178520481,
-                  "coverage_error": 0.010332178520480961,
-                  "pinball_loss": 0.524970283688058
+                  "coverage": 0.9098227022620746,
+                  "coverage_error": 0.0098227022620746,
+                  "pinball_loss": 0.5250455423086899
                 },
-                "interval_10_90_coverage": 0.7988587731811697
+                "interval_10_90_coverage": 0.7983492969227634
               }
             },
             "terminal_multiclass_brier": 0.5119711465369841
@@ -2408,9 +2408,9 @@
             "causal_terminal_frequency_CRPS": 6.745057125764229,
             "causal_terminal_frequency_MAE": 10.17323042772622,
             "causal_terminal_frequency_log_loss": 3.581013811084437,
-            "conditional_CRPS": 6.744687771788378,
-            "conditional_MAE": 10.1854071696142,
-            "conditional_log_loss": 3.5817787576172564,
+            "conditional_CRPS": 6.740920988811065,
+            "conditional_MAE": 10.175186770274925,
+            "conditional_log_loss": 3.5816930891145184,
             "coverage_0.1": 0.16281879194630872,
             "coverage_0.5": 0.5067114093959731,
             "coverage_0.9": 0.9018791946308725,
@@ -2449,9 +2449,9 @@
             },
             "causal_terminal_baseline_brier": 0.5931668712565119,
             "conditional_loss_net_R": {
-              "bias": -0.01757134322065045,
-              "mae": 0.1300601823528694,
-              "rmse": 0.24312587940526115
+              "bias": -0.01757134565061537,
+              "mae": 0.13006018049276608,
+              "rmse": 0.2431258804418661
             },
             "conditional_positive_net_R": {
               "bias": 0.07474537221874096,
@@ -2461,11 +2461,11 @@
             "expectancy_monotonic": false,
             "expected_R_buckets": [
               {
-                "bias": -0.06705763320727526,
-                "mae": 1.3706257596292197,
-                "prediction_mean": -0.43250349990850145,
+                "bias": -0.06705764113070524,
+                "mae": 1.3706257535639474,
+                "prediction_mean": -0.4325035078319314,
                 "realized_mean": -0.3654458667012262,
-                "rmse": 1.6937412407750763,
+                "rmse": 1.6937412412602648,
                 "samples": 2006
               },
               {
@@ -2502,9 +2502,9 @@
               }
             ],
             "expected_net_R": {
-              "bias": 0.017365516233171136,
-              "mae": 1.1267616256743211,
-              "rmse": 1.3525466412071558
+              "bias": 0.01736551464801101,
+              "mae": 1.1267616244609038,
+              "rmse": 1.3525466413287086
             },
             "maximum_bucket_absolute_bias": 0.1064685444215447,
             "maximum_expectancy_quintile_inversion_R": 0.011461477025716038,
@@ -2514,17 +2514,17 @@
                 "0.1": {
                   "coverage": 0.11668495063329011,
                   "coverage_error": 0.016684950633290105,
-                  "pinball_loss": 0.21853995754161692
+                  "pinball_loss": 0.21850277019242684
                 },
                 "0.5": {
-                  "coverage": 0.5373491572753566,
-                  "coverage_error": 0.03734915727535659,
-                  "pinball_loss": 0.7315799885464039
+                  "coverage": 0.5370499650942455,
+                  "coverage_error": 0.03704996509424552,
+                  "pinball_loss": 0.7316749061680927
                 },
                 "0.9": {
                   "coverage": 0.9262989927196569,
                   "coverage_error": 0.026298992719656855,
-                  "pinball_loss": 0.484663463926713
+                  "pinball_loss": 0.48466421239748503
                 },
                 "interval_10_90_coverage": 0.8096140420863668
               },
@@ -2532,19 +2532,19 @@
                 "0.1": {
                   "coverage": 0.1114989528273661,
                   "coverage_error": 0.011498952827366099,
-                  "pinball_loss": 0.21325110667739217
+                  "pinball_loss": 0.21324506305731836
                 },
                 "0.5": {
-                  "coverage": 0.5295701605664705,
-                  "coverage_error": 0.02957016056647055,
-                  "pinball_loss": 0.747881013777051
+                  "coverage": 0.5285728532961005,
+                  "coverage_error": 0.028572853296100487,
+                  "pinball_loss": 0.7478116287329681
                 },
                 "0.9": {
-                  "coverage": 0.9136331903859579,
-                  "coverage_error": 0.013633190385957894,
-                  "pinball_loss": 0.5121773566722726
+                  "coverage": 0.913333998204847,
+                  "coverage_error": 0.01333399820484693,
+                  "pinball_loss": 0.5120963897323962
                 },
-                "interval_10_90_coverage": 0.8021342375585918
+                "interval_10_90_coverage": 0.8018350453774808
               }
             },
             "terminal_multiclass_brier": 0.5091386007642635
@@ -2559,11 +2559,11 @@
             "causal_terminal_frequency_CRPS": 6.689327044792926,
             "causal_terminal_frequency_MAE": 10.141135675038107,
             "causal_terminal_frequency_log_loss": 3.5803616639125373,
-            "conditional_CRPS": 6.689149861423182,
-            "conditional_MAE": 10.143439642748467,
-            "conditional_log_loss": 3.5815834199715035,
+            "conditional_CRPS": 6.685390088606056,
+            "conditional_MAE": 10.132752683719465,
+            "conditional_log_loss": 3.581373354672796,
             "coverage_0.1": 0.1559753377935196,
-            "coverage_0.5": 0.5134461498097862,
+            "coverage_0.5": 0.5114784205693297,
             "coverage_0.9": 0.9052866325593598,
             "event_rows": 7623,
             "timeout_censoring_rows": 2404
@@ -2598,9 +2598,9 @@
           },
           "causal_terminal_baseline_brier": 0.599115119285731,
           "conditional_loss_net_R": {
-            "bias": -0.013643328923384549,
-            "mae": 0.12641477438049553,
-            "rmse": 0.2363441033729207
+            "bias": -0.013643331618330192,
+            "mae": 0.12641477192485415,
+            "rmse": 0.23634410234530853
           },
           "conditional_positive_net_R": {
             "bias": 0.04064444179855026,
@@ -2610,11 +2610,11 @@
           "expectancy_monotonic": false,
           "expected_R_buckets": [
             {
-              "bias": -0.0843315788624778,
-              "mae": 1.3560086842257484,
-              "prediction_mean": -0.4304594521598799,
+              "bias": -0.08433158747108668,
+              "mae": 1.356008676381562,
+              "prediction_mean": -0.43045946076848884,
               "realized_mean": -0.3461278732974021,
-              "rmse": 1.6856394527821932,
+              "rmse": 1.685639452321945,
               "samples": 10378
             },
             {
@@ -2651,11 +2651,11 @@
             }
           ],
           "expected_net_R": {
-            "bias": -0.013133851936517291,
-            "mae": 1.1318084138628066,
-            "rmse": 1.3582867057994858
+            "bias": -0.013133853658338614,
+            "mae": 1.1318084122938785,
+            "rmse": 1.3582867056852455
           },
-          "maximum_bucket_absolute_bias": 0.0843315788624778,
+          "maximum_bucket_absolute_bias": 0.08433158747108668,
           "maximum_expectancy_quintile_inversion_R": 0.009136115306875484,
           "quantile_crossings": {},
           "quantiles": {
@@ -2663,17 +2663,17 @@
               "0.1": {
                 "coverage": 0.11652244300113708,
                 "coverage_error": 0.016522443001137074,
-                "pinball_loss": 0.2261661217800021
+                "pinball_loss": 0.22615270786459382
               },
               "0.5": {
-                "coverage": 0.5418505598704878,
-                "coverage_error": 0.0418505598704878,
-                "pinball_loss": 0.7793249347948202
+                "coverage": 0.5412338350646597,
+                "coverage_error": 0.04123383506465972,
+                "pinball_loss": 0.7793468527127467
               },
               "0.9": {
                 "coverage": 0.9085320022356275,
                 "coverage_error": 0.008532002235627445,
-                "pinball_loss": 0.5535369013740091
+                "pinball_loss": 0.5535370547044957
               },
               "interval_10_90_coverage": 0.7920095592344903
             },
@@ -2681,19 +2681,19 @@
               "0.1": {
                 "coverage": 0.10553703239732495,
                 "coverage_error": 0.005537032397324948,
-                "pinball_loss": 0.21985636958881552
+                "pinball_loss": 0.21984789991915465
               },
               "0.5": {
-                "coverage": 0.5189546514541215,
-                "coverage_error": 0.01895465145412145,
-                "pinball_loss": 0.7772385301139174
+                "coverage": 0.5182030180970185,
+                "coverage_error": 0.01820301809701852,
+                "pinball_loss": 0.7771639720489748
               },
               "0.9": {
-                "coverage": 0.9024611174282575,
-                "coverage_error": 0.0024611174282574977,
-                "pinball_loss": 0.5416612924317533
+                "coverage": 0.9020178464740687,
+                "coverage_error": 0.002017846474068663,
+                "pinball_loss": 0.5417057731336621
               },
-              "interval_10_90_coverage": 0.7969433576811147
+              "interval_10_90_coverage": 0.7965000867269258
             }
           },
           "terminal_multiclass_brier": 0.512411874299312
@@ -2708,12 +2708,12 @@
           "causal_terminal_frequency_CRPS": 6.699507920389243,
           "causal_terminal_frequency_MAE": 10.178760538641367,
           "causal_terminal_frequency_log_loss": 3.575434548584268,
-          "conditional_CRPS": 6.699122506014313,
-          "conditional_MAE": 10.182423664717875,
-          "conditional_log_loss": 3.5759886025029886,
+          "conditional_CRPS": 6.695404908179494,
+          "conditional_MAE": 10.171812418596675,
+          "conditional_log_loss": 3.5755784076199313,
           "coverage_0.1": 0.15918961729088957,
-          "coverage_0.5": 0.5223800521179296,
-          "coverage_0.9": 0.9040672423483725,
+          "coverage_0.5": 0.5219968320474171,
+          "coverage_0.9": 0.9034796382402535,
           "event_rows": 39142,
           "timeout_censoring_rows": 12745
         },
@@ -2752,9 +2752,9 @@
             },
             "causal_terminal_baseline_brier": 0.6078251114011387,
             "conditional_loss_net_R": {
-              "bias": -0.007763721570202931,
-              "mae": 0.1259350550417832,
-              "rmse": 0.2283997897331164
+              "bias": -0.007763730241987759,
+              "mae": 0.12593504636999836,
+              "rmse": 0.22839978248729287
             },
             "conditional_positive_net_R": {
               "bias": -0.0012018077982673906,
@@ -2764,11 +2764,11 @@
             "expectancy_monotonic": false,
             "expected_R_buckets": [
               {
-                "bias": -0.1070587468065737,
-                "mae": 1.28211353083971,
-                "prediction_mean": -0.4388893173681801,
+                "bias": -0.10705877389390159,
+                "mae": 1.2821135037523823,
+                "prediction_mean": -0.43888934445550803,
                 "realized_mean": -0.3318305705616064,
-                "rmse": 1.6165942868584064,
+                "rmse": 1.6165942836606892,
                 "samples": 2168
               },
               {
@@ -2790,7 +2790,7 @@
               {
                 "bias": -0.062403572650167466,
                 "mae": 1.0551937884129212,
-                "prediction_mean": -0.09163886819039112,
+                "prediction_mean": -0.09163886819039113,
                 "realized_mean": -0.029235295540223673,
                 "rmse": 1.230837526113661,
                 "samples": 2168
@@ -2798,18 +2798,18 @@
               {
                 "bias": 0.06171996206955013,
                 "mae": 1.0193294690435635,
-                "prediction_mean": 0.011558918443098984,
+                "prediction_mean": 0.01155891844309898,
                 "realized_mean": -0.05016104362645116,
                 "rmse": 1.1762893557947858,
                 "samples": 2168
               }
             ],
             "expected_net_R": {
-              "bias": -0.06066373491665375,
-              "mae": 1.1180196542999805,
-              "rmse": 1.3382699394676678
+              "bias": -0.06066374033411933,
+              "mae": 1.118019648882515,
+              "rmse": 1.3382699386951162
             },
-            "maximum_bucket_absolute_bias": 0.1070587468065737,
+            "maximum_bucket_absolute_bias": 0.10705877389390159,
             "maximum_expectancy_quintile_inversion_R": 0.020925748086227484,
             "quantile_crossings": {},
             "quantiles": {
@@ -2817,17 +2817,17 @@
                 "0.1": {
                   "coverage": 0.12453874538745388,
                   "coverage_error": 0.024538745387453875,
-                  "pinball_loss": 0.22962889040761392
+                  "pinball_loss": 0.22961248335000273
                 },
                 "0.5": {
-                  "coverage": 0.5487084870848709,
-                  "coverage_error": 0.048708487084870855,
-                  "pinball_loss": 0.8014923301522182
+                  "coverage": 0.5480627306273063,
+                  "coverage_error": 0.04806273062730626,
+                  "pinball_loss": 0.8014728905289813
                 },
                 "0.9": {
                   "coverage": 0.8982472324723247,
                   "coverage_error": 0.0017527675276752808,
-                  "pinball_loss": 0.610165447847199
+                  "pinball_loss": 0.6101633423290596
                 },
                 "interval_10_90_coverage": 0.7737084870848708
               },
@@ -2835,19 +2835,19 @@
                 "0.1": {
                   "coverage": 0.09861623616236162,
                   "coverage_error": 0.0013837638376383854,
-                  "pinball_loss": 0.22562611127545
+                  "pinball_loss": 0.22560919356598783
                 },
                 "0.5": {
-                  "coverage": 0.49584870848708484,
-                  "coverage_error": 0.004151291512915156,
-                  "pinball_loss": 0.801009484200585
+                  "coverage": 0.49511070110701105,
+                  "coverage_error": 0.004889298892988947,
+                  "pinball_loss": 0.8009801705431953
                 },
                 "0.9": {
-                  "coverage": 0.8847785977859779,
-                  "coverage_error": 0.015221402214022128,
-                  "pinball_loss": 0.5658708448284425
+                  "coverage": 0.8841328413284133,
+                  "coverage_error": 0.015867158671586723,
+                  "pinball_loss": 0.5662388067701363
                 },
-                "interval_10_90_coverage": 0.7862546125461255
+                "interval_10_90_coverage": 0.7856088560885609
               }
             },
             "terminal_multiclass_brier": 0.5168436480702874
@@ -2862,12 +2862,12 @@
             "causal_terminal_frequency_CRPS": 6.625407462370487,
             "causal_terminal_frequency_MAE": 10.127485282513637,
             "causal_terminal_frequency_log_loss": 3.5716335337263216,
-            "conditional_CRPS": 6.625158616376976,
-            "conditional_MAE": 10.128033933326588,
-            "conditional_log_loss": 3.5715860257617726,
+            "conditional_CRPS": 6.622210048752289,
+            "conditional_MAE": 10.118342234467754,
+            "conditional_log_loss": 3.5710622119834685,
             "coverage_0.1": 0.1511742892459827,
             "coverage_0.5": 0.5304079110012361,
-            "coverage_0.9": 0.9101359703337454,
+            "coverage_0.9": 0.9100123609394314,
             "event_rows": 8090,
             "timeout_censoring_rows": 2750
           },
@@ -2903,9 +2903,9 @@
             },
             "causal_terminal_baseline_brier": 0.5996076248591862,
             "conditional_loss_net_R": {
-              "bias": -0.010603867131815787,
-              "mae": 0.12010276730829623,
-              "rmse": 0.22659819136402767
+              "bias": -0.010603867249837395,
+              "mae": 0.12010276719027463,
+              "rmse": 0.22659819118890362
             },
             "conditional_positive_net_R": {
               "bias": 0.03656401570264494,
@@ -2915,11 +2915,11 @@
             "expectancy_monotonic": true,
             "expected_R_buckets": [
               {
-                "bias": -0.09080111713994025,
-                "mae": 1.386747001486408,
-                "prediction_mean": -0.4046541337529659,
+                "bias": -0.09080111751101229,
+                "mae": 1.3867470011153362,
+                "prediction_mean": -0.40465413412403795,
                 "realized_mean": -0.31385301661302567,
-                "rmse": 1.7363238471760878,
+                "rmse": 1.736323847104231,
                 "samples": 2179
               },
               {
@@ -2947,20 +2947,20 @@
                 "samples": 2179
               },
               {
-                "bias": 0.004933272473676094,
+                "bias": 0.004933272473676087,
                 "mae": 0.9635904569836341,
-                "prediction_mean": 0.003749991647842498,
+                "prediction_mean": 0.0037499916478424965,
                 "realized_mean": -0.0011832808258336112,
                 "rmse": 1.1420246083218704,
                 "samples": 2179
               }
             ],
             "expected_net_R": {
-              "bias": -0.028123149089460744,
-              "mae": 1.1448710709955874,
-              "rmse": 1.3743708906051861
+              "bias": -0.028123149163675164,
+              "mae": 1.144871070921373,
+              "rmse": 1.37437089058703
             },
-            "maximum_bucket_absolute_bias": 0.09080111713994025,
+            "maximum_bucket_absolute_bias": 0.09080111751101229,
             "maximum_expectancy_quintile_inversion_R": 0.0,
             "quantile_crossings": {},
             "quantiles": {
@@ -2968,17 +2968,17 @@
                 "0.1": {
                   "coverage": 0.11730151445617255,
                   "coverage_error": 0.017301514456172548,
-                  "pinball_loss": 0.2191568278089024
+                  "pinball_loss": 0.21914991633651532
                 },
                 "0.5": {
-                  "coverage": 0.5447452960073428,
-                  "coverage_error": 0.04474529600734278,
-                  "pinball_loss": 0.747696411934805
+                  "coverage": 0.5438274437815511,
+                  "coverage_error": 0.04382744378155112,
+                  "pinball_loss": 0.7477200556692754
                 },
                 "0.9": {
                   "coverage": 0.9012391005048187,
                   "coverage_error": 0.0012391005048186798,
-                  "pinball_loss": 0.48342070265064774
+                  "pinball_loss": 0.4834203186716368
                 },
                 "interval_10_90_coverage": 0.7839375860486462
               },
@@ -2986,19 +2986,19 @@
                 "0.1": {
                   "coverage": 0.10224873795318953,
                   "coverage_error": 0.002248737953189528,
-                  "pinball_loss": 0.21598771208462728
+                  "pinball_loss": 0.21598996438995624
                 },
                 "0.5": {
-                  "coverage": 0.5112436897659477,
-                  "coverage_error": 0.011243689765947695,
-                  "pinball_loss": 0.7674565436026636
+                  "coverage": 0.5105094079853144,
+                  "coverage_error": 0.010509407985314412,
+                  "pinball_loss": 0.7673882198256023
                 },
                 "0.9": {
-                  "coverage": 0.9054612207434602,
-                  "coverage_error": 0.005461220743460227,
-                  "pinball_loss": 0.5177366265671163
+                  "coverage": 0.9050940798531436,
+                  "coverage_error": 0.005094079853143585,
+                  "pinball_loss": 0.5177184509135278
                 },
-                "interval_10_90_coverage": 0.8032124827902708
+                "interval_10_90_coverage": 0.8028453418999542
               }
             },
             "terminal_multiclass_brier": 0.510093273942091
@@ -3013,12 +3013,12 @@
             "causal_terminal_frequency_CRPS": 6.616652850814879,
             "causal_terminal_frequency_MAE": 10.116065555057324,
             "causal_terminal_frequency_log_loss": 3.5574521654890856,
-            "conditional_CRPS": 6.615876650506379,
-            "conditional_MAE": 10.107448124964389,
-            "conditional_log_loss": 3.5582762684875675,
+            "conditional_CRPS": 6.611762547464386,
+            "conditional_MAE": 10.095977960812318,
+            "conditional_log_loss": 3.557688306616643,
             "coverage_0.1": 0.16393043901252585,
             "coverage_0.5": 0.5449349385868905,
-            "coverage_0.9": 0.9061169889334793,
+            "coverage_0.9": 0.9034415663383194,
             "event_rows": 8223,
             "timeout_censoring_rows": 2672
           },
@@ -3054,9 +3054,9 @@
             },
             "causal_terminal_baseline_brier": 0.5988532262077163,
             "conditional_loss_net_R": {
-              "bias": -0.012372074827137298,
-              "mae": 0.12936095500844713,
-              "rmse": 0.2438442704856083
+              "bias": -0.012372074914303494,
+              "mae": 0.12936095497091793,
+              "rmse": 0.24384427069302167
             },
             "conditional_positive_net_R": {
               "bias": 0.04460181040526803,
@@ -3066,11 +3066,11 @@
             "expectancy_monotonic": false,
             "expected_R_buckets": [
               {
-                "bias": -0.12080437343008762,
-                "mae": 1.3848882023671267,
-                "prediction_mean": -0.43497353981496595,
+                "bias": -0.12080437370972118,
+                "mae": 1.3848882022467315,
+                "prediction_mean": -0.4349735400945995,
                 "realized_mean": -0.3141691663848783,
-                "rmse": 1.6915460432514202,
+                "rmse": 1.6915460433473397,
                 "samples": 2062
               },
               {
@@ -3082,7 +3082,7 @@
                 "samples": 2062
               },
               {
-                "bias": 0.041182994339567416,
+                "bias": 0.04118299433956741,
                 "mae": 1.1115808198360786,
                 "prediction_mean": -0.11318533386879744,
                 "realized_mean": -0.15436832820836485,
@@ -3090,7 +3090,7 @@
                 "samples": 2063
               },
               {
-                "bias": 0.07484200395258284,
+                "bias": 0.07484200395258282,
                 "mae": 0.9709006855065455,
                 "prediction_mean": -0.04366460095829881,
                 "realized_mean": -0.11850660491088165,
@@ -3107,9 +3107,9 @@
               }
             ],
             "expected_net_R": {
-              "bias": 0.011303082268767514,
-              "mae": 1.1307945791314973,
-              "rmse": 1.3511234004137114
+              "bias": 0.01130308221284623,
+              "mae": 1.1307945791074203,
+              "rmse": 1.3511234004377266
             },
             "maximum_bucket_absolute_bias": 0.13200356099271668,
             "maximum_expectancy_quintile_inversion_R": 0.010337143802404913,
@@ -3119,17 +3119,17 @@
                 "0.1": {
                   "coverage": 0.11279216370866066,
                   "coverage_error": 0.012792163708660653,
-                  "pinball_loss": 0.22766873585143868
+                  "pinball_loss": 0.227661869040201
                 },
                 "0.5": {
-                  "coverage": 0.5406847056541557,
-                  "coverage_error": 0.04068470565415572,
-                  "pinball_loss": 0.8006903907914249
+                  "coverage": 0.5401997866356318,
+                  "coverage_error": 0.04019978663563184,
+                  "pinball_loss": 0.8006997632525571
                 },
                 "0.9": {
                   "coverage": 0.9074774512656386,
                   "coverage_error": 0.0074774512656385905,
-                  "pinball_loss": 0.6035218400778193
+                  "pinball_loss": 0.6035206563684169
                 },
                 "interval_10_90_coverage": 0.794685287556978
               },
@@ -3137,19 +3137,19 @@
                 "0.1": {
                   "coverage": 0.10600329744932596,
                   "coverage_error": 0.006003297449325956,
-                  "pinball_loss": 0.22825961330888184
+                  "pinball_loss": 0.22825493328667512
                 },
                 "0.5": {
-                  "coverage": 0.529046649209582,
-                  "coverage_error": 0.029046649209582,
-                  "pinball_loss": 0.7989898314066005
+                  "coverage": 0.5283677625836485,
+                  "coverage_error": 0.02836776258364848,
+                  "pinball_loss": 0.798958748989788
                 },
                 "0.9": {
-                  "coverage": 0.8991368441470274,
-                  "coverage_error": 0.0008631558529725858,
-                  "pinball_loss": 0.5860792344619336
+                  "coverage": 0.8988458927359131,
+                  "coverage_error": 0.0011541072640869343,
+                  "pinball_loss": 0.5859324576151189
                 },
-                "interval_10_90_coverage": 0.7931335466977015
+                "interval_10_90_coverage": 0.7928425952865872
               }
             },
             "terminal_multiclass_brier": 0.51370794156879
@@ -3164,9 +3164,9 @@
             "causal_terminal_frequency_CRPS": 6.830897448123744,
             "causal_terminal_frequency_MAE": 10.341005424362152,
             "causal_terminal_frequency_log_loss": 3.588262609520162,
-            "conditional_CRPS": 6.830563812964964,
-            "conditional_MAE": 10.35409525810927,
-            "conditional_log_loss": 3.588298996943611,
+            "conditional_CRPS": 6.82655314358815,
+            "conditional_MAE": 10.343134488597915,
+            "conditional_log_loss": 3.5876873638770674,
             "coverage_0.1": 0.1621970087674059,
             "coverage_0.5": 0.5139247034553894,
             "coverage_0.9": 0.8964672511603919,
@@ -3205,9 +3205,9 @@
             },
             "causal_terminal_baseline_brier": 0.5953002935024193,
             "conditional_loss_net_R": {
-              "bias": -0.018766730019520277,
-              "mae": 0.12716145054848213,
-              "rmse": 0.2400327299629015
+              "bias": -0.018766731957497087,
+              "mae": 0.12716144913527472,
+              "rmse": 0.24003273060178876
             },
             "conditional_positive_net_R": {
               "bias": 0.04893179439464748,
@@ -3217,15 +3217,15 @@
             "expectancy_monotonic": false,
             "expected_R_buckets": [
               {
-                "bias": -0.050312159175203715,
-                "mae": 1.3760150337146688,
-                "prediction_mean": -0.44132846526971536,
+                "bias": -0.050312165465977145,
+                "mae": 1.3760150291273243,
+                "prediction_mean": -0.4413284715604888,
                 "realized_mean": -0.39101630609451166,
-                "rmse": 1.7205042695481472,
+                "rmse": 1.7205042698374777,
                 "samples": 1963
               },
               {
-                "bias": -0.0034195375303692674,
+                "bias": -0.003419537530369269,
                 "mae": 1.2453294451311392,
                 "prediction_mean": -0.21666135163725975,
                 "realized_mean": -0.2132418141068905,
@@ -3258,9 +3258,9 @@
               }
             ],
             "expected_net_R": {
-              "bias": 0.0009319560618930859,
-              "mae": 1.1385852702689225,
-              "rmse": 1.3760193671491205
+              "bias": 0.0009319548036102003,
+              "mae": 1.13858526935136,
+              "rmse": 1.3760193672214807
             },
             "maximum_bucket_absolute_bias": 0.08561327351638551,
             "maximum_expectancy_quintile_inversion_R": 0.04984636780953264,
@@ -3270,17 +3270,17 @@
                 "0.1": {
                   "coverage": 0.11096392908090483,
                   "coverage_error": 0.010963929080904822,
-                  "pinball_loss": 0.2363827085551662
+                  "pinball_loss": 0.23638123046113932
                 },
                 "0.5": {
-                  "coverage": 0.5344405950682698,
-                  "coverage_error": 0.0344405950682698,
-                  "pinball_loss": 0.8162911563301545
+                  "coverage": 0.5338292235581822,
+                  "coverage_error": 0.033829223558182187,
+                  "pinball_loss": 0.8162608996330214
                 },
                 "0.9": {
                   "coverage": 0.9093132260036683,
                   "coverage_error": 0.00931322600366824,
-                  "pinball_loss": 0.5863077160093509
+                  "pinball_loss": 0.586306915583164
                 },
                 "interval_10_90_coverage": 0.7983492969227634
               },
@@ -3291,16 +3291,16 @@
                   "pinball_loss": 0.21578825437486476
                 },
                 "0.5": {
-                  "coverage": 0.5328102710413695,
-                  "coverage_error": 0.032810271041369465,
-                  "pinball_loss": 0.7690830766486136
+                  "coverage": 0.531893213776238,
+                  "coverage_error": 0.031893213776237994,
+                  "pinball_loss": 0.7689303691819213
                 },
                 "0.9": {
-                  "coverage": 0.910332178520481,
-                  "coverage_error": 0.010332178520480961,
-                  "pinball_loss": 0.524970283688058
+                  "coverage": 0.9098227022620746,
+                  "coverage_error": 0.0098227022620746,
+                  "pinball_loss": 0.5250455423086899
                 },
-                "interval_10_90_coverage": 0.7988587731811697
+                "interval_10_90_coverage": 0.7983492969227634
               }
             },
             "terminal_multiclass_brier": 0.5119711465369841
@@ -3315,9 +3315,9 @@
             "causal_terminal_frequency_CRPS": 6.745057125764229,
             "causal_terminal_frequency_MAE": 10.17323042772622,
             "causal_terminal_frequency_log_loss": 3.581013811084437,
-            "conditional_CRPS": 6.744687771788378,
-            "conditional_MAE": 10.1854071696142,
-            "conditional_log_loss": 3.5817787576172564,
+            "conditional_CRPS": 6.740920988811065,
+            "conditional_MAE": 10.175186770274925,
+            "conditional_log_loss": 3.5816930891145184,
             "coverage_0.1": 0.16281879194630872,
             "coverage_0.5": 0.5067114093959731,
             "coverage_0.9": 0.9018791946308725,
@@ -3356,9 +3356,9 @@
             },
             "causal_terminal_baseline_brier": 0.5931668712565119,
             "conditional_loss_net_R": {
-              "bias": -0.01757134322065045,
-              "mae": 0.1300601823528694,
-              "rmse": 0.24312587940526115
+              "bias": -0.01757134565061537,
+              "mae": 0.13006018049276608,
+              "rmse": 0.2431258804418661
             },
             "conditional_positive_net_R": {
               "bias": 0.07474537221874096,
@@ -3368,11 +3368,11 @@
             "expectancy_monotonic": false,
             "expected_R_buckets": [
               {
-                "bias": -0.06705763320727526,
-                "mae": 1.3706257596292197,
-                "prediction_mean": -0.43250349990850145,
+                "bias": -0.06705764113070524,
+                "mae": 1.3706257535639474,
+                "prediction_mean": -0.4325035078319314,
                 "realized_mean": -0.3654458667012262,
-                "rmse": 1.6937412407750763,
+                "rmse": 1.6937412412602648,
                 "samples": 2006
               },
               {
@@ -3409,9 +3409,9 @@
               }
             ],
             "expected_net_R": {
-              "bias": 0.017365516233171136,
-              "mae": 1.1267616256743211,
-              "rmse": 1.3525466412071558
+              "bias": 0.01736551464801101,
+              "mae": 1.1267616244609038,
+              "rmse": 1.3525466413287086
             },
             "maximum_bucket_absolute_bias": 0.1064685444215447,
             "maximum_expectancy_quintile_inversion_R": 0.011461477025716038,
@@ -3421,17 +3421,17 @@
                 "0.1": {
                   "coverage": 0.11668495063329011,
                   "coverage_error": 0.016684950633290105,
-                  "pinball_loss": 0.21853995754161692
+                  "pinball_loss": 0.21850277019242684
                 },
                 "0.5": {
-                  "coverage": 0.5373491572753566,
-                  "coverage_error": 0.03734915727535659,
-                  "pinball_loss": 0.7315799885464039
+                  "coverage": 0.5370499650942455,
+                  "coverage_error": 0.03704996509424552,
+                  "pinball_loss": 0.7316749061680927
                 },
                 "0.9": {
                   "coverage": 0.9262989927196569,
                   "coverage_error": 0.026298992719656855,
-                  "pinball_loss": 0.484663463926713
+                  "pinball_loss": 0.48466421239748503
                 },
                 "interval_10_90_coverage": 0.8096140420863668
               },
@@ -3439,19 +3439,19 @@
                 "0.1": {
                   "coverage": 0.1114989528273661,
                   "coverage_error": 0.011498952827366099,
-                  "pinball_loss": 0.21325110667739217
+                  "pinball_loss": 0.21324506305731836
                 },
                 "0.5": {
-                  "coverage": 0.5295701605664705,
-                  "coverage_error": 0.02957016056647055,
-                  "pinball_loss": 0.747881013777051
+                  "coverage": 0.5285728532961005,
+                  "coverage_error": 0.028572853296100487,
+                  "pinball_loss": 0.7478116287329681
                 },
                 "0.9": {
-                  "coverage": 0.9136331903859579,
-                  "coverage_error": 0.013633190385957894,
-                  "pinball_loss": 0.5121773566722726
+                  "coverage": 0.913333998204847,
+                  "coverage_error": 0.01333399820484693,
+                  "pinball_loss": 0.5120963897323962
                 },
-                "interval_10_90_coverage": 0.8021342375585918
+                "interval_10_90_coverage": 0.8018350453774808
               }
             },
             "terminal_multiclass_brier": 0.5091386007642635
@@ -3466,11 +3466,11 @@
             "causal_terminal_frequency_CRPS": 6.689327044792926,
             "causal_terminal_frequency_MAE": 10.141135675038107,
             "causal_terminal_frequency_log_loss": 3.5803616639125373,
-            "conditional_CRPS": 6.689149861423182,
-            "conditional_MAE": 10.143439642748467,
-            "conditional_log_loss": 3.5815834199715035,
+            "conditional_CRPS": 6.685390088606056,
+            "conditional_MAE": 10.132752683719465,
+            "conditional_log_loss": 3.581373354672796,
             "coverage_0.1": 0.1559753377935196,
-            "coverage_0.5": 0.5134461498097862,
+            "coverage_0.5": 0.5114784205693297,
             "coverage_0.9": 0.9052866325593598,
             "event_rows": 7623,
             "timeout_censoring_rows": 2404
@@ -3505,9 +3505,9 @@
           },
           "causal_terminal_baseline_brier": 0.599115119285731,
           "conditional_loss_net_R": {
-            "bias": -0.013320263366584878,
-            "mae": 0.12646301422635872,
-            "rmse": 0.23636814067015197
+            "bias": -0.013320266031774042,
+            "mae": 0.12646301178437985,
+            "rmse": 0.23636813958297848
           },
           "conditional_positive_net_R": {
             "bias": 0.03932588708886222,
@@ -3517,11 +3517,11 @@
           "expectancy_monotonic": true,
           "expected_R_buckets": [
             {
-              "bias": -0.09112144507295337,
-              "mae": 1.3586517419373312,
-              "prediction_mean": -0.4307984067036081,
+              "bias": -0.09112145358650957,
+              "mae": 1.3586517341367876,
+              "prediction_mean": -0.4307984152171643,
               "realized_mean": -0.33967696163065475,
-              "rmse": 1.6892630561173025,
+              "rmse": 1.6892630556313728,
               "samples": 10378
             },
             {
@@ -3558,11 +3558,11 @@
             }
           ],
           "expected_net_R": {
-            "bias": -0.012800513933962532,
-            "mae": 1.1317756073696532,
-            "rmse": 1.3583822180848375
+            "bias": -0.012800515636772217,
+            "mae": 1.1317756058094544,
+            "rmse": 1.3583822179639717
           },
-          "maximum_bucket_absolute_bias": 0.09112144507295337,
+          "maximum_bucket_absolute_bias": 0.09112145358650957,
           "maximum_expectancy_quintile_inversion_R": 0.0,
           "quantile_crossings": {},
           "quantiles": {
@@ -3570,17 +3570,17 @@
               "0.1": {
                 "coverage": 0.11659953360186559,
                 "coverage_error": 0.016599533601865585,
-                "pinball_loss": 0.22617501883691302
+                "pinball_loss": 0.22616130942507684
               },
               "0.5": {
-                "coverage": 0.5413880162661168,
-                "coverage_error": 0.04138801626611677,
-                "pinball_loss": 0.7793258781526982
+                "coverage": 0.5407905641104709,
+                "coverage_error": 0.040790564110470884,
+                "pinball_loss": 0.7793412637441741
               },
               "0.9": {
                 "coverage": 0.9082236398327134,
                 "coverage_error": 0.008223639832713348,
-                "pinball_loss": 0.553466575072634
+                "pinball_loss": 0.5534658125895117
               },
               "interval_10_90_coverage": 0.7916241062308478
             },
@@ -3588,19 +3588,19 @@
               "0.1": {
                 "coverage": 0.10576830419951047,
                 "coverage_error": 0.005768304199510466,
-                "pinball_loss": 0.21987343298523535
+                "pinball_loss": 0.21986827361600095
               },
               "0.5": {
-                "coverage": 0.519185923256307,
-                "coverage_error": 0.01918592325630697,
-                "pinball_loss": 0.7772573138221675
+                "coverage": 0.5183764719486577,
+                "coverage_error": 0.018376471948657658,
+                "pinball_loss": 0.7771883749104539
               },
               "0.9": {
-                "coverage": 0.902384026827529,
-                "coverage_error": 0.002384026827529029,
-                "pinball_loss": 0.5416675508391992
+                "coverage": 0.9019600285235223,
+                "coverage_error": 0.0019600285235222836,
+                "pinball_loss": 0.5417100277646592
               },
-              "interval_10_90_coverage": 0.7966349952782007
+              "interval_10_90_coverage": 0.796210996974194
             }
           },
           "terminal_multiclass_brier": 0.5123925363226631
@@ -3615,12 +3615,12 @@
           "causal_terminal_frequency_CRPS": 6.699507920389243,
           "causal_terminal_frequency_MAE": 10.178760538641367,
           "causal_terminal_frequency_log_loss": 3.575434548584268,
-          "conditional_CRPS": 6.699122506014313,
-          "conditional_MAE": 10.182423664717875,
-          "conditional_log_loss": 3.5759886025029886,
+          "conditional_CRPS": 6.695404908179494,
+          "conditional_MAE": 10.171812418596675,
+          "conditional_log_loss": 3.5755784076199313,
           "coverage_0.1": 0.15918961729088957,
-          "coverage_0.5": 0.5223800521179296,
-          "coverage_0.9": 0.9040672423483725,
+          "coverage_0.5": 0.5219968320474171,
+          "coverage_0.9": 0.9034796382402535,
           "event_rows": 39142,
           "timeout_censoring_rows": 12745
         },
@@ -3657,5 +3657,43 @@
   "holdout_inspected": false,
   "holdout_query_count": 0,
   "governance": "M0",
-  "cati_execution": "OFF"
+  "cati_execution": "OFF",
+  "source_fit_code_revision": "dd700907cc7211bb9749eb1c1aaa038ea12c65a8",
+  "generation_policy": "CAUSAL_TERMINAL_SUPPORT_V5_3",
+  "support_repair_from": "cati_v5_2130b8e979e2c5d27ea97cf8",
+  "support_repair_validation": {
+    "generation_policy": "CAUSAL_TERMINAL_SUPPORT_V5_3",
+    "classifier_parameters_and_probability_vectors_unchanged": true,
+    "all_fitted_conditional_numbers_unchanged": true,
+    "completed_new_model_fits": 0,
+    "changed_expected_R_rows_by_architecture": {
+      "JOINT_MULTINOMIAL_REGULARIZED": 56,
+      "JOINT_HISTOGRAM_BOOSTING": 56,
+      "RECENCY_AWARE_JOINT_MODEL": 56
+    },
+    "net_R_quantile_support_violations": 0,
+    "peak_working_set_bytes": 688836608,
+    "elapsed_seconds": 63.098499699961394,
+    "holdout_query_count": 0
+  },
+  "replay_performance": {
+    "candidate_id": "cati_v5_b131674954a223230581dbbc",
+    "artifact_load_seconds": 0.07711059995926917,
+    "outer_probability_models_replayed": 15,
+    "outer_joint_probability_max_absolute_difference": 0.0,
+    "selected_joint_payoff_path_rows_replayed": 51887,
+    "exact_payoff_path_replay": true,
+    "nested_maturity_checks_passed": true,
+    "runtime_load_rejected": true,
+    "holdout_query_count": 0,
+    "peak_working_set_bytes": 345088000,
+    "elapsed_seconds": 24.860956100048497
+  },
+  "tests": {
+    "cati_passed": 1162,
+    "cati_seconds": 389.48,
+    "existing_lightgbm_warnings": 8,
+    "additional_risk_authority_passed": 151,
+    "exact_serialized_replay": true
+  }
 }

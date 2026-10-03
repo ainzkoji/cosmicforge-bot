@@ -169,3 +169,8 @@ numeric models and evidence are committed with the research implementation.
 
 See [V4 development report](cati_v4_development_report.md) for all candidates,
 folds, residuals, payoff diagnostics, provenance, tests and resource measurements.
+
+
+## V5 development closure
+
+V5 candidate `cati_v5_b131674954a223230581dbbc` fixes coherent joint outcome/path/event generation and meets pooled skill/ECE/sample thresholds, but fails registered late-fold robustness (folds 3 and 5). Every fold’s top expectancy bucket realizes negative net R. MODEL_READY = NO; DECISION_PAYOFF_READY = NO; REJECTED_PRE_HOLDOUT / RESEARCH_ONLY. No runtime pin or CATI authority; M0 paper runtime remains unchanged at a 2.5% hard daily loss cap. Holdout opened/inspected = NO, query count = 0. See [V5 report](cati_v5_development_report.md) and [structured result](cati_v5_development_result.json).

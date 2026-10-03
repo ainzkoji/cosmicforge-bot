@@ -237,7 +237,7 @@ def test_generator_claim_cannot_disagree_with_numeric_component(tmp_path,trained
         load_library_artifact(tmp_path,mode='DEVELOPMENT')
 
 
-@pytest.mark.parametrize('candidate_id',['cati_v5_2130b8e979e2c5d27ea97cf8','cati_v5_42975f7898e66a0ef5a12fda'])
+@pytest.mark.parametrize('candidate_id',['cati_v5_2130b8e979e2c5d27ea97cf8','cati_v5_42975f7898e66a0ef5a12fda','cati_v5_b131674954a223230581dbbc'])
 def test_published_v5_replays_registered_inner_selection_and_stays_runtime_closed(candidate_id):
     root=Path(__file__).resolve().parents[4]/'docs/research/artifacts'/candidate_id
     lib,d=load_library_artifact(root,mode='DEVELOPMENT')
@@ -259,5 +259,10 @@ def test_published_v5_replays_registered_inner_selection_and_stays_runtime_close
         assert lib.distribution.generation_policy=='CAUSAL_TERMINAL_SUPPORT_V5_2'
         qa=json.loads((root/'support_repair_validation.json').read_text())
         assert qa['completed_new_model_fits']==0 and qa['net_R_quantile_support_violations']==0
+    if candidate_id.endswith('81dbbc'):
+        assert lib.distribution.generation_policy=='CAUSAL_TERMINAL_SUPPORT_V5_3'
+        qa=json.loads((root/'support_repair_validation.json').read_text())
+        assert qa['completed_new_model_fits']==0 and qa['net_R_quantile_support_violations']==0
+        assert qa['all_fitted_conditional_numbers_unchanged']
     with pytest.raises(LibraryArtifactError,match='runtime remains closed'):
         load_library_artifact(root,mode='RUNTIME')

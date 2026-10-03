@@ -1,0 +1,15 @@
+{
+  "generation_policy": "CAUSAL_TERMINAL_SUPPORT_V5_3",
+  "classifier_parameters_and_probability_vectors_unchanged": true,
+  "all_fitted_conditional_numbers_unchanged": true,
+  "completed_new_model_fits": 0,
+  "changed_expected_R_rows_by_architecture": {
+    "JOINT_MULTINOMIAL_REGULARIZED": 56,
+    "JOINT_HISTOGRAM_BOOSTING": 56,
+    "RECENCY_AWARE_JOINT_MODEL": 56
+  },
+  "net_R_quantile_support_violations": 0,
+  "peak_working_set_bytes": 688836608,
+  "elapsed_seconds": 63.098499699961394,
+  "holdout_query_count": 0
+}

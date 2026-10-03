@@ -1,0 +1,13 @@
+{
+  "candidate_id": "cati_v5_b131674954a223230581dbbc",
+  "artifact_load_seconds": 0.07711059995926917,
+  "outer_probability_models_replayed": 15,
+  "outer_joint_probability_max_absolute_difference": 0.0,
+  "selected_joint_payoff_path_rows_replayed": 51887,
+  "exact_payoff_path_replay": true,
+  "nested_maturity_checks_passed": true,
+  "runtime_load_rejected": true,
+  "holdout_query_count": 0,
+  "peak_working_set_bytes": 345088000,
+  "elapsed_seconds": 24.860956100048497
+}
