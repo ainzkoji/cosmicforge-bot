@@ -16,9 +16,8 @@ needs:
     Section 25 governance phase >= M6, the new-entry kill switch off, the
     environment the phase allows (M6: demo only; M7: an explicitly granted
     scope; M8+: promoted), a validated CATI economic adapter for the venue,
-    AND the runtime authority switch (V2 -> benchmark, CATI -> sole alpha on
-    the phase's environments): ``runtime_authority_switch()`` verifies that
-    the order-authority router exists and that BOTH the V2 entry path and the
+    AND the sole-CATI runtime authority switch: ``runtime_authority_switch()`` verifies that
+    the order-authority router exists and that BOTH the retired scalar entry denial and the
     CATI TradePlan dispatch consult it; if either is missing the capability
     is BLOCKED with ``RUNTIME_AUTHORITY_SWITCH_NOT_IMPLEMENTED``.
 ``CATI_EXIT_INTENT_ROUTING`` (authority)
@@ -56,7 +55,7 @@ RUNTIME_AUTHORITY_SWITCH_MISSING = "RUNTIME_AUTHORITY_SWITCH_NOT_IMPLEMENTED"
 
 def runtime_authority_switch() -> Prerequisite:
     """REAL capability state of the Section 25 runtime switch (not a constant): the order-authority router
-    exists AND both engines consult it -- the V2 runner refuses new entries it does not own
+    exists AND non-CATI scalar entries are always refused
     (``PaperRunner._v2_order_authority_block`` inside ``_execute_signal_with_evidence``) and the CATI cycle routes
     every TradePlan through it (``cati_dispatch.dispatch_trade_plans`` from ``cycle_shadow._portfolio_stage``).
     Any missing piece -> unsatisfied."""
@@ -71,9 +70,15 @@ def runtime_authority_switch() -> Prerequisite:
         from app.runner.runner import PaperRunner
 
         if "_v2_order_authority_block" not in inspect.getsource(PaperRunner._execute_signal_with_evidence):
-            missing.append("v2_entry_gate")
+            missing.append("legacy_entry_gate")
     except Exception:
-        missing.append("v2_entry_gate")
+        missing.append("legacy_entry_gate")
+    try:
+        from app.execution.executor import BinanceExecutor
+        if "entry_permitted" not in inspect.getsource(BinanceExecutor._execute_impl):
+            missing.append("cati_boundary_permit")
+    except Exception:
+        missing.append("cati_boundary_permit")
     try:
         from app.trading_intelligence.integration import cycle_shadow
 

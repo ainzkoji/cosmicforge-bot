@@ -199,22 +199,10 @@ class GovernanceAuthority:
 
     def v2_may_place_orders(self, *, environment: str, broker_account_id: Optional[str] = None,
                             venue: Optional[str] = None) -> bool:
-        phase = self.gov.current_phase()
-        spec = PHASE_BY_ID[phase]
-        if spec.v2_authority == "ACTIVE":
-            return True
-        if spec.v2_authority == "BENCHMARK_ON_DEMO":
-            return str(environment).upper() not in NO_CAPITAL_ENVIRONMENTS
-        if spec.v2_authority == "BENCHMARK_ON_PROMOTED_SCOPES":
-            env = str(environment).upper()
-            if env in NO_CAPITAL_ENVIRONMENTS:
-                return False
-            return not (broker_account_id and venue and
-                        self.gov.scope_granted(broker_account_id=broker_account_id, venue=venue, environment=env))
-        return False
+        return False  # retained only for historical API compatibility
 
     def v2_fallback_allowed(self) -> bool:
-        return PHASE_BY_ID[self.gov.current_phase()].v2_fallback_allowed
+        return False
 
 
 class StaticAuthority:

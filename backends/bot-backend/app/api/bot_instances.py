@@ -54,6 +54,56 @@ def get_bot_instance(
     return instance
 
 
+@router.get("/bot-instances/{instance_id}/engine-status")
+def get_engine_status(
+    instance_id: str,
+    user: dict = Depends(get_current_active_user),
+    service: BotInstanceService = Depends(get_bot_instance_service),
+    _perm: str = Depends(require_permission("bot:read")),
+):
+    """CATI runtime identity and account-scoped entry eligibility are independent."""
+    instance = service.get_bot_instance(instance_id)
+    if not instance:
+        raise HTTPException(status_code=404, detail="Bot instance not found")
+    if instance.user_id != user["id"]:
+        raise HTTPException(status_code=403, detail="Not authorized")
+    with service.db.connect() as conn:
+        account = conn.execute(
+            "SELECT user_id, broker_id, environment FROM broker_accounts WHERE id=?",
+            (instance.broker_account_id,),
+        ).fetchone()
+    if not account or str(account["user_id"]) != str(user["id"]):
+        raise HTTPException(status_code=403, detail="Broker account ownership unavailable")
+    from app.activation.cati import active_execution, cati_status, library_prerequisite
+    from app.trading_intelligence.governance.runtime_authority import canonical_venue, resolve_order_authority
+    venue = (canonical_venue(account["broker_id"]) or "UNKNOWN").lower()
+    eligibility = active_execution(service.db, environment=account["environment"],
+                                   venue=venue, broker_account_id=instance.broker_account_id)
+    library = library_prerequisite()
+    authority = resolve_order_authority(
+        service.db, broker_account_id=instance.broker_account_id,
+        venue=account["broker_id"], environment=account["environment"],
+        auto_trading_enabled=instance.status == "active",
+        cati_healthy=eligibility.active and library.satisfied is True,
+    )
+    payload = authority.to_dict()
+    # Architecture selection is not a claim that a particular bot is running.
+    payload.update({
+        "engine": "CATI",
+        "cati_runtime_active": True,
+        "instance_status": instance.status,
+        "historical_strategy_id": instance.strategy_id if instance.strategy_id != "cati" else None,
+        "cati_entry_authority": authority.environment if authority.owner == "CATI" else "BLOCKED",
+        "observe_mode": authority.owner != "CATI",
+        "execution_eligibility": eligibility.to_dict(),
+        "library_configuration": library.to_dict(),
+        "capabilities": cati_status(service.db),
+        "auto_capital_routing_independent": True,
+        "hard_daily_loss_cap_pct": 2.5,
+    })
+    return payload
+
+
 @router.get("/bot-instances/{instance_id}/effective-policy")
 def get_effective_policy(
     instance_id: str,

@@ -15,7 +15,7 @@ interface ConfigWizardProps {
 }
 
 const STEPS = [
-    { id: 'strategy', title: 'Strategy Selection' },
+    { id: 'strategy', title: 'CATI Configuration' },
     { id: 'risk', title: 'Risk Profile' },
     { id: 'review', title: 'Review & Confirm' }
 ];
@@ -24,7 +24,7 @@ export const ConfigWizard: React.FC<ConfigWizardProps> = ({ accountId, onClose, 
     const [currentStep, setCurrentStep] = useState(0);
     const [strategies, setStrategies] = useState<any[]>([]);
     const [riskTemplates, setRiskTemplates] = useState<any>({});
-    const [selectedStrategy, setSelectedStrategy] = useState<string>('');
+    const [selectedStrategy, setSelectedStrategy] = useState<string>('cati');
     const [configName, setConfigName] = useState('');
     const [selectedRiskProfile, setSelectedRiskProfile] = useState<string>('balanced');
     const [customRiskParams, setCustomRiskParams] = useState<any>(null);
@@ -38,10 +38,10 @@ export const ConfigWizard: React.FC<ConfigWizardProps> = ({ accountId, onClose, 
     const fetchData = async () => {
         try {
             const [stratsRes, templatesRes] = await Promise.all([
-                api.getStrategyCatalog(),
+                api.getOnboardingStrategies(),
                 api.getRiskTemplates()
             ]);
-            setStrategies(stratsRes.strategies || []);
+            setStrategies((stratsRes.strategies || []).filter((strategy: any) => strategy.id === "cati"));
             setRiskTemplates(templatesRes.profiles || {});
         } catch (err) {
             console.error(err);
@@ -94,11 +94,11 @@ export const ConfigWizard: React.FC<ConfigWizardProps> = ({ accountId, onClose, 
                                 value={configName}
                                 onChange={e => setConfigName(e.target.value)}
                                 className="w-full bg-gray-900 border border-gray-700 rounded-lg px-4 py-3 text-white focus:border-blue-500 outline-none"
-                                placeholder="e.g., BTC Trend Follower - Aggressive"
+                                placeholder="e.g., CATI Crypto Observation"
                             />
                         </div>
                         <div>
-                            <label className="block text-sm font-medium text-gray-400 mb-2">Select Strategy</label>
+                            <label className="block text-sm font-medium text-gray-400 mb-2">CATI — Sole Trading Engine</label>
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                 {strategies.map(strat => (
                                     <button

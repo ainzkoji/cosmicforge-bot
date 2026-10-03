@@ -45,14 +45,15 @@ def register_strategy(
 
 
 def list_strategies() -> List[StrategySpec]:
-    return [spec for (_cls, spec) in _REGISTRY.values()]
+    return [StrategySpec(name="cati", version="cati-sole-runtime-1", supports_asset_classes=["CRYPTO", "FOREX"], description="CATI sole governed intelligence authority")]
 
 
 def get_strategy_class(name: str) -> Optional[Type[Strategy]]:
-    item = _REGISTRY.get(name)
-    return item[0] if item else None
+    if name != "cati":
+        return None
+    from app.trading_intelligence.integration.runtime_binding import CatiRuntimeBinding
+    return CatiRuntimeBinding
 
 
 def get_strategy_spec(name: str) -> Optional[StrategySpec]:
-    item = _REGISTRY.get(name)
-    return item[1] if item else None
+    return list_strategies()[0] if name == "cati" else None

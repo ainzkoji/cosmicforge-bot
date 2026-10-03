@@ -13,25 +13,11 @@ const DEFAULT_SYMBOLS = ["BTCUSDT", "ETHUSDT", "SOLUSDT", "XRPUSDT", "ADAUSDT"];
 // System-managed modes mapping to internal strategies and params
 const SIMULATION_MODES = [
     {
-        id: "conservative",
-        name: "Conservative",
-        description: "Lower risk, longer trend confirmation. Prioritizes capital preservation.",
-        internal_strategy: "sma_cross",
-        params: { fast_period: 20, slow_period: 60 }
-    },
-    {
-        id: "balanced",
-        name: "Balanced",
-        description: "Standard risk profile. Balances win rate and trade frequency.",
-        internal_strategy: "sma_cross",
-        params: { fast_period: 10, slow_period: 30 }
-    },
-    {
-        id: "aggressive",
-        name: "Aggressive",
-        description: "Higher risk, faster signals. Captures shorter trends but may have more false signals.",
-        internal_strategy: "sma_cross",
-        params: { fast_period: 5, slow_period: 15 }
+        id: "cati",
+        name: "CATI",
+        description: "New simulations require an eligible pinned CATI artifact. Historical results remain available.",
+        internal_strategy: "cati",
+        params: {}
     },
 ];
 
@@ -45,7 +31,7 @@ export default function CreateBacktest() {
 
     const [name, setName] = useState(`Simulation ${today.toLocaleDateString()} ${today.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`);
     const [marketType, setMarketType] = useState<"crypto" | "forex">("crypto");
-    const [selectedModeId, setSelectedModeId] = useState("balanced");
+    const [selectedModeId, setSelectedModeId] = useState("cati");
     const [symbols, setSymbols] = useState<string[]>(["BTCUSDT"]);
     const [timeframe, setTimeframe] = useState("1h");
     const [startDate, setStartDate] = useState(lastMonth.toISOString().split('T')[0]);
@@ -120,6 +106,7 @@ export default function CreateBacktest() {
             </Button>
 
             <h1 className="text-3xl font-bold tracking-tight mb-2">Run Simulation</h1>
+            <p role="status" className="text-amber-400 mb-4">CATI simulation is blocked until an eligible exact artifact and supported replay path are available. Historical runs can still be viewed and exported.</p>
             <p className="text-muted-foreground mb-8 text-sm">
                 This simulation shows how the bot would have performed historically using your selected configuration and system-managed strategy.
             </p>
@@ -280,14 +267,14 @@ export default function CreateBacktest() {
                                 </div>
                             </CardContent>
                             <CardFooter>
-                                <Button type="submit" className="w-full" disabled={createMutation.isPending}>
+                                <Button type="submit" className="w-full" disabled={true}>
                                     {createMutation.isPending ? (
                                         <>
                                             <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Starting...
                                         </>
                                     ) : (
                                         <>
-                                            <Play className="mr-2 h-4 w-4" /> Run Simulation
+                                            <Play className="mr-2 h-4 w-4" /> Awaiting CATI artifact
                                         </>
                                     )}
                                 </Button>

@@ -34,7 +34,7 @@ class BotInstanceService:
                 "per_trade_risk_pct": 0.0015,
                 "max_margin_usage_pct": 0.35,
                 "max_drawdown_pct": 0.10,
-                "daily_loss_limit_pct": 0.03,
+                "daily_loss_limit_pct": 0.025,
                 "position_sizing_method": "risk_based",
                 "base_position_slots": 1,
                 "max_position_slots": 1,
@@ -50,7 +50,7 @@ class BotInstanceService:
                 "per_trade_risk_pct": 0.0025,
                 "max_margin_usage_pct": 0.50,
                 "max_drawdown_pct": 0.15,
-                "daily_loss_limit_pct": 0.05,
+                "daily_loss_limit_pct": 0.025,
                 "position_sizing_method": "risk_based",
                 "base_position_slots": 2,
                 "max_position_slots": 2,
@@ -66,7 +66,7 @@ class BotInstanceService:
                 "per_trade_risk_pct": 0.004,
                 "max_margin_usage_pct": 0.65,
                 "max_drawdown_pct": 0.25,
-                "daily_loss_limit_pct": 0.10,
+                "daily_loss_limit_pct": 0.025,
                 "position_sizing_method": "risk_based",
                 "base_position_slots": 3,
                 "max_position_slots": 3,
@@ -83,6 +83,10 @@ class BotInstanceService:
 
     def create_bot_instance(self, request: CreateBotInstanceRequest) -> BotInstance:
         """Create a new bot instance."""
+        # CATI is the sole selectable intelligence engine. Historical metadata
+        # remains readable; new instances cannot select legacy alpha.
+        if str(request.strategy_id).strip().lower() != "cati":
+            raise ValueError("CATI_ONLY_ENGINE: new bot instances must select cati")
         # Validate request
         errors = request.validate()
         if errors:
@@ -739,7 +743,7 @@ class BotInstanceService:
         from app.core.config import settings
 
         # Hardcoded Strategy Metadata for Auto Pilot
-        strategy_id = "master_ensemble"
+        strategy_id = "cati"
         strategy_name = "Auto Pilot (Master Ensemble)"
         strategy_version = "1.0.0"
         

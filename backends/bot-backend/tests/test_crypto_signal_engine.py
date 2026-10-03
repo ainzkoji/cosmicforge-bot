@@ -496,7 +496,7 @@ def test_duplicate_signal_is_rejected(tmp_path):
     assert second["rejection_reason"] == "DUPLICATE_SIGNAL"
 
 
-def test_generate_crypto_signals_summary_counts_candidates(tmp_path):
+def test_retired_generator_cannot_create_candidates_or_publish(tmp_path):
     db = _db(tmp_path)
     engine = CryptoSignalEngine(
         repository=SignalRepository(db),
@@ -507,10 +507,11 @@ def test_generate_crypto_signals_summary_counts_candidates(tmp_path):
 
     summary = engine.generate_crypto_signals()
 
-    assert summary["scanned_symbols"] == 1
-    assert summary["candidates_created"] == 2
-    assert summary["accepted"] >= 1
-    assert summary["signals_created"] >= 1
+    assert summary["status"] == "BLOCKED"
+    assert summary["scanned_symbols"] == 0
+    assert summary["candidates_created"] == 0
+    assert summary["accepted"] == 0
+    assert summary["signals_created"] == 0
     assert summary["errors"] == []
 
 

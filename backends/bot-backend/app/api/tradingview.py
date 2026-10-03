@@ -422,7 +422,9 @@ async def receive_tradingview_webhook(token_or_id: str, request: Request) -> Tra
         "execution_enabled": False,
     }
     queue_id = None
-    mode = webhook.get("mode") or MODE_ADVISORY_ONLY
+    # Stored legacy candidate mode is historical metadata. Incoming observations
+    # never create an independent execution queue under sole CATI authority.
+    mode = MODE_ADVISORY_ONLY
     # B-5 Fix: Validate confidence before enqueuing as execution candidate.
     # Missing, null, non-numeric, or out-of-range confidence is rejected.
     # A missing confidence must NEVER default to 1.0 (perfect reliability).

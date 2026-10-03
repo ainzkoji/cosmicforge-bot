@@ -298,14 +298,16 @@ def test_plan_identity_is_the_executor_idempotency_key(h):
                        leverage=5, requested_order_type="MARKET", requested_price=100.0, max_slippage_bps=10.0,
                        current_open_count=0, current_equity=5000.0, cycle_id="c1",
                        intent_identity=f"{h.plan.trade_plan_id}|{h.plan.trade_plan_hash}")
-    first = h.adapter.submit_entry(req)
-    second = h.adapter.submit_entry(req)
-    assert first.status == X.FILLED.value and second.status == X.DUPLICATE_SUPPRESSED.value
-    assert len(h.seen["orders"]) == 1
-    k1 = h.executor._build_entry_idempotency("BTCUSDT", "LONG", 600.0, 97.75, 110.0, intent_identity="p|h")
-    k2 = h.executor._build_entry_idempotency("BTCUSDT", "LONG", 600.0, 97.75, 110.0, intent_identity="p|h")
-    k3 = h.executor._build_entry_idempotency("BTCUSDT", "LONG", 600.0, 97.75, 110.0, intent_identity="p|h2")
-    assert k1 == k2 and k1 != k3
+    from app.trading_intelligence.execution.entry_permit import boundary_entry_permit
+    with boundary_entry_permit(req):
+        first = h.adapter.submit_entry(req)
+        second = h.adapter.submit_entry(req)
+        assert first.status == X.FILLED.value and second.status == X.DUPLICATE_SUPPRESSED.value
+        assert len(h.seen["orders"]) == 1
+        k1 = h.executor._build_entry_idempotency("BTCUSDT", "LONG", 600.0, 97.75, 110.0, intent_identity="p|h")
+        k2 = h.executor._build_entry_idempotency("BTCUSDT", "LONG", 600.0, 97.75, 110.0, intent_identity="p|h")
+        k3 = h.executor._build_entry_idempotency("BTCUSDT", "LONG", 600.0, 97.75, 110.0, intent_identity="p|h2")
+        assert k1 == k2 and k1 != k3
 
 
 def test_partial_fill_uses_broker_quantity_and_protects_it(tmp_path):

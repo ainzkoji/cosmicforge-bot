@@ -1,11 +1,7 @@
-"""External signals take the one canonical entry-quality path.
+"""External observations cannot receive independent CATI entry authority.
 
-The audited latent violation: a TradingView candidate reached the executor
-through the event filter, the PolicyEngine and the execution filter, and never
-through AdaptiveEntryThresholdEngine. Now it is normalised into a
-TradingOpportunity, evaluated by the one threshold authority, compared by
-TradingDecisionEngine, and may execute only with exactly one persisted,
-passing threshold decision.
+Retired threshold and execution approvals are replaced by unconditional denial.
+No external candidate can reach risk or the broker executor.
 """
 from __future__ import annotations
 
@@ -87,72 +83,27 @@ def threshold_rows(db):
         ).fetchall()
 
 
-def test_a_weak_external_candidate_is_rejected_by_the_threshold_authority(db):
-    # Weak on the ensemble's scale: below the band's floor, so no context can admit it.
-    result = evaluate(db, confidence=0.20)
+@pytest.mark.parametrize("confidence,bars", [(0.20, 120), (0.95, 120), (0.99, 40), (None, 120), (1.5, 120)])
+def test_external_candidates_have_no_entry_authority(db, confidence, bars):
+    result = evaluate(db, confidence=confidence, bars=bars)
     assert result.passed is False
-    assert result.reason == "ENTRY_CONFIDENCE_BELOW_THRESHOLD"
-    assert result.threshold_status == ThresholdStatus.EVALUATED
-    rows = threshold_rows(db)
-    assert len(rows) == 1, "exactly one threshold decision per external opportunity"
-    assert rows[0][0] == result.threshold_decision_id
-    assert rows[0][1] == result.opportunity_id
-    assert rows[0][3] == 0
-
-
-def test_a_strong_candidate_passes_with_one_persisted_decision(db):
-    result = evaluate(db, confidence=0.95, base=0.20, low=0.10)
-    assert result.passed is True
-    assert result.persisted is True
-    rows = threshold_rows(db)
-    assert len(rows) == 1
-    assert rows[0][3] == 1
-
-
-def test_a_hard_blocked_regime_cannot_pass(db):
-    result = evaluate(db, confidence=0.99, regime=MarketRegime.LOW_VOLATILITY_CHOP,
-                      base=0.20, low=0.10)
-    assert result.passed is False
-    assert result.threshold_status == ThresholdStatus.HARD_BLOCKED
-
-
-def test_an_unpersistable_decision_cannot_execute(db):
-    def failing_persist(*args, **kwargs):
-        raise RuntimeError("disk full")
-
-    result = evaluate(db, confidence=0.95, base=0.20, low=0.10, persist=failing_persist)
-    assert result.passed is False
-    assert result.reason == REASON_EVIDENCE_UNAVAILABLE
+    assert result.reason == "CATI_ONLY_ENGINE_EXTERNAL_SIGNAL_ADVISORY_ONLY"
+    assert result.persisted is False
     assert threshold_rows(db) == []
 
 
-def test_too_little_market_data_violates_the_opportunity_contract(db):
-    result = evaluate(db, bars=40)
-    assert result.passed is False
-    assert result.reason == REASON_CONTRACT
-    assert threshold_rows(db) == [], "no opportunity means no threshold decision"
-
-
-@pytest.mark.parametrize("side,confidence", [("CLOSE", 0.5), ("BUY", None), ("BUY", 1.5)])
-def test_malformed_candidates_are_rejected_explicitly(db, side, confidence):
+def test_external_gate_cannot_call_legacy_engine_or_persistence(db):
+    engine, persist, classifier_factory = MagicMock(), MagicMock(), MagicMock()
     result = evaluate_external_candidate(
-        db=db, symbol=SYMBOL, side=side, confidence=confidence, klines=klines(),
+        db=db, symbol=SYMBOL, side="BUY", confidence=0.99, klines=klines(),
         timeframe="15m", source="TRADINGVIEW", bot_instance_id=BOT,
+        engine=engine, persist=persist, regime_classifier_factory=classifier_factory,
     )
-    assert result.passed is False
-    assert result.reason == REASON_CONTRACT
-
-
-def test_external_state_never_pollutes_the_ensemble_distribution(db):
-    engine = AdaptiveEntryThresholdEngine()
-    evaluate_external_candidate(
-        db=db, symbol=SYMBOL, side="BUY", confidence=0.40, klines=klines(),
-        timeframe="15m", source="TRADINGVIEW", bot_instance_id=BOT, engine=engine,
-        policy_resolver=policy(), regime_classifier_factory=classifier(),
-    )
-    keys = list(engine.state_store._states) if hasattr(engine.state_store, "_states") else []
-    for key in keys:
-        assert key[3].startswith("external_tradingview"), key
+    assert not result.passed
+    engine.assert_not_called()
+    persist.assert_not_called()
+    classifier_factory.assert_not_called()
+    assert threshold_rows(db) == []
 
 
 # ── The runner cannot reach the executor around the gate ────────────────────
@@ -191,18 +142,16 @@ def test_a_rejected_gate_never_reaches_risk_or_the_executor(db, monkeypatch):
         "action": "BUY", "confidence": 0.7,
     })
 
-    assert result["final_status"] == "REJECTED_THRESHOLD_NOT_MET"
-    assert result["threshold_decision_id"] == "thr_x"
+    assert result["status"] == "BLOCKED"
+    assert "CATI" in result["reason"]
     runner.policy_engine.evaluate.assert_not_called()
     runner._execute_signal_with_evidence.assert_not_called()
 
 
-def test_the_gate_precedes_risk_and_execution_in_the_runner():
+def test_the_sole_cati_guard_precedes_historical_external_entry_path():
     from app.runner.runner import PaperRunner
 
     source = inspect.getsource(PaperRunner.process_external_signal_candidate)
-    gate = source.index("evaluate_external_candidate(")
-    risk = source.index("self.policy_engine.evaluate(")
-    execute = source.index("self._execute_signal_with_evidence(")
-    assert gate < risk < execute
-    assert "_external_gate.persisted" in source[risk:execute]
+    assert "EXTERNAL_SIGNAL_ADVISORY_ONLY_CATI_DISPATCH_REQUIRED" in source
+    assert "evaluate_external_candidate(" not in source
+    assert "self._execute_signal_with_evidence(" not in source

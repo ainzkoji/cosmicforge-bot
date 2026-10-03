@@ -1,0 +1,4597 @@
+{
+  "audit_time": "2026-10-03T08:57:29.233225+00:00",
+  "scope": "Remaining legacy references, including version labels unrelated to the retired engine. Classifications describe remaining legacy intelligence, not the surrounding retained risk/execution component. Semantic reachability findings and removed edges are in CATI_SOLE_RUNTIME_AUDIT.md.",
+  "pattern": "\\bV2\\b|master_ensemble|robust_ensemble|sma_cross|get_ml_scorer|process_trading_opportunity|process_external_signal_candidate",
+  "references": [
+    {
+      "path": "docs/architecture/CATI_SOLE_AUTHORITY_SURFACE_AUDIT.md",
+      "line": 13,
+      "classification": "DOCUMENTATION_ONLY",
+      "reference": "| Auto Pilot deployment | `master_ensemble` selected internally | RUNTIME_ACTIVE CATI only; request produces `strategy_id=cati`; legacy stored IDs remain historical metadata |"
+    },
+    {
+      "path": "docs/architecture/CATI_SOLE_AUTHORITY_SURFACE_AUDIT.md",
+      "line": 23,
+      "classification": "DOCUMENTATION_ONLY",
+      "reference": "| Product backtest creation | UI risk modes mapped to `sma_cross`; simulated worker loaded legacy strategies | RUNTIME_REACHABLE creation retired: HTTP 409 `CATI_BACKTEST_ARTIFACT_REQUIRED` before job/database creation; CATI-only disabled frontend choice |"
+    },
+    {
+      "path": "docs/architecture/CATI_MULTI_ASSET_CRYPTO_FX_DATASET_AND_CAPITAL_ROUTING.md",
+      "line": 64,
+      "classification": "DOCUMENTATION_ONLY",
+      "reference": "| BingX swap | `BingXClient` | full, UNVALIDATED (demo) | `/openApi/swap/v2/quote/contracts` | asset transfer (no demo wallet host) |"
+    },
+    {
+      "path": "docs/architecture/CATI_MULTI_ASSET_CRYPTO_FX_DATASET_AND_CAPITAL_ROUTING.md",
+      "line": 367,
+      "classification": "DOCUMENTATION_ONLY",
+      "reference": "| CATI_ML_AUTHORITY:<role> | PROMOTED model + phase \u2265 ML minimum | **BLOCKED** `NO_PROMOTED_MODEL` (deterministic CATI estimator, never V2) |"
+    },
+    {
+      "path": "docs/architecture/CATI_MULTI_ASSET_CRYPTO_FX_DATASET_AND_CAPITAL_ROUTING.md",
+      "line": 459,
+      "classification": "DOCUMENTATION_ONLY",
+      "reference": "* Runtime authority switch (V2 -> benchmark, CATI -> sole alpha when a phase is entered) is not in the"
+    },
+    {
+      "path": "docs/always_on_runtime_hardening_report.md",
+      "line": 12,
+      "classification": "DOCUMENTATION_ONLY",
+      "reference": "| Active bot | `bot_a8117dc719fc` \u2014 paper / demo, master_ensemble, BTCUSDT+ETHUSDT, 15m |"
+    },
+    {
+      "path": "docs/adaptive_threshold_recalibration_report.md",
+      "line": 3,
+      "classification": "DOCUMENTATION_ONLY",
+      "reference": "Date: 2026-09-11 \u00b7 Bot `bot_a8117dc719fc` (BTCUSDT, ETHUSDT, master_ensemble) \u00b7 mode `live` \u00b7"
+    },
+    {
+      "path": "docs/adaptive_threshold_recalibration_report.md",
+      "line": 44,
+      "classification": "DOCUMENTATION_ONLY",
+      "reference": "| Expert-internal `min_confidence` (supertrend 0.50, trend_pullback 0.75, donchian 0.75, sma_cross 0.55, bollinger 0.55, squeeze 0.60, vwap 0.60) | as listed | Inside each expert | Whether the expert votes at all. A strategy formula (unchanged); can only suppress a vote, never admit an entry |"
+    },
+    {
+      "path": "docs/adaptive_threshold_recalibration_report.md",
+      "line": 85,
+      "classification": "DOCUMENTATION_ONLY",
+      "reference": "**Clean live evidence** runs from session `rts_419a\u2026` (after the sma_cross fix) through `rts_2f06\u2026`, the running session. It excludes the broken-sma period, the false SESSION_BLOCKED window, test and replay rows, and dirty sessions."
+    },
+    {
+      "path": "docs/adaptive_threshold_recalibration_report.md",
+      "line": 124,
+      "classification": "DOCUMENTATION_ONLY",
+      "reference": "| 0.195 | sma_cross alone (0.9 \u00d7 0.65 / 3) | 9.2% |"
+    },
+    {
+      "path": "docs/adaptive_threshold_recalibration_report.md",
+      "line": 193,
+      "classification": "DOCUMENTATION_ONLY",
+      "reference": "| Min | 0.50 | **0.25** | Top of the empty interval between the lone-sma cluster (0.195, 9.2%) and every other opportunity (\u2265 0.25; there is zero mass in [0.20, 0.25)). The most permissive state still rejects sma_cross alone |"
+    },
+    {
+      "path": "docs/adaptive_threshold_recalibration_report.md",
+      "line": 488,
+      "classification": "DOCUMENTATION_ONLY",
+      "reference": "NEW_MIN:                              0.25  (top of the empty gap above the lone-sma_cross cluster at 0.195 (9.2%); zero mass in [0.20, 0.25))"
+    },
+    {
+      "path": "docs/adaptive_entry_threshold_engine_rebuild_report.md",
+      "line": 19,
+      "classification": "DOCUMENTATION_ONLY",
+      "reference": "-> master_ensemble.py  max(_threshold_val, 0.55)          (no-op)"
+    },
+    {
+      "path": "docs/adaptive_entry_threshold_engine_rebuild_report.md",
+      "line": 47,
+      "classification": "DOCUMENTATION_ONLY",
+      "reference": "| `ENSEMBLE_MIN_THRESHOLD_FLOOR` | **REMOVED** | `config.py` + `master_ensemble.py` | Removed as an authority. Was dominated by 0.70 and could never bind. Replaced by the single band `THRESHOLD_MIN`/`THRESHOLD_MAX`. Still read, only to emit a deprecation warning. |"
+    },
+    {
+      "path": "docs/adaptive_entry_threshold_engine_rebuild_report.md",
+      "line": 52,
+      "classification": "DOCUMENTATION_ONLY",
+      "reference": "| `consensus_threshold` | **REMOVED** | `master_ensemble.py` + `decision_engine.py` | The constructor default of 0.40 was stored and never compared against anything, because the ensemble passed `consensus_required=0.0`. Expert agreement is now one bounded input to the threshold. Also removed from the strategy `params_schema`, where it was advertised as tunable. |"
+    },
+    {
+      "path": "docs/phase15_master_ensemble_baseline_report.md",
+      "line": 3,
+      "classification": "DOCUMENTATION_ONLY",
+      "reference": "Measured evidence only. This report is generated from the accompanying `phase15_master_ensemble_baseline_results.json` artifact."
+    },
+    {
+      "path": "docs/phase15_master_ensemble_baseline_report.md",
+      "line": 114,
+      "classification": "DOCUMENTATION_ONLY",
+      "reference": "\"sma_cross\": 305,"
+    },
+    {
+      "path": "docs/phase15_master_ensemble_baseline_report.md",
+      "line": 124,
+      "classification": "DOCUMENTATION_ONLY",
+      "reference": "\"sma_cross\""
+    },
+    {
+      "path": "docs/phase15_master_ensemble_baseline_report.md",
+      "line": 161,
+      "classification": "DOCUMENTATION_ONLY",
+      "reference": "- Components active but never supporting a direction: sma_cross."
+    },
+    {
+      "path": "docs/multi_asset_expansion_audit_2026-09-25.md",
+      "line": 62,
+      "classification": "DOCUMENTATION_ONLY",
+      "reference": "| Class | `BingXClient`, USDT-M perpetual swap (`/openApi/swap/v2|v3/...`) |"
+    },
+    {
+      "path": "docs/multi_asset_expansion_audit_2026-09-25.md",
+      "line": 64,
+      "classification": "DOCUMENTATION_ONLY",
+      "reference": "| Instrument discovery | `exchange_info_cached()` \u2192 `/openApi/swap/v2/quote/contracts`. No `list_instruments()` |"
+    },
+    {
+      "path": "docs/multi_asset_expansion_audit_2026-09-25.md",
+      "line": 67,
+      "classification": "DOCUMENTATION_ONLY",
+      "reference": "| Balance / positions | `/openApi/swap/v2/user/balance`, `/openApi/swap/v2/user/positions` |"
+    },
+    {
+      "path": "docs/multi_asset_expansion_audit_2026-09-25.md",
+      "line": 84,
+      "classification": "DOCUMENTATION_ONLY",
+      "reference": "| Balance | `/fapi/v2/account`, `/fapi/v2/balance` |"
+    },
+    {
+      "path": "docs/multi_asset_expansion_audit_2026-09-25.md",
+      "line": 172,
+      "classification": "DOCUMENTATION_ONLY",
+      "reference": "7. **Credential reads that bypass the resolver.** `user-backend/core/transaction_service.py`, `broker_service.get_decrypted_credentials` and `analytics/daily_snapshot_scheduler.py` read the **legacy** `broker_credentials` table, which is stale after a v2 rotation. `daily_snapshot_scheduler` also imports the non-existent `build_exchange_client_from_broker`, filters on `status='active'` (accounts are `connected`), and defaults to mainnet URLs. Daily snapshots therefore silently record nothing."
+    },
+    {
+      "path": "docs/multi_asset_expansion_audit_2026-09-25.md",
+      "line": 316,
+      "classification": "DOCUMENTATION_ONLY",
+      "reference": "- Removal of any V2 component."
+    },
+    {
+      "path": "docs/session_gate_consistency_forensic_report.md",
+      "line": 31,
+      "classification": "DOCUMENTATION_ONLY",
+      "reference": "| strategy | `master_ensemble` | `master_ensemble` | `BotInstance.strategy_id` |"
+    },
+    {
+      "path": "docs/session_gate_consistency_forensic_report.md",
+      "line": 56,
+      "classification": "DOCUMENTATION_ONLY",
+      "reference": "The gate is `master_ensemble.get_signal` Step 3.6:"
+    },
+    {
+      "path": "docs/session_gate_consistency_forensic_report.md",
+      "line": 85,
+      "classification": "DOCUMENTATION_ONLY",
+      "reference": "-> orchestrator.process_trading_opportunity(market_type=\"CRYPTO\", ...)"
+    },
+    {
+      "path": "docs/session_gate_consistency_forensic_report.md",
+      "line": 93,
+      "classification": "DOCUMENTATION_ONLY",
+      "reference": "**The trigger.** `master_ensemble.py:1165` passed"
+    },
+    {
+      "path": "docs/session_gate_consistency_forensic_report.md",
+      "line": 175,
+      "classification": "DOCUMENTATION_ONLY",
+      "reference": "* `master_ensemble` passes `None` through instead of coercing it."
+    },
+    {
+      "path": "docs/session_gate_consistency_forensic_report.md",
+      "line": 260,
+      "classification": "DOCUMENTATION_ONLY",
+      "reference": "master_ensemble.py passed threshold_floor=float(effective_threshold) into"
+    },
+    {
+      "path": "docs/master_ensemble_no_trade_forensic_report.md",
+      "line": 9,
+      "classification": "DOCUMENTATION_ONLY",
+      "reference": "| Bot | `bot_a8117dc719fc` \u2014 paper / demo, master_ensemble, BTCUSDT+ETHUSDT, 15m |"
+    },
+    {
+      "path": "docs/master_ensemble_no_trade_forensic_report.md",
+      "line": 76,
+      "classification": "DOCUMENTATION_ONLY",
+      "reference": "* `backends/bot-backend/app/strategy/master_ensemble.py:204-205` \u2014 initialised"
+    },
+    {
+      "path": "docs/master_ensemble_no_trade_forensic_report.md",
+      "line": 83,
+      "classification": "DOCUMENTATION_ONLY",
+      "reference": "`master_ensemble.py:449-467` (`if not available_active:`) which fires **before**"
+    },
+    {
+      "path": "docs/master_ensemble_no_trade_forensic_report.md",
+      "line": 144,
+      "classification": "DOCUMENTATION_ONLY",
+      "reference": "| `canonical_trade_decisions.decision_json \u2192 component_signals` | contains only the top-level `master_ensemble` entry: `[{\"strategy\":\"master_ensemble\",\"signal\":\"hold\",\"confidence\":0.0,\"reason\":\"NO_OPPORTUNITY\"}]` |"
+    },
+    {
+      "path": "docs/master_ensemble_no_trade_forensic_report.md",
+      "line": 181,
+      "classification": "DOCUMENTATION_ONLY",
+      "reference": "| `WEAK_TREND` | 4 of 7 \u2014 supertrend, trend_pullback, vwap_reversion, squeeze_breakout | bollinger_reversion, donchian_breakout, sma_cross | 64 |"
+    },
+    {
+      "path": "docs/master_ensemble_no_trade_forensic_report.md",
+      "line": 184,
+      "classification": "DOCUMENTATION_ONLY",
+      "reference": "behaviour. The early return at `master_ensemble.py:449` and the resulting"
+    },
+    {
+      "path": "docs/master_ensemble_no_trade_forensic_report.md",
+      "line": 238,
+      "classification": "DOCUMENTATION_ONLY",
+      "reference": "`NOMINAL_CONSENSUS_WEIGHT = 3.0` (`master_ensemble.py`), so:"
+    },
+    {
+      "path": "docs/master_ensemble_no_trade_forensic_report.md",
+      "line": 333,
+      "classification": "DOCUMENTATION_ONLY",
+      "reference": "| 1 | Stale `regime` / scores / quality leaked across evaluations and symbols | 78 | `master_ensemble.py:204-205,766-767` (attributes never reset) + `runner_bridge.py::apply_evidence` (stale applied first, fresh `meta[\"regime\"]` then discarded) |"
+    },
+    {
+      "path": "docs/runtime_repair_report.md",
+      "line": 172,
+      "classification": "DOCUMENTATION_ONLY",
+      "reference": "chosen_strategy  = master_ensemble"
+    },
+    {
+      "path": "docs/runtime_activation_and_ownership_fix_report.md",
+      "line": 184,
+      "classification": "DOCUMENTATION_ONLY",
+      "reference": "**Working tree at the start of this task.** Another session had uncommitted edits to `trading_orchestrator.py`, `runner.py`, `hold_breakdown.py`, `master_ensemble.py` and an untracked `tests/test_session_gate_consistency.py`. I did not touch them. Their owner later committed them in `8622fc73` and `a4d3106c`. I have committed nothing."
+    },
+    {
+      "path": "backends/user-backend/tests/test_cati_product_controls.py",
+      "line": 12,
+      "classification": "TEST_ONLY",
+      "reference": "for legacy in (\"safe_trend\", \"mean_reversion\", \"scalp_master\", \"master_ensemble\"):"
+    },
+    {
+      "path": "backends/user-backend/tests/test_broker_flow.py",
+      "line": 53,
+      "classification": "TEST_ONLY",
+      "reference": "#    (shared_lib.broker.resolver.resolve_broker_auth, v2 with v1 fallback), not a local decrypt."
+    },
+    {
+      "path": "docs/live_paper_runtime_full_audit_2026-09-10.md",
+      "line": 17,
+      "classification": "DOCUMENTATION_ONLY",
+      "reference": "| Bot | `bot_a8117dc719fc` (master_ensemble, paper, BTCUSDT + ETHUSDT, 15m) |"
+    },
+    {
+      "path": "docs/live_paper_runtime_full_audit_2026-09-10.md",
+      "line": 37,
+      "classification": "DOCUMENTATION_ONLY",
+      "reference": "2. **P1 \u2014 The `sma_cross` expert has been broken on every evaluation since"
+    },
+    {
+      "path": "docs/live_paper_runtime_full_audit_2026-09-10.md",
+      "line": 110,
+      "classification": "DOCUMENTATION_ONLY",
+      "reference": "decision code. `trading_orchestrator.py`, `master_ensemble.py`, `hold_breakdown.py`,"
+    },
+    {
+      "path": "docs/live_paper_runtime_full_audit_2026-09-10.md",
+      "line": 265,
+      "classification": "DOCUMENTATION_ONLY",
+      "reference": "| `app/strategy/master_ensemble.py` (7) | LEGACY_HISTORICAL comments about the deleted floor |"
+    },
+    {
+      "path": "docs/live_paper_runtime_full_audit_2026-09-10.md",
+      "line": 311,
+      "classification": "DOCUMENTATION_ONLY",
+      "reference": "| source_scopes | `[GLOBAL]` (`THRESHOLD_SCOPED_OVERRIDES=''`; `master_ensemble` passes no `bot_overrides`) |"
+    },
+    {
+      "path": "docs/live_paper_runtime_full_audit_2026-09-10.md",
+      "line": 396,
+      "classification": "DOCUMENTATION_ONLY",
+      "reference": "regime, so it returned `regime_low_vol_chop_suspended` at Step 3 (`master_ensemble.py:655-664`),"
+    },
+    {
+      "path": "docs/live_paper_runtime_full_audit_2026-09-10.md",
+      "line": 412,
+      "classification": "DOCUMENTATION_ONLY",
+      "reference": "`master_ensemble._market_quality_context` (`master_ensemble.py:407-450`), consumed by"
+    },
+    {
+      "path": "docs/live_paper_runtime_full_audit_2026-09-10.md",
+      "line": 434,
+      "classification": "DOCUMENTATION_ONLY",
+      "reference": "`master_ensemble._htf_context` (`master_ensemble.py:332-405`) and `MarketSnapshot`"
+    },
+    {
+      "path": "docs/live_paper_runtime_full_audit_2026-09-10.md",
+      "line": 713,
+      "classification": "DOCUMENTATION_ONLY",
+      "reference": "**P1-1. The `sma_cross` expert has been silently broken since 2026-09-08T05:00Z.**"
+    },
+    {
+      "path": "docs/live_paper_runtime_full_audit_2026-09-10.md",
+      "line": 714,
+      "classification": "DOCUMENTATION_ONLY",
+      "reference": "`sma_cross.py:82` calls `client.klines(symbol, interval=\u2026, limit=\u2026)` positionally, but"
+    },
+    {
+      "path": "docs/live_paper_runtime_full_audit_2026-09-10.md",
+      "line": 730,
+      "classification": "DOCUMENTATION_ONLY",
+      "reference": "violation, latent).** `process_external_signal_candidate` (`runner.py:2358-2860`) runs:"
+    },
+    {
+      "path": "docs/live_paper_runtime_full_audit_2026-09-10.md",
+      "line": 795,
+      "classification": "DOCUMENTATION_ONLY",
+      "reference": "| P1-1 | Call `self.client.klines(symbol=symbol, interval=\u2026, limit=\u2026)` in `sma_cross.py`, and audit every expert for positional `klines(` calls. Make an expert `data_error` a distinct non-eligible state (`executed=0` or `signal=ERROR`), never HOLD. Add a contract test that runs every expert against `SnapshotMarketClient`. Flag Phase-15 measurements since 2026-09-08T05:00Z |"
+    },
+    {
+      "path": "docs/live_paper_runtime_full_audit_2026-09-10.md",
+      "line": 987,
+      "classification": "DOCUMENTATION_ONLY",
+      "reference": "3 \u2014 sma_cross expert broken since 2026-09-08 and booked as HOLD; capital ledger not"
+    },
+    {
+      "path": "docs/final_threshold_removal_inventory.md",
+      "line": 50,
+      "classification": "DOCUMENTATION_ONLY",
+      "reference": "| `app/strategy/master_ensemble.py:56,251` | **DELETE** | `self._threshold_calc` and its `record()` call. |"
+    },
+    {
+      "path": "docs/final_threshold_removal_inventory.md",
+      "line": 74,
+      "classification": "DOCUMENTATION_ONLY",
+      "reference": "| `consensus_threshold` | **DELETE** | `master_ensemble.py` constructor arg; `decision_engine.py` docstring |"
+    },
+    {
+      "path": "docs/final_threshold_removal_inventory.md",
+      "line": 101,
+      "classification": "DOCUMENTATION_ONLY",
+      "reference": "| `tests/test_master_ensemble_components.py` | **DELETE** the floor monkeypatch |"
+    },
+    {
+      "path": "docs/final_threshold_removal_inventory.md",
+      "line": 114,
+      "classification": "DOCUMENTATION_ONLY",
+      "reference": "| `docs/master_ensemble_no_trade_forensic_report.md` | **HISTORICAL_DOCUMENTATION** |"
+    },
+    {
+      "path": "docs/final_adaptive_threshold_replacement_report.md",
+      "line": 24,
+      "classification": "DOCUMENTATION_ONLY",
+      "reference": "-> master_ensemble.py  max(_threshold_val, 0.55)         (no-op)"
+    },
+    {
+      "path": "docs/final_adaptive_threshold_replacement_report.md",
+      "line": 67,
+      "classification": "DOCUMENTATION_ONLY",
+      "reference": "| `consensus_threshold` constructor arg + `params_schema` entry | `app/strategy/master_ensemble.py` |"
+    },
+    {
+      "path": "docs/final_adaptive_threshold_replacement_report.md",
+      "line": 355,
+      "classification": "DOCUMENTATION_ONLY",
+      "reference": "| sma_cross | yes | yes | HOLD | 0.00 | 0.90 | 0.000 |"
+    },
+    {
+      "path": "docs/entry_threshold_provenance_report.md",
+      "line": 39,
+      "classification": "DOCUMENTATION_ONLY",
+      "reference": "STAGE 5  app/strategy/master_ensemble.py:378-390"
+    },
+    {
+      "path": "docs/entry_threshold_provenance_report.md",
+      "line": 159,
+      "classification": "DOCUMENTATION_ONLY",
+      "reference": "| **Consensus threshold** | **0.40** | `master_ensemble.py:187` constructor default | **No** \u2014 `consensus_required=0.0` is passed to the engine; never enforced |"
+    },
+    {
+      "path": "docs/entry_threshold_provenance_report.md",
+      "line": 179,
+      "classification": "DOCUMENTATION_ONLY",
+      "reference": "`test_master_ensemble_does_not_introduce_a_new_consensus_gate`."
+    },
+    {
+      "path": "docs/cati_sections_16_19_audit.md",
+      "line": 90,
+      "classification": "DOCUMENTATION_ONLY",
+      "reference": "| dataset_manifests | `dataset_manifests` / `universe_manifests` (immutable triggers) | EXISTING | lineage-v2 row identity = verified manifest_hash |"
+    },
+    {
+      "path": "docs/cati_sections_13_16_audit.md",
+      "line": 70,
+      "classification": "DOCUMENTATION_ONLY",
+      "reference": "|13.5 gaps|DONE|FX: FAILED/QUARANTINED -> `INGEST_FAILURE`; outage only on explicit `PROVIDER_OUTAGE` evidence; EMPTY/mixed -> `UNKNOWN_GAP`. Crypto: LISTING_AGE / PROVIDER_FAILURE (= ingest failure) / MARKET_HALT / VENUE_OUTAGE need evidence. Policy advanced to `gap-classification-v2`|"
+    },
+    {
+      "path": "docs/cati_sections_13_16_audit.md",
+      "line": 76,
+      "classification": "DOCUMENTATION_ONLY",
+      "reference": "|14.1-14.5|DONE|one GlobalMarketState; nested components frozen (`FrozenDict`); schema/engine v2; causal on candle time AND MarketState decision time; calendar needs a causal timestamp; tenant-neutral payload asserted by key|"
+    },
+    {
+      "path": "docs/batch3_runtime_validation_report.md",
+      "line": 19,
+      "classification": "DOCUMENTATION_ONLY",
+      "reference": "| Active bot | `bot_a8117dc719fc` \u2014 active, paper/demo, master_ensemble, BTCUSDT+ETHUSDT, 15m |"
+    },
+    {
+      "path": "docs/batch3_runtime_validation_report.md",
+      "line": 126,
+      "classification": "DOCUMENTATION_ONLY",
+      "reference": "| `active_strategies` | donchian_breakout, sma_cross, supertrend, trend_pullback | same |"
+    },
+    {
+      "path": "docs/batch3_runtime_validation_report.md",
+      "line": 172,
+      "classification": "DOCUMENTATION_ONLY",
+      "reference": "strategies : ['donchian_breakout','sma_cross','supertrend','trend_pullback']"
+    },
+    {
+      "path": "docs/phase_15_master_ensemble_baseline_report.md",
+      "line": 7,
+      "classification": "DOCUMENTATION_ONLY",
+      "reference": "python scripts/build_master_ensemble_baseline.py"
+    },
+    {
+      "path": "docs/phase_15_master_ensemble_baseline_report.md",
+      "line": 87,
+      "classification": "DOCUMENTATION_ONLY",
+      "reference": "| `sma_cross` | 95 | **0** |"
+    },
+    {
+      "path": "docs/phase_15_master_ensemble_baseline_report.md",
+      "line": 96,
+      "classification": "DOCUMENTATION_ONLY",
+      "reference": "`sma_cross` was active 95 times and supported a direction zero times. That is a"
+    },
+    {
+      "path": "docs/phase_13_production_parity_replay_report.md",
+      "line": 219,
+      "classification": "DOCUMENTATION_ONLY",
+      "reference": "classify, and `master_ensemble.py` maps `regime_insufficient_data` to"
+    },
+    {
+      "path": "docs/phase15_master_ensemble_baseline_results.json",
+      "line": 30,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "\"sma_cross\": 305,"
+    },
+    {
+      "path": "docs/phase15_master_ensemble_baseline_results.json",
+      "line": 40,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "\"sma_cross\""
+    },
+    {
+      "path": "docs/phase15_master_ensemble_baseline_results.json",
+      "line": 554,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "\"Components active but never supporting a direction: sma_cross.\","
+    },
+    {
+      "path": "docs/research/cati_alpha_v1_first_report.md",
+      "line": 38,
+      "classification": "DOCUMENTATION_ONLY",
+      "reference": "RUNTIME_STATUS = STOPPED / STALE_LEASE at inspection. M0 governance would grant V2 entries on restart; runtime left stopped to respect CATI-only authority and preserve the router/runtime."
+    },
+    {
+      "path": "docs/research/cati_alpha_v1_first_report.md",
+      "line": 114,
+      "classification": "DOCUMENTATION_ONLY",
+      "reference": "The generator hypotheses are rejected for promotion; no next forecast model is trained. A revised hypothesis needs a new identity and declared budget, never retuned V1 definitions. The reserved holdout stays closed. Demo, forward demo and explicit production approval remain separate later requirements; legacy V2 is absent from that progression."
+    },
+    {
+      "path": "docs/research/datasets/crypto_broad_binance_v1.dataset.json",
+      "line": 4,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "\"gap_policy_version\": \"gap-classification-v2\","
+    },
+    {
+      "path": "docs/research/datasets/crypto_broad_binance_v1.dataset.json",
+      "line": 2328,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "\"quality_policy_version\": \"multi-asset-quality-v2\","
+    },
+    {
+      "path": "docs/research/datasets/crypto_broad_binance_v1.dataset.json",
+      "line": 2330,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "\"schema_version\": \"dataset-manifest-lineage-v2\","
+    },
+    {
+      "path": "scripts/verify_cati_alpha_v2.py",
+      "line": 1,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "\"\"\"Verify fresh V2 row identity/timestamps and diagnostic union without price queries.\"\"\""
+    },
+    {
+      "path": "docs/research/coverage/crypto_broad_binance_v1.coverage.json",
+      "line": 34,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "\"policy_version\": \"gap-classification-v2\","
+    },
+    {
+      "path": "docs/research/coverage/crypto_broad_binance_v1.coverage.json",
+      "line": 66,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "\"policy_version\": \"gap-classification-v2\","
+    },
+    {
+      "path": "docs/research/coverage/crypto_broad_binance_v1.coverage.json",
+      "line": 98,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "\"policy_version\": \"gap-classification-v2\","
+    },
+    {
+      "path": "docs/research/coverage/crypto_broad_binance_v1.coverage.json",
+      "line": 130,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "\"policy_version\": \"gap-classification-v2\","
+    },
+    {
+      "path": "docs/research/coverage/crypto_broad_binance_v1.coverage.json",
+      "line": 162,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "\"policy_version\": \"gap-classification-v2\","
+    },
+    {
+      "path": "docs/research/coverage/crypto_broad_binance_v1.coverage.json",
+      "line": 194,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "\"policy_version\": \"gap-classification-v2\","
+    },
+    {
+      "path": "docs/research/coverage/crypto_broad_binance_v1.coverage.json",
+      "line": 226,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "\"policy_version\": \"gap-classification-v2\","
+    },
+    {
+      "path": "docs/research/coverage/crypto_broad_binance_v1.coverage.json",
+      "line": 258,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "\"policy_version\": \"gap-classification-v2\","
+    },
+    {
+      "path": "docs/research/coverage/crypto_broad_binance_v1.coverage.json",
+      "line": 290,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "\"policy_version\": \"gap-classification-v2\","
+    },
+    {
+      "path": "docs/research/coverage/crypto_broad_binance_v1.coverage.json",
+      "line": 322,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "\"policy_version\": \"gap-classification-v2\","
+    },
+    {
+      "path": "docs/research/coverage/crypto_broad_binance_v1.coverage.json",
+      "line": 354,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "\"policy_version\": \"gap-classification-v2\","
+    },
+    {
+      "path": "docs/research/coverage/crypto_broad_binance_v1.coverage.json",
+      "line": 386,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "\"policy_version\": \"gap-classification-v2\","
+    },
+    {
+      "path": "docs/research/coverage/crypto_broad_binance_v1.coverage.json",
+      "line": 418,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "\"policy_version\": \"gap-classification-v2\","
+    },
+    {
+      "path": "docs/research/coverage/crypto_broad_binance_v1.coverage.json",
+      "line": 450,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "\"policy_version\": \"gap-classification-v2\","
+    },
+    {
+      "path": "docs/research/coverage/crypto_broad_binance_v1.coverage.json",
+      "line": 482,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "\"policy_version\": \"gap-classification-v2\","
+    },
+    {
+      "path": "docs/research/coverage/crypto_broad_binance_v1.coverage.json",
+      "line": 514,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "\"policy_version\": \"gap-classification-v2\","
+    },
+    {
+      "path": "docs/research/coverage/crypto_broad_binance_v1.coverage.json",
+      "line": 546,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "\"policy_version\": \"gap-classification-v2\","
+    },
+    {
+      "path": "docs/research/coverage/crypto_broad_binance_v1.coverage.json",
+      "line": 578,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "\"policy_version\": \"gap-classification-v2\","
+    },
+    {
+      "path": "docs/research/coverage/crypto_broad_binance_v1.coverage.json",
+      "line": 610,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "\"policy_version\": \"gap-classification-v2\","
+    },
+    {
+      "path": "docs/research/coverage/crypto_broad_binance_v1.coverage.json",
+      "line": 642,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "\"policy_version\": \"gap-classification-v2\","
+    },
+    {
+      "path": "docs/research/coverage/crypto_broad_binance_v1.coverage.json",
+      "line": 674,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "\"policy_version\": \"gap-classification-v2\","
+    },
+    {
+      "path": "docs/research/coverage/crypto_broad_binance_v1.coverage.json",
+      "line": 706,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "\"policy_version\": \"gap-classification-v2\","
+    },
+    {
+      "path": "docs/research/coverage/crypto_broad_binance_v1.coverage.json",
+      "line": 738,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "\"policy_version\": \"gap-classification-v2\","
+    },
+    {
+      "path": "docs/research/coverage/crypto_broad_binance_v1.coverage.json",
+      "line": 770,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "\"policy_version\": \"gap-classification-v2\","
+    },
+    {
+      "path": "docs/research/coverage/crypto_broad_binance_v1.coverage.json",
+      "line": 802,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "\"policy_version\": \"gap-classification-v2\","
+    },
+    {
+      "path": "docs/research/coverage/crypto_broad_binance_v1.coverage.json",
+      "line": 834,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "\"policy_version\": \"gap-classification-v2\","
+    },
+    {
+      "path": "docs/research/coverage/crypto_broad_binance_v1.coverage.json",
+      "line": 866,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "\"policy_version\": \"gap-classification-v2\","
+    },
+    {
+      "path": "docs/research/coverage/crypto_broad_binance_v1.coverage.json",
+      "line": 898,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "\"policy_version\": \"gap-classification-v2\","
+    },
+    {
+      "path": "docs/research/coverage/crypto_broad_binance_v1.coverage.json",
+      "line": 930,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "\"policy_version\": \"gap-classification-v2\","
+    },
+    {
+      "path": "docs/research/coverage/crypto_broad_binance_v1.coverage.json",
+      "line": 962,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "\"policy_version\": \"gap-classification-v2\","
+    },
+    {
+      "path": "docs/research/coverage/crypto_broad_binance_v1.coverage.json",
+      "line": 994,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "\"policy_version\": \"gap-classification-v2\","
+    },
+    {
+      "path": "docs/research/coverage/crypto_broad_binance_v1.coverage.json",
+      "line": 1026,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "\"policy_version\": \"gap-classification-v2\","
+    },
+    {
+      "path": "docs/research/coverage/crypto_broad_binance_v1.coverage.json",
+      "line": 1058,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "\"policy_version\": \"gap-classification-v2\","
+    },
+    {
+      "path": "docs/research/coverage/crypto_broad_binance_v1.coverage.json",
+      "line": 1090,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "\"policy_version\": \"gap-classification-v2\","
+    },
+    {
+      "path": "docs/research/coverage/crypto_broad_binance_v1.coverage.json",
+      "line": 1122,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "\"policy_version\": \"gap-classification-v2\","
+    },
+    {
+      "path": "docs/research/coverage/crypto_broad_binance_v1.coverage.json",
+      "line": 1154,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "\"policy_version\": \"gap-classification-v2\","
+    },
+    {
+      "path": "docs/research/coverage/crypto_broad_binance_v1.coverage.json",
+      "line": 1186,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "\"policy_version\": \"gap-classification-v2\","
+    },
+    {
+      "path": "docs/research/coverage/crypto_broad_binance_v1.coverage.json",
+      "line": 1218,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "\"policy_version\": \"gap-classification-v2\","
+    },
+    {
+      "path": "docs/research/coverage/crypto_broad_binance_v1.coverage.json",
+      "line": 1250,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "\"policy_version\": \"gap-classification-v2\","
+    },
+    {
+      "path": "docs/research/coverage/crypto_broad_binance_v1.coverage.json",
+      "line": 1282,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "\"policy_version\": \"gap-classification-v2\","
+    },
+    {
+      "path": "docs/research/coverage/crypto_broad_binance_v1.coverage.json",
+      "line": 1314,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "\"policy_version\": \"gap-classification-v2\","
+    },
+    {
+      "path": "docs/research/coverage/crypto_broad_binance_v1.coverage.json",
+      "line": 1346,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "\"policy_version\": \"gap-classification-v2\","
+    },
+    {
+      "path": "docs/research/coverage/crypto_broad_binance_v1.coverage.json",
+      "line": 1378,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "\"policy_version\": \"gap-classification-v2\","
+    },
+    {
+      "path": "docs/research/coverage/crypto_broad_binance_v1.coverage.json",
+      "line": 1410,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "\"policy_version\": \"gap-classification-v2\","
+    },
+    {
+      "path": "docs/research/coverage/crypto_broad_binance_v1.coverage.json",
+      "line": 1442,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "\"policy_version\": \"gap-classification-v2\","
+    },
+    {
+      "path": "docs/research/coverage/crypto_broad_binance_v1.coverage.json",
+      "line": 1474,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "\"policy_version\": \"gap-classification-v2\","
+    },
+    {
+      "path": "docs/research/coverage/crypto_broad_binance_v1.coverage.json",
+      "line": 1506,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "\"policy_version\": \"gap-classification-v2\","
+    },
+    {
+      "path": "docs/research/coverage/crypto_broad_binance_v1.coverage.json",
+      "line": 1538,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "\"policy_version\": \"gap-classification-v2\","
+    },
+    {
+      "path": "docs/research/coverage/crypto_broad_binance_v1.coverage.json",
+      "line": 1570,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "\"policy_version\": \"gap-classification-v2\","
+    },
+    {
+      "path": "docs/research/coverage/crypto_broad_binance_v1.coverage.json",
+      "line": 1602,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "\"policy_version\": \"gap-classification-v2\","
+    },
+    {
+      "path": "docs/research/coverage/crypto_broad_binance_v1.coverage.json",
+      "line": 1634,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "\"policy_version\": \"gap-classification-v2\","
+    },
+    {
+      "path": "docs/research/coverage/crypto_broad_binance_v1.coverage.json",
+      "line": 1666,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "\"policy_version\": \"gap-classification-v2\","
+    },
+    {
+      "path": "docs/research/coverage/crypto_broad_binance_v1.coverage.json",
+      "line": 1698,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "\"policy_version\": \"gap-classification-v2\","
+    },
+    {
+      "path": "docs/research/coverage/crypto_broad_binance_v1.coverage.json",
+      "line": 1730,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "\"policy_version\": \"gap-classification-v2\","
+    },
+    {
+      "path": "docs/research/coverage/crypto_broad_binance_v1.coverage.json",
+      "line": 1762,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "\"policy_version\": \"gap-classification-v2\","
+    },
+    {
+      "path": "docs/research/coverage/crypto_broad_binance_v1.coverage.json",
+      "line": 1794,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "\"policy_version\": \"gap-classification-v2\","
+    },
+    {
+      "path": "docs/research/coverage/crypto_broad_binance_v1.coverage.json",
+      "line": 1826,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "\"policy_version\": \"gap-classification-v2\","
+    },
+    {
+      "path": "docs/research/coverage/crypto_broad_binance_v1.coverage.json",
+      "line": 1858,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "\"policy_version\": \"gap-classification-v2\","
+    },
+    {
+      "path": "docs/research/coverage/crypto_broad_binance_v1.coverage.json",
+      "line": 1890,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "\"policy_version\": \"gap-classification-v2\","
+    },
+    {
+      "path": "docs/research/coverage/crypto_broad_binance_v1.coverage.json",
+      "line": 1922,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "\"policy_version\": \"gap-classification-v2\","
+    },
+    {
+      "path": "docs/research/coverage/crypto_broad_binance_v1.coverage.json",
+      "line": 1954,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "\"policy_version\": \"gap-classification-v2\","
+    },
+    {
+      "path": "docs/research/coverage/crypto_broad_binance_v1.coverage.json",
+      "line": 1986,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "\"policy_version\": \"gap-classification-v2\","
+    },
+    {
+      "path": "docs/research/coverage/crypto_broad_binance_v1.coverage.json",
+      "line": 2018,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "\"policy_version\": \"gap-classification-v2\","
+    },
+    {
+      "path": "docs/research/coverage/crypto_broad_binance_v1.coverage.json",
+      "line": 2050,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "\"policy_version\": \"gap-classification-v2\","
+    },
+    {
+      "path": "docs/research/coverage/crypto_broad_binance_v1.coverage.json",
+      "line": 2082,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "\"policy_version\": \"gap-classification-v2\","
+    },
+    {
+      "path": "docs/research/coverage/crypto_broad_binance_v1.coverage.json",
+      "line": 2114,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "\"policy_version\": \"gap-classification-v2\","
+    },
+    {
+      "path": "docs/research/coverage/crypto_broad_binance_v1.coverage.json",
+      "line": 2146,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "\"policy_version\": \"gap-classification-v2\","
+    },
+    {
+      "path": "docs/research/coverage/crypto_broad_binance_v1.coverage.json",
+      "line": 2178,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "\"policy_version\": \"gap-classification-v2\","
+    },
+    {
+      "path": "docs/research/coverage/crypto_broad_binance_v1.coverage.json",
+      "line": 2210,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "\"policy_version\": \"gap-classification-v2\","
+    },
+    {
+      "path": "docs/research/coverage/crypto_broad_binance_v1.coverage.json",
+      "line": 2242,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "\"policy_version\": \"gap-classification-v2\","
+    },
+    {
+      "path": "docs/research/coverage/crypto_broad_binance_v1.coverage.json",
+      "line": 2274,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "\"policy_version\": \"gap-classification-v2\","
+    },
+    {
+      "path": "docs/research/coverage/crypto_broad_binance_v1.coverage.json",
+      "line": 2306,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "\"policy_version\": \"gap-classification-v2\","
+    },
+    {
+      "path": "docs/research/coverage/crypto_broad_binance_v1.coverage.json",
+      "line": 2338,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "\"policy_version\": \"gap-classification-v2\","
+    },
+    {
+      "path": "docs/research/coverage/crypto_broad_binance_v1.coverage.json",
+      "line": 2370,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "\"policy_version\": \"gap-classification-v2\","
+    },
+    {
+      "path": "docs/research/coverage/crypto_broad_binance_v1.coverage.json",
+      "line": 2402,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "\"policy_version\": \"gap-classification-v2\","
+    },
+    {
+      "path": "docs/research/coverage/crypto_broad_binance_v1.coverage.json",
+      "line": 2434,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "\"policy_version\": \"gap-classification-v2\","
+    },
+    {
+      "path": "docs/research/coverage/crypto_broad_binance_v1.coverage.json",
+      "line": 2466,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "\"policy_version\": \"gap-classification-v2\","
+    },
+    {
+      "path": "docs/research/coverage/crypto_broad_binance_v1.coverage.json",
+      "line": 2498,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "\"policy_version\": \"gap-classification-v2\","
+    },
+    {
+      "path": "docs/research/coverage/crypto_broad_binance_v1.coverage.json",
+      "line": 2530,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "\"policy_version\": \"gap-classification-v2\","
+    },
+    {
+      "path": "docs/research/coverage/crypto_broad_binance_v1.coverage.json",
+      "line": 2562,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "\"policy_version\": \"gap-classification-v2\","
+    },
+    {
+      "path": "docs/research/coverage/crypto_broad_binance_v1.coverage.json",
+      "line": 2594,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "\"policy_version\": \"gap-classification-v2\","
+    },
+    {
+      "path": "docs/research/coverage/crypto_broad_binance_v1.coverage.json",
+      "line": 2626,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "\"policy_version\": \"gap-classification-v2\","
+    },
+    {
+      "path": "docs/research/coverage/crypto_broad_binance_v1.coverage.json",
+      "line": 2658,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "\"policy_version\": \"gap-classification-v2\","
+    },
+    {
+      "path": "docs/research/coverage/crypto_broad_binance_v1.coverage.json",
+      "line": 2690,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "\"policy_version\": \"gap-classification-v2\","
+    },
+    {
+      "path": "docs/research/coverage/crypto_broad_binance_v1.coverage.json",
+      "line": 2722,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "\"policy_version\": \"gap-classification-v2\","
+    },
+    {
+      "path": "docs/research/coverage/crypto_broad_binance_v1.coverage.json",
+      "line": 2754,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "\"policy_version\": \"gap-classification-v2\","
+    },
+    {
+      "path": "docs/research/coverage/crypto_broad_binance_v1.coverage.json",
+      "line": 2786,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "\"policy_version\": \"gap-classification-v2\","
+    },
+    {
+      "path": "docs/research/coverage/crypto_broad_binance_v1.coverage.json",
+      "line": 2818,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "\"policy_version\": \"gap-classification-v2\","
+    },
+    {
+      "path": "docs/research/coverage/crypto_broad_binance_v1.coverage.json",
+      "line": 2850,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "\"policy_version\": \"gap-classification-v2\","
+    },
+    {
+      "path": "docs/research/coverage/crypto_broad_binance_v1.coverage.json",
+      "line": 2882,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "\"policy_version\": \"gap-classification-v2\","
+    },
+    {
+      "path": "docs/research/coverage/crypto_broad_binance_v1.coverage.json",
+      "line": 2914,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "\"policy_version\": \"gap-classification-v2\","
+    },
+    {
+      "path": "docs/research/coverage/crypto_broad_binance_v1.coverage.json",
+      "line": 2946,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "\"policy_version\": \"gap-classification-v2\","
+    },
+    {
+      "path": "docs/research/coverage/crypto_broad_binance_v1.coverage.json",
+      "line": 2978,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "\"policy_version\": \"gap-classification-v2\","
+    },
+    {
+      "path": "docs/research/coverage/crypto_broad_binance_v1.coverage.json",
+      "line": 3010,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "\"policy_version\": \"gap-classification-v2\","
+    },
+    {
+      "path": "docs/research/coverage/crypto_broad_binance_v1.coverage.json",
+      "line": 3042,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "\"policy_version\": \"gap-classification-v2\","
+    },
+    {
+      "path": "docs/research/coverage/crypto_broad_binance_v1.coverage.json",
+      "line": 3074,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "\"policy_version\": \"gap-classification-v2\","
+    },
+    {
+      "path": "docs/research/coverage/crypto_broad_binance_v1.coverage.json",
+      "line": 3106,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "\"policy_version\": \"gap-classification-v2\","
+    },
+    {
+      "path": "docs/research/coverage/crypto_broad_binance_v1.coverage.json",
+      "line": 3138,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "\"policy_version\": \"gap-classification-v2\","
+    },
+    {
+      "path": "docs/research/coverage/crypto_broad_binance_v1.coverage.json",
+      "line": 3170,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "\"policy_version\": \"gap-classification-v2\","
+    },
+    {
+      "path": "docs/research/coverage/crypto_broad_binance_v1.coverage.json",
+      "line": 3202,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "\"policy_version\": \"gap-classification-v2\","
+    },
+    {
+      "path": "docs/research/coverage/crypto_broad_binance_v1.coverage.json",
+      "line": 3234,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "\"policy_version\": \"gap-classification-v2\","
+    },
+    {
+      "path": "docs/research/coverage/crypto_broad_binance_v1.coverage.json",
+      "line": 3266,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "\"policy_version\": \"gap-classification-v2\","
+    },
+    {
+      "path": "docs/research/coverage/crypto_broad_binance_v1.coverage.json",
+      "line": 3298,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "\"policy_version\": \"gap-classification-v2\","
+    },
+    {
+      "path": "docs/research/coverage/crypto_broad_binance_v1.coverage.json",
+      "line": 3330,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "\"policy_version\": \"gap-classification-v2\","
+    },
+    {
+      "path": "docs/research/coverage/crypto_broad_binance_v1.coverage.json",
+      "line": 3362,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "\"policy_version\": \"gap-classification-v2\","
+    },
+    {
+      "path": "docs/research/coverage/crypto_broad_binance_v1.coverage.json",
+      "line": 3394,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "\"policy_version\": \"gap-classification-v2\","
+    },
+    {
+      "path": "docs/research/coverage/crypto_broad_binance_v1.coverage.json",
+      "line": 3426,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "\"policy_version\": \"gap-classification-v2\","
+    },
+    {
+      "path": "docs/research/coverage/crypto_broad_binance_v1.coverage.json",
+      "line": 3458,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "\"policy_version\": \"gap-classification-v2\","
+    },
+    {
+      "path": "docs/research/coverage/crypto_broad_binance_v1.coverage.json",
+      "line": 3490,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "\"policy_version\": \"gap-classification-v2\","
+    },
+    {
+      "path": "docs/research/coverage/crypto_broad_binance_v1.coverage.json",
+      "line": 3522,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "\"policy_version\": \"gap-classification-v2\","
+    },
+    {
+      "path": "docs/research/coverage/crypto_broad_binance_v1.coverage.json",
+      "line": 3554,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "\"policy_version\": \"gap-classification-v2\","
+    },
+    {
+      "path": "docs/research/coverage/crypto_broad_binance_v1.coverage.json",
+      "line": 3586,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "\"policy_version\": \"gap-classification-v2\","
+    },
+    {
+      "path": "docs/research/coverage/crypto_broad_binance_v1.coverage.json",
+      "line": 3618,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "\"policy_version\": \"gap-classification-v2\","
+    },
+    {
+      "path": "docs/research/coverage/crypto_broad_binance_v1.coverage.json",
+      "line": 3650,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "\"policy_version\": \"gap-classification-v2\","
+    },
+    {
+      "path": "docs/research/coverage/crypto_broad_binance_v1.coverage.json",
+      "line": 3682,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "\"policy_version\": \"gap-classification-v2\","
+    },
+    {
+      "path": "docs/research/coverage/crypto_broad_binance_v1.coverage.json",
+      "line": 3714,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "\"policy_version\": \"gap-classification-v2\","
+    },
+    {
+      "path": "docs/research/coverage/crypto_broad_binance_v1.coverage.json",
+      "line": 3746,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "\"policy_version\": \"gap-classification-v2\","
+    },
+    {
+      "path": "docs/research/coverage/crypto_broad_binance_v1.coverage.json",
+      "line": 3778,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "\"policy_version\": \"gap-classification-v2\","
+    },
+    {
+      "path": "docs/research/coverage/crypto_broad_binance_v1.coverage.json",
+      "line": 3810,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "\"policy_version\": \"gap-classification-v2\","
+    },
+    {
+      "path": "docs/research/coverage/crypto_broad_binance_v1.coverage.json",
+      "line": 3842,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "\"policy_version\": \"gap-classification-v2\","
+    },
+    {
+      "path": "docs/research/coverage/crypto_broad_binance_v1.coverage.json",
+      "line": 3874,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "\"policy_version\": \"gap-classification-v2\","
+    },
+    {
+      "path": "docs/research/coverage/crypto_broad_binance_v1.coverage.json",
+      "line": 3906,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "\"policy_version\": \"gap-classification-v2\","
+    },
+    {
+      "path": "docs/research/coverage/crypto_broad_binance_v1.coverage.json",
+      "line": 3938,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "\"policy_version\": \"gap-classification-v2\","
+    },
+    {
+      "path": "docs/research/coverage/crypto_broad_binance_v1.coverage.json",
+      "line": 3970,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "\"policy_version\": \"gap-classification-v2\","
+    },
+    {
+      "path": "docs/research/coverage/crypto_broad_binance_v1.coverage.json",
+      "line": 4002,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "\"policy_version\": \"gap-classification-v2\","
+    },
+    {
+      "path": "docs/research/coverage/crypto_broad_binance_v1.coverage.json",
+      "line": 4034,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "\"policy_version\": \"gap-classification-v2\","
+    },
+    {
+      "path": "docs/research/coverage/crypto_broad_binance_v1.coverage.json",
+      "line": 4066,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "\"policy_version\": \"gap-classification-v2\","
+    },
+    {
+      "path": "docs/research/coverage/crypto_broad_binance_v1.coverage.json",
+      "line": 4098,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "\"policy_version\": \"gap-classification-v2\","
+    },
+    {
+      "path": "docs/research/coverage/crypto_broad_binance_v1.coverage.json",
+      "line": 4130,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "\"policy_version\": \"gap-classification-v2\","
+    },
+    {
+      "path": "docs/research/coverage/crypto_broad_binance_v1.coverage.json",
+      "line": 4162,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "\"policy_version\": \"gap-classification-v2\","
+    },
+    {
+      "path": "docs/research/coverage/crypto_broad_binance_v1.coverage.json",
+      "line": 4194,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "\"policy_version\": \"gap-classification-v2\","
+    },
+    {
+      "path": "docs/research/coverage/crypto_broad_binance_v1.coverage.json",
+      "line": 4226,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "\"policy_version\": \"gap-classification-v2\","
+    },
+    {
+      "path": "docs/research/coverage/crypto_broad_binance_v1.coverage.json",
+      "line": 4258,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "\"policy_version\": \"gap-classification-v2\","
+    },
+    {
+      "path": "docs/research/coverage/crypto_broad_binance_v1.coverage.json",
+      "line": 4290,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "\"policy_version\": \"gap-classification-v2\","
+    },
+    {
+      "path": "docs/research/coverage/crypto_broad_binance_v1.coverage.json",
+      "line": 4322,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "\"policy_version\": \"gap-classification-v2\","
+    },
+    {
+      "path": "docs/research/coverage/crypto_broad_binance_v1.coverage.json",
+      "line": 4354,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "\"policy_version\": \"gap-classification-v2\","
+    },
+    {
+      "path": "backends/user-backend/app/exchange/bybit/signing.py",
+      "line": 39,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "Generate HMAC SHA256 signature for V2 (Query Params)."
+    },
+    {
+      "path": "docs/research/cati_v5_development_report.md",
+      "line": 190,
+      "classification": "DOCUMENTATION_ONLY",
+      "reference": "The canonical paper runtime remains owner PID 19436/session rts_a605e6301df149ccb931, startup-loaded revision 81aceaa6. It was not restarted, stopped or reconfigured for this research. Current Git HEAD in a health fingerprint is not evidence that startup-loaded modules changed. Lease/scheduler/calendar/event services remain healthy; adaptive daily hard-loss cap is 0.025. Governance is M0, CATI authority/execution OFF, no library pin. The established V2 demo path at M0 is distinct from fallback; scoped CATI denial never falls back to V2."
+    },
+    {
+      "path": "backends/user-backend/app/exchange/bybit/client.py",
+      "line": 71,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "Legacy behavior: Used V2 /private/wallet/balance."
+    },
+    {
+      "path": "docs/research/cati_v4_development_report.md",
+      "line": 121,
+      "classification": "DOCUMENTATION_ONLY",
+      "reference": "The healthy canonical paper runtime remains the same single owner PID 19436/session `rts_a605e6301df149ccb931`; lease status records startup revision 81aceaa6. It was not restarted to activate research changes. A health fingerprint reading current Git HEAD is not proof that startup-loaded modules changed. Scheduler, calendar and event services remain healthy, adaptive risk is enabled and daily hard-loss fraction is 0.025. M0 permits its established V2 demo path; CATI denial never falls back to V2."
+    },
+    {
+      "path": "scripts/run_historical_baseline.py",
+      "line": 151,
+      "classification": "DEAD_CODE",
+      "reference": "from build_master_ensemble_baseline import build, markdown_report, render"
+    },
+    {
+      "path": "docs/research/cati_v3_development_result.json",
+      "line": 553,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "\"owner\": \"V2\","
+    },
+    {
+      "path": "docs/research/cati_v3_development_report.md",
+      "line": 119,
+      "classification": "DOCUMENTATION_ONLY",
+      "reference": "trade payoff distribution. The existing authority router, dispatcher, V2 gate,"
+    },
+    {
+      "path": "docs/research/cati_v3_development_report.md",
+      "line": 146,
+      "classification": "DOCUMENTATION_ONLY",
+      "reference": "A read-only canonical authority probe returned phase M0 and V2 demo authority;"
+    },
+    {
+      "path": "scripts/render_cati_economic_audit.py",
+      "line": 114,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "add('Production forecast behavior is untouched. Runtime remains PAPER/M0, CATI OFF, PID 19436/session rts_a605e6301df149ccb931, startup revision 81aceaa6, hard daily loss cap 0.025. Current Git HEAD does not reload startup modules. No restart, pin, promotion or V2 fallback.');add()"
+    },
+    {
+      "path": "backends/user-backend/app/exchange/bingx/signing.py",
+      "line": 7,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "Generate BingX V2 HMAC-SHA256 signature."
+    },
+    {
+      "path": "scripts/render_cati_alpha_v2_report.py",
+      "line": 1,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "\"\"\"Render the immutable bounded alpha V2 economics without selecting a winner.\"\"\""
+    },
+    {
+      "path": "scripts/render_cati_alpha_v2_report.py",
+      "line": 8,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "lines=['# CATI alpha V2 \u2014 fixed four-mechanism development evaluation','',"
+    },
+    {
+      "path": "scripts/render_cati_alpha_v2_report.py",
+      "line": 21,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "'The source candle schema contains OHLCV, quote volume and trade count, but no historical bid/ask, execution slippage, venue/user fee tier, funding timestamps or OI. Volume uses observed historical values; no neutral values are imputed. V1\u2013V5 historical artifacts and costs were not modified. V2 has a separate cost version/hash without cheaper assumptions.','',"
+    },
+    {
+      "path": "backends/user-backend/app/exchange/bingx/client.py",
+      "line": 59,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "res = self._request(\"GET\", \"/openApi/swap/v2/user/balance\")"
+    },
+    {
+      "path": "backends/user-backend/app/exchange/bingx/client.py",
+      "line": 88,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "data = self._request(\"GET\", \"/openApi/swap/v2/user/balance\")"
+    },
+    {
+      "path": "scripts/render_cati_alpha_report.py",
+      "line": 31,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "RUNTIME_STATUS='STOPPED / STALE_LEASE at inspection. M0 governance would grant V2 entries on restart; runtime left stopped to respect CATI-only authority and preserve the router/runtime.',"
+    },
+    {
+      "path": "scripts/render_cati_alpha_report.py",
+      "line": 96,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "'approval remain separate later requirements; legacy V2 is absent from that progression.', '',"
+    },
+    {
+      "path": "docs/research/cati_final_activation_closure.md",
+      "line": 16,
+      "classification": "DOCUMENTATION_ONLY",
+      "reference": "| Calibration | FAILED: V1 0.0004776754; causal V2 0.0010456895; information-conditioned V3 0.0185275224; all below frozen 0.02 |"
+    },
+    {
+      "path": "docs/research/cati_final_activation_closure.md",
+      "line": 27,
+      "classification": "DOCUMENTATION_ONLY",
+      "reference": "| Legacy V2 fallback | DISABLED by design (router never hands a CATI scope to V2) |"
+    },
+    {
+      "path": "docs/research/cati_final_activation_closure.md",
+      "line": 50,
+      "classification": "DOCUMENTATION_ONLY",
+      "reference": "| Crypto dataset identity frozen (lineage v2) | manifest `d64e5c51\u2026`, 136 partitions, 9,543,936 rows, reconciles to coverage `259f2ef5\u2026`; `37bb0077`; registry row `ds_d64e5c517fd634e5` |"
+    },
+    {
+      "path": "docs/research/cati_final_activation_closure.md",
+      "line": 55,
+      "classification": "DOCUMENTATION_ONLY",
+      "reference": "| Runtime order-authority switch (router + V2 entry gate + CATI dispatch; no V2 fallback; wiring-derived capability state) | `f8c13085`; 12 switch tests |"
+    },
+    {
+      "path": "docs/research/cati_final_activation_closure.md",
+      "line": 105,
+      "classification": "DOCUMENTATION_ONLY",
+      "reference": "(`gaps.classify_fx_gap`: the period is FETCHED), and the lineage-v2 freeze accepts only expected closures \u2014 so the FX"
+    },
+    {
+      "path": "docs/research/cati_economic_edge_viability_audit.md",
+      "line": 466,
+      "classification": "DOCUMENTATION_ONLY",
+      "reference": "Production forecast behavior is untouched. Runtime remains PAPER/M0, CATI OFF, PID 19436/session rts_a605e6301df149ccb931, startup revision 81aceaa6, hard daily loss cap 0.025. Current Git HEAD does not reload startup modules. No restart, pin, promotion or V2 fallback."
+    },
+    {
+      "path": "backends/bot-backend/app/universe/adapters.py",
+      "line": 264,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "data = self._client._request(\"GET\", \"/openApi/swap/v2/quote/ticker\", {})"
+    },
+    {
+      "path": "docs/research/cati_calibration_failure_root_cause.md",
+      "line": 43,
+      "classification": "DOCUMENTATION_ONLY",
+      "reference": "The opt-in V2 benchmark computes the global profitable-event frequency in the same matured training slice as each forecast. It changes neither the model nor the acceptance gates."
+    },
+    {
+      "path": "docs/research/cati_calibration_failure_root_cause.md",
+      "line": 45,
+      "classification": "DOCUMENTATION_ONLY",
+      "reference": "| Measurement | V1 retrospective baseline | V2 causal expanding baseline |"
+    },
+    {
+      "path": "docs/research/cati_calibration_failure_root_cause.md",
+      "line": 225,
+      "classification": "DOCUMENTATION_ONLY",
+      "reference": "The causal benchmark correction is implemented as opt-in CausalCalibrationPolicy, with regression tests and a separate research library version. A new research-only V2 artifact was evaluated once on the same fixed selection; its final identity/result is recorded below. It changes evaluation semantics, not predictive information."
+    },
+    {
+      "path": "docs/research/cati_calibration_failure_root_cause.md",
+      "line": 624,
+      "classification": "DOCUMENTATION_ONLY",
+      "reference": "## Completed V2 correction candidate"
+    },
+    {
+      "path": "docs/research/cati_calibration_failure_root_cause.md",
+      "line": 632,
+      "classification": "DOCUMENTATION_ONLY",
+      "reference": "Model Brier: 0.22764573856574608; causal baseline: 0.22788403450766645; skill: 0.0010456894992016963; ECE: 0.010402743914891039. The same 1,998 probabilities, labels and backoff levels match V1 exactly. The row hash is unchanged. Original manifests and calibration JSON fingerprints match after the work. The actual V2 artifact is rejected by RUNTIME with incompatible library_version."
+    },
+    {
+      "path": "docs/research/cati_calibration_failure_root_cause.md",
+      "line": 636,
+      "classification": "DOCUMENTATION_ONLY",
+      "reference": "V2 outputs: `data/research/calibration_diagnostics/v2_causal_baseline/`; candidate identity: `docs/research/cati_causal_baseline_candidate.json`. No claim of full certification replay or holdout completion is made."
+    },
+    {
+      "path": "backends/user-backend/app/exchange/binance/client.py",
+      "line": 328,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "return self._signed_get(\"/fapi/v2/account\", {})"
+    },
+    {
+      "path": "backends/user-backend/app/exchange/binance/client.py",
+      "line": 331,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "return self._signed_get(\"/fapi/v2/balance\", {})"
+    },
+    {
+      "path": "backends/user-backend/app/exchange/binance/client.py",
+      "line": 360,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "return self._signed_get(\"/fapi/v2/positionRisk\", params)"
+    },
+    {
+      "path": "backends/user-backend/app/exchange/binance/client.py",
+      "line": 363,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "data = self._signed_get(\"/fapi/v2/positionRisk\", {})"
+    },
+    {
+      "path": "docs/research/cati_alpha_v2_fixed_report.md",
+      "line": 1,
+      "classification": "DOCUMENTATION_ONLY",
+      "reference": "# CATI alpha V2 \ufffd fixed four-mechanism development evaluation"
+    },
+    {
+      "path": "docs/research/cati_alpha_v2_fixed_report.md",
+      "line": 23,
+      "classification": "DOCUMENTATION_ONLY",
+      "reference": "The source candle schema contains OHLCV, quote volume and trade count, but no historical bid/ask, execution slippage, venue/user fee tier, funding timestamps or OI. Volume uses observed historical values; no neutral values are imputed. V1\ufffdV5 historical artifacts and costs were not modified. V2 has a separate cost version/hash without cheaper assumptions."
+    },
+    {
+      "path": "docs/research/cati_alpha_v2_fixed_report.md",
+      "line": 104,
+      "classification": "DOCUMENTATION_ONLY",
+      "reference": "Tests: 6 alpha V2 tests passed; consolidated CATI suite to be recorded by parent. Exact lower-level per-instrument metrics and full fold costs/rates are recorded in the JSON artifact; a sparse positive subset cannot be selected after inspection."
+    },
+    {
+      "path": "scripts/evaluate_cati_alpha_v2.py",
+      "line": 1,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "\"\"\"Single bounded alpha V2 run; fresh labels, no ML fitting or holdout access.\"\"\""
+    },
+    {
+      "path": "scripts/phase12/harness.py",
+      "line": 84,
+      "classification": "DEAD_CODE",
+      "reference": "\"strategy_id\": \"master_ensemble\","
+    },
+    {
+      "path": "scripts/phase12/controlled.py",
+      "line": 45,
+      "classification": "DEAD_CODE",
+      "reference": "\"sma_cross\","
+    },
+    {
+      "path": "backends/user-backend/app/admin_ml/service.py",
+      "line": 876,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "f\"{feature['broken_feature_count']} tracked v2 features are entirely missing in the recent window. \""
+    },
+    {
+      "path": "scripts/phase12/calibrate.py",
+      "line": 30,
+      "classification": "DEAD_CODE",
+      "reference": "from app.strategy.master_ensemble import MasterEnsembleStrategy"
+    },
+    {
+      "path": "backends/user-backend/app/core/broker_service.py",
+      "line": 874,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "legacy ``broker_credentials`` table, which goes stale after a v2"
+    },
+    {
+      "path": "scripts/materialize_research_examples.py",
+      "line": 205,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "strategy_version=\"master_ensemble_context_materializer/1.0.0\","
+    },
+    {
+      "path": "scripts/materialize_research_examples.py",
+      "line": 243,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "\"strategy_version\": \"master_ensemble_context_materializer/1.0.0\","
+    },
+    {
+      "path": "scripts/build_master_ensemble_baseline.py",
+      "line": 13,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "python scripts/build_master_ensemble_baseline.py"
+    },
+    {
+      "path": "scripts/build_master_ensemble_baseline.py",
+      "line": 14,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "python scripts/build_master_ensemble_baseline.py --bot bot_a8117dc719fc --json"
+    },
+    {
+      "path": "scripts/build_master_ensemble_baseline.py",
+      "line": 237,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "\"sma_cross\", \"donchian_breakout\", \"bollinger_reversion\","
+    },
+    {
+      "path": "scripts/build_master_ensemble_baseline.py",
+      "line": 703,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "\"`phase15_master_ensemble_baseline_results.json` artifact.\","
+    },
+    {
+      "path": "scripts/generate_capability_matrix.py",
+      "line": 47,
+      "classification": "DEAD_CODE",
+      "reference": "d = requests.get(\"https://open-api.bingx.com/openApi/swap/v2/quote/contracts\", timeout=30).json()"
+    },
+    {
+      "path": "scripts/freeze_research_dataset.py",
+      "line": 2,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "\"\"\"Freeze a research DATASET identity (lineage v2) -- distinct from the frozen UNIVERSE manifest."
+    },
+    {
+      "path": "backends/user-backend/app/core/config.py",
+      "line": 232,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "STRATEGY_NAME: str = Field(default=\"robust_ensemble\")"
+    },
+    {
+      "path": "backends/user-backend/app/core/config.py",
+      "line": 478,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "# Pydantic v2 + postponed annotations safety"
+    },
+    {
+      "path": "scripts/acquire_fx_reference_dataset.py",
+      "line": 510,
+      "classification": "DEAD_CODE",
+      "reference": "d = requests.get(\"https://open-api.bingx.com/openApi/swap/v2/quote/contracts\", timeout=30).json()"
+    },
+    {
+      "path": "backends/bot-backend/tests/test_cati_section25_security.py",
+      "line": 148,
+      "classification": "TEST_ONLY",
+      "reference": "c._request(\"POST\", \"/openApi/swap/v2/trade/order\", {\"symbol\": \"BTC-USDT\"})"
+    },
+    {
+      "path": "backends/bot-backend/tests/test_auto_pilot_forex.py",
+      "line": 49,
+      "classification": "TEST_ONLY",
+      "reference": "strategy_id=\"master_ensemble\","
+    },
+    {
+      "path": "backends/bot-backend/tests/test_auto_pilot_forex.py",
+      "line": 101,
+      "classification": "TEST_ONLY",
+      "reference": "strategy_id=\"master_ensemble\","
+    },
+    {
+      "path": "backends/bot-backend/tests/test_auto_pilot_forex.py",
+      "line": 149,
+      "classification": "TEST_ONLY",
+      "reference": "strategy_id=\"master_ensemble\","
+    },
+    {
+      "path": "backends/bot-backend/tests/test_auto_pilot_forex.py",
+      "line": 235,
+      "classification": "TEST_ONLY",
+      "reference": "\"strategy_id\": \"master_ensemble\","
+    },
+    {
+      "path": "backends/bot-backend/tests/test_auto_pilot_capital_flow.py",
+      "line": 110,
+      "classification": "TEST_ONLY",
+      "reference": "strategy_id=\"master_ensemble\","
+    },
+    {
+      "path": "backends/bot-backend/tests/test_auto_pilot_capital_flow.py",
+      "line": 135,
+      "classification": "TEST_ONLY",
+      "reference": "strategy_id=\"master_ensemble\","
+    },
+    {
+      "path": "backends/bot-backend/tests/test_capital_allocation_semantics.py",
+      "line": 212,
+      "classification": "TEST_ONLY",
+      "reference": "strategy_id=\"master_ensemble\", execution_mode=\"paper\", timeframe=\"15m\","
+    },
+    {
+      "path": "backends/bot-backend/tests/test_adaptive_entry_threshold_engine.py",
+      "line": 169,
+      "classification": "TEST_ONLY",
+      "reference": "def test_master_ensemble_applies_no_threshold_floor(self):"
+    },
+    {
+      "path": "backends/bot-backend/tests/test_adaptive_entry_threshold_engine.py",
+      "line": 170,
+      "classification": "TEST_ONLY",
+      "reference": "import app.strategy.master_ensemble as me"
+    },
+    {
+      "path": "backends/bot-backend/tests/test_adaptive_entry_threshold_engine.py",
+      "line": 445,
+      "classification": "TEST_ONLY",
+      "reference": "from app.strategy.master_ensemble import _BASE_WEIGHTS"
+    },
+    {
+      "path": "backends/bot-backend/tests/test_adaptive_entry_threshold_engine.py",
+      "line": 449,
+      "classification": "TEST_ONLY",
+      "reference": "[(\"supertrend\", \"BUY\", 0.9), (\"sma_cross\", \"HOLD\", 0.0)],"
+    },
+    {
+      "path": "backends/bot-backend/tests/test_adaptive_entry_threshold_engine.py",
+      "line": 450,
+      "classification": "TEST_ONLY",
+      "reference": "eligible=[\"supertrend\", \"sma_cross\", \"trend_pullback\"],"
+    },
+    {
+      "path": "backends/bot-backend/tests/test_adaptive_entry_threshold_engine.py",
+      "line": 457,
+      "classification": "TEST_ONLY",
+      "reference": "assert by_name[\"sma_cross\"].executed and by_name[\"sma_cross\"].signal == \"HOLD\""
+    },
+    {
+      "path": "backends/bot-backend/tests/test_adaptive_entry_threshold_engine.py",
+      "line": 878,
+      "classification": "TEST_ONLY",
+      "reference": "def test_master_ensemble_resets_evidence_every_evaluation(self):"
+    },
+    {
+      "path": "backends/bot-backend/tests/test_adaptive_entry_threshold_engine.py",
+      "line": 882,
+      "classification": "TEST_ONLY",
+      "reference": "from app.strategy.master_ensemble import MasterEnsembleStrategy"
+    },
+    {
+      "path": "backends/bot-backend/tests/test_broker_market_universe.py",
+      "line": 192,
+      "classification": "TEST_ONLY",
+      "reference": "strategy: str = \"master_ensemble\","
+    },
+    {
+      "path": "backends/bot-backend/tests/test_broker_market_universe.py",
+      "line": 1085,
+      "classification": "TEST_ONLY",
+      "reference": "strategy_id=\"master_ensemble\", strategy_version=\"1.0.0\", risk_level=\"balanced\","
+    },
+    {
+      "path": "backends/bot-backend/tests/test_external_signal_processor.py",
+      "line": 370,
+      "classification": "TEST_ONLY",
+      "reference": "runner.process_external_signal_candidate = MagicMock(side_effect=_runner_adapter)"
+    },
+    {
+      "path": "backends/bot-backend/tests/test_external_signal_processor.py",
+      "line": 531,
+      "classification": "TEST_ONLY",
+      "reference": "runner.process_external_signal_candidate.assert_not_called()"
+    },
+    {
+      "path": "backends/bot-backend/tests/test_external_signal_processor.py",
+      "line": 539,
+      "classification": "TEST_ONLY",
+      "reference": "runner.process_external_signal_candidate.assert_called_once()"
+    },
+    {
+      "path": "backends/bot-backend/tests/test_external_signal_processor.py",
+      "line": 547,
+      "classification": "TEST_ONLY",
+      "reference": "runner.process_external_signal_candidate.assert_not_called()"
+    },
+    {
+      "path": "backends/bot-backend/tests/test_external_signal_processor.py",
+      "line": 570,
+      "classification": "TEST_ONLY",
+      "reference": "runner.process_external_signal_candidate.assert_not_called()"
+    },
+    {
+      "path": "backends/bot-backend/tests/test_external_signal_processor.py",
+      "line": 592,
+      "classification": "TEST_ONLY",
+      "reference": "runner.process_external_signal_candidate.assert_not_called()"
+    },
+    {
+      "path": "backends/bot-backend/tests/test_external_signal_processor.py",
+      "line": 897,
+      "classification": "TEST_ONLY",
+      "reference": "runner.process_external_signal_candidate.assert_called_once()"
+    },
+    {
+      "path": "backends/bot-backend/tests/test_external_signal_processor.py",
+      "line": 898,
+      "classification": "TEST_ONLY",
+      "reference": "candidate = runner.process_external_signal_candidate.call_args[0][0]"
+    },
+    {
+      "path": "backends/bot-backend/tests/test_external_signal_processor.py",
+      "line": 1528,
+      "classification": "TEST_ONLY",
+      "reference": "runner.process_external_signal_candidate.assert_called_once()"
+    },
+    {
+      "path": "backends/bot-backend/tests/test_external_signal_processor.py",
+      "line": 1530,
+      "classification": "TEST_ONLY",
+      "reference": "runner.process_external_signal_candidate.call_args[0][0][\"action\"],"
+    },
+    {
+      "path": "backends/bot-backend/tests/test_expert_error_contract.py",
+      "line": 3,
+      "classification": "TEST_ONLY",
+      "reference": "Found live: ``sma_cross`` called ``client.klines(symbol, ...)`` positionally while"
+    },
+    {
+      "path": "backends/bot-backend/tests/test_expert_error_contract.py",
+      "line": 23,
+      "classification": "TEST_ONLY",
+      "reference": "import app.strategy.master_ensemble as ensemble_module"
+    },
+    {
+      "path": "backends/bot-backend/tests/test_expert_error_contract.py",
+      "line": 25,
+      "classification": "TEST_ONLY",
+      "reference": "from app.strategy.master_ensemble import MasterEnsembleStrategy"
+    },
+    {
+      "path": "backends/bot-backend/tests/test_expert_error_contract.py",
+      "line": 36,
+      "classification": "TEST_ONLY",
+      "reference": "\"bollinger_reversion\", \"donchian_breakout\", \"sma_cross\","
+    },
+    {
+      "path": "backends/bot-backend/tests/test_expert_error_contract.py",
+      "line": 91,
+      "classification": "TEST_ONLY",
+      "reference": "def test_sma_cross_uses_the_keyword_contract():"
+    },
+    {
+      "path": "backends/bot-backend/tests/test_expert_error_contract.py",
+      "line": 92,
+      "classification": "TEST_ONLY",
+      "reference": "expert = MasterEnsembleStrategy(client=NoNetwork())._strategies[\"sma_cross\"]"
+    },
+    {
+      "path": "backends/bot-backend/tests/test_expert_error_contract.py",
+      "line": 138,
+      "classification": "TEST_ONLY",
+      "reference": "eligible=[\"supertrend\", \"trend_pullback\", \"sma_cross\"],"
+    },
+    {
+      "path": "backends/bot-backend/tests/test_expert_error_contract.py",
+      "line": 140,
+      "classification": "TEST_ONLY",
+      "reference": "weights={\"sma_cross\": 0.9, \"supertrend\": 1.5, \"trend_pullback\": 1.3},"
+    },
+    {
+      "path": "backends/bot-backend/tests/test_expert_error_contract.py",
+      "line": 141,
+      "classification": "TEST_ONLY",
+      "reference": "errors={\"sma_cross\": \"data_error:boom\\nwith a traceback\"},"
+    },
+    {
+      "path": "backends/bot-backend/tests/test_expert_error_contract.py",
+      "line": 144,
+      "classification": "TEST_ONLY",
+      "reference": "failed = evidence[\"sma_cross\"]"
+    },
+    {
+      "path": "backends/bot-backend/tests/test_expert_error_contract.py",
+      "line": 172,
+      "classification": "TEST_ONLY",
+      "reference": "ExpertEvidence(\"sma_cross\", True, True, \"ERROR\", 0.0, weight=0.9, reason=\"data_error:x\"),"
+    },
+    {
+      "path": "backends/bot-backend/tests/test_expert_error_contract.py",
+      "line": 182,
+      "classification": "TEST_ONLY",
+      "reference": "assert \"sma_cross\" in decision.detail"
+    },
+    {
+      "path": "backends/bot-backend/tests/test_expert_error_contract.py",
+      "line": 243,
+      "classification": "TEST_ONLY",
+      "reference": "\"sma_cross\": FakeExpert(\"HOLD\", 0.0, \"data_error:klines() takes 1 positional argument\"),"
+    },
+    {
+      "path": "backends/bot-backend/tests/test_expert_error_contract.py",
+      "line": 251,
+      "classification": "TEST_ONLY",
+      "reference": "assert evidence[\"sma_cross\"].signal == \"ERROR\""
+    },
+    {
+      "path": "backends/bot-backend/tests/test_expert_error_contract.py",
+      "line": 252,
+      "classification": "TEST_ONLY",
+      "reference": "assert evidence[\"sma_cross\"].eligible is True"
+    },
+    {
+      "path": "backends/bot-backend/tests/test_expert_error_contract.py",
+      "line": 254,
+      "classification": "TEST_ONLY",
+      "reference": "assert components[\"sma_cross\"][\"component_signal\"] == \"ERROR\""
+    },
+    {
+      "path": "backends/bot-backend/tests/test_expert_error_contract.py",
+      "line": 260,
+      "classification": "TEST_ONLY",
+      "reference": "for name in (\"supertrend\", \"trend_pullback\", \"donchian_breakout\", \"sma_cross\")"
+    },
+    {
+      "path": "backends/bot-backend/tests/test_expert_error_contract.py",
+      "line": 272,
+      "classification": "TEST_ONLY",
+      "reference": "\"sma_cross\": FakeExpert(\"HOLD\", 0.0, \"no_cross\"),"
+    },
+    {
+      "path": "backends/bot-backend/tests/test_expert_error_contract.py",
+      "line": 278,
+      "classification": "TEST_ONLY",
+      "reference": "assert evidence[\"sma_cross\"].signal == \"HOLD\""
+    },
+    {
+      "path": "backends/bot-backend/tests/test_data_consistency.py",
+      "line": 94,
+      "classification": "TEST_ONLY",
+      "reference": "strategy_id TEXT DEFAULT 'master_ensemble',"
+    },
+    {
+      "path": "backends/bot-backend/tests/test_dataset_builder.py",
+      "line": 10,
+      "classification": "TEST_ONLY",
+      "reference": "E  v2 contract schema is preserved (21 features, correct hash)"
+    },
+    {
+      "path": "backends/bot-backend/tests/test_dataset_builder.py",
+      "line": 390,
+      "classification": "TEST_ONLY",
+      "reference": "# Test E \u2014 v2 contract is preserved"
+    },
+    {
+      "path": "backends/bot-backend/tests/test_dataset_builder.py",
+      "line": 395,
+      "classification": "TEST_ONLY",
+      "reference": "The feature engineering must produce exactly the 21 v2 contract columns"
+    },
+    {
+      "path": "backends/bot-backend/tests/test_dataset_builder.py",
+      "line": 404,
+      "classification": "TEST_ONLY",
+      "reference": "\"v2 contract is broken.\""
+    },
+    {
+      "path": "backends/bot-backend/tests/test_dataset_builder.py",
+      "line": 407,
+      "classification": "TEST_ONLY",
+      "reference": "f\"Expected 21 v2 feature columns, got {len(_bd.FEATURE_COLUMNS)}.\""
+    },
+    {
+      "path": "backends/bot-backend/tests/test_dataset_builder.py",
+      "line": 435,
+      "classification": "TEST_ONLY",
+      "reference": "f\"_build_features missing v2 contract columns: {missing}\""
+    },
+    {
+      "path": "backends/bot-backend/tests/test_dataset_builder.py",
+      "line": 438,
+      "classification": "TEST_ONLY",
+      "reference": "\"Feature column order does not match v2 contract. \""
+    },
+    {
+      "path": "backends/bot-backend/tests/test_daily_paper_validation_monitor.py",
+      "line": 54,
+      "classification": "TEST_ONLY",
+      "reference": "'HOLD','HOLD','NO_PATTERN','MASTER_ENSEMBLE_V2',"
+    },
+    {
+      "path": "backends/bot-backend/tests/test_dynamic_universe_shadow.py",
+      "line": 154,
+      "classification": "TEST_ONLY",
+      "reference": "\"reason\": \"master_ensemble_v2\","
+    },
+    {
+      "path": "backends/bot-backend/tests/test_dynamic_universe_shadow.py",
+      "line": 243,
+      "classification": "TEST_ONLY",
+      "reference": "\"reason\": \"master_ensemble_v2\","
+    },
+    {
+      "path": "backends/bot-backend/tests/test_effective_bot_policy.py",
+      "line": 32,
+      "classification": "TEST_ONLY",
+      "reference": "strategy_id=\"master_ensemble\","
+    },
+    {
+      "path": "backends/bot-backend/tests/test_connected_account_execution_safety.py",
+      "line": 235,
+      "classification": "TEST_ONLY",
+      "reference": "strategy_id=\"master_ensemble\", strategy_version=\"1.0.0\", risk_level=\"balanced\","
+    },
+    {
+      "path": "backends/bot-backend/tests/test_logging_harden.py",
+      "line": 28,
+      "classification": "TEST_ONLY",
+      "reference": "runner.orchestrator.process_trading_opportunity.return_value = {"
+    },
+    {
+      "path": "backends/bot-backend/tests/test_logging_harden.py",
+      "line": 57,
+      "classification": "TEST_ONLY",
+      "reference": "runner.orchestrator.process_trading_opportunity.side_effect = ValueError(\"Simulated Runner Error\")"
+    },
+    {
+      "path": "backends/bot-backend/tests/test_ml_runtime_boundaries.py",
+      "line": 88,
+      "classification": "TEST_ONLY",
+      "reference": "\"\"\"Runtime schema hash must start with d4b19440 (v2 contract).\"\"\""
+    },
+    {
+      "path": "backends/bot-backend/tests/test_ml_runtime_boundaries.py",
+      "line": 95,
+      "classification": "TEST_ONLY",
+      "reference": "\"\"\"ML_ENABLED must default to False \u2014 safe before any v2 model is in production.\"\"\""
+    },
+    {
+      "path": "backends/bot-backend/tests/test_ml_runtime_boundaries.py",
+      "line": 101,
+      "classification": "TEST_ONLY",
+      "reference": "# Pydantic v2 path"
+    },
+    {
+      "path": "backends/bot-backend/tests/test_ml_runtime_boundaries.py",
+      "line": 149,
+      "classification": "TEST_ONLY",
+      "reference": "rejected by the v2 runtime even if feature_columns happen to be correct."
+    },
+    {
+      "path": "backends/bot-backend/tests/test_ml_runtime_boundaries.py",
+      "line": 163,
+      "classification": "TEST_ONLY",
+      "reference": "\"feature_columns\":  list(ML_FEATURE_COLUMNS),  # 21 correct v2 names"
+    },
+    {
+      "path": "backends/bot-backend/tests/test_ml_runtime_boundaries.py",
+      "line": 175,
+      "classification": "TEST_ONLY",
+      "reference": "\"Legacy v1.1 artifact (schema_hash=c8ffb128...) must not load under v2 runtime.\""
+    },
+    {
+      "path": "backends/bot-backend/tests/test_ml_runtime_boundaries.py",
+      "line": 210,
+      "classification": "TEST_ONLY",
+      "reference": "\"Legacy v1.0 artifact (schema_hash=173cf9e7...) must not load under v2 runtime.\""
+    },
+    {
+      "path": "backends/bot-backend/tests/test_ml_runtime_boundaries.py",
+      "line": 228,
+      "classification": "TEST_ONLY",
+      "reference": "\"d4b19440\",     # v2 schema hash prefix"
+    },
+    {
+      "path": "backends/bot-backend/tests/test_ml_runtime_boundaries.py",
+      "line": 240,
+      "classification": "TEST_ONLY",
+      "reference": "If a trained v2 model metadata file exists in models/artifacts, it must"
+    },
+    {
+      "path": "backends/bot-backend/tests/test_mt_credentials.py",
+      "line": 16,
+      "classification": "TEST_ONLY",
+      "reference": "strategy_id: str = \"sma_cross\""
+    },
+    {
+      "path": "backends/bot-backend/tests/test_ml_promotion_guard.py",
+      "line": 77,
+      "classification": "TEST_ONLY",
+      "reference": "def run(paths, *, dry_run=True, model_version=\"v2.0\"):"
+    },
+    {
+      "path": "backends/bot-backend/tests/test_orchestrator_context_integrity.py",
+      "line": 34,
+      "classification": "TEST_ONLY",
+      "reference": "orchestrator.strategy_id = \"master_ensemble\""
+    },
+    {
+      "path": "backends/bot-backend/tests/test_orchestrator_context_integrity.py",
+      "line": 80,
+      "classification": "TEST_ONLY",
+      "reference": "result = orchestrator.process_trading_opportunity("
+    },
+    {
+      "path": "backends/bot-backend/tests/test_orchestrator_context_integrity.py",
+      "line": 144,
+      "classification": "TEST_ONLY",
+      "reference": "orchestrator.process_trading_opportunity("
+    },
+    {
+      "path": "backends/bot-backend/tests/test_orchestrator_context_integrity.py",
+      "line": 164,
+      "classification": "TEST_ONLY",
+      "reference": "result = orchestrator.process_trading_opportunity("
+    },
+    {
+      "path": "backends/bot-backend/tests/test_paper_cycle_diagnostic.py",
+      "line": 96,
+      "classification": "TEST_ONLY",
+      "reference": "\"MASTER_ENSEMBLE_V2\","
+    },
+    {
+      "path": "backends/bot-backend/tests/test_paper_cycle_diagnostic.py",
+      "line": 98,
+      "classification": "TEST_ONLY",
+      "reference": "\"MASTER_ENSEMBLE_V2\","
+    },
+    {
+      "path": "backends/bot-backend/tests/test_paper_cycle_diagnostic.py",
+      "line": 105,
+      "classification": "TEST_ONLY",
+      "reference": "\"MASTER_ENSEMBLE_V2\","
+    },
+    {
+      "path": "backends/bot-backend/tests/test_master_ensemble_components.py",
+      "line": 9,
+      "classification": "TEST_ONLY",
+      "reference": "from app.strategy.master_ensemble import MasterEnsembleStrategy"
+    },
+    {
+      "path": "backends/bot-backend/tests/test_master_ensemble_components.py",
+      "line": 63,
+      "classification": "TEST_ONLY",
+      "reference": "\"sma_cross\": StaticStrategy(Signal.HOLD, 0.0),"
+    },
+    {
+      "path": "backends/bot-backend/tests/test_master_ensemble_components.py",
+      "line": 106,
+      "classification": "TEST_ONLY",
+      "reference": "reason=\"master_ensemble_v2\","
+    },
+    {
+      "path": "backends/bot-backend/tests/test_master_ensemble_components.py",
+      "line": 142,
+      "classification": "TEST_ONLY",
+      "reference": "strategy_id=\"master_ensemble\","
+    },
+    {
+      "path": "backends/bot-backend/app/trading_intelligence/__init__.py",
+      "line": 10,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "the existing V2 pipeline."
+    },
+    {
+      "path": "backends/bot-backend/app/trading_intelligence/__init__.py",
+      "line": 11,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "- Its failures never stop V2 execution."
+    },
+    {
+      "path": "backends/bot-backend/tests/test_fix_e_strategy_expectancy.py",
+      "line": 46,
+      "classification": "TEST_ONLY",
+      "reference": "# Isolated helpers from master_ensemble (no import of full strategy module)"
+    },
+    {
+      "path": "backends/bot-backend/tests/test_fix_e_strategy_expectancy.py",
+      "line": 279,
+      "classification": "TEST_ONLY",
+      "reference": "from app.strategy.master_ensemble import MasterEnsembleStrategy"
+    },
+    {
+      "path": "backends/bot-backend/tests/test_fix_e_strategy_expectancy.py",
+      "line": 318,
+      "classification": "TEST_ONLY",
+      "reference": "from app.strategy.master_ensemble import MasterEnsembleStrategy"
+    },
+    {
+      "path": "backends/bot-backend/tests/test_fix_e_strategy_expectancy.py",
+      "line": 343,
+      "classification": "TEST_ONLY",
+      "reference": "import app.strategy.master_ensemble as _me_mod"
+    },
+    {
+      "path": "backends/bot-backend/tests/test_fix_e_strategy_expectancy.py",
+      "line": 345,
+      "classification": "TEST_ONLY",
+      "reference": "patch(\"app.strategy.master_ensemble.settings\", mock_settings, create=True), \\"
+    },
+    {
+      "path": "backends/bot-backend/tests/test_fix_e_strategy_expectancy.py",
+      "line": 352,
+      "classification": "TEST_ONLY",
+      "reference": "with patch(\"app.strategy.master_ensemble.settings\", mock_settings, create=True):"
+    },
+    {
+      "path": "backends/bot-backend/tests/test_fix_e_strategy_expectancy.py",
+      "line": 369,
+      "classification": "TEST_ONLY",
+      "reference": "from app.strategy.master_ensemble import MasterEnsembleStrategy"
+    },
+    {
+      "path": "backends/bot-backend/tests/test_fix_e_strategy_expectancy.py",
+      "line": 400,
+      "classification": "TEST_ONLY",
+      "reference": "import app.strategy.master_ensemble as _me_mod"
+    },
+    {
+      "path": "backends/bot-backend/tests/test_fix_e_strategy_expectancy.py",
+      "line": 417,
+      "classification": "TEST_ONLY",
+      "reference": "from app.strategy.master_ensemble import MasterEnsembleStrategy"
+    },
+    {
+      "path": "backends/bot-backend/tests/test_fix_e_strategy_expectancy.py",
+      "line": 434,
+      "classification": "TEST_ONLY",
+      "reference": "from app.strategy.master_ensemble import MasterEnsembleStrategy"
+    },
+    {
+      "path": "backends/bot-backend/tests/test_fix_e_strategy_expectancy.py",
+      "line": 457,
+      "classification": "TEST_ONLY",
+      "reference": "from app.strategy.master_ensemble import MasterEnsembleStrategy"
+    },
+    {
+      "path": "backends/bot-backend/tests/test_fix_e_strategy_expectancy.py",
+      "line": 492,
+      "classification": "TEST_ONLY",
+      "reference": "with patch(\"app.strategy.master_ensemble.datetime\") as mock_dt:"
+    },
+    {
+      "path": "backends/bot-backend/tests/test_fix_e_strategy_expectancy.py",
+      "line": 501,
+      "classification": "TEST_ONLY",
+      "reference": "with patch(\"app.strategy.master_ensemble.datetime\") as mock_dt:"
+    },
+    {
+      "path": "backends/bot-backend/tests/test_fix_e_strategy_expectancy.py",
+      "line": 510,
+      "classification": "TEST_ONLY",
+      "reference": "with patch(\"app.strategy.master_ensemble.datetime\") as mock_dt:"
+    },
+    {
+      "path": "backends/bot-backend/tests/test_fix_e_strategy_expectancy.py",
+      "line": 518,
+      "classification": "TEST_ONLY",
+      "reference": "with patch(\"app.strategy.master_ensemble.datetime\") as mock_dt:"
+    },
+    {
+      "path": "backends/bot-backend/app/main.py",
+      "line": 27,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "# populate os.environ in v2. This call ensures ShadowConfig, and any future module using"
+    },
+    {
+      "path": "backends/bot-backend/app/main.py",
+      "line": 51,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "# Phase 5F-2 reload trigger v2: 2026-04-04 \u2014 shadow side-normalization fix"
+    },
+    {
+      "path": "backends/bot-backend/app/main.py",
+      "line": 893,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "# Historical V2 dataset/model jobs are not runtime scheduled."
+    },
+    {
+      "path": "backends/bot-backend/app/trading_intelligence/veto/engine.py",
+      "line": 3,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "capital, no position slots, no V2 threshold."
+    },
+    {
+      "path": "backends/bot-backend/tests/test_external_signal_threshold_path.py",
+      "line": 140,
+      "classification": "TEST_ONLY",
+      "reference": "result = runner.process_external_signal_candidate({"
+    },
+    {
+      "path": "backends/bot-backend/tests/test_external_signal_threshold_path.py",
+      "line": 154,
+      "classification": "TEST_ONLY",
+      "reference": "source = inspect.getsource(PaperRunner.process_external_signal_candidate)"
+    },
+    {
+      "path": "frontends/user-frontend/src/components/Layout/Footer.tsx",
+      "line": 49,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "<span className=\"font-mono text-xs bg-muted px-2 py-0.5 rounded\">v2.0.0-rc1</span>"
+    },
+    {
+      "path": "backends/bot-backend/app/core/trading_orchestrator.py",
+      "line": 228,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "def process_trading_opportunity("
+    },
+    {
+      "path": "backends/bot-backend/app/core/trading_orchestrator.py",
+      "line": 272,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "``strategy.analyze()``, the Master Ensemble and the V2 adaptive"
+    },
+    {
+      "path": "backends/bot-backend/app/core/trading_orchestrator.py",
+      "line": 273,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "confidence threshold. Everything else is the same code the V2 path"
+    },
+    {
+      "path": "backends/bot-backend/app/core/trading_orchestrator.py",
+      "line": 280,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "Returns the same result shape as ``process_trading_opportunity`` plus"
+    },
+    {
+      "path": "backends/bot-backend/app/core/trading_orchestrator.py",
+      "line": 401,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "\"\"\"Stop-loss cooldown and allowed-symbol gates -- shared by the V2 and"
+    },
+    {
+      "path": "backends/bot-backend/app/core/trading_orchestrator.py",
+      "line": 403,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "Moved verbatim out of process_trading_opportunity.\"\"\""
+    },
+    {
+      "path": "backends/bot-backend/app/core/trading_orchestrator.py",
+      "line": 465,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "\"\"\"The ONE hard-risk / sizing pipeline, shared by the V2 strategy path"
+    },
+    {
+      "path": "backends/bot-backend/app/core/trading_orchestrator.py",
+      "line": 466,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "(``process_trading_opportunity``) and the CATI TradePlan path"
+    },
+    {
+      "path": "backends/bot-backend/app/core/trading_orchestrator.py",
+      "line": 471,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "validation. Moved verbatim out of process_trading_opportunity -- the"
+    },
+    {
+      "path": "backends/bot-backend/app/core/trading_orchestrator.py",
+      "line": 472,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "V2 path's behaviour is unchanged."
+    },
+    {
+      "path": "backends/bot-backend/app/runner/runner.py",
+      "line": 126,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "\"master_ensemble_v2\":             \"no_signal\","
+    },
+    {
+      "path": "backends/bot-backend/app/runner/runner.py",
+      "line": 373,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "# B-7 Fix: Hard-block sma_cross for user-context bots."
+    },
+    {
+      "path": "backends/bot-backend/app/runner/runner.py",
+      "line": 374,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "# sma_cross is a simple MA crossover with no regime/volatility/spread filters."
+    },
+    {
+      "path": "backends/bot-backend/app/runner/runner.py",
+      "line": 376,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "_UNSAFE_STRATEGY_ALIASES = {\"sma_cross\", \"sma-cross\", \"sma cross\"}"
+    },
+    {
+      "path": "backends/bot-backend/app/runner/runner.py",
+      "line": 696,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "self.ml_scorer = SimpleNamespace(enabled=False)  # historical V2 scorer is runtime-inert"
+    },
+    {
+      "path": "backends/bot-backend/app/runner/runner.py",
+      "line": 2137,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "\"\"\"Section 25 runtime switch: a V2 NEW entry reaches the executor only while the runtime order-authority"
+    },
+    {
+      "path": "backends/bot-backend/app/runner/runner.py",
+      "line": 2138,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "router gives V2 this account scope. When CATI owns the scope (or nobody does) V2 is refused here -- the"
+    },
+    {
+      "path": "backends/bot-backend/app/runner/runner.py",
+      "line": 2562,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "def process_external_signal_candidate(self, candidate: Dict[str, Any]) -> Dict[str, Any]:"
+    },
+    {
+      "path": "backends/bot-backend/app/core/safety_startup.py",
+      "line": 173,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "strategy = getattr(settings, \"STRATEGY_NAME\", \"sma_cross\")"
+    },
+    {
+      "path": "backends/bot-backend/app/core/safety_startup.py",
+      "line": 174,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "is_weak = strategy == \"sma_cross\" and exec_mode == \"live\""
+    },
+    {
+      "path": "backends/bot-backend/app/core/safety_startup.py",
+      "line": 179,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "message=\"\" if not is_weak else \"sma_cross rejected in live mode \u2014 use master_ensemble\","
+    },
+    {
+      "path": "backends/bot-backend/app/runner/bot_context.py",
+      "line": 29,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "strategy_id: str    # Strategy identifier (e.g., \"sma_cross\", \"supertrend\")"
+    },
+    {
+      "path": "backends/bot-backend/app/runner/bot_context.py",
+      "line": 192,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "if instance.strategy_id == \"master_ensemble\":"
+    },
+    {
+      "path": "backends/bot-backend/app/core/config.py",
+      "line": 103,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "STRATEGY_NAME: str = \"master_ensemble\""
+    },
+    {
+      "path": "backends/bot-backend/app/trading_intelligence/setups/__init__.py",
+      "line": 7,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "V2 confidence threshold."
+    },
+    {
+      "path": "backends/bot-backend/app/trading_intelligence/setups/trend_pullback.py",
+      "line": 1,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "\"\"\"Specialist A -- Trend Pullback V2 (Section 11.3)."
+    },
+    {
+      "path": "backends/bot-backend/app/trading_intelligence/setups/registry.py",
+      "line": 36,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "to protect the *live V2 loop* from a CATI fault; internal CATI research"
+    },
+    {
+      "path": "docs/research/artifacts/cati_alpha_v1/operations.json",
+      "line": 9,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "\"reason\": \"Existing M0 router would allow legacy V2 new entries; preserved runtime/router and CATI-only requirement.\""
+    },
+    {
+      "path": "backends/bot-backend/app/trading_intelligence/setups/range_mean_reversion.py",
+      "line": 1,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "\"\"\"Specialist C -- Range / Mean Reversion V2 (Section 11.5)."
+    },
+    {
+      "path": "backends/bot-backend/app/trading_intelligence/setups/policy.py",
+      "line": 22,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "#: admission threshold, and unrelated to V2's adaptive entry threshold."
+    },
+    {
+      "path": "docs/post_audit_correctness_fix_report.md",
+      "line": 93,
+      "classification": "DOCUMENTATION_ONLY",
+      "reference": "## 2. P1: `sma_cross` broken, and the expert contract"
+    },
+    {
+      "path": "docs/post_audit_correctness_fix_report.md",
+      "line": 97,
+      "classification": "DOCUMENTATION_ONLY",
+      "reference": "`sma_cross.py` called `client.klines(symbol, ...)` positionally, and"
+    },
+    {
+      "path": "docs/post_audit_correctness_fix_report.md",
+      "line": 109,
+      "classification": "DOCUMENTATION_ONLY",
+      "reference": "| sma_cross | **positional** | 15m | **broken on every candle since 2026-09-08T05:00Z** |"
+    },
+    {
+      "path": "docs/post_audit_correctness_fix_report.md",
+      "line": 133,
+      "classification": "DOCUMENTATION_ONLY",
+      "reference": "* `master_ensemble._run` classifies an expert's own error report, or an exception, as **ERROR**. The component is recorded with signal `ERROR`, confidence 0 and the reason, and is excluded from votes."
+    },
+    {
+      "path": "docs/post_audit_correctness_fix_report.md",
+      "line": 137,
+      "classification": "DOCUMENTATION_ONLY",
+      "reference": "* **The cost, accepted deliberately:** a broken expert now stops its regime's candles, loudly, instead of silently diluting them. That is exactly what would have exposed `sma_cross` on day one."
+    },
+    {
+      "path": "docs/post_audit_correctness_fix_report.md",
+      "line": 178,
+      "classification": "DOCUMENTATION_ONLY",
+      "reference": "`process_external_signal_candidate` runs this immediately after market data and"
+    },
+    {
+      "path": "docs/post_audit_correctness_fix_report.md",
+      "line": 247,
+      "classification": "DOCUMENTATION_ONLY",
+      "reference": "| `test_expert_error_contract.py` | 7 experts \u00d7 snapshot contract, sma_cross, vwap 5m, auxiliary cut, fingerprint, ERROR \u2260 HOLD, engine fail-closed, ensemble end to end |"
+    },
+    {
+      "path": "docs/post_audit_correctness_fix_report.md",
+      "line": 359,
+      "classification": "DOCUMENTATION_ONLY",
+      "reference": "| sma_cross | `HOLD` reason `no_cross`, **no `data_error`** | `HOLD` reason `no_cross`, **no `data_error`** |"
+    },
+    {
+      "path": "docs/post_audit_correctness_fix_report.md",
+      "line": 370,
+      "classification": "DOCUMENTATION_ONLY",
+      "reference": "* **A. Experts.** sma_cross returns a genuine opinion on both symbols. ERROR is not HOLD: no expert errored, so none was booked as HOLD."
+    },
+    {
+      "path": "docs/post_audit_correctness_fix_report.md",
+      "line": 404,
+      "classification": "DOCUMENTATION_ONLY",
+      "reference": "| `sma_cross` broken | 2026-09-08T05:00:09Z \u2192 2026-09-10T23:30:06Z (every evaluated candle carried `SnapshotMarketClient.klines() takes\u2026`), 5 sessions ending with `rts_5548a9cb\u2026` | 54 decisions; 30 `expert_evaluations` booked as HOLD |"
+    },
+    {
+      "path": "docs/post_audit_correctness_fix_report.md",
+      "line": 426,
+      "classification": "DOCUMENTATION_ONLY",
+      "reference": "SMA_CROSS:"
+    },
+    {
+      "path": "docs/post_audit_correctness_fix_report.md",
+      "line": 497,
+      "classification": "DOCUMENTATION_ONLY",
+      "reference": "LIVE_SMA_CROSS:"
+    },
+    {
+      "path": "docs/phase_5_8_implementation_report.md",
+      "line": 268,
+      "classification": "DOCUMENTATION_ONLY",
+      "reference": "| `app/strategy/master_ensemble.py` | Step 6/7 produce an opportunity and delegate the one comparison; decision evidence in `meta` |"
+    },
+    {
+      "path": "backends/bot-backend/app/trading_intelligence/setups/breakout_expansion.py",
+      "line": 1,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "\"\"\"Specialist B -- Breakout / Volatility Expansion V2 (Section 11.4)."
+    },
+    {
+      "path": "backends/bot-backend/app/backtest/runner.py",
+      "line": 15,
+      "classification": "DEAD_CODE",
+      "reference": "- Call orchestrator.process_trading_opportunity()"
+    },
+    {
+      "path": "backends/bot-backend/app/backtest/runner.py",
+      "line": 369,
+      "classification": "DEAD_CODE",
+      "reference": "orch_result = self.orchestrator.process_trading_opportunity("
+    },
+    {
+      "path": "backends/bot-backend/app/activation/cati.py",
+      "line": 27,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "the deterministic CATI estimator is used (never V2)."
+    },
+    {
+      "path": "backends/bot-backend/app/risk/correlation_filter.py",
+      "line": 11,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "Dynamic covariance matrices are deferred to v2 (need 30+ days of fill data)."
+    },
+    {
+      "path": "backends/bot-backend/app/exchange/bybit/signing.py",
+      "line": 39,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "Generate HMAC SHA256 signature for V2 (Query Params)."
+    },
+    {
+      "path": "backends/bot-backend/app/exchange/bingx/signing.py",
+      "line": 6,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "Generate BingX V2 HMAC-SHA256 signature."
+    },
+    {
+      "path": "backends/bot-backend/app/exchange/bingx/client.py",
+      "line": 13,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "BingX V2 API Client (USDT-M Futures/Swap)."
+    },
+    {
+      "path": "backends/bot-backend/app/exchange/bingx/client.py",
+      "line": 124,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "data = self._request(\"GET\", \"/openApi/swap/v2/server/time\")"
+    },
+    {
+      "path": "backends/bot-backend/app/exchange/bingx/client.py",
+      "line": 132,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "# /openApi/swap/v2/quote/ticker?symbol=BTC-USDT"
+    },
+    {
+      "path": "backends/bot-backend/app/exchange/bingx/client.py",
+      "line": 133,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "data = self._request(\"GET\", \"/openApi/swap/v2/quote/ticker\", {\"symbol\": self._normalize_symbol(symbol)})"
+    },
+    {
+      "path": "backends/bot-backend/app/exchange/bingx/client.py",
+      "line": 167,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "# Uses V3 for klines usually recommmended/more robust? Or V2."
+    },
+    {
+      "path": "backends/bot-backend/app/exchange/bingx/client.py",
+      "line": 168,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "# Let's try V3 if accessible, else V2."
+    },
+    {
+      "path": "backends/bot-backend/app/exchange/bingx/client.py",
+      "line": 205,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "data = self._request(\"GET\", \"/openApi/swap/v2/user/balance\")"
+    },
+    {
+      "path": "backends/bot-backend/app/exchange/bingx/client.py",
+      "line": 272,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "data = self._request(\"GET\", \"/openApi/swap/v2/user/positions\", payload)"
+    },
+    {
+      "path": "backends/bot-backend/app/exchange/bingx/client.py",
+      "line": 335,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "res = self._request(\"POST\", \"/openApi/swap/v2/trade/order\", payload)"
+    },
+    {
+      "path": "backends/bot-backend/app/exchange/bingx/client.py",
+      "line": 373,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "res = self._request(\"POST\", \"/openApi/swap/v2/trade/order\", payload)"
+    },
+    {
+      "path": "backends/bot-backend/app/exchange/bingx/client.py",
+      "line": 388,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "# /openApi/swap/v2/trade/allOpenOrders (DELETE)"
+    },
+    {
+      "path": "backends/bot-backend/app/exchange/bingx/client.py",
+      "line": 389,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "return self._request(\"DELETE\", \"/openApi/swap/v2/trade/allOpenOrders\", {"
+    },
+    {
+      "path": "backends/bot-backend/app/exchange/bingx/client.py",
+      "line": 395,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "# /openApi/swap/v2/trade/leverage"
+    },
+    {
+      "path": "backends/bot-backend/app/exchange/bingx/client.py",
+      "line": 404,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "self._request(\"POST\", \"/openApi/swap/v2/trade/leverage\", {"
+    },
+    {
+      "path": "backends/bot-backend/app/exchange/bingx/client.py",
+      "line": 410,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "self._request(\"POST\", \"/openApi/swap/v2/trade/leverage\", {"
+    },
+    {
+      "path": "backends/bot-backend/app/exchange/bingx/client.py",
+      "line": 426,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "endpoint: /openApi/swap/v2/trade/order"
+    },
+    {
+      "path": "backends/bot-backend/app/exchange/bingx/client.py",
+      "line": 473,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "res = self._request(\"POST\", \"/openApi/swap/v2/trade/order\", payload)"
+    },
+    {
+      "path": "backends/bot-backend/app/exchange/bingx/client.py",
+      "line": 502,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "res = self._request(\"POST\", \"/openApi/swap/v2/trade/order\", payload)"
+    },
+    {
+      "path": "backends/bot-backend/app/exchange/bingx/client.py",
+      "line": 564,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "res = self._request(\"POST\", \"/openApi/swap/v2/trade/order\", payload)"
+    },
+    {
+      "path": "backends/bot-backend/app/exchange/bingx/client.py",
+      "line": 577,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "res = self._request(\"GET\", \"/openApi/swap/v2/trade/order\", {\"symbol\": self._normalize_symbol(symbol), **ident})"
+    },
+    {
+      "path": "backends/bot-backend/app/exchange/bingx/client.py",
+      "line": 589,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "res = self._request(\"GET\", \"/openApi/swap/v2/trade/openOrders\", params)"
+    },
+    {
+      "path": "backends/bot-backend/app/exchange/bingx/client.py",
+      "line": 601,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "self._request(\"DELETE\", \"/openApi/swap/v2/trade/order\", {\"symbol\": self._normalize_symbol(symbol),"
+    },
+    {
+      "path": "backends/bot-backend/app/exchange/bingx/client.py",
+      "line": 613,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "res = self._request(\"GET\", \"/openApi/swap/v2/trade/allFillOrders\", {"
+    },
+    {
+      "path": "backends/bot-backend/app/exchange/bingx/client.py",
+      "line": 692,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "res = self._request(\"GET\", \"/openApi/swap/v2/quote/price\", {})"
+    },
+    {
+      "path": "backends/bot-backend/app/exchange/bingx/client.py",
+      "line": 702,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "d = self._request(\"GET\", \"/openApi/swap/v2/quote/ticker\", {\"symbol\": self._normalize_symbol(symbol)}).get(\"data\") or {}"
+    },
+    {
+      "path": "backends/bot-backend/app/exchange/bingx/client.py",
+      "line": 707,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "d = self._request(\"GET\", \"/openApi/swap/v2/quote/depth\", {\"symbol\": self._normalize_symbol(symbol),"
+    },
+    {
+      "path": "backends/bot-backend/app/exchange/bingx/client.py",
+      "line": 713,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "d = self._request(\"GET\", \"/openApi/swap/v2/quote/premiumIndex\", {\"symbol\": self._normalize_symbol(symbol)}).get(\"data\") or {}"
+    },
+    {
+      "path": "backends/bot-backend/app/exchange/bingx/client.py",
+      "line": 725,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "data = self._request(\"GET\", \"/openApi/swap/v2/quote/contracts\")"
+    },
+    {
+      "path": "backends/bot-backend/app/exchange/bingx/client.py",
+      "line": 756,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "data = self._request(\"GET\", \"/openApi/swap/v2/user/commissionRate\").get(\"data\") or {}"
+    },
+    {
+      "path": "backends/bot-backend/app/replay/engine.py",
+      "line": 457,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "strategy_id=\"master_ensemble\", strategy_version=\"1.0.0\","
+    },
+    {
+      "path": "backends/bot-backend/app/replay/engine.py",
+      "line": 493,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "\"market_type\": \"CRYPTO\", \"strategy_id\": \"master_ensemble\","
+    },
+    {
+      "path": "backends/bot-backend/app/exchange/binance/client.py",
+      "line": 717,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "return self._signed_get(\"/fapi/v2/account\", {})"
+    },
+    {
+      "path": "backends/bot-backend/app/exchange/binance/client.py",
+      "line": 720,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "return self._signed_get(\"/fapi/v2/balance\", {})"
+    },
+    {
+      "path": "backends/bot-backend/app/exchange/binance/client.py",
+      "line": 786,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "return self._signed_get(\"/fapi/v2/positionRisk\", params)"
+    },
+    {
+      "path": "backends/bot-backend/app/exchange/binance/client.py",
+      "line": 789,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "data = self._signed_get(\"/fapi/v2/positionRisk\", {})"
+    },
+    {
+      "path": "backends/bot-backend/app/trading_intelligence/research/certification/cli.py",
+      "line": 291,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "rd.add_argument(\"--dataset-manifest\", default=None, help=\"frozen dataset (lineage v2) manifest JSON\")"
+    },
+    {
+      "path": "backends/bot-backend/app/queue/external_signal_processor.py",
+      "line": 560,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "if not hasattr(runner, \"process_external_signal_candidate\"):"
+    },
+    {
+      "path": "backends/bot-backend/app/queue/external_signal_processor.py",
+      "line": 568,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "final_reason=\"Runner does not expose process_external_signal_candidate\","
+    },
+    {
+      "path": "backends/bot-backend/app/queue/external_signal_processor.py",
+      "line": 582,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "runner_result = runner.process_external_signal_candidate("
+    },
+    {
+      "path": "backends/bot-backend/app/market_data/quality.py",
+      "line": 118,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "QUALITY_POLICY_VERSION = \"multi-asset-quality-v2\""
+    },
+    {
+      "path": "backends/bot-backend/app/market_data/universe.py",
+      "line": 426,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "DATASET_LINEAGE_VERSION = \"dataset-manifest-lineage-v2\""
+    },
+    {
+      "path": "backends/bot-backend/app/market_data/gaps.py",
+      "line": 33,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "GAP_POLICY_VERSION = \"gap-classification-v2\""
+    },
+    {
+      "path": "backends/bot-backend/app/trading_intelligence/ranking/engine.py",
+      "line": 10,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "no clock, no I/O, no reservation, no order, no V2 import."
+    },
+    {
+      "path": "backends/bot-backend/app/news/benzinga_client.py",
+      "line": 3,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "Docs: https://docs.benzinga.io/benzinga/newsfeed-v2.html"
+    },
+    {
+      "path": "backends/bot-backend/app/news/benzinga_client.py",
+      "line": 17,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "_BASE_URL = \"https://api.benzinga.com/api/v2/news\""
+    },
+    {
+      "path": "backends/bot-backend/app/news/news_narrative_classifier.py",
+      "line": 44,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "\"protocol update\", \"v2\", \"v3\", \"migration\", \"merge\","
+    },
+    {
+      "path": "backends/bot-backend/app/policy/policy_engine.py",
+      "line": 318,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "# The single canonical boundary: every caller (V2 runner, V2"
+    },
+    {
+      "path": "backends/bot-backend/app/models/bot_instance_models.py",
+      "line": 338,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "if self.strategy_id == \"master_ensemble\" and ("
+    },
+    {
+      "path": "backends/bot-backend/app/news/providers/benzinga_client.py",
+      "line": 20,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "_BASE_URL = \"https://api.benzinga.com/api/v2/news\""
+    },
+    {
+      "path": "backends/bot-backend/tests/test_runner_decision_breakdown.py",
+      "line": 8,
+      "classification": "TEST_ONLY",
+      "reference": "from app.strategy.master_ensemble import MasterEnsembleStrategy"
+    },
+    {
+      "path": "backends/bot-backend/tests/test_runner_decision_breakdown.py",
+      "line": 48,
+      "classification": "TEST_ONLY",
+      "reference": "reason=\"master_ensemble_v2\","
+    },
+    {
+      "path": "backends/bot-backend/app/trading_intelligence/position/service.py",
+      "line": 14,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "service returns ``LEGACY_POSITION_NOT_ELIGIBLE`` and writes nothing. V2"
+    },
+    {
+      "path": "backends/bot-backend/app/trading_intelligence/position/service.py",
+      "line": 19,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "mechanical protection continues) -- never a silent swallow, never a V2"
+    },
+    {
+      "path": "backends/bot-backend/app/trading_intelligence/position/service.py",
+      "line": 80,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "# 19.20: CATI lineage is mandatory -- a legacy V2 position is left untouched"
+    },
+    {
+      "path": "backends/bot-backend/app/trading_intelligence/position/service.py",
+      "line": 166,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "for a legacy/V2 position: no lineage, no CATI position intelligence.\"\"\""
+    },
+    {
+      "path": "backends/bot-backend/app/notifications/integration_examples.py",
+      "line": 104,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "# File: app/strategies/robust_ensemble.py"
+    },
+    {
+      "path": "backends/bot-backend/app/notifications/integration_examples.py",
+      "line": 123,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "strategy=\"robust_ensemble\","
+    },
+    {
+      "path": "backends/bot-backend/tests/test_replay_production_parity.py",
+      "line": 187,
+      "classification": "TEST_ONLY",
+      "reference": "from app.strategy.master_ensemble import MasterEnsembleStrategy"
+    },
+    {
+      "path": "backends/bot-backend/tests/test_replay_identity.py",
+      "line": 29,
+      "classification": "TEST_ONLY",
+      "reference": "strategy_id=\"master_ensemble\","
+    },
+    {
+      "path": "backends/bot-backend/tests/test_tradingview_phase5_proof.py",
+      "line": 124,
+      "classification": "TEST_ONLY",
+      "reference": "'bot_live_mode', 'user_1', 'brk_demo', 'CRYPTO', 'master_ensemble', '1.0.0',"
+    },
+    {
+      "path": "backends/bot-backend/tests/test_signal_starvation_audit.py",
+      "line": 28,
+      "classification": "TEST_ONLY",
+      "reference": "(\"t1\", \"BTCUSDT\", \"2026-06-14T12:00:00+00:00\", \"hold\", 0.52, \"HOLD\", \"master_ensemble_v2\", \"master_ensemble_v2\", \"WEAK_TREND\", 0.52, 0.0),"
+    },
+    {
+      "path": "backends/bot-backend/tests/test_signal_starvation_audit.py",
+      "line": 29,
+      "classification": "TEST_ONLY",
+      "reference": "(\"t2\", \"ETHUSDT\", \"2026-06-14T14:00:00+00:00\", \"hold\", 0.47, \"HOLD\", \"master_ensemble_v2\", \"master_ensemble_v2\", \"WEAK_TREND\", 0.0, 0.47),"
+    },
+    {
+      "path": "backends/bot-backend/tests/test_signal_starvation_audit.py",
+      "line": 32,
+      "classification": "TEST_ONLY",
+      "reference": "(\"t5\", \"BTCUSDT\", \"2026-06-14T18:00:00+00:00\", \"hold\", 0.0, \"HOLD\", \"master_ensemble_v2\", \"master_ensemble_v2\", \"WEAK_TREND\", 0.0, 0.0),"
+    },
+    {
+      "path": "backends/bot-backend/tests/test_volatility_spike.py",
+      "line": 3,
+      "classification": "TEST_ONLY",
+      "reference": "from app.strategy.master_ensemble import MasterEnsembleStrategy"
+    },
+    {
+      "path": "backends/bot-backend/tests/test_remaining_fixes_audit.py",
+      "line": 118,
+      "classification": "TEST_ONLY",
+      "reference": "def test_strategy_master_ensemble(self):"
+    },
+    {
+      "path": "backends/bot-backend/tests/test_remaining_fixes_audit.py",
+      "line": 120,
+      "classification": "TEST_ONLY",
+      "reference": "assert settings.STRATEGY_NAME == \"master_ensemble\""
+    },
+    {
+      "path": "backends/bot-backend/tests/test_remaining_fixes_audit.py",
+      "line": 173,
+      "classification": "TEST_ONLY",
+      "reference": "def test_sma_cross_blocked(self):"
+    },
+    {
+      "path": "backends/bot-backend/tests/test_remaining_fixes_audit.py",
+      "line": 175,
+      "classification": "TEST_ONLY",
+      "reference": "assert \"sma_cross\" in src.lower() and \"master_ensemble\" in src"
+    },
+    {
+      "path": "backends/bot-backend/app/ml/__init__.py",
+      "line": 2,
+      "classification": "DEAD_CODE",
+      "reference": "from app.ml.scorer import MLEntryScorer, get_ml_scorer"
+    },
+    {
+      "path": "backends/bot-backend/app/ml/__init__.py",
+      "line": 4,
+      "classification": "DEAD_CODE",
+      "reference": "__all__ = [\"MLEntryScorer\", \"get_ml_scorer\"]"
+    },
+    {
+      "path": "backends/bot-backend/tests/test_regime_ensemble.py",
+      "line": 282,
+      "classification": "TEST_ONLY",
+      "reference": "from app.strategy.master_ensemble import MasterEnsembleStrategy"
+    },
+    {
+      "path": "backends/bot-backend/tests/test_regime_ensemble.py",
+      "line": 307,
+      "classification": "TEST_ONLY",
+      "reference": "from app.strategy.master_ensemble import MasterEnsembleStrategy"
+    },
+    {
+      "path": "backends/bot-backend/app/ml/scorer.py",
+      "line": 582,
+      "classification": "DEAD_CODE",
+      "reference": "def get_ml_scorer() -> MLEntryScorer:"
+    },
+    {
+      "path": "backends/bot-backend/tests/test_threshold_policy_1_1_recalibration.py",
+      "line": 27,
+      "classification": "TEST_ONLY",
+      "reference": "from app.strategy import master_ensemble as ensemble_module"
+    },
+    {
+      "path": "backends/bot-backend/tests/test_threshold_policy_1_1_recalibration.py",
+      "line": 28,
+      "classification": "TEST_ONLY",
+      "reference": "from app.strategy.master_ensemble import HTF_STRENGTH_SATURATION, MasterEnsembleStrategy"
+    },
+    {
+      "path": "backends/bot-backend/tests/test_threshold_policy_1_1_recalibration.py",
+      "line": 81,
+      "classification": "TEST_ONLY",
+      "reference": "WEAK_TREND_WEIGHTS = {\"supertrend\": 1.5, \"trend_pullback\": 1.3, \"donchian_breakout\": 1.0, \"sma_cross\": 0.9}"
+    },
+    {
+      "path": "backends/bot-backend/tests/test_threshold_policy_1_1_recalibration.py",
+      "line": 210,
+      "classification": "TEST_ONLY",
+      "reference": "# The most permissive state still rejects sma_cross voting alone."
+    },
+    {
+      "path": "backends/bot-backend/tests/test_threshold_policy_1_1_recalibration.py",
+      "line": 263,
+      "classification": "TEST_ONLY",
+      "reference": "opposed = experts({\"supertrend\": (\"BUY\", 0.65), \"sma_cross\": (\"SELL\", 0.65)})"
+    },
+    {
+      "path": "backends/bot-backend/tests/test_threshold_policy_1_1_recalibration.py",
+      "line": 514,
+      "classification": "TEST_ONLY",
+      "reference": "experts=experts({\"sma_cross\": (\"BUY\", 0.65)}),"
+    },
+    {
+      "path": "backends/bot-backend/tests/test_threshold_policy_1_1_recalibration.py",
+      "line": 553,
+      "classification": "TEST_ONLY",
+      "reference": "ExpertEvidence(\"sma_cross\", True, True, \"ERROR\", 0.0, weight=0.9, reason=\"data_error:x\"),"
+    },
+    {
+      "path": "backends/bot-backend/tests/test_session_not_evaluated_semantics.py",
+      "line": 18,
+      "classification": "TEST_ONLY",
+      "reference": "from app.strategy.master_ensemble import MasterEnsembleStrategy"
+    },
+    {
+      "path": "backends/bot-backend/tests/test_trading_decision_engine.py",
+      "line": 214,
+      "classification": "TEST_ONLY",
+      "reference": "def test_master_ensemble_delegates_the_comparison_and_keeps_none_of_its_own():"
+    },
+    {
+      "path": "backends/bot-backend/tests/test_trading_decision_engine.py",
+      "line": 216,
+      "classification": "TEST_ONLY",
+      "reference": "from app.strategy import master_ensemble"
+    },
+    {
+      "path": "backends/bot-backend/tests/test_trading_decision_engine.py",
+      "line": 218,
+      "classification": "TEST_ONLY",
+      "reference": "source = inspect.getsource(master_ensemble.MasterEnsembleStrategy.get_signal)"
+    },
+    {
+      "path": "backends/bot-backend/tests/test_trading_decision_engine.py",
+      "line": 386,
+      "classification": "TEST_ONLY",
+      "reference": "def test_master_ensemble_does_not_introduce_a_new_consensus_gate():"
+    },
+    {
+      "path": "backends/bot-backend/tests/test_trading_decision_engine.py",
+      "line": 393,
+      "classification": "TEST_ONLY",
+      "reference": "from app.strategy import master_ensemble"
+    },
+    {
+      "path": "backends/bot-backend/tests/test_trading_decision_engine.py",
+      "line": 395,
+      "classification": "TEST_ONLY",
+      "reference": "source = inspect.getsource(master_ensemble.MasterEnsembleStrategy.get_signal)"
+    },
+    {
+      "path": "backends/bot-backend/tests/test_phase15_baseline_report.py",
+      "line": 16,
+      "classification": "TEST_ONLY",
+      "reference": "from build_master_ensemble_baseline import build, markdown_report"
+    },
+    {
+      "path": "backends/bot-backend/tests/test_phase15_baseline_report.py",
+      "line": 58,
+      "classification": "TEST_ONLY",
+      "reference": "json.dumps([\"supertrend\", \"sma_cross\"]),"
+    },
+    {
+      "path": "backends/bot-backend/tests/test_phase15_baseline_report.py",
+      "line": 166,
+      "classification": "TEST_ONLY",
+      "reference": "assert \"phase15_master_ensemble_baseline_results.json\" in text"
+    },
+    {
+      "path": "backends/bot-backend/tests/test_phase15_baseline_report.py",
+      "line": 180,
+      "classification": "TEST_ONLY",
+      "reference": "str(REPO_ROOT / \"scripts\" / \"build_master_ensemble_baseline.py\"),"
+    },
+    {
+      "path": "backends/bot-backend/tests/test_quant_audit_fixes.py",
+      "line": 302,
+      "classification": "TEST_ONLY",
+      "reference": "from app.strategy.master_ensemble import MasterEnsembleStrategy as MasterEnsemble"
+    },
+    {
+      "path": "backends/bot-backend/tests/test_session_gate_consistency.py",
+      "line": 38,
+      "classification": "TEST_ONLY",
+      "reference": "from app.strategy.master_ensemble import MasterEnsembleStrategy"
+    },
+    {
+      "path": "backends/bot-backend/tests/test_session_gate_consistency.py",
+      "line": 63,
+      "classification": "TEST_ONLY",
+      "reference": "Mirrors master_ensemble.get_signal Step 3.6. Kept as a helper so the"
+    },
+    {
+      "path": "backends/bot-backend/tests/test_phase3_execution_parity.py",
+      "line": 164,
+      "classification": "TEST_ONLY",
+      "reference": "if path == \"/openApi/swap/v2/trade/order\" and method == \"POST\":"
+    },
+    {
+      "path": "backends/bot-backend/tests/test_phase3_execution_parity.py",
+      "line": 167,
+      "classification": "TEST_ONLY",
+      "reference": "if path == \"/openApi/swap/v2/trade/order\" and method == \"GET\":"
+    },
+    {
+      "path": "backends/bot-backend/tests/test_phase3_execution_parity.py",
+      "line": 170,
+      "classification": "TEST_ONLY",
+      "reference": "if path == \"/openApi/swap/v2/trade/leverage\":"
+    },
+    {
+      "path": "backends/bot-backend/tests/test_phase3_execution_parity.py",
+      "line": 172,
+      "classification": "TEST_ONLY",
+      "reference": "if path == \"/openApi/swap/v2/user/positions\":"
+    },
+    {
+      "path": "backends/bot-backend/tests/trading_intelligence/test_alpha_v2.py",
+      "line": 1,
+      "classification": "TEST_ONLY",
+      "reference": "\"\"\"Alpha V2 causal contracts and immutable economic admission.\"\"\""
+    },
+    {
+      "path": "backends/bot-backend/tests/trading_intelligence/test_alpha_v2.py",
+      "line": 45,
+      "classification": "TEST_ONLY",
+      "reference": "assert len(HYPOTHESES)==4 and 'V2' in GENERATOR_ID"
+    },
+    {
+      "path": "backends/bot-backend/tests/trading_intelligence/test_alpha_v2.py",
+      "line": 87,
+      "classification": "TEST_ONLY",
+      "reference": "assert LABEL_VERSION.endswith('V2')"
+    },
+    {
+      "path": "backends/bot-backend/tests/test_section_e_trade_logging.py",
+      "line": 35,
+      "classification": "TEST_ONLY",
+      "reference": "strategy_name=\"master_ensemble\","
+    },
+    {
+      "path": "backends/bot-backend/tests/test_section_e_trade_logging.py",
+      "line": 64,
+      "classification": "TEST_ONLY",
+      "reference": "strategy_name=\"master_ensemble\","
+    },
+    {
+      "path": "backends/bot-backend/tests/test_section_e_trade_logging.py",
+      "line": 67,
+      "classification": "TEST_ONLY",
+      "reference": "assert \"master_ensemble\" in call_str"
+    },
+    {
+      "path": "backends/bot-backend/tests/test_policy_side_normalization.py",
+      "line": 7,
+      "classification": "TEST_ONLY",
+      "reference": "for V2 and for the CATI TradePlan path alike."
+    },
+    {
+      "path": "backends/bot-backend/tests/test_policy_side_normalization.py",
+      "line": 57,
+      "classification": "TEST_ONLY",
+      "reference": "return orch.process_trading_opportunity("
+    },
+    {
+      "path": "backends/bot-backend/tests/test_position_slot_count.py",
+      "line": 154,
+      "classification": "TEST_ONLY",
+      "reference": "assert \".process_trading_opportunity(\" not in source"
+    },
+    {
+      "path": "backends/bot-backend/tests/test_strategy_signal_generation.py",
+      "line": 5,
+      "classification": "TEST_ONLY",
+      "reference": "from app.strategy.sma_cross import SMACrossStrategy"
+    },
+    {
+      "path": "backends/bot-backend/tests/test_strategy_signal_generation.py",
+      "line": 47,
+      "classification": "TEST_ONLY",
+      "reference": "strategy=\"sma_cross\","
+    },
+    {
+      "path": "backends/bot-backend/tests/test_strategy_signal_generation.py",
+      "line": 61,
+      "classification": "TEST_ONLY",
+      "reference": "strategy=\"sma_cross\","
+    },
+    {
+      "path": "backends/bot-backend/tests/test_strategy_signal_generation.py",
+      "line": 69,
+      "classification": "TEST_ONLY",
+      "reference": "assert diagnostic[\"component_failed_conditions\"] == [\"fresh_fast_slow_sma_cross\"]"
+    },
+    {
+      "path": "backends/bot-backend/tests/test_runtime_replay_mismatch_audit.py",
+      "line": 72,
+      "classification": "TEST_ONLY",
+      "reference": "_component(\"sma_cross\", [\"fresh_fast_slow_sma_cross\"]),"
+    },
+    {
+      "path": "backends/bot-backend/tests/test_runtime_replay_mismatch_audit.py",
+      "line": 202,
+      "classification": "TEST_ONLY",
+      "reference": "assert by_name[\"fresh_fast_slow_sma_cross\"][\"runtime_fail_count\"] == 1"
+    },
+    {
+      "path": "backends/bot-backend/tests/test_runtime_replay_mismatch_audit.py",
+      "line": 212,
+      "classification": "TEST_ONLY",
+      "reference": "assert realism[\"uses_master_ensemble\"] is False"
+    },
+    {
+      "path": "backends/bot-backend/tests/test_sections10_12_datasets.py",
+      "line": 414,
+      "classification": "TEST_ONLY",
+      "reference": "v2 = select_universe(ins, stats, venue=\"binance_usdm\", as_of_ms=now, criteria=crit)"
+    },
+    {
+      "path": "backends/bot-backend/tests/test_sections10_12_datasets.py",
+      "line": 415,
+      "classification": "TEST_ONLY",
+      "reference": "assert set(v2.selected) == {\"OLDUSDT\", \"NEWUSDT\"} and v2.history_status == {\"NEWUSDT\": \"INSUFFICIENT_HISTORY\"}"
+    },
+    {
+      "path": "backends/bot-backend/tests/test_sections10_12_datasets.py",
+      "line": 416,
+      "classification": "TEST_ONLY",
+      "reference": "assert v2.excluded[\"FUTUREUSDT\"] == \"LISTED_AFTER_SELECTION_CUTOFF\" and v2.excluded[\"DEADUSDT\"] == \"NOT_TRADING\""
+    },
+    {
+      "path": "backends/bot-backend/tests/test_sections10_12_datasets.py",
+      "line": 417,
+      "classification": "TEST_ONLY",
+      "reference": "man = build_frozen_universe_manifest(v2, ins, window_start_ms=now - 731 * DAY, window_end_ms=now,"
+    },
+    {
+      "path": "backends/bot-backend/tests/test_sections10_12_datasets.py",
+      "line": 421,
+      "classification": "TEST_ONLY",
+      "reference": "assert v2.manifest_hash != select_universe(ins, stats, venue=\"binance_usdm\", as_of_ms=now,"
+    },
+    {
+      "path": "backends/bot-backend/tests/test_runtime_consolidation.py",
+      "line": 37,
+      "classification": "TEST_ONLY",
+      "reference": "market_type=\"CRYPTO\", strategy_id=\"master_ensemble\", strategy_version=\"2\","
+    },
+    {
+      "path": "backends/bot-backend/tests/test_runner_initialization_contract.py",
+      "line": 39,
+      "classification": "TEST_ONLY",
+      "reference": "strategy_id=\"master_ensemble\","
+    },
+    {
+      "path": "backends/bot-backend/tests/test_section_b_code_fixes_b5_b8.py",
+      "line": 6,
+      "classification": "TEST_ONLY",
+      "reference": "B-7: sma_cross hard-blocked for user-facing bots"
+    },
+    {
+      "path": "backends/bot-backend/tests/test_section_b_code_fixes_b5_b8.py",
+      "line": 32,
+      "classification": "TEST_ONLY",
+      "reference": "def _mock_context(bot_instance_id=\"bot1\", strategy_id=\"master_ensemble\"):"
+    },
+    {
+      "path": "backends/bot-backend/tests/test_section_b_code_fixes_b5_b8.py",
+      "line": 92,
+      "classification": "TEST_ONLY",
+      "reference": "\"\"\"process_external_signal_candidate must reject a candidate with no confidence.\"\"\""
+    },
+    {
+      "path": "backends/bot-backend/tests/test_section_b_code_fixes_b5_b8.py",
+      "line": 113,
+      "classification": "TEST_ONLY",
+      "reference": "result = runner.process_external_signal_candidate(candidate)"
+    },
+    {
+      "path": "backends/bot-backend/tests/test_section_b_code_fixes_b5_b8.py",
+      "line": 141,
+      "classification": "TEST_ONLY",
+      "reference": "result = runner.process_external_signal_candidate(candidate)"
+    },
+    {
+      "path": "backends/bot-backend/tests/test_section_b_code_fixes_b5_b8.py",
+      "line": 168,
+      "classification": "TEST_ONLY",
+      "reference": "result = runner.process_external_signal_candidate(candidate)"
+    },
+    {
+      "path": "backends/bot-backend/tests/test_section_b_code_fixes_b5_b8.py",
+      "line": 299,
+      "classification": "TEST_ONLY",
+      "reference": "_UNSAFE = {\"sma_cross\", \"sma-cross\", \"sma cross\"}"
+    },
+    {
+      "path": "backends/bot-backend/tests/test_section_b_code_fixes_b5_b8.py",
+      "line": 301,
+      "classification": "TEST_ONLY",
+      "reference": "effective_strategy = \"master_ensemble\""
+    },
+    {
+      "path": "backends/bot-backend/tests/test_section_b_code_fixes_b5_b8.py",
+      "line": 306,
+      "classification": "TEST_ONLY",
+      "reference": "def test_user_bot_sma_cross_forced_to_master_ensemble(self):"
+    },
+    {
+      "path": "backends/bot-backend/tests/test_section_b_code_fixes_b5_b8.py",
+      "line": 307,
+      "classification": "TEST_ONLY",
+      "reference": "runner = self._make_runner_with_strategy(\"sma_cross\")"
+    },
+    {
+      "path": "backends/bot-backend/tests/test_section_b_code_fixes_b5_b8.py",
+      "line": 308,
+      "classification": "TEST_ONLY",
+      "reference": "assert runner._strategy_name == \"master_ensemble\", ("
+    },
+    {
+      "path": "backends/bot-backend/tests/test_section_b_code_fixes_b5_b8.py",
+      "line": 309,
+      "classification": "TEST_ONLY",
+      "reference": "\"User-context bot must not run sma_cross\""
+    },
+    {
+      "path": "backends/bot-backend/tests/test_section_b_code_fixes_b5_b8.py",
+      "line": 314,
+      "classification": "TEST_ONLY",
+      "reference": "assert runner._strategy_name == \"master_ensemble\""
+    },
+    {
+      "path": "backends/bot-backend/tests/test_section_b_code_fixes_b5_b8.py",
+      "line": 318,
+      "classification": "TEST_ONLY",
+      "reference": "assert runner._strategy_name == \"master_ensemble\""
+    },
+    {
+      "path": "backends/bot-backend/tests/test_section_b_code_fixes_b5_b8.py",
+      "line": 320,
+      "classification": "TEST_ONLY",
+      "reference": "def test_user_bot_master_ensemble_unchanged(self):"
+    },
+    {
+      "path": "backends/bot-backend/tests/test_section_b_code_fixes_b5_b8.py",
+      "line": 321,
+      "classification": "TEST_ONLY",
+      "reference": "runner = self._make_runner_with_strategy(\"master_ensemble\")"
+    },
+    {
+      "path": "backends/bot-backend/tests/test_section_b_code_fixes_b5_b8.py",
+      "line": 322,
+      "classification": "TEST_ONLY",
+      "reference": "assert runner._strategy_name == \"master_ensemble\""
+    },
+    {
+      "path": "backends/bot-backend/tests/test_section_b_code_fixes_b5_b8.py",
+      "line": 325,
+      "classification": "TEST_ONLY",
+      "reference": "\"\"\"runner.py must contain the B-7 sma_cross guard for user-context bots.\"\"\""
+    },
+    {
+      "path": "backends/bot-backend/tests/test_section_b_code_fixes_b5_b8.py",
+      "line": 332,
+      "classification": "TEST_ONLY",
+      "reference": "assert \"STRATEGY_REJECTED_SMA_CROSS_UNSAFE_FOR_USER_BOT\" in src"
+    },
+    {
+      "path": "backends/bot-backend/tests/test_section_b_code_fixes_b5_b8.py",
+      "line": 335,
+      "classification": "TEST_ONLY",
+      "reference": "def test_warning_emitted_when_sma_cross_blocked(self):"
+    },
+    {
+      "path": "backends/bot-backend/tests/test_section_b_code_fixes_b5_b8.py",
+      "line": 336,
+      "classification": "TEST_ONLY",
+      "reference": "\"\"\"A warning must be logged when sma_cross is blocked.\"\"\""
+    },
+    {
+      "path": "backends/bot-backend/tests/test_section_b_code_fixes_b5_b8.py",
+      "line": 349,
+      "classification": "TEST_ONLY",
+      "reference": "ctx = _mock_context(strategy_id=\"sma_cross\")"
+    },
+    {
+      "path": "backends/bot-backend/tests/test_section_b_code_fixes_b5_b8.py",
+      "line": 351,
+      "classification": "TEST_ONLY",
+      "reference": "_UNSAFE = {\"sma_cross\", \"sma-cross\", \"sma cross\"}"
+    },
+    {
+      "path": "backends/bot-backend/tests/test_section_b_code_fixes_b5_b8.py",
+      "line": 354,
+      "classification": "TEST_ONLY",
+      "reference": "\"STRATEGY_REJECTED_SMA_CROSS_UNSAFE_FOR_USER_BOT \u2014 \""
+    },
+    {
+      "path": "backends/bot-backend/tests/test_section_b_code_fixes_b5_b8.py",
+      "line": 355,
+      "classification": "TEST_ONLY",
+      "reference": "\"user bot %s requested '%s'; enforcing master_ensemble. \""
+    },
+    {
+      "path": "backends/bot-backend/tests/test_section_b_code_fixes_b5_b8.py",
+      "line": 356,
+      "classification": "TEST_ONLY",
+      "reference": "\"STRATEGY_FALLBACK_MASTER_ENSEMBLE\","
+    },
+    {
+      "path": "backends/bot-backend/tests/test_section_b_code_fixes_b5_b8.py",
+      "line": 359,
+      "classification": "TEST_ONLY",
+      "reference": "effective_strategy = \"master_ensemble\""
+    },
+    {
+      "path": "backends/bot-backend/tests/test_section_b_code_fixes_b5_b8.py",
+      "line": 362,
+      "classification": "TEST_ONLY",
+      "reference": "assert \"STRATEGY_REJECTED_SMA_CROSS_UNSAFE_FOR_USER_BOT\" in output"
+    },
+    {
+      "path": "backends/bot-backend/tests/test_section_b_code_fixes_b5_b8.py",
+      "line": 363,
+      "classification": "TEST_ONLY",
+      "reference": "assert effective_strategy == \"master_ensemble\""
+    },
+    {
+      "path": "backends/bot-backend/tests/test_section_b_code_fixes_b5_b8.py",
+      "line": 367,
+      "classification": "TEST_ONLY",
+      "reference": "def test_loader_rejects_sma_cross_in_live_mode(self):"
+    },
+    {
+      "path": "backends/bot-backend/tests/test_section_b_code_fixes_b5_b8.py",
+      "line": 368,
+      "classification": "TEST_ONLY",
+      "reference": "\"\"\"strategy/loader.py also blocks sma_cross in live mode (from A-9).\"\"\""
+    },
+    {
+      "path": "backends/bot-backend/tests/test_section_b_code_fixes_b5_b8.py",
+      "line": 370,
+      "classification": "TEST_ONLY",
+      "reference": "assert \"sma_cross\" in _UNSAFE_STRATEGIES"
+    },
+    {
+      "path": "backends/bot-backend/tests/test_section_b_code_fixes_b5_b8.py",
+      "line": 371,
+      "classification": "TEST_ONLY",
+      "reference": "assert _SAFE_FALLBACK == \"master_ensemble\""
+    },
+    {
+      "path": "backends/bot-backend/tests/test_section_b_code_fixes.py",
+      "line": 282,
+      "classification": "TEST_ONLY",
+      "reference": "strategy=\"master_ensemble\","
+    },
+    {
+      "path": "backends/bot-backend/tests/test_section_b_code_fixes.py",
+      "line": 308,
+      "classification": "TEST_ONLY",
+      "reference": "strategy=\"master_ensemble\","
+    },
+    {
+      "path": "backends/bot-backend/tests/test_strategy_confidence.py",
+      "line": 4,
+      "classification": "TEST_ONLY",
+      "reference": "from app.strategy.sma_cross import SMACrossStrategy"
+    },
+    {
+      "path": "backends/bot-backend/tests/test_strategy_confidence.py",
+      "line": 34,
+      "classification": "TEST_ONLY",
+      "reference": "def test_sma_cross_confidence_calculation(mock_client):"
+    },
+    {
+      "path": "backends/bot-backend/tests/test_strategy_confidence.py",
+      "line": 73,
+      "classification": "TEST_ONLY",
+      "reference": "assert \"sma_cross\" in result.reason  # strategy returns 'sma_cross' for both directions"
+    },
+    {
+      "path": "backends/bot-backend/tests/test_runner_policy_refresh.py",
+      "line": 62,
+      "classification": "TEST_ONLY",
+      "reference": "strategy_id=\"master_ensemble\","
+    },
+    {
+      "path": "backends/bot-backend/tests/test_safety_recovery.py",
+      "line": 32,
+      "classification": "TEST_ONLY",
+      "reference": "STRATEGY_NAME=\"master_ensemble\","
+    },
+    {
+      "path": "backends/bot-backend/tests/test_safety_recovery.py",
+      "line": 336,
+      "classification": "TEST_ONLY",
+      "reference": "def test_sma_cross_fails_in_live_mode(self):"
+    },
+    {
+      "path": "backends/bot-backend/tests/test_safety_recovery.py",
+      "line": 338,
+      "classification": "TEST_ONLY",
+      "reference": "s = _make_settings(STRATEGY_NAME=\"sma_cross\", EXECUTION_MODE=\"live\")"
+    },
+    {
+      "path": "backends/bot-backend/tests/test_safety_recovery.py",
+      "line": 342,
+      "classification": "TEST_ONLY",
+      "reference": "def test_sma_cross_ok_in_paper_mode(self):"
+    },
+    {
+      "path": "backends/bot-backend/tests/test_safety_recovery.py",
+      "line": 344,
+      "classification": "TEST_ONLY",
+      "reference": "s = _make_settings(STRATEGY_NAME=\"sma_cross\", EXECUTION_MODE=\"paper\")"
+    },
+    {
+      "path": "backends/bot-backend/tests/test_safety_recovery.py",
+      "line": 346,
+      "classification": "TEST_ONLY",
+      "reference": "# sma_cross only fails in live mode"
+    },
+    {
+      "path": "backends/bot-backend/tests/test_safety_recovery_a4_a9.py",
+      "line": 9,
+      "classification": "TEST_ONLY",
+      "reference": "A-9: master_ensemble default, sma_cross restricted"
+    },
+    {
+      "path": "backends/bot-backend/tests/test_safety_recovery_a4_a9.py",
+      "line": 52,
+      "classification": "TEST_ONLY",
+      "reference": "STRATEGY_NAME=\"master_ensemble\","
+    },
+    {
+      "path": "backends/bot-backend/tests/test_safety_recovery_a4_a9.py",
+      "line": 381,
+      "classification": "TEST_ONLY",
+      "reference": "def test_strategy_name_is_master_ensemble_in_config(self):"
+    },
+    {
+      "path": "backends/bot-backend/tests/test_safety_recovery_a4_a9.py",
+      "line": 383,
+      "classification": "TEST_ONLY",
+      "reference": "assert settings.STRATEGY_NAME == \"master_ensemble\", ("
+    },
+    {
+      "path": "backends/bot-backend/tests/test_safety_recovery_a4_a9.py",
+      "line": 384,
+      "classification": "TEST_ONLY",
+      "reference": "f\"STRATEGY_NAME must be master_ensemble, got {settings.STRATEGY_NAME}\""
+    },
+    {
+      "path": "backends/bot-backend/tests/test_safety_recovery_a4_a9.py",
+      "line": 387,
+      "classification": "TEST_ONLY",
+      "reference": "def test_empty_name_falls_back_to_master_ensemble(self):"
+    },
+    {
+      "path": "backends/bot-backend/tests/test_safety_recovery_a4_a9.py",
+      "line": 394,
+      "classification": "TEST_ONLY",
+      "reference": "# First call should be with master_ensemble"
+    },
+    {
+      "path": "backends/bot-backend/tests/test_safety_recovery_a4_a9.py",
+      "line": 396,
+      "classification": "TEST_ONLY",
+      "reference": "assert first_call_name == \"master_ensemble\""
+    },
+    {
+      "path": "backends/bot-backend/tests/test_safety_recovery_a4_a9.py",
+      "line": 398,
+      "classification": "TEST_ONLY",
+      "reference": "def test_sma_cross_rejected_in_live_mode(self):"
+    },
+    {
+      "path": "backends/bot-backend/tests/test_safety_recovery_a4_a9.py",
+      "line": 406,
+      "classification": "TEST_ONLY",
+      "reference": "build_strategy(name=\"sma_cross\", client=mock_client, interval=\"15m\")"
+    },
+    {
+      "path": "backends/bot-backend/tests/test_safety_recovery_a4_a9.py",
+      "line": 407,
+      "classification": "TEST_ONLY",
+      "reference": "# Must have been redirected to master_ensemble"
+    },
+    {
+      "path": "backends/bot-backend/tests/test_safety_recovery_a4_a9.py",
+      "line": 409,
+      "classification": "TEST_ONLY",
+      "reference": "assert first_call_name == \"master_ensemble\", ("
+    },
+    {
+      "path": "backends/bot-backend/tests/test_safety_recovery_a4_a9.py",
+      "line": 410,
+      "classification": "TEST_ONLY",
+      "reference": "f\"sma_cross should be redirected to master_ensemble in live mode, got {first_call_name}\""
+    },
+    {
+      "path": "backends/bot-backend/tests/test_safety_recovery_a4_a9.py",
+      "line": 413,
+      "classification": "TEST_ONLY",
+      "reference": "def test_sma_cross_allowed_in_paper_mode_with_warning(self):"
+    },
+    {
+      "path": "backends/bot-backend/tests/test_safety_recovery_a4_a9.py",
+      "line": 414,
+      "classification": "TEST_ONLY",
+      "reference": "\"\"\"sma_cross is allowed in paper mode but must log a warning.\"\"\""
+    },
+    {
+      "path": "backends/bot-backend/tests/test_safety_recovery_a4_a9.py",
+      "line": 423,
+      "classification": "TEST_ONLY",
+      "reference": "build_strategy(name=\"sma_cross\", client=mock_client, interval=\"15m\")"
+    },
+    {
+      "path": "backends/bot-backend/tests/test_safety_recovery_a4_a9.py",
+      "line": 426,
+      "classification": "TEST_ONLY",
+      "reference": "assert any(\"TEST_ONLY\" in w or \"sma_cross\" in w for w in warning_calls)"
+    },
+    {
+      "path": "backends/bot-backend/tests/test_safety_recovery_a4_a9.py",
+      "line": 428,
+      "classification": "TEST_ONLY",
+      "reference": "def test_sma_cross_in_live_mode_fails_startup_check(self):"
+    },
+    {
+      "path": "backends/bot-backend/tests/test_safety_recovery_a4_a9.py",
+      "line": 430,
+      "classification": "TEST_ONLY",
+      "reference": "s = _make_settings(STRATEGY_NAME=\"sma_cross\", EXECUTION_MODE=\"live\")"
+    },
+    {
+      "path": "backends/bot-backend/tests/test_safety_recovery_a4_a9.py",
+      "line": 435,
+      "classification": "TEST_ONLY",
+      "reference": "def test_master_ensemble_in_live_mode_passes_startup_check(self):"
+    },
+    {
+      "path": "backends/bot-backend/tests/test_safety_recovery_a4_a9.py",
+      "line": 437,
+      "classification": "TEST_ONLY",
+      "reference": "s = _make_settings(STRATEGY_NAME=\"master_ensemble\", EXECUTION_MODE=\"live\")"
+    },
+    {
+      "path": "backends/bot-backend/tests/test_safety_recovery_a4_a9.py",
+      "line": 442,
+      "classification": "TEST_ONLY",
+      "reference": "def test_unknown_strategy_falls_back_to_master_ensemble(self):"
+    },
+    {
+      "path": "backends/bot-backend/tests/test_safety_recovery_a4_a9.py",
+      "line": 450,
+      "classification": "TEST_ONLY",
+      "reference": "if name == \"master_ensemble\":"
+    },
+    {
+      "path": "backends/bot-backend/tests/test_safety_recovery_a4_a9.py",
+      "line": 457,
+      "classification": "TEST_ONLY",
+      "reference": "assert \"master_ensemble\" in call_order"
+    },
+    {
+      "path": "backends/bot-backend/tests/trading_intelligence/test_cati_sole_authority_surfaces.py",
+      "line": 14,
+      "classification": "TEST_ONLY",
+      "reference": "@pytest.mark.parametrize(\"legacy\", [\"master_ensemble\", \"sma_cross\", \"v2\", \"external_tradingview\", \"\"])"
+    },
+    {
+      "path": "backends/bot-backend/tests/trading_intelligence/test_cati_sole_authority_surfaces.py",
+      "line": 62,
+      "classification": "TEST_ONLY",
+      "reference": "backtesting.create_backtest(SimpleNamespace(strategy_id=\"sma_cross\"), user={\"id\": \"owner\"})"
+    },
+    {
+      "path": "backends/bot-backend/tests/trading_intelligence/test_cati_sole_authority_surfaces.py",
+      "line": 75,
+      "classification": "TEST_ONLY",
+      "reference": "instance = SimpleNamespace(user_id=\"owner\", broker_account_id=\"broker\", status=\"active\", strategy_id=\"master_ensemble\")"
+    },
+    {
+      "path": "backends/bot-backend/tests/trading_intelligence/test_cati_sole_authority_surfaces.py",
+      "line": 82,
+      "classification": "TEST_ONLY",
+      "reference": "assert status[\"historical_strategy_id\"] == \"master_ensemble\""
+    },
+    {
+      "path": "backends/bot-backend/tests/trading_intelligence/test_cati_sole_runtime.py",
+      "line": 27,
+      "classification": "TEST_ONLY",
+      "reference": "assert not authority.allows(router.V2)"
+    },
+    {
+      "path": "backends/bot-backend/tests/trading_intelligence/test_cati_sole_runtime.py",
+      "line": 34,
+      "classification": "TEST_ONLY",
+      "reference": "for old_name in ('master_ensemble', 'robust_ensemble', 'sma_cross', 'unknown', 'cati'):"
+    },
+    {
+      "path": "backends/bot-backend/tests/trading_intelligence/test_cati_sole_runtime.py",
+      "line": 40,
+      "classification": "TEST_ONLY",
+      "reference": "assert get_strategy_class('master_ensemble') is None"
+    },
+    {
+      "path": "backends/bot-backend/tests/trading_intelligence/test_cati_sole_runtime.py",
+      "line": 82,
+      "classification": "TEST_ONLY",
+      "reference": "result = orchestrator.process_trading_opportunity(\"BTCUSDT\", [], 1, 100, 0, 100, 0, None)"
+    },
+    {
+      "path": "backends/bot-backend/tests/trading_intelligence/test_economics.py",
+      "line": 356,
+      "classification": "TEST_ONLY",
+      "reference": "def test_economics_module_never_imports_v2_threshold_or_master_ensemble():"
+    },
+    {
+      "path": "backends/bot-backend/tests/trading_intelligence/test_economics.py",
+      "line": 363,
+      "classification": "TEST_ONLY",
+      "reference": "forbidden_substrings = (\"adaptiveentrythresholdengine\", \"master_ensemble\", \"masterensemblestrategy\")"
+    },
+    {
+      "path": "backends/bot-backend/app/trading_intelligence/economics/transfer.py",
+      "line": 26,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "TRANSFER_ECONOMICS_VERSION = \"transfer-economics-v2\""
+    },
+    {
+      "path": "backends/bot-backend/app/trading_intelligence/economics/transfer.py",
+      "line": 147,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "\"reason_codes\": tuple(dict.fromkeys(reasons)), \"version\": \"multi-asset-economics-v2\","
+    },
+    {
+      "path": "backends/bot-backend/app/trading_intelligence/economics/policy.py",
+      "line": 5,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "CALIBRATION RULES\"). They are unrelated to V2's adaptive entry threshold --"
+    },
+    {
+      "path": "backends/bot-backend/app/trading_intelligence/controller/interfaces.py",
+      "line": 27,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "alter capital, bypass risk, or modify existing V2 decisions -- enforced"
+    },
+    {
+      "path": "backends/bot-backend/app/trading_intelligence/controller/interfaces.py",
+      "line": 35,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "evidence only -- the return value must never be fed back into V2.\"\"\""
+    },
+    {
+      "path": "backends/bot-backend/app/threshold/policy.py",
+      "line": 70,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "#   min 0.25 -- the top of the empty interval between the lone-sma_cross"
+    },
+    {
+      "path": "backends/bot-backend/app/threshold/migration.py",
+      "line": 54,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "\"app/core/config.py + app/strategy/master_ensemble.py + .env\","
+    },
+    {
+      "path": "backends/bot-backend/app/threshold/migration.py",
+      "line": 106,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "\"app/strategy/master_ensemble.py + app/decision/decision_engine.py\","
+    },
+    {
+      "path": "backends/bot-backend/app/trading_intelligence/contracts/economics.py",
+      "line": 196,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "yet validated by replay. Unrelated to V2's adaptive entry threshold:"
+    },
+    {
+      "path": "backends/bot-backend/app/trading_intelligence/governance/runtime_authority.py",
+      "line": 6,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "reductions and reconciliation continue independently. V2 constants are historical"
+    },
+    {
+      "path": "backends/bot-backend/app/trading_intelligence/governance/runtime_authority.py",
+      "line": 17,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "CATI, V2, NONE = \"CATI\", \"V2\", \"NONE\""
+    },
+    {
+      "path": "backends/bot-backend/app/trading_intelligence/governance/runtime_authority.py",
+      "line": 18,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "ROUTER_VERSION = \"runtime-cati-sole-authority-v2\""
+    },
+    {
+      "path": "backends/bot-backend/app/trading_intelligence/governance/runtime_authority.py",
+      "line": 23,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "owner: str                  # CATI | V2 | NONE"
+    },
+    {
+      "path": "backends/bot-backend/app/trading_intelligence/governance/runtime_authority.py",
+      "line": 111,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "__all__ = [\"CATI\", \"V2\", \"NONE\", \"OrderAuthority\", \"ROUTER_VERSION\", \"canonical_venue\", \"cati_scope_granted\","
+    },
+    {
+      "path": "backends/bot-backend/app/trading_intelligence/governance/phases.py",
+      "line": 62,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "revert; CATI never silently falls back to V2.\"\"\""
+    },
+    {
+      "path": "backends/bot-backend/app/trading_intelligence/governance/destination_map.py",
+      "line": 89,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "\"evidence.writers\": ((\"app/evidence/writers.py\",), INTEGRATED, \"V2 evidence writers; CATI uses evidence/stores\"),"
+    },
+    {
+      "path": "backends/bot-backend/app/trading_intelligence/governance/destination_map.py",
+      "line": 96,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "\"app/strategy/master_ensemble.py\": \"V2 alpha; benchmark only from M6, removed at M9\","
+    },
+    {
+      "path": "backends/bot-backend/app/trading_intelligence/governance/destination_map.py",
+      "line": 97,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "\"app/strategy/loader.py\": \"fallback strategy loading -- no V2 fallback from M8\","
+    },
+    {
+      "path": "backends/bot-backend/app/trading_intelligence/governance/destination_map.py",
+      "line": 98,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "\"app/strategy/robust_ensemble.py\": \"V2 expert ensemble\","
+    },
+    {
+      "path": "backends/bot-backend/app/trading_intelligence/governance/destination_map.py",
+      "line": 99,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "\"app/strategy/sma_cross.py\": \"V2 expert\", \"app/strategy/donchian_breakout.py\": \"V2 expert\","
+    },
+    {
+      "path": "backends/bot-backend/app/trading_intelligence/governance/destination_map.py",
+      "line": 100,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "\"app/strategy/supertrend.py\": \"V2 expert\", \"app/strategy/vwap_reversion.py\": \"V2 expert\","
+    },
+    {
+      "path": "backends/bot-backend/app/trading_intelligence/governance/destination_map.py",
+      "line": 101,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "\"app/strategy/squeeze_breakout.py\": \"V2 expert\", \"app/strategy/bollinger_reversion.py\": \"V2 expert\","
+    },
+    {
+      "path": "backends/bot-backend/app/trading_intelligence/governance/destination_map.py",
+      "line": 102,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "\"app/strategy/trend_pullback.py\": \"V2 expert (distinct from the CATI TREND_PULLBACK_V2 specialist)\","
+    },
+    {
+      "path": "backends/bot-backend/app/trading_intelligence/governance/destination_map.py",
+      "line": 105,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "\"app/ml/scorer.py\": \"legacy V2 ML entry scorer -- never CATI authority\","
+    },
+    {
+      "path": "backends/bot-backend/app/trading_intelligence/contracts/global_market_state.py",
+      "line": 30,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "GLOBAL_MARKET_STATE_SCHEMA_VERSION = \"global-market-state-v2\""
+    },
+    {
+      "path": "backends/bot-backend/app/trading_intelligence/contracts/global_market_state.py",
+      "line": 31,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "GLOBAL_MARKET_STATE_ENGINE_VERSION = \"global-market-state-engine-v2\""
+    },
+    {
+      "path": "backends/bot-backend/app/trading_intelligence/fx/context.py",
+      "line": 22,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "FX_CONTEXT_VERSION = \"fx-market-context-v2\""
+    },
+    {
+      "path": "backends/bot-backend/app/trading_intelligence/ml/__init__.py",
+      "line": 11,
+      "classification": "DEAD_CODE",
+      "reference": "* ``artifacts``  -- immutable artifacts; legacy V2 artifacts are rejected"
+    },
+    {
+      "path": "backends/bot-backend/app/trading_intelligence/ml/__init__.py",
+      "line": 18,
+      "classification": "DEAD_CODE",
+      "reference": "* ``legacy``     -- classification of the pre-existing V2 ML system"
+    },
+    {
+      "path": "backends/bot-backend/app/trading_intelligence/ml/__init__.py",
+      "line": 21,
+      "classification": "DEAD_CODE",
+      "reference": "Legacy ``app/ml`` (the V2 LightGBM entry scorer) stays supported as V2 until"
+    },
+    {
+      "path": "backends/bot-backend/app/strategy/activation.py",
+      "line": 33,
+      "classification": "DEAD_CODE",
+      "reference": "\"sma_cross\","
+    },
+    {
+      "path": "backends/bot-backend/app/trading_intelligence/ml/promotion.py",
+      "line": 8,
+      "classification": "DEAD_CODE",
+      "reference": "approved deterministic CATI estimator is used -- never V2."
+    },
+    {
+      "path": "backends/bot-backend/app/strategy/hold_breakdown.py",
+      "line": 18,
+      "classification": "DEAD_CODE",
+      "reference": "\"sma_cross\": [\"fresh_fast_slow_sma_cross\"],"
+    },
+    {
+      "path": "backends/bot-backend/app/strategy/hold_breakdown.py",
+      "line": 93,
+      "classification": "DEAD_CODE",
+      "reference": "if strategy == \"sma_cross\":"
+    },
+    {
+      "path": "backends/bot-backend/app/strategy/hold_breakdown.py",
+      "line": 94,
+      "classification": "DEAD_CODE",
+      "reference": "failed.append(\"fresh_fast_slow_sma_cross\")"
+    },
+    {
+      "path": "backends/bot-backend/app/trading_intelligence/contracts/veto.py",
+      "line": 196,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "# Policy (Section 14.4) -- RESEARCH DEFAULTS, unrelated to any V2 threshold."
+    },
+    {
+      "path": "backends/bot-backend/app/trading_intelligence/ml/legacy.py",
+      "line": 1,
+      "classification": "DEAD_CODE",
+      "reference": "\"\"\"Classification of the PRE-EXISTING (V2) ML system -- audited before any"
+    },
+    {
+      "path": "backends/bot-backend/app/trading_intelligence/ml/legacy.py",
+      "line": 4,
+      "classification": "DEAD_CODE",
+      "reference": "The V2 MLEntryScorer is an entry-quality LightGBM gate over V2 semantics"
+    },
+    {
+      "path": "backends/bot-backend/app/trading_intelligence/ml/legacy.py",
+      "line": 7,
+      "classification": "DEAD_CODE",
+      "reference": "V2 until Section 25 retires V2, and it is never a CATI estimator, never CATI"
+    },
+    {
+      "path": "backends/bot-backend/app/trading_intelligence/ml/legacy.py",
+      "line": 24,
+      "classification": "DEAD_CODE",
+      "reference": "\"V2 entry-quality gate over V2 confidence/threshold features; runner-wired for V2 only\"),"
+    },
+    {
+      "path": "backends/bot-backend/app/trading_intelligence/ml/legacy.py",
+      "line": 32,
+      "classification": "DEAD_CODE",
+      "reference": "\"shared_lib/persistence/ml_runtime_status.py\": ((LEGACY_V2_ML,), \"V2 scorer runtime status table\"),"
+    },
+    {
+      "path": "backends/bot-backend/app/trading_intelligence/ml/legacy.py",
+      "line": 33,
+      "classification": "DEAD_CODE",
+      "reference": "\"scripts/ml/train_entry_model.py\": ((LEGACY_V2_ML, OBSOLETE_AFTER_M9), \"trains the V2 entry scorer\"),"
+    },
+    {
+      "path": "backends/bot-backend/app/trading_intelligence/ml/legacy.py",
+      "line": 34,
+      "classification": "DEAD_CODE",
+      "reference": "\"scripts/ml/build_dataset.py\": ((LEGACY_V2_ML,), \"V2 decision-trace dataset\"),"
+    },
+    {
+      "path": "backends/bot-backend/app/trading_intelligence/ml/legacy.py",
+      "line": 35,
+      "classification": "DEAD_CODE",
+      "reference": "\"scripts/ml/build_iofs_training_dataset.py\": ((LEGACY_V2_ML,), \"IOFS/V2 dataset\"),"
+    },
+    {
+      "path": "backends/bot-backend/app/trading_intelligence/ml/legacy.py",
+      "line": 36,
+      "classification": "DEAD_CODE",
+      "reference": "\"scripts/ml/analyze_holdout.py\": ((LEGACY_V2_ML,), \"V2 holdout analysis -- never CATI certification\"),"
+    },
+    {
+      "path": "backends/bot-backend/app/trading_intelligence/ml/legacy.py",
+      "line": 37,
+      "classification": "DEAD_CODE",
+      "reference": "\"scripts/ml/compare_entry_model_baselines.py\": ((LEGACY_V2_ML, RESEARCH_ONLY), \"V2 baselines\"),"
+    },
+    {
+      "path": "backends/bot-backend/app/trading_intelligence/ml/legacy.py",
+      "line": 38,
+      "classification": "DEAD_CODE",
+      "reference": "\"scripts/ml/analyze_strategy_expectancy.py\": ((RESEARCH_ONLY,), \"V2 strategy expectancy research\"),"
+    },
+    {
+      "path": "backends/bot-backend/app/trading_intelligence/ml/legacy.py",
+      "line": 41,
+      "classification": "DEAD_CODE",
+      "reference": "\"scripts/ml/promote_model.py\": ((LEGACY_V2_ML,), \"V2 promotion to models/production; concept reused, not code\"),"
+    },
+    {
+      "path": "backends/bot-backend/app/trading_intelligence/ml/legacy.py",
+      "line": 42,
+      "classification": "DEAD_CODE",
+      "reference": "\"scripts/ml/retrain_pipeline.py\": ((LEGACY_V2_ML,), \"V2 retraining workflow\"),"
+    },
+    {
+      "path": "backends/bot-backend/app/trading_intelligence/ml/legacy.py",
+      "line": 43,
+      "classification": "DEAD_CODE",
+      "reference": "\"scripts/ml/check_readiness.py\": ((LEGACY_V2_ML,), \"V2 dataset readiness\"),"
+    },
+    {
+      "path": "backends/bot-backend/app/trading_intelligence/ml/legacy.py",
+      "line": 44,
+      "classification": "DEAD_CODE",
+      "reference": "\"scripts/ml/watch_training_readiness.py\": ((LEGACY_V2_ML,), \"V2 readiness watcher\"),"
+    },
+    {
+      "path": "backends/bot-backend/app/trading_intelligence/ml/legacy.py",
+      "line": 46,
+      "classification": "DEAD_CODE",
+      "reference": "\"scripts/ml/validate_model.py\": ((LEGACY_V2_ML,), \"V2 artifact validation\"),"
+    },
+    {
+      "path": "backends/bot-backend/app/trading_intelligence/ml/legacy.py",
+      "line": 47,
+      "classification": "DEAD_CODE",
+      "reference": "\"scripts/ml/validate_ml_db.py\": ((LEGACY_V2_ML,), \"V2 ML DB validation\"),"
+    },
+    {
+      "path": "backends/bot-backend/app/trading_intelligence/ml/legacy.py",
+      "line": 48,
+      "classification": "DEAD_CODE",
+      "reference": "\"scripts/ml/verify_feature_completeness.py\": ((LEGACY_V2_ML,), \"V2 feature completeness\"),"
+    },
+    {
+      "path": "backends/bot-backend/app/trading_intelligence/ml/legacy.py",
+      "line": 49,
+      "classification": "DEAD_CODE",
+      "reference": "\"scripts/ml/monitor_shadow_collection.py\": ((LEGACY_V2_ML,), \"V2 shadow collection monitor\"),"
+    },
+    {
+      "path": "backends/bot-backend/app/trading_intelligence/ml/legacy.py",
+      "line": 50,
+      "classification": "DEAD_CODE",
+      "reference": "\"scripts/ml/monitor_live_gating.py\": ((LEGACY_V2_ML,), \"V2 live gating monitor\"),"
+    },
+    {
+      "path": "backends/bot-backend/app/trading_intelligence/ml/legacy.py",
+      "line": 51,
+      "classification": "DEAD_CODE",
+      "reference": "\"scripts/ml/live_gating_audit_monitor.py\": ((LEGACY_V2_ML,), \"V2 gating audit\"),"
+    },
+    {
+      "path": "backends/bot-backend/app/trading_intelligence/ml/legacy.py",
+      "line": 52,
+      "classification": "DEAD_CODE",
+      "reference": "\"scripts/ml/analyze_shadow.py\": ((LEGACY_V2_ML,), \"V2 shadow analysis\"),"
+    },
+    {
+      "path": "backends/bot-backend/app/trading_intelligence/ml/legacy.py",
+      "line": 64,
+      "classification": "DEAD_CODE",
+      "reference": "\"\"\"True for V2 scorer metadata (its contract version or its feature columns).\"\"\""
+    },
+    {
+      "path": "backends/bot-backend/app/trading_intelligence/ml/features.py",
+      "line": 6,
+      "classification": "DEAD_CODE",
+      "reference": "records / Section 21 export) -- never from V2 ``final_confidence``, buy/sell"
+    },
+    {
+      "path": "backends/bot-backend/app/trading_intelligence/ml/features.py",
+      "line": 21,
+      "classification": "DEAD_CODE",
+      "reference": "#: legacy V2 semantics that are NOT CATI features"
+    },
+    {
+      "path": "backends/bot-backend/app/trading_intelligence/ml/features.py",
+      "line": 64,
+      "classification": "DEAD_CODE",
+      "reference": "raise FeatureContractViolation(f\"legacy V2 fields are not CATI features: {sorted(legacy)}\")"
+    },
+    {
+      "path": "backends/bot-backend/app/trading_intelligence/ml/contracts.py",
+      "line": 98,
+      "classification": "DEAD_CODE",
+      "reference": "\"hard risk superior\", \"exit intelligence, not broker authority\", \"legacy V2 positions excluded\"),"
+    },
+    {
+      "path": "backends/bot-backend/app/trading_intelligence/ml/contracts.py",
+      "line": 186,
+      "classification": "DEAD_CODE",
+      "reference": "\"\"\"A legacy V2 (or otherwise non-CATI) artifact tried to load as a CATI estimator.\"\"\""
+    },
+    {
+      "path": "backends/bot-backend/app/trading_intelligence/ml/config.py",
+      "line": 7,
+      "classification": "DEAD_CODE",
+      "reference": "is used (never V2). Legacy V2 ``ML_ENABLED`` / ``ML_SHADOW_MODE`` /"
+    },
+    {
+      "path": "backends/bot-backend/app/trading_intelligence/ml/artifacts.py",
+      "line": 7,
+      "classification": "DEAD_CODE",
+      "reference": "contract version, role, schema hashes and bytes, and REJECTS any legacy V2"
+    },
+    {
+      "path": "backends/bot-backend/app/trading_intelligence/ml/artifacts.py",
+      "line": 52,
+      "classification": "DEAD_CODE",
+      "reference": "# a V2 artifact directory carries metadata.json with V2 contract fields"
+    },
+    {
+      "path": "backends/bot-backend/app/trading_intelligence/ml/artifacts.py",
+      "line": 53,
+      "classification": "DEAD_CODE",
+      "reference": "v2 = d / \"metadata.json\""
+    },
+    {
+      "path": "backends/bot-backend/app/trading_intelligence/ml/artifacts.py",
+      "line": 54,
+      "classification": "DEAD_CODE",
+      "reference": "if v2.exists() and is_legacy_v2_artifact(json.loads(v2.read_text(encoding=\"utf-8\"))):"
+    },
+    {
+      "path": "backends/bot-backend/app/trading_intelligence/ml/artifacts.py",
+      "line": 55,
+      "classification": "DEAD_CODE",
+      "reference": "raise LegacyArtifactRejected(\"legacy V2 entry-scorer artifact cannot load as a CATI estimator\")"
+    },
+    {
+      "path": "backends/bot-backend/app/trading_intelligence/execution/boundary.py",
+      "line": 522,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "(PositionManager), exactly as the runner does after a V2 fill.\"\"\""
+    },
+    {
+      "path": "backends/bot-backend/app/trading_intelligence/forecast/calibration_report.py",
+      "line": 64,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "\"\"\"Opt-in research V2 benchmark; V1 and every acceptance threshold stay frozen."
+    },
+    {
+      "path": "backends/bot-backend/tests/trading_intelligence/test_governed_activation_contract.py",
+      "line": 33,
+      "classification": "TEST_ONLY",
+      "reference": "evidence={\"v2_benchmark_tag\": \"v2-frozen\", \"section9_shadow_verified\": True,"
+    },
+    {
+      "path": "backends/bot-backend/app/trading_intelligence/forecast/build_library.py",
+      "line": 17,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "hypothesis, regardless of whether V2 or CATI would ever have traded it, so"
+    },
+    {
+      "path": "backends/bot-backend/app/trading_intelligence/forecast/build_library.py",
+      "line": 449,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "ap.add_argument(\"--dataset-manifest\", default=None, help=\"frozen (lineage v2) dataset manifest the build is pinned to\")"
+    },
+    {
+      "path": "backends/bot-backend/tests/trading_intelligence/test_portfolio.py",
+      "line": 301,
+      "classification": "TEST_ONLY",
+      "reference": "(bot_id, \"u1\", account, \"crypto\", \"master_ensemble\", \"paper\", \"active\", \"2026-01-01\", \"2026-01-01\"))"
+    },
+    {
+      "path": "backends/bot-backend/tests/trading_intelligence/test_ranking.py",
+      "line": 144,
+      "classification": "TEST_ONLY",
+      "reference": "for term in (\"evidence_score\", \"master_ensemble\", \"adaptiveentrythreshold\", \"raw_confidence\", \"p_net_profitable_mean\"):"
+    },
+    {
+      "path": "backends/bot-backend/app/trading_intelligence/economics/engine.py",
+      "line": 4,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "Never imports the V2 threshold/confidence stack (Section 13.16) -- verified"
+    },
+    {
+      "path": "backends/bot-backend/tests/trading_intelligence/test_runtime_authority_switch.py",
+      "line": 2,
+      "classification": "TEST_ONLY",
+      "reference": "governance record; the V2 entry path and the CATI TradePlan dispatch both consult it; no V2 fallback.\"\"\""
+    },
+    {
+      "path": "backends/bot-backend/tests/trading_intelligence/test_runtime_authority_switch.py",
+      "line": 12,
+      "classification": "TEST_ONLY",
+      "reference": "from app.trading_intelligence.governance.runtime_authority import CATI, NONE, V2, resolve_order_authority"
+    },
+    {
+      "path": "backends/bot-backend/tests/trading_intelligence/test_runtime_authority_switch.py",
+      "line": 77,
+      "classification": "TEST_ONLY",
+      "reference": "blocked = _v2_block(db)  # the same demo account: V2 is refused BEFORE the executor"
+    },
+    {
+      "path": "backends/bot-backend/tests/trading_intelligence/test_runtime_authority_switch.py",
+      "line": 116,
+      "classification": "TEST_ONLY",
+      "reference": "assert _v2_block(db) is not None  # V2 does not regain the demo scope"
+    },
+    {
+      "path": "backends/bot-backend/app/trading_intelligence/market_state/indicators.py",
+      "line": 10,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "ADX/ATR: that module is tightly coupled to the V2 threshold/strategy path"
+    },
+    {
+      "path": "backends/bot-backend/app/trading_intelligence/market_state/indicators.py",
+      "line": 12,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "dependency on it that a V2 change could silently break CATI through, or vice"
+    },
+    {
+      "path": "backends/bot-backend/app/strategy/robust_ensemble.py",
+      "line": 9,
+      "classification": "DEAD_CODE",
+      "reference": "name=\"robust_ensemble\","
+    },
+    {
+      "path": "backends/bot-backend/app/strategy/robust_ensemble.py",
+      "line": 27,
+      "classification": "DEAD_CODE",
+      "reference": "name = \"robust_ensemble\""
+    },
+    {
+      "path": "backends/bot-backend/app/strategy/robust_ensemble.py",
+      "line": 87,
+      "classification": "DEAD_CODE",
+      "reference": "\"robust_ensemble\","
+    },
+    {
+      "path": "backends/bot-backend/app/strategy/router.py",
+      "line": 88,
+      "classification": "DEAD_CODE",
+      "reference": "\"robust_ensemble\": \"TREND\","
+    },
+    {
+      "path": "backends/bot-backend/app/strategy/router.py",
+      "line": 89,
+      "classification": "DEAD_CODE",
+      "reference": "\"sma_cross\": \"TREND\","
+    },
+    {
+      "path": "backends/bot-backend/app/strategy/sma_cross.py",
+      "line": 28,
+      "classification": "DEAD_CODE",
+      "reference": "def sma_cross_snapshot(closes, fast: int = 10, slow: int = 30):"
+    },
+    {
+      "path": "backends/bot-backend/app/strategy/sma_cross.py",
+      "line": 44,
+      "classification": "DEAD_CODE",
+      "reference": "name=\"sma_cross\","
+    },
+    {
+      "path": "backends/bot-backend/app/strategy/sma_cross.py",
+      "line": 63,
+      "classification": "DEAD_CODE",
+      "reference": "name = \"sma_cross\""
+    },
+    {
+      "path": "backends/bot-backend/app/strategy/sma_cross.py",
+      "line": 83,
+      "classification": "DEAD_CODE",
+      "reference": "# and the positional call made every sma_cross evaluation since"
+    },
+    {
+      "path": "backends/bot-backend/app/strategy/sma_cross.py",
+      "line": 92,
+      "classification": "DEAD_CODE",
+      "reference": "snapshot = sma_cross_snapshot(closes, fast=self.fast, slow=self.slow)"
+    },
+    {
+      "path": "backends/bot-backend/app/strategy/sma_cross.py",
+      "line": 102,
+      "classification": "DEAD_CODE",
+      "reference": "return SignalResult(Signal.BUY, conf, \"sma_cross\", meta=snapshot)"
+    },
+    {
+      "path": "backends/bot-backend/app/strategy/sma_cross.py",
+      "line": 108,
+      "classification": "DEAD_CODE",
+      "reference": "return SignalResult(Signal.SELL, conf, \"sma_cross\", meta=snapshot)"
+    },
+    {
+      "path": "backends/bot-backend/app/strategy/loader.py",
+      "line": 13,
+      "classification": "DEAD_CODE",
+      "reference": "_SAFE_FALLBACK = \"master_ensemble\""
+    },
+    {
+      "path": "backends/bot-backend/app/strategy/loader.py",
+      "line": 14,
+      "classification": "DEAD_CODE",
+      "reference": "_UNSAFE_STRATEGIES = {\"sma_cross\"}"
+    },
+    {
+      "path": "backends/bot-backend/app/strategy/master_ensemble.py",
+      "line": 2,
+      "classification": "DEAD_CODE",
+      "reference": "MasterEnsembleStrategy v2 \u2014 Regime-Gated Weighted Voting"
+    },
+    {
+      "path": "backends/bot-backend/app/strategy/master_ensemble.py",
+      "line": 47,
+      "classification": "DEAD_CODE",
+      "reference": "from app.strategy.sma_cross import SMACrossStrategy"
+    },
+    {
+      "path": "backends/bot-backend/app/strategy/master_ensemble.py",
+      "line": 84,
+      "classification": "DEAD_CODE",
+      "reference": "\"supertrend\", \"trend_pullback\", \"donchian_breakout\", \"sma_cross\","
+    },
+    {
+      "path": "backends/bot-backend/app/strategy/master_ensemble.py",
+      "line": 91,
+      "classification": "DEAD_CODE",
+      "reference": "\"supertrend\", \"trend_pullback\", \"donchian_breakout\", \"sma_cross\","
+    },
+    {
+      "path": "backends/bot-backend/app/strategy/master_ensemble.py",
+      "line": 100,
+      "classification": "DEAD_CODE",
+      "reference": "# sma_cross and trend_pullback removed \u2014 lag too badly in fast moves."
+    },
+    {
+      "path": "backends/bot-backend/app/strategy/master_ensemble.py",
+      "line": 120,
+      "classification": "DEAD_CODE",
+      "reference": "\"sma_cross\":           0.9,"
+    },
+    {
+      "path": "backends/bot-backend/app/strategy/master_ensemble.py",
+      "line": 129,
+      "classification": "DEAD_CODE",
+      "reference": "\"sma_cross\":       1.3,"
+    },
+    {
+      "path": "backends/bot-backend/app/strategy/master_ensemble.py",
+      "line": 165,
+      "classification": "DEAD_CODE",
+      "reference": "# MASTER ENSEMBLE STRATEGY v2"
+    },
+    {
+      "path": "backends/bot-backend/app/strategy/master_ensemble.py",
+      "line": 169,
+      "classification": "DEAD_CODE",
+      "reference": "name=\"master_ensemble\","
+    },
+    {
+      "path": "backends/bot-backend/app/strategy/master_ensemble.py",
+      "line": 192,
+      "classification": "DEAD_CODE",
+      "reference": "Regime-gated MasterEnsemble (v2)."
+    },
+    {
+      "path": "backends/bot-backend/app/strategy/master_ensemble.py",
+      "line": 205,
+      "classification": "DEAD_CODE",
+      "reference": "name = \"master_ensemble\""
+    },
+    {
+      "path": "backends/bot-backend/app/strategy/master_ensemble.py",
+      "line": 256,
+      "classification": "DEAD_CODE",
+      "reference": "(\"sma_cross\",           SMACrossStrategy),"
+    },
+    {
+      "path": "backends/bot-backend/app/strategy/master_ensemble.py",
+      "line": 862,
+      "classification": "DEAD_CODE",
+      "reference": "vote: sma_cross did exactly that on every candle from 2026-09-08."
+    },
+    {
+      "path": "backends/bot-backend/app/trading_intelligence/integration/cati_dispatch.py",
+      "line": 13,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "A dispatch that cannot build its inputs fails closed for that plan. Nothing here ever calls the V2 path: a"
+    },
+    {
+      "path": "backends/bot-backend/app/trading_intelligence/integration/cati_dispatch.py",
+      "line": 14,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "failure of CATI halts CATI's new entries and does not hand the entry to V2."
+    },
+    {
+      "path": "backends/bot-backend/app/trading_intelligence/integration/cati_dispatch.py",
+      "line": 134,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "except Exception as exc:  # fail closed for this plan -- never a V2 fallback"
+    },
+    {
+      "path": "backends/bot-backend/app/trading_intelligence/integration/cycle_shadow.py",
+      "line": 339,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "# CATI does not own) nothing is dispatched and the blocking reason is logged; CATI never falls back to V2."
+    },
+    {
+      "path": "backends/bot-backend/app/trading_intelligence/integration/shadow_hook.py",
+      "line": 11,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "per-symbol decision loop and interrupt live V2 trading (P9.14: \"CATI"
+    },
+    {
+      "path": "backends/bot-backend/app/trading_intelligence/integration/shadow_hook.py",
+      "line": 12,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "failures cannot stop existing V2 execution during this shadow phase\")."
+    },
+    {
+      "path": "backends/bot-backend/app/trading_intelligence/integration/errors.py",
+      "line": 3,
+      "classification": "HISTORICAL_DATA_ONLY",
+      "reference": "CATI hooks stay fail-safe relative to V2 (they never raise into the runner),"
+    },
+    {
+      "path": "backends/bot-backend/tests/trading_intelligence/test_section20_execution_boundary.py",
+      "line": 101,
+      "classification": "TEST_ONLY",
+      "reference": "assert seen[\"confidence_already_approved\"] is True  # the V2 adaptive threshold is never consulted"
+    },
+    {
+      "path": "backends/bot-backend/tests/trading_intelligence/test_sections23_26.py",
+      "line": 1,
+      "classification": "TEST_ONLY",
+      "reference": "\"\"\"Sections 23-26: CATI ML estimator architecture (+ legacy V2 ML isolation),"
+    },
+    {
+      "path": "backends/bot-backend/tests/trading_intelligence/test_sections23_26.py",
+      "line": 57,
+      "classification": "TEST_ONLY",
+      "reference": "# ============================== LEGACY V2 ML =============================="
+    },
+    {
+      "path": "backends/bot-backend/tests/trading_intelligence/test_sections23_26.py",
+      "line": 94,
+      "classification": "TEST_ONLY",
+      "reference": "for legacy in ((\"true\", \"false\", \"0.9\"), (\"false\", \"true\", \"0.1\")):  # legacy V2 flags are never read"
+    },
+    {
+      "path": "backends/bot-backend/tests/trading_intelligence/test_sections23_26.py",
+      "line": 316,
+      "classification": "TEST_ONLY",
+      "reference": "if \"from app.threshold\" in text or \"import app.threshold\" in text or \"from app.strategy.master_ensemble\" in text:"
+    },
+    {
+      "path": "backends/bot-backend/tests/trading_intelligence/test_sections23_26.py",
+      "line": 318,
+      "classification": "TEST_ONLY",
+      "reference": "assert offenders == []  # no V2 confidence floor / ensemble inside CATI decision code"
+    },
+    {
+      "path": "backends/bot-backend/tests/trading_intelligence/test_sections23_26.py",
+      "line": 323,
+      "classification": "TEST_ONLY",
+      "reference": "\"M1\": dict(evidence={\"v2_benchmark_tag\": \"v2-frozen-benchmark\", \"section9_shadow_verified\": True}),"
+    },
+    {
+      "path": "backends/bot-backend/tests/trading_intelligence/test_sections23_26.py",
+      "line": 374,
+      "classification": "TEST_ONLY",
+      "reference": "gov.transition(\"M0\", reason=\"rollback to frozen V2 benchmark\", actor_ref=\"op\")"
+    },
+    {
+      "path": "backends/bot-backend/tests/trading_intelligence/test_sections23_26.py",
+      "line": 379,
+      "classification": "TEST_ONLY",
+      "reference": "gov.transition(\"M0\", reason=\"no silent V2 after M8\", actor_ref=\"op\")"
+    },
+    {
+      "path": "backends/bot-backend/tests/trading_intelligence/test_setups.py",
+      "line": 239,
+      "classification": "TEST_ONLY",
+      "reference": "# Specialist A -- Trend Pullback V2"
+    },
+    {
+      "path": "backends/bot-backend/tests/trading_intelligence/test_setups.py",
+      "line": 330,
+      "classification": "TEST_ONLY",
+      "reference": "# Specialist B -- Breakout / Vol Expansion V2"
+    },
+    {
+      "path": "backends/bot-backend/tests/trading_intelligence/test_setups.py",
+      "line": 383,
+      "classification": "TEST_ONLY",
+      "reference": "# Specialist C -- Range / Mean Reversion V2"
+    },
+    {
+      "path": "backends/bot-backend/tests/trading_intelligence/test_veto.py",
+      "line": 248,
+      "classification": "TEST_ONLY",
+      "reference": "for term in (\"adaptiveentrythreshold\", \"master_ensemble\", \"position_slots\", \"capital_ledger\","
+    },
+    {
+      "path": "backends/bot-backend/tests/trading_intelligence/_pf.py",
+      "line": 99,
+      "classification": "TEST_ONLY",
+      "reference": "(bot_id, \"u1\", account, market_type, \"master_ensemble\", \"paper\", \"active\", \"2026-01-01\", \"2026-01-01\"))"
+    }
+  ]
+}

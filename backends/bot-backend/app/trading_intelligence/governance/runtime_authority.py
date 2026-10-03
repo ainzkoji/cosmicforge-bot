@@ -1,21 +1,10 @@
-"""The runtime ORDER-AUTHORITY router (Section 25 runtime switch): for one broker-account scope, exactly one
-engine -- or none -- may place NEW entries.
+"""CATI is the sole runtime intelligence authority; owner is CATI or NONE.
 
-    owner = CATI   the persisted phase grants CATI this scope (M6: demo scopes; M7: demo + promoted live
-                   scopes; M8+: every scope), the CATI kill switch is off and CATI is healthy
-    owner = V2     CATI does not own the scope and the phase still gives V2 order authority there
-                   (M0-M5 everywhere; M6 live; M7 unpromoted live)
-    owner = NONE   everything else -- including CATI-owned scopes whose kill switch is on or whose CATI
-                   runtime is unhealthy, and scopes whose user has not enabled Auto Trading
-
-There is NO fallback: a scope CATI owns never reverts to V2 because CATI stopped, failed, or was killed; it
-halts new entries until governance records an explicit rollback transition (``PromotionGovernance``,
-audited). ``phases.PhaseSpec.v2_fallback_allowed`` is migration metadata, never a runtime path.
-
-Only NEW entries are routed. Exits, protection and reconciliation of positions that already exist are
-broker-authoritative and continue regardless of the owner. The router reads only the durable governance
-record (phase, M7 scopes, kill switch), so a restart resolves the same owner; no environment variable,
-flag, deploy, or UI toggle can grant authority here.
+M0-M5: observe with all entries blocked. M6: governed demo only. M7: explicitly
+promoted live scopes. M8+: governed live. Kill/health failures halt new entries;
+no rollback, scope, environment or flag can restore legacy authority. Protection,
+reductions and reconciliation continue independently. V2 constants are historical
+compatibility values only and can never be returned by this router.
 """
 from __future__ import annotations
 
@@ -26,7 +15,7 @@ from .phases import PHASE_BY_ID, phase_index
 from .promotion import NO_CAPITAL_ENVIRONMENTS, PromotionGovernance
 
 CATI, V2, NONE = "CATI", "V2", "NONE"
-ROUTER_VERSION = "runtime-order-authority-v1"
+ROUTER_VERSION = "runtime-cati-sole-authority-v2"
 
 
 @dataclass(frozen=True)
@@ -43,7 +32,9 @@ class OrderAuthority:
 
     def to_dict(self) -> Dict[str, Any]:
         return {"owner": self.owner, "reason": self.reason, "phase": self.phase, "environment": self.environment,
-                "broker_account_id": self.broker_account_id, "venue": self.venue, "version": ROUTER_VERSION}
+                "broker_account_id": self.broker_account_id, "venue": self.venue, "version": ROUTER_VERSION,
+                "cati_runtime_active": True,
+                "cati_entry_authority": self.environment if self.owner == CATI else "BLOCKED"}
 
 
 def _env(environment: Optional[str]) -> str:
@@ -80,14 +71,7 @@ def cati_scope_granted(gov: PromotionGovernance, phase: str, *, environment: str
 
 def _v2_may_trade(phase: str, gov: PromotionGovernance, *, environment: str, broker_account_id: Optional[str],
                   venue: Optional[str]) -> bool:
-    v2 = PHASE_BY_ID[phase].v2_authority
-    if v2 == "ACTIVE":
-        return True
-    if v2 == "BENCHMARK_ON_DEMO":
-        return environment not in NO_CAPITAL_ENVIRONMENTS
-    if v2 == "BENCHMARK_ON_PROMOTED_SCOPES":
-        return environment not in NO_CAPITAL_ENVIRONMENTS and not cati_scope_granted(
-            gov, phase, environment=environment, broker_account_id=broker_account_id, venue=venue)
+    # Historical compatibility helper only; no phase or scope grants legacy entries.
     return False
 
 
@@ -107,10 +91,6 @@ def resolve_order_authority(db: Any, *, broker_account_id: Optional[str], venue:
     if not auto_trading_enabled:
         return OrderAuthority(NONE, "USER_AUTO_TRADING_OFF", phase, **base)
     if env not in ("DEMO", "LIVE"):
-        # below M6 CATI owns nothing and V2 holds authority on every scope, so the scope is irrelevant;
-        # from M6 on an unresolved environment can be neither routed nor assumed
-        if PHASE_BY_ID[phase].v2_authority == "ACTIVE":
-            return OrderAuthority(V2, f"{phase}_V2_ALL_SCOPES_AUTHORITY", phase, **base)
         return OrderAuthority(NONE, f"ENVIRONMENT_UNKNOWN:{environment}", phase, **base)
     try:
         if cati_scope_granted(gov, phase, environment=env, broker_account_id=broker_account_id, venue=venue):
@@ -119,8 +99,6 @@ def resolve_order_authority(db: Any, *, broker_account_id: Optional[str], venue:
             if not cati_healthy:
                 return OrderAuthority(NONE, "CATI_UNHEALTHY_NEW_ENTRIES_HALTED_NO_V2_FALLBACK", phase, **base)
             return OrderAuthority(CATI, f"{phase}_CATI_{env}_AUTHORITY", phase, **base)
-        if _v2_may_trade(phase, gov, environment=env, broker_account_id=broker_account_id, venue=venue):
-            return OrderAuthority(V2, f"{phase}_V2_{env}_AUTHORITY", phase, **base)
     except Exception:
         return OrderAuthority(NONE, "GOVERNANCE_UNAVAILABLE", phase, **base)
     if phase_index(phase) < phase_index("M6"):

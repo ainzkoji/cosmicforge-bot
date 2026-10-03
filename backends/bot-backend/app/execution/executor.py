@@ -1066,6 +1066,18 @@ class BinanceExecutor:
           anything else     released at once -- rejected, failed, rolled back,
                             or an exception before the order was sent
         """
+        # Scalar signals, queued external signals and historical strategies
+        # cannot enter even when invoked outside PaperRunner. Only the CATI
+        # boundary issues this call-scoped permit after governance + hard risk.
+        symbol = args[0] if args else kwargs.get("symbol")
+        signal = args[1] if len(args) > 1 else kwargs.get("signal", "")
+        notional = args[2] if len(args) > 2 else kwargs.get("usdt", 0)
+        if str(signal).upper() != "CLOSE":
+            from app.trading_intelligence.execution.entry_permit import entry_permitted
+            if not entry_permitted(symbol, signal, notional, kwargs.get("intent_identity")):
+                return ExecResult(status="BLOCKED", success=False,
+                                  details={"symbol": symbol, "signal": signal, "reason": "CATI_BOUNDARY_PERMIT_REQUIRED"},
+                                  error="CATI_BOUNDARY_PERMIT_REQUIRED", action="NO_TRADE")
         import threading
 
         from app.risk.capital_ledger import ACCOUNT_RESERVATIONS

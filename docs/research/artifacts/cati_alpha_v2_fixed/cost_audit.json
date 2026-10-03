@@ -1,0 +1,51 @@
+{
+  "cost_model": {
+    "version": "CATI_ALPHA_CONSERVATIVE_INHERITED_COST_V2",
+    "fee": 0.0004,
+    "half_spread": 0.0001,
+    "slippage": 0.0002,
+    "funding_per_8h": 0.0001,
+    "duration_policy": "ceil full48native15m bars /8h; no funding receipt assumed"
+  },
+  "cost_model_hash": "cc0f619c0cd45b93b28d099a4f543df2bf9d97b8d9599ed69974096b50ce9ea6",
+  "rates_identical_to_immutable_V1": true,
+  "historical_execution_evidence_available": false,
+  "historical_candle_columns": [
+    "id",
+    "symbol",
+    "interval",
+    "open_time",
+    "open",
+    "high",
+    "low",
+    "close",
+    "volume",
+    "quote_volume",
+    "trades",
+    "market_type",
+    "base_currency",
+    "quote_currency",
+    "data_source",
+    "data_version",
+    "fetched_at"
+  ],
+  "supported_signal_evidence": [
+    "OHLC",
+    "actual_candle_volume"
+  ],
+  "omitted_unobserved": [
+    "bid_ask_spread",
+    "slippage",
+    "user_venue_fee_tier",
+    "funding_rate_and_timestamp",
+    "open_interest",
+    "basis",
+    "signed_trade_flow"
+  ],
+  "native_5m_check": {
+    "query": "SELECT interval,count(*) FROM historical_candles WHERE market_type='crypto' AND data_source='binance' AND open_time>=1727275499999 AND open_time+300000-1<1783876499999 AND interval='5m' GROUP BY interval",
+    "result": [],
+    "holdout_queries": 0
+  },
+  "gate_costs_not_reduced_after_evaluation": true
+}

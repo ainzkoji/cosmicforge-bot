@@ -3,8 +3,9 @@ import { Link } from 'react-router-dom';
 import { Play, Pause, Square, Trash2, FileText, Settings, ExternalLink, MoreHorizontal } from 'lucide-react';
 import { StatusBadge } from './StatusBadge';
 import { BotHealthBadge } from './BotHealthBadge';
-import { BotInstance } from '@/api/client';
+import { api, BotInstance } from '@/api/client';
 import { useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { CopyableId } from '../UI/CopyableId';
 
 interface BotInstanceRowProps {
@@ -20,6 +21,11 @@ interface BotInstanceRowProps {
 
 export const BotInstanceRow = ({ bot, onStart, onPause, onStop, onDelete, onViewLogs, isProcessing = false, brokers = [] }: BotInstanceRowProps) => {
     const [showActions, setShowActions] = useState(false);
+    const engineStatus = useQuery({
+        queryKey: ['botEngineStatus', bot.id],
+        queryFn: () => api.getBotEngineStatus(bot.id),
+        refetchInterval: 15000,
+    });
 
     const formatDate = (dateString: string) => {
         if (!dateString) return '-';
@@ -48,7 +54,7 @@ export const BotInstanceRow = ({ bot, onStart, onPause, onStop, onDelete, onView
 
                     <div className="min-w-0">
                         <Link to={`/dashboard/bots/${bot.id}`} className="font-bold text-lg hover:text-primary transition-colors flex items-center gap-2 truncate">
-                            {bot.strategy_id === 'master_ensemble' ? 'Auto Pilot (Master Ensemble)' : bot.strategy_id}
+                            {bot.strategy_id === 'cati' ? 'CATI' : `CATI (historical strategy: ${bot.strategy_id})`}
                         </Link>
                         <div className="flex items-center gap-3 mt-1.5 mb-1">
                             <CopyableId id={bot.id} label="Bot ID" />
@@ -78,6 +84,11 @@ export const BotInstanceRow = ({ bot, onStart, onPause, onStop, onDelete, onView
                                 }`}>
                                 {bot.mode}
                             </span>
+                        </div>
+                        <div className="mt-2 text-xs text-muted-foreground" aria-live="polite">
+                            {engineStatus.data
+                                ? `CATI ${engineStatus.data.observe_mode ? 'observe' : engineStatus.data.cati_entry_authority.toLowerCase()} · Entry authority: ${engineStatus.data.cati_entry_authority} · Governance: ${engineStatus.data.phase || 'unavailable'}`
+                                : 'CATI entry authority: unavailable — new entries fail closed'}
                         </div>
                         {bot.block_category && (
                             <div className="mt-2 flex items-center gap-1.5 text-xs text-red-400 bg-red-500/10 px-2 py-1 rounded border border-red-500/20 w-fit">

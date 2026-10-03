@@ -164,3 +164,10 @@ async def get_bot_instance(
 ):
     """Proxy: Get a specific bot instance."""
     return await proxy_request(request, f"/api/v1/bot-instances/{instance_id}")
+
+
+@router.get("/bot-instances/{instance_id}/engine-status")
+async def get_engine_status(request: Request, instance_id: str,
+                            user: dict = Depends(get_current_active_user)):
+    """Forward authenticated CATI runtime/entry status; downstream checks ownership."""
+    return await proxy_request(request, f"/api/v1/bot-instances/{instance_id}/engine-status")

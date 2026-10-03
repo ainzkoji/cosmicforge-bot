@@ -21,31 +21,13 @@ def utc_now_iso() -> str:
 
 STRATEGIES = [
     StrategyItem(
-        id="safe_trend",
-        name="SafeTrend Voyager",
-        description="A conservative trend-following strategy ideal for beginners. It avoids choppy markets and only trades clear trends.",
+        id="cati",
+        name="CATI",
+        description="The sole trading intelligence engine. Observes markets while new entries remain governed and blocked until eligible.",
         difficulty="Beginner",
-        tags=["Trend", "Conservative", "Long-Term"],
+        tags=["CATI", "Governed", "Observe"],
         min_capital=100.0,
         compatible_markets=["crypto", "forex"]
-    ),
-    StrategyItem(
-        id="mean_reversion",
-        name="MeanReversion Pulse",
-        description="Buys when prices dip too far and sells when they rally too high. Good for sideways markets.",
-        difficulty="Intermediate",
-        tags=["Mean Reversion", "Swings"],
-        min_capital=250.0,
-        compatible_markets=["crypto"]
-    ),
-    StrategyItem(
-        id="scalp_master",
-        name="Velocity Scalper",
-        description="High-frequency trading strategy for small price movements. Requires low-latency execution and higher risk tolerance.",
-        difficulty="Advanced",
-        tags=["Scalping", "High Frequency", "Aggressive"],
-        min_capital=500.0,
-        compatible_markets=["crypto"]
     )
 ]
 
@@ -76,7 +58,7 @@ def get_risk_preset(tolerance: RiskTolerance) -> RiskPolicyPreset:
     elif tolerance == "medium":
         return RiskPolicyPreset(
             id="medium",
-            max_daily_loss_pct=5.0,
+            max_daily_loss_pct=2.5,
             max_position_size_usdt=500.0,
             max_leverage=3,
             stop_loss_pct=0.05,
@@ -86,7 +68,7 @@ def get_risk_preset(tolerance: RiskTolerance) -> RiskPolicyPreset:
     else: # high
         return RiskPolicyPreset(
             id="high",
-            max_daily_loss_pct=10.0,
+            max_daily_loss_pct=2.5,
             max_position_size_usdt=2000.0,
             max_leverage=10,
             stop_loss_pct=0.10,
@@ -227,7 +209,7 @@ def complete_onboarding(user_id: str) -> BotSetupBlueprint:
     try:
         exp_level: ExperienceLevel = data.get("experience_level", "beginner")
         risk_tol: RiskTolerance = data.get("risk_tolerance", "low")
-        strat_id = data.get("strategy_id", "safe_trend")
+        strat_id = data.get("strategy_id", "cati")
         alloc_amt = data.get("amount", 100.0)
         alloc_type: AllocationModel = data.get("type", "fixed_amount")
     except KeyError:

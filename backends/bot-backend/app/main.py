@@ -38,8 +38,8 @@ _load_dotenv(
 CONFIG_LOADED_AT = datetime.now(timezone.utc).isoformat()
 
 # CATI evidence logs ([CATI_BATCH], [CATI_GLOBAL_STATE], ...) are INFO; with no logging configured Python only
-# emits WARNING+, so a healthy shadow cycle that ranked nothing leaves no trace. Opt-in, CATI namespace only.
-_cati_log_level = os.environ.get("CATI_LOG_LEVEL", "").strip().upper()
+# emits WARNING+, so a healthy shadow cycle that ranked nothing leaves no trace. Enabled by default for the CATI namespace only.
+_cati_log_level = os.environ.get("CATI_LOG_LEVEL", "INFO").strip().upper()
 if _cati_log_level in ("DEBUG", "INFO", "WARNING", "ERROR"):
     _cati_logger = logging.getLogger("app.trading_intelligence")
     if not _cati_logger.handlers:
@@ -862,7 +862,6 @@ async def _startup_signal_scheduler():
     global _signal_scheduler
     try:
         from apscheduler.schedulers.asyncio import AsyncIOScheduler
-        from app.signals.crypto_signal_engine import generate_crypto_signals
         from app.signals.signal_expiry import expire_stale_signals
         from app.signals.signal_scheduler_config import SIGNAL_GENERATION_TIMES_UTC
     except ImportError as exc:
@@ -877,22 +876,8 @@ async def _startup_signal_scheduler():
 
     scheduler = AsyncIOScheduler(timezone="UTC")
 
-    for time_str in SIGNAL_GENERATION_TIMES_UTC:
-        hour, minute = map(int, time_str.split(":"))
-        job_id = f"signal_gen_{time_str.replace(':', '')}"
-        scheduler.add_job(
-            generate_crypto_signals,
-            trigger="cron",
-            hour=hour,
-            minute=minute,
-            id=job_id,
-            replace_existing=True,
-            misfire_grace_time=300,
-            kwargs={"scheduled_time_utc": time_str, "scheduler_source": "apscheduler"},
-        )
-        print(
-            f"[SIGNAL_SCHEDULER] SIGNAL_SCHEDULER_JOB_REGISTERED job_id={job_id} time={time_str} UTC"
-        )
+    # CATI observations run on closed-candle epochs in MultiBotRunner.
+    # No legacy signal-generation scheduler is registered.
 
     scheduler.add_job(
         expire_stale_signals,
@@ -905,62 +890,7 @@ async def _startup_signal_scheduler():
         "[SIGNAL_SCHEDULER] SIGNAL_EXPIRY_JOB_REGISTERED job_id=signal_expiry interval=5min"
     )
 
-    if bool(getattr(settings, "ORGANIC_DATASET_NIGHTLY_ENABLED", False)):
-        from app.jobs.nightly_dataset_builder import run_nightly_organic_dataset_build
-
-        time_str = str(getattr(settings, "ORGANIC_DATASET_NIGHTLY_TIME_UTC", "02:00"))
-        try:
-            hour, minute = map(int, time_str.split(":"))
-            if not (0 <= hour <= 23 and 0 <= minute <= 59):
-                raise ValueError("time out of range")
-        except (TypeError, ValueError):
-            print(
-                f"[ORGANIC_DATASET_NIGHTLY] WARNING: Invalid time={time_str}; "
-                "using 02:00 UTC"
-            )
-            hour, minute = 2, 0
-            time_str = "02:00"
-
-        scheduler.add_job(
-            run_nightly_organic_dataset_build,
-            trigger="cron",
-            hour=hour,
-            minute=minute,
-            id="organic_dataset_nightly",
-            replace_existing=True,
-            coalesce=True,
-            max_instances=1,
-            misfire_grace_time=3600,
-        )
-        print(
-            "[ORGANIC_DATASET_NIGHTLY] ORGANIC_DATASET_JOB_REGISTERED "
-            f"job_id=organic_dataset_nightly time={time_str} UTC"
-        )
-
-    try:
-        from scripts.ml.retrain_pipeline import retrain_entry_model_if_ready
-
-        scheduler.add_job(
-            retrain_entry_model_if_ready,
-            trigger="cron",
-            day=1,
-            hour=3,
-            minute=0,
-            id="ml_monthly_retrain",
-            replace_existing=True,
-            coalesce=True,
-            max_instances=1,
-            misfire_grace_time=3600,
-        )
-        print(
-            "[ML_MONTHLY_RETRAIN] ML_MONTHLY_RETRAIN_JOB_REGISTERED "
-            "job_id=ml_monthly_retrain time=day-1 03:00 UTC"
-        )
-    except Exception as exc:
-        print(
-            "[ML_MONTHLY_RETRAIN] WARNING: Could not register monthly retrain job; "
-            f"trading runner continues: {exc}"
-        )
+    # Historical V2 dataset/model jobs are not runtime scheduled.
 
     try:
         from scripts.validation.daily_paper_validation_monitor import (
@@ -2953,7 +2883,7 @@ async def health():
         "calendar_sync_running": bool(calendar_sync_worker.running),
         "event_ingestion_running": bool(getattr(event_ingestion_worker, "_running", False)),
         "adaptive_daily_risk_enabled": bool(settings.ADAPTIVE_DAILY_RISK_ENABLED),
-        "daily_hard_loss_fraction": settings.ADAPTIVE_DAILY_RISK_MAX_DAILY_LOSS_PCT,
+        "daily_hard_loss_fraction": min(0.025, settings.ADAPTIVE_DAILY_RISK_MAX_DAILY_LOSS_PCT),
     }
     return {
         "status": "ok",

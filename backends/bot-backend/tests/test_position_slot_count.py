@@ -148,5 +148,8 @@ def test_both_runner_slot_gates_use_the_economic_count():
     from app.runner import runner as runner_module
 
     source = Path(runner_module.__file__).read_text(encoding="utf-8")
-    assert source.count("len(self._economic_open_symbols())") >= 2
+    from app.trading_intelligence.integration import cati_dispatch
+    import inspect
+    assert "len(runner._economic_open_symbols())" in inspect.getsource(cati_dispatch)
+    assert ".process_trading_opportunity(" not in source
     assert "open_positions_count=sum(" not in source

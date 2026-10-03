@@ -100,6 +100,15 @@ class CryptoSignalEngine:
         self.max_active_signals = int(max_active_signals)
 
     def generate_crypto_signals(self, symbols: list[str] | tuple[str, ...] | None = None) -> dict[str, Any]:
+        # Legacy production scans are retired. Feature/geometry helpers below
+        # remain for historical reproducibility, never scheduled production alpha.
+        return {
+            "status": "BLOCKED", "reason": "CATI_ONLY_ENGINE_LEGACY_SIGNAL_GENERATOR_RETIRED",
+            "scanned_symbols": 0, "candidates_created": 0, "accepted": 0,
+            "rejected": 0, "signals_created": 0, "published": 0,
+            "skipped_active_limit": 0, "skipped_published_limit": 0, "errors": [],
+        }
+
         selected_symbols = tuple(symbol.upper() for symbol in (symbols or self.allowed_symbols))
         summary = {
             "scanned_symbols": 0,
@@ -363,6 +372,15 @@ class CryptoSignalEngine:
 
 
 def generate_crypto_signals(**kwargs: Any) -> dict[str, Any]:
+    # Do not instantiate a market-data client, write a scan run, or publish
+    # legacy signals even when called by an old API/scheduler integration.
+    return {
+        "status": "BLOCKED", "reason": "CATI_ONLY_ENGINE_LEGACY_SIGNAL_GENERATOR_RETIRED",
+        "scanned_symbols": 0, "candidates_created": 0, "accepted": 0,
+        "rejected": 0, "signals_created": 0, "published": 0,
+        "skipped_active_limit": 0, "skipped_published_limit": 0, "errors": [],
+    }
+
     scheduled_time_utc = kwargs.pop("scheduled_time_utc", None)
     scheduler_source = kwargs.pop("scheduler_source", None)
 

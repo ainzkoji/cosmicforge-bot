@@ -34,6 +34,7 @@ class QualityReason:
     """Entry-quality verdicts. Owned solely by TradingDecisionEngine."""
 
     APPROVED_FOR_EXECUTION: Final = "APPROVED_FOR_EXECUTION"
+    CATI_OBSERVE: Final = "CATI_OBSERVE"  # Analysis evidence; never an entry/fill.
 
     #: The strategy evaluated a new candle and found no directional candidate.
     #: Distinct from a confidence failure: there was nothing to be confident about.

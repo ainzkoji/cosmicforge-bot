@@ -25,16 +25,16 @@ class PhaseSpec:
 
 
 PHASES: Tuple[PhaseSpec, ...] = (
-    PhaseSpec("M0", "FREEZE V2", "ACTIVE", "NONE", True, ()),
-    PhaseSpec("M1", "SECTION 9 SHADOW", "ACTIVE", "NONE", True, ("v2_benchmark_tag", "section9_shadow_verified")),
-    PhaseSpec("M2", "SECTIONS 10-12 SHADOW", "ACTIVE", "NONE", True, ("sections_10_12_shadow_verified",)),
-    PhaseSpec("M3", "SECTIONS 13-17 SHADOW", "ACTIVE", "NONE", True, ("sections_13_17_shadow_verified",)),
-    PhaseSpec("M4", "SECTION 19 SHADOW", "ACTIVE", "ADVISORY", True, ("section19_shadow_verified",)),
-    PhaseSpec("M5", "REPLAY CERTIFICATION", "ACTIVE", "ADVISORY", True,
+    PhaseSpec("M0", "CATI OBSERVE / ENTRY BLOCKED", "NONE", "NONE", False, ()),
+    PhaseSpec("M1", "SECTION 9 SHADOW", "NONE", "NONE", False, ("v2_benchmark_tag", "section9_shadow_verified")),
+    PhaseSpec("M2", "SECTIONS 10-12 SHADOW", "NONE", "NONE", False, ("sections_10_12_shadow_verified",)),
+    PhaseSpec("M3", "SECTIONS 13-17 SHADOW", "NONE", "NONE", False, ("sections_13_17_shadow_verified",)),
+    PhaseSpec("M4", "SECTION 19 SHADOW", "NONE", "ADVISORY", False, ("section19_shadow_verified",)),
+    PhaseSpec("M5", "REPLAY CERTIFICATION", "NONE", "ADVISORY", False,
               ("certification_run_id", "policy_freeze_hash", "certification_policy_frozen")),
-    PhaseSpec("M6", "DEMO CATI ACTIVE", "BENCHMARK_ON_DEMO", "DEMO_SOLE_ALPHA", True,
+    PhaseSpec("M6", "DEMO CATI ACTIVE", "NONE", "DEMO_SOLE_ALPHA", False,
               ("certification_run_id", "policy_freeze_hash", "replay_gates_passed")),
-    PhaseSpec("M7", "LIMITED PRODUCTION", "BENCHMARK_ON_PROMOTED_SCOPES", "SCOPED_SOLE_ALPHA", True,
+    PhaseSpec("M7", "LIMITED PRODUCTION", "NONE", "SCOPED_SOLE_ALPHA", False,
               ("forward_demo_gate_passed", "operational_gate_passed", "promoted_scope_hash")),
     PhaseSpec("M8", "FULL PROMOTION", "NONE", "SOLE_ALPHA", False,
               ("production_evidence_passed", "rollback_release_tag")),
@@ -57,7 +57,7 @@ def next_phase(phase: str) -> Optional[str]:
 
 
 def rollback_targets(phase: str) -> Tuple[str, ...]:
-    """M1-M6: back to M0 (frozen V2 benchmark only). M7: to M6 or M0.
+    """M1-M6: back to M0 (CATI observe, all new entries blocked). M7: to M6 or M0.
     M8+: NONE -- rollback is the new-entry kill switch or a tagged release
     revert; CATI never silently falls back to V2."""
     i = phase_index(phase)

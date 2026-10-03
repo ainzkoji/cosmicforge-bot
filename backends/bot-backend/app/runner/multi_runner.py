@@ -402,7 +402,7 @@ class MultiBotRunner:
         # ── Phase 4 config visibility (logged once at startup) ───────────────
         try:
             from app.core.config import settings as _s
-            _tv_enabled = getattr(_s, "TRADINGVIEW_EXTERNAL_SIGNALS_ENABLED", False)
+            _tv_enabled = False  # CATI is the sole entry scheduler
             _tv_testnet = getattr(_s, "TRADINGVIEW_TESTNET_ONLY", True)
             _tv_max     = getattr(_s, "TRADINGVIEW_QUEUE_MAX_PER_CYCLE", 3)
             _tv_live    = getattr(_s, "TRADINGVIEW_ALLOW_PAPER_LIVE_MODE", False)
@@ -930,7 +930,7 @@ class MultiBotRunner:
                     try:
                         from app.queue.external_signal_processor import ExternalSignalProcessor
                         from app.core.config import settings as _ext_settings
-                        _ext_enabled = getattr(_ext_settings, "TRADINGVIEW_EXTERNAL_SIGNALS_ENABLED", False)
+                        _ext_enabled = False  # external signals are advisory; no second entry scheduler
 
                         if not _ext_enabled:
                             logger.debug("[ExtSig] bot=%s processor disabled — skipping", instance.id)

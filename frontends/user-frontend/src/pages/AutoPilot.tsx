@@ -206,7 +206,7 @@ export default function AutoPilot() {
                     Auto Pilot
                 </h1>
                 <p className="text-gray-400 max-w-2xl">
-                    Deploy our Master Ensemble strategy in one click. We automatically manage portfolio allocation, risk, and strategy selection based on your preference.
+                    Configure CATI, the sole trading engine. CATI observes markets while new entries remain blocked until governance permits demo or live execution. Auto Trading and Auto Capital Routing are independent controls.
                 </p>
             </div>
 

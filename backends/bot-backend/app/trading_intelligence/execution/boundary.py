@@ -261,7 +261,9 @@ class CATIExecutionBoundary:
 
         t1 = time.perf_counter()
         try:
-            entry = self.adapter.submit_entry(req)
+            from app.trading_intelligence.execution.entry_permit import boundary_entry_permit
+            with boundary_entry_permit(req):
+                entry = self.adapter.submit_entry(req)
         except ExecutionNotSupported as exc:
             entry = EntryResult(status=X.ERROR_PRE_SUBMIT.value, raw_status="EXECUTION_NOT_SUPPORTED",
                                 rejection_family=F.OTHER.value, reason_codes=("EXECUTION_NOT_SUPPORTED",),

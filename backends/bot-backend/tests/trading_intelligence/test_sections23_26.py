@@ -388,10 +388,10 @@ def test_authority_by_phase_scope_and_kill_switch(tmp_path):
     db = _store(tmp_path)
     auth, gov = GovernanceAuthority(db), PromotionGovernance(db)
     assert auth.authorize_entry(_Plan()) == (False, "GOVERNANCE_PHASE_M0_NO_CATI_AUTHORITY")
-    assert auth.v2_may_place_orders(environment="DEMO")
+    assert not auth.v2_may_place_orders(environment="DEMO")
     _advance(gov, "M6")
     assert auth.authorize_entry(_Plan("DEMO"))[0] and auth.authorize_entry(_Plan("REAL")) == (False, "M6_IS_DEMO_ONLY")
-    assert not auth.v2_may_place_orders(environment="DEMO") and auth.v2_may_place_orders(environment="REAL")
+    assert not auth.v2_may_place_orders(environment="DEMO") and not auth.v2_may_place_orders(environment="REAL")
     _advance_from(gov, "M6", "M7")
     assert auth.authorize_entry(_Plan("REAL")) == (False, "M7_SCOPE_NOT_PROMOTED")
     with pytest.raises(GovernanceError):

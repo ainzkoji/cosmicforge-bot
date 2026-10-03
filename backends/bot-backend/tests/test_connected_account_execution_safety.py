@@ -222,7 +222,7 @@ def test_an_unknown_account_environment_is_treated_as_real_capital(environment):
 def test_10_the_environment_comes_from_broker_account_resolution():
     from app.runner.bot_context import BotRunContext
 
-    source = Path("app/runner/multi_runner.py").read_text(encoding="utf-8")
+    source = (Path(__file__).resolve().parents[1] / "app/runner/multi_runner.py").read_text(encoding="utf-8")
     assert "resolve_broker_auth_for_bot(" in source
     assert "broker_environment=auth.environment.value" in source
 
@@ -356,7 +356,8 @@ def _live_executor(db, client):
     executor._max_notional_per_symbol = 100.0
     executor._allow_scale_in = False
     executor._allow_hedge_mode = False
-    return executor
+    from _cati_execution_fixture import approved_cati_executor
+    return approved_cati_executor(executor)
 
 
 def _connected_demo_adapter():

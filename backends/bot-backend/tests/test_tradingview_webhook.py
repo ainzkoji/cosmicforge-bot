@@ -229,7 +229,7 @@ def test_buy_sell_side_mapping_and_symbol_normalization(tmp_path, monkeypatch):
     assert sides["sell-map"] == "SHORT"
 
 
-def test_external_signal_candidate_buy_enqueues_pending_row_without_execution(tmp_path, monkeypatch):
+def test_legacy_candidate_buy_becomes_advisory_without_queue(tmp_path, monkeypatch):
     client, db, seeded = _make_client(tmp_path, monkeypatch)
     with db.connect() as conn:
         conn.execute(
@@ -244,27 +244,18 @@ def test_external_signal_candidate_buy_enqueues_pending_row_without_execution(tm
 
     body = res.json()
     assert body["status"] == "accepted"
-    assert body["mode"] == MODE_EXTERNAL_SIGNAL_CANDIDATE
+    assert body["mode"] == "ADVISORY_ONLY"
     assert body["execution_enabled"] is False
-    assert body["queue_id"]
-    queue = list_external_signal_queue(db)
+    assert body["queue_id"] is None
+    assert list_external_signal_queue(db) == []
     decisions = list_decisions(db)
-    assert len(queue) == 1
-    assert queue[0]["status"] == "PENDING"
-    assert queue[0]["source"] == "TRADINGVIEW"
-    assert queue[0]["symbol"] == "BTCUSDT"
-    assert queue[0]["action"] == "BUY"
-    assert queue[0]["side"] == "LONG"
-    assert queue[0]["claimed_at"] is None
-    assert queue[0]["processed_at"] is None
-    assert decisions[0]["final_status"] == "QUEUED_EXTERNAL_SIGNAL"
-    assert decisions[0]["execution_result"] == "NOT_APPLICABLE"
-    assert decisions[0]["queue_id"] == queue[0]["id"]
+    assert decisions[0]["execution_result"] is None
+    assert decisions[0]["queue_id"] is None
     with db.connect() as conn:
         assert conn.execute("SELECT COUNT(*) AS c FROM trade_fills").fetchone()["c"] == 0
 
 
-def test_external_signal_candidate_sell_enqueues_pending_row(tmp_path, monkeypatch):
+def test_legacy_candidate_sell_becomes_advisory_without_queue(tmp_path, monkeypatch):
     client, db, seeded = _make_client(tmp_path, monkeypatch)
     with db.connect() as conn:
         conn.execute(
@@ -277,12 +268,9 @@ def test_external_signal_candidate_sell_enqueues_pending_row(tmp_path, monkeypat
         json=_payload(seeded["token"], alert_id="candidate-sell", action="SELL", side="SHORT", symbol="BTC/USDT"),
     )
 
-    assert res.json()["queue_id"]
-    queue = list_external_signal_queue(db)
-    assert len(queue) == 1
-    assert queue[0]["status"] == "PENDING"
-    assert queue[0]["action"] == "SELL"
-    assert queue[0]["side"] == "SHORT"
+    assert res.json()["queue_id"] is None
+    assert res.json()["mode"] == "ADVISORY_ONLY"
+    assert list_external_signal_queue(db) == []
 
 
 def test_candidate_duplicate_does_not_create_duplicate_queue_rows(tmp_path, monkeypatch):
@@ -297,6 +285,6 @@ def test_candidate_duplicate_does_not_create_duplicate_queue_rows(tmp_path, monk
     first = client.post(f"/api/v1/tradingview/webhook/{seeded['token']}", json=payload)
     second = client.post(f"/api/v1/tradingview/webhook/{seeded['token']}", json=payload)
 
-    assert first.json()["queue_id"]
+    assert first.json()["queue_id"] is None
     assert second.json()["status"] == "duplicate"
-    assert len(list_external_signal_queue(db)) == 1
+    assert list_external_signal_queue(db) == []

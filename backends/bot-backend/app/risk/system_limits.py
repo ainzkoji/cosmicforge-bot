@@ -56,7 +56,7 @@ class SystemLimits:
     min_open_positions: int = 0
     
     # Daily / Weekly limits
-    max_daily_loss_pct: float = 0.10    # 10% allocated capital hard stop (increased from 5%)
+    max_daily_loss_pct: float = 0.025   # Permanent 2.5% daily hard-loss ceiling
     max_weekly_drawdown_pct: float = 0.15 # 15% allocated capital hard stop
     max_consecutive_losses: int = 8     # Stop after 8 consecutive losses
     max_trades_per_day: int = 200        # Emergency runaway economic-entry guard per bot
@@ -87,7 +87,7 @@ class UserConfigurableLimits:
     fixed_size_usdt: Optional[float] = None  # If using fixed size
     
     # Daily limits (will be clamped to system max)
-    max_daily_loss_pct: float = 0.05  # User wants 5% (system allows up to 10%)
+    max_daily_loss_pct: float = 0.025  # User may request a tighter daily limit
     max_trades_per_day: Optional[int] = None  # None = no normal Auto Pilot daily trade-count cap
     
     # Position limits (will be clamped)
@@ -150,13 +150,14 @@ class ConfigValidator:
             strict_circuit_breakers=user_config.strict_circuit_breakers
         )
         
-        # 1. Clamp daily loss
-        if user_config.max_daily_loss_pct > self.limits.max_daily_loss_pct:
+        # 1. Permanent ceiling also applies to injected/custom SystemLimits.
+        daily_ceiling = min(0.025, self.limits.max_daily_loss_pct)
+        if user_config.max_daily_loss_pct > daily_ceiling:
             warnings.append(
                 f"Daily loss limit clamped from {user_config.max_daily_loss_pct:.1%} "
-                f"to system maximum {self.limits.max_daily_loss_pct:.1%}"
+                f"to system maximum {daily_ceiling:.1%}"
             )
-            clamped.max_daily_loss_pct = self.limits.max_daily_loss_pct
+            clamped.max_daily_loss_pct = daily_ceiling
         else:
             clamped.max_daily_loss_pct = user_config.max_daily_loss_pct
         

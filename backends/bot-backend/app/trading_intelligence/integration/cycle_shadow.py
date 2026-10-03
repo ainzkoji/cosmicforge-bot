@@ -20,7 +20,7 @@ An epoch, not a single runner cycle, is the unit: a broker-universe bot may
 defer part of the universe past its per-cycle time budget, and ranking only
 the symbols that happened to be evaluated first would reintroduce exactly the
 first-come selection bias this layer exists to remove. Nothing here places an
-order, reserves a production slot or margin, or alters any V2 decision; every
+order, reserves a production slot or margin, or opens an entry; every
 public function is exception-proof (P9.14).
 """
 from __future__ import annotations
@@ -530,6 +530,16 @@ def record_symbol(runner: Any, snapshot: Any, symbol: str, *, venue: str, source
             require_venue_economics=True,  # the whole-universe path is the canonical, certifiable one
         )
         _get_coordinator().record_symbol_evaluation(info["key"], evaluation)
+        # Fresh CATI analysis and rejection telemetry is distinct from fills.
+        reasons = sorted({str(reason) for opportunity in evaluation.opportunities
+                          for reason in getattr(opportunity.veto, "reason_codes", ())})
+        logger.info("[CATI_OBSERVE] bot=%s symbol=%s kind=%s market_state=%s candidates=%d "
+                    "library=%s reasons=%s error=%s execution_attempted=False",
+                    bot, symbol, evaluation.kind,
+                    getattr(evaluation.market_state, "market_state_id", None),
+                    len(evaluation.opportunities), getattr(_get_controller(), "_library_unavailable_code", None),
+                    ",".join(reasons) or "-", evaluation.error)
+
     except Exception as exc:
         _error("cycle_shadow.record_symbol", exc, runner, symbol=str(symbol))
         try:

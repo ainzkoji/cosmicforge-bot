@@ -1,7 +1,7 @@
 """
 Auto Pilot API
 
-Handles deployment requests for the Auto Pilot (Master Ensemble) strategy.
+Handles deployment requests for the CATI Auto Trading strategy.
 """
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
 from pydantic import BaseModel, Field, validator, root_validator
@@ -35,7 +35,7 @@ class AutoPilotAllocation(BaseModel):
         return values
 
 class DeployAutoPilotRequest(BaseModel):
-    """Request to deploy the Auto Pilot (Master Ensemble) strategy."""
+    """Request to deploy the CATI Auto Trading strategy."""
     broker_account_ids: List[str] = Field(min_items=1)
     
     # Primary Fields (New Frontend)
@@ -74,7 +74,8 @@ class DeployAutoPilotRequest(BaseModel):
             if values.get("allocation_value"):
                 values["allocation"] = {
                     "total_capital_budget": values.get("capital_allocation", values["allocation_value"]),
-                    "trade_amount_per_position": values["allocation_value"]
+                    "trade_amount_per_position": values["allocation_value"],
+                    "allocation_type": values.get("allocation_type", "fixed_amount")
                 }
         
         return values
@@ -104,6 +105,7 @@ class AutoPilotStatus(BaseModel):
     total_equity: float
     unrealized_pnl: float
     instances: List[BotInstance]
+    engine: str = "CATI"
 
 # A-8: Minimum trade amount per position enforced at deployment time.
 _MIN_TRADE_AMOUNT = 50.0
@@ -129,7 +131,8 @@ def deploy_auto_pilot(
         raise HTTPException(status_code=422, detail="Allocation settings (capital/trade amount) are required.")
 
     # A-8: Enforce minimum trade amount per position (50 USDT).
-    if request.allocation.trade_amount_per_position < _MIN_TRADE_AMOUNT:
+    if (request.allocation.allocation_type == "fixed_amount"
+            and request.allocation.trade_amount_per_position < _MIN_TRADE_AMOUNT):
         logger.warning(
             "TRADE_AMOUNT_TOO_SMALL_MINIMUM_50_USDT: user=%s requested %.2f USDT per position",
             user.get("id"), request.allocation.trade_amount_per_position,
@@ -238,9 +241,9 @@ def get_auto_pilot_status(
     """Get aggregated status of all Auto Pilot instances."""
     from shared_lib.persistence.db import DB
     
-    # Filter for master_ensemble strategy
+    # Every runtime instance now uses CATI; stored strategy labels are historical.
     all_bots = service.get_user_bot_instances(user["id"])
-    ap_bots = [b for b in all_bots if b.strategy_id == "master_ensemble"]
+    ap_bots = all_bots
     
     active = sum(1 for b in ap_bots if b.status == "active")
     paused = sum(1 for b in ap_bots if b.status == "paused")
@@ -287,7 +290,7 @@ def pause_auto_pilot(
 ):
     """Pause all active Auto Pilot instances."""
     all_bots = service.get_user_bot_instances(user["id"])
-    ap_bots = [b for b in all_bots if b.strategy_id == "master_ensemble" and b.status == "active"]
+    ap_bots = [b for b in all_bots if b.status == "active"]
     
     paused = []
     for bot in ap_bots:
@@ -307,7 +310,7 @@ def resume_auto_pilot(
 ):
     """Resume all paused Auto Pilot instances."""
     all_bots = service.get_user_bot_instances(user["id"])
-    ap_bots = [b for b in all_bots if b.strategy_id == "master_ensemble" and b.status == "paused"]
+    ap_bots = [b for b in all_bots if b.status == "paused"]
     
     resumed = []
     for bot in ap_bots:

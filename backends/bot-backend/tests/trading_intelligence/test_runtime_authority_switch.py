@@ -56,18 +56,18 @@ def _v2_block(db, env="demo", acct="acctA"):
 
 
 # -- phases ------------------------------------------------------------------------------------------------
-def test_m0_blocks_cati_submission_and_keeps_v2_as_the_only_entry_authority(db, monkeypatch):
-    assert _owner(db).owner == V2 and _owner(db, "LIVE").owner == V2
+def test_m0_observes_cati_and_blocks_every_entry_authority(db, monkeypatch):
+    assert _owner(db).owner == NONE and _owner(db, "LIVE").owner == NONE
     decision, boundary = _dispatch(db, monkeypatch)
     assert decision["status"] == D.NOT_DISPATCHED and boundary.calls == []
-    assert decision["reason"] == "M0_V2_DEMO_AUTHORITY" and decision["authority"]["owner"] == V2
-    assert _v2_block(db) is None  # unchanged V2 behaviour below M6
+    assert decision["reason"] == "GOVERNANCE_PHASE_M0_NO_ORDER_AUTHORITY" and decision["authority"]["owner"] == NONE
+    assert _v2_block(db).status == "BLOCKED"
 
 
 def test_m5_certification_eligibility_still_grants_no_cati_submission(db, monkeypatch):
     _advance(PromotionGovernance(db), "M5")
     decision, boundary = _dispatch(db, monkeypatch)
-    assert decision["status"] == D.NOT_DISPATCHED and boundary.calls == [] and _owner(db).owner == V2
+    assert decision["status"] == D.NOT_DISPATCHED and boundary.calls == [] and _owner(db).owner == NONE
 
 
 def test_demo_authority_is_demo_only_and_v2_cannot_also_submit_there(db, monkeypatch):
@@ -78,15 +78,15 @@ def test_demo_authority_is_demo_only_and_v2_cannot_also_submit_there(db, monkeyp
     assert blocked.status == "BLOCKED" and "ORDER_AUTHORITY_NOT_V2" in blocked.error
     live, live_boundary = _dispatch(db, monkeypatch, env="live", acct="acctLive", plan_env="LIVE")
     assert live["status"] == D.NOT_DISPATCHED and live_boundary.calls == []  # live account blocked during M6
-    assert _owner(db, "LIVE", "acctLive").owner == V2  # one owner per scope: V2 keeps the unpromoted live scope
+    assert _owner(db, "LIVE", "acctLive").owner == NONE  # unpromoted live scope has no entry owner
 
 
 def test_production_authority_allows_only_eligible_live_scopes(db, monkeypatch):
     gov = PromotionGovernance(db)
     _advance(gov, "M7")
-    assert _owner(db, "LIVE").owner == V2  # an unpromoted live scope is not CATI's
+    assert _owner(db, "LIVE").owner == NONE  # unpromoted live scope is blocked
     gov.grant_scope(broker_account_id="acctA", venue="BINANCE_USDM", environment="REAL", reason="limited")
-    assert _owner(db, "LIVE").owner == CATI and _owner(db, "LIVE", "acctB").owner == V2
+    assert _owner(db, "LIVE").owner == CATI and _owner(db, "LIVE", "acctB").owner == NONE
     decision, boundary = _dispatch(db, monkeypatch, env="live", plan_env="LIVE")
     assert decision["status"] == D.DISPATCHED and _v2_block(db, "live") is not None
     _advance_to_m8(gov)
@@ -140,7 +140,7 @@ def test_restart_preserves_the_selected_authority_and_its_audit_lineage(tmp_path
     path = str(tmp_path / "gov.db")
     _advance(PromotionGovernance(SqliteResearchStore(path)), "M6")
     restarted = SqliteResearchStore(path)
-    assert _owner(restarted).owner == CATI and _owner(restarted, "LIVE").owner == V2
+    assert _owner(restarted).owner == CATI and _owner(restarted, "LIVE").owner == NONE
     hist = PromotionGovernance(restarted).history()
     assert [h["to_phase"] for h in hist] == ["M1", "M2", "M3", "M4", "M5", "M6"]
     assert all(h["payload"]["actor_ref"] and h["source_commit"] for h in hist)

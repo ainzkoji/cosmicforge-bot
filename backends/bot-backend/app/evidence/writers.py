@@ -112,27 +112,37 @@ def reap_abandoned_sessions(db: Any, *, exclude_session_id: str | None = None) -
     never happened. ABANDONED and STOPPED are different facts and are recorded
     as different facts.
 
-    A PID that has been reused by an unrelated process reads as alive, so such a
-    row is left RUNNING rather than being wrongly closed. This under-reports;
-    it never fabricates.
+    A creation timestamp later than the recorded session start proves PID
+    reuse. Unavailable process metadata remains conservative.
     """
     from app.ops.runtime_ownership import pid_is_alive
 
     reaped = 0
     with db.connect() as conn:
         rows = conn.execute(
-            "SELECT runtime_session_id, pid FROM runtime_sessions WHERE status='RUNNING'"
+            "SELECT runtime_session_id, pid, started_at FROM runtime_sessions WHERE status='RUNNING'"
         ).fetchall()
         for row in rows:
             session_id = row["runtime_session_id"]
             if exclude_session_id and session_id == exclude_session_id:
                 continue
+            reason = "PROCESS_GONE_NO_CLEAN_SHUTDOWN"
             if pid_is_alive(row["pid"]):
-                continue
+                try:
+                    import psutil
+                    from datetime import datetime, timezone
+                    started = datetime.fromisoformat(row["started_at"].replace("Z", "+00:00"))
+                    if started.tzinfo is None:
+                        started = started.replace(tzinfo=timezone.utc)
+                    if psutil.Process(int(row["pid"])).create_time() <= started.timestamp() + 2.0:
+                        continue
+                    reason = "PID_REUSED_NO_CLEAN_SHUTDOWN"
+                except (ValueError, TypeError, psutil.Error):
+                    continue
             conn.execute(
                 "UPDATE runtime_sessions SET status='ABANDONED', shutdown_reason=? "
                 "WHERE runtime_session_id=? AND status='RUNNING'",
-                ("PROCESS_GONE_NO_CLEAN_SHUTDOWN", session_id),
+                (reason, session_id),
             )
             reaped += 1
     if reaped:

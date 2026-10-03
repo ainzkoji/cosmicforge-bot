@@ -292,9 +292,11 @@ def test_the_runner_publishes_evidence_for_the_recorder():
     # The NO_NEW_CANDLE branch returns before the orchestrator runs, so it
     # publishes the snapshot it does have.
     assert '_bucket.setdefault(symbol, {})["snapshot"] = market_snapshot' in orchestrated
-    assert 'last_opportunity' in orchestrated
-    assert 'last_entry_quality' in orchestrated
-    assert '"snapshot": market_snapshot' in orchestrated
+    # CATI owns opportunities; the retired scalar strategy no longer publishes them.
+    evaluated = inspect.getsource(PaperRunner._step_symbol_evaluate)
+    assert '_cycle_shadow.record_symbol' in evaluated
+    assert 'CATI_OBSERVE' in orchestrated
+    assert 'authority.to_dict()' in orchestrated
 
 
 # ── Provenance is derived from mode + environment ───────────────────────────

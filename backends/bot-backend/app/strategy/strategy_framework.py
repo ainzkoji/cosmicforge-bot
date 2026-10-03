@@ -541,19 +541,18 @@ class StrategyRegistry:
     @classmethod
     def get(cls, strategy_id: str) -> Optional[BaseStrategy]:
         """Get a strategy by ID."""
-        return cls._strategies.get(strategy_id)
+        return None  # Historical registry is runtime-inert.
     
     @classmethod
     def list_by_family(cls, family: StrategyFamily) -> List[BaseStrategy]:
         """List all strategies in a family."""
-        return [s for s in cls._strategies.values() if s.family == family]
+        return []
     
     @classmethod
     def list_all(cls) -> List[BaseStrategy]:
         """List all registered strategies."""
-        return list(cls._strategies.values())
+        return []
 
 
-# Auto-register available strategies
-StrategyRegistry.register(MovingAverageCross())
-StrategyRegistry.register(BollingerReversion())
+# Historical implementations remain importable for reproducibility only.
+# Runtime does not instantiate or publish these strategies.

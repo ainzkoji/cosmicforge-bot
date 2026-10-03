@@ -1,0 +1,138 @@
+{
+  "observed_at_utc": "2026-10-03T08:30:29.566390+00:00",
+  "status": "ACQUISITION_RESUMED_PROVIDER_503_OBSERVED",
+  "initial_remaining_periods": 3103,
+  "remaining_periods": 3103,
+  "progressing": false,
+  "remaining_pairs": {
+    "GBPAUD": {
+      "done": 650,
+      "remaining": 2
+    },
+    "GBPCAD": {
+      "done": 651,
+      "remaining": 1
+    },
+    "GBPCHF": {
+      "done": 651,
+      "remaining": 1
+    },
+    "GBPJPY": {
+      "done": 161,
+      "remaining": 491
+    },
+    "GBPNZD": {
+      "done": 0,
+      "remaining": 652
+    },
+    "NZDCAD": {
+      "done": 0,
+      "remaining": 652
+    },
+    "NZDCHF": {
+      "done": 0,
+      "remaining": 652
+    },
+    "NZDJPY": {
+      "done": 0,
+      "remaining": 652
+    }
+  },
+  "single_logical_writer_count": 1,
+  "writer_process_tree": {
+    "supervisor_pid": 12076,
+    "venv_launcher_pid": 29932,
+    "python_worker_pid": 35696,
+    "completion_pid": 19436
+  },
+  "processes": [
+    {
+      "ProcessId": 12076,
+      "ParentProcessId": 15892,
+      "Name": "powershell.exe",
+      "CreationDate": "2026-10-03T10:27:29.386324+02:00",
+      "CommandLine": "\"C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe\" -NoProfile -ExecutionPolicy Bypass -File C:\\Projects\\cosmicforge-bot\\scripts\\fx_minute_supervisor.ps1"
+    },
+    {
+      "ProcessId": 19436,
+      "ParentProcessId": 15892,
+      "Name": "powershell.exe",
+      "CreationDate": "2026-10-03T10:27:29.411386+02:00",
+      "CommandLine": "\"C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe\" -NoProfile -ExecutionPolicy Bypass -File C:\\Projects\\cosmicforge-bot\\scripts\\fx_completion.ps1"
+    },
+    {
+      "ProcessId": 29932,
+      "ParentProcessId": 12076,
+      "Name": "python.exe",
+      "CreationDate": "2026-10-03T10:27:30.527484+02:00",
+      "CommandLine": "\"C:\\Projects\\cosmicforge-bot\\backends\\venv\\Scripts\\python.exe\" scripts\\acquire_fx_reference_dataset.py --db data\\research\\fx_reference_dukascopy.db --pace 2.5 minute --manifest docs\\research\\cati_fx_universe_dukascopy_v1.json"
+    },
+    {
+      "ProcessId": 35696,
+      "ParentProcessId": 29932,
+      "Name": "python.exe",
+      "CreationDate": "2026-10-03T10:27:30.536348+02:00",
+      "CommandLine": "\"C:\\Program Files\\Python312\\python.exe\" scripts\\acquire_fx_reference_dataset.py --db data\\research\\fx_reference_dukascopy.db --pace 2.5 minute --manifest docs\\research\\cati_fx_universe_dukascopy_v1.json"
+    }
+  ],
+  "inspection_before_start": {
+    "supervisors": 0,
+    "acquisition_workers": 0,
+    "completion_processes": 0,
+    "journal_mode": "wal",
+    "dedicated_fx_lease_tables": [],
+    "fx_lock_files_found": [],
+    "prior_stop": "PROVIDER_UNAVAILABLE:6 consecutive provider failures",
+    "prior_backoff_seconds": 600
+  },
+  "latest_successful_ingest_rows": [
+    [
+      "GBPJPY",
+      "2025-02-04",
+      "BID",
+      "FETCHED",
+      1437,
+      "point=1000;scale=VERIFIED;ref=TRIANGULAR_USD_LEGS_1h",
+      1791008958081
+    ],
+    [
+      "GBPJPY",
+      "2025-02-04",
+      "ASK",
+      "FETCHED",
+      1437,
+      "point=1000;scale=VERIFIED;ref=TRIANGULAR_USD_LEGS_1h",
+      1791008958081
+    ]
+  ],
+  "provider_diagnostic": {
+    "read_only": true,
+    "db_writes": 0,
+    "url": "https://datafeed.dukascopy.com/datafeed/GBPAUD/2026/04/19/BID_candles_min_1.bi5",
+    "http_status": 503,
+    "response_bytes": 107,
+    "retry_after": null,
+    "elapsed_seconds": 0.4
+  },
+  "derivation": "WAITING_ACQUISITION",
+  "qa": "WAITING_ACQUISITION",
+  "gap_classification": "WAITING_ACQUISITION; strict UNKNOWN_GAP preserved",
+  "frozen": false,
+  "pipeline": "existing fx_minute_supervisor.ps1 + existing fx_completion.ps1; finalization unchanged",
+  "tests": {
+    "command": "python -m pytest backends/bot-backend/tests/trading_intelligence/test_fx_finalization.py -q",
+    "passed": 1,
+    "failed": 0
+  },
+  "credentials_printed": false,
+  "holdout_queries": 0,
+  "subsequent_observation": {
+    "observed_at_utc": "2026-10-03T08:59:35Z",
+    "remaining_periods": 2903,
+    "initial_remaining_periods": 3103,
+    "progressing": true,
+    "single_logical_writer_count": 1,
+    "status": "PROVIDER_RECOVERED_ACQUISITION_PROGRESSING",
+    "completion": "existing derive/QA/strict classification/freeze watcher waiting"
+  }
+}

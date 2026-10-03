@@ -610,8 +610,6 @@ def test_every_background_job_sits_behind_the_ownership_gate():
     body = source[registration:]
     for job_id in (
         "signal_expiry",
-        "organic_dataset_nightly",
-        "ml_monthly_retrain",
         "daily_paper_validation_monitor",
     ):
         assert f'id="{job_id}"' in body, f"{job_id} must be registered behind the gate"
@@ -984,3 +982,16 @@ def test_a_successful_stop_leaves_no_request_behind():
     after = text[ok : ok + 400]
     assert "Remove-Item $StopFile" in after
     assert "Remove-Item $StoppedMarker" in after
+
+
+def test_reused_pid_is_reaped_without_inventing_stop_time(db, monkeypatch):
+    import psutil
+    from app.evidence.writers import reap_abandoned_sessions
+    _insert_session(db, "rts_reused", os.getpid())
+    monkeypatch.setattr(psutil.Process, "create_time", lambda self: datetime.now(timezone.utc).timestamp() + 60)
+    assert reap_abandoned_sessions(db) == 1
+    with db.connect() as conn:
+        row = conn.execute("SELECT status, shutdown_reason, stopped_at FROM runtime_sessions WHERE runtime_session_id='rts_reused'").fetchone()
+    assert row["status"] == "ABANDONED"
+    assert row["shutdown_reason"] == "PID_REUSED_NO_CLEAN_SHUTDOWN"
+    assert row["stopped_at"] is None

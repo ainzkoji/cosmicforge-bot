@@ -5,7 +5,7 @@ Proxies Auto Pilot deployment requests from frontend to bot-backend service.
 Enforces strict "Auto Pilot Only" contract.
 """
 from fastapi import APIRouter, Depends, Request, HTTPException
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field, validator, root_validator
 from typing import List, Optional
 from typing_extensions import Literal
 
@@ -17,14 +17,26 @@ router = APIRouter()
 class AllocationParams(BaseModel):
     """Allocation parameters for Auto Pilot."""
     total_capital_budget: float = Field(gt=0, description="Total USDT budget for this deployment")
-    trade_amount_per_position: float = Field(gt=0, description="USDT amount per trade")
+    trade_amount_per_position: float = Field(gt=0, description="Amount or percentage per trade")
+    allocation_type: Literal["fixed_amount", "percent_balance"] = "fixed_amount"
+
+    @root_validator(skip_on_failure=True)
+    def validate_budget(cls, values):
+        amount = values.get("trade_amount_per_position")
+        total = values.get("total_capital_budget")
+        if values.get("allocation_type") == "percent_balance":
+            if amount is not None and amount > 100:
+                raise ValueError("Position allocation percentage cannot exceed 100")
+        elif amount is not None and total is not None and amount > total:
+            raise ValueError("Position amount cannot exceed total capital budget")
+        return values
 
     class Config:
         extra = "forbid"
 
 class DeployAutoPilotRequest(BaseModel):
     """
-    Request to deploy the Auto Pilot (Master Ensemble) strategy.
+    Request to deploy the CATI Auto Trading strategy.
     Strictly enforces Auto Pilot parameters.
     """
     broker_account_ids: List[str] = Field(min_items=1)
@@ -80,15 +92,14 @@ async def deploy_auto_pilot(
 
     # Transform to backend contract
     backend_payload = {
-        "risk_level": risk_map[body.risk_mode],
-        "allocation_type": "fixed_amount", # Enforced backend type
-        "allocation_value": body.allocation.trade_amount_per_position,
-        "capital_allocation": body.allocation.total_capital_budget,
-        "capital_allocation_type": "fixed_amount",
+        "risk_mode": body.risk_mode,
+        "allocation": body.allocation.dict(),
         "broker_account_ids": body.broker_account_ids,
-        "mode": body.execution_mode,
-        "market_type": getattr(body, "market_type", "crypto"),
-        "forex_config": getattr(body, "forex_config", None)
+        "execution_mode": body.execution_mode,
+        "market_type": body.market_type,
+        "forex_config": body.forex_config,
+        "symbol_universe_mode": body.symbol_universe_mode,
+        "symbols": body.symbols,
     }
     
     return await proxy_request(

@@ -61,7 +61,8 @@ def _make_live_executor(db: DB, client: MagicMock, bot_id: str = "bot-never-agai
     executor._max_notional_per_symbol = 100.0
     executor._allow_scale_in = False
     executor._allow_hedge_mode = False
-    return executor
+    from _cati_execution_fixture import approved_cati_executor
+    return approved_cati_executor(executor)
 
 
 def _make_entry_order(order_id: str = "ENTRY-1", avg_fill_price: float = 50_000.0):

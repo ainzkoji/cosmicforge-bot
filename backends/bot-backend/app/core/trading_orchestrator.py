@@ -82,31 +82,13 @@ class TradingOrchestrator:
         self.risk_policy = RiskPolicy.resolve(self.validated_config.risk_level)
         logger.info(f"Resolved Risk Policy: {self.risk_policy.config.label} (Max Risk: {self.risk_policy.config.max_compound_risk_pct:.1%})")
         
-        # Get strategy (Hybrid Approach: Registry OR Injected Instance)
-        self.strategy = None
-        
-        # 1. Try injected instance (System 1 Legacy Compatibility)
-        # 1. Try injected instance (System 1 Legacy Compatibility OR System 2 Direct Injection)
-        if kwargs.get("strategy_instance"):
-            inst = kwargs.get("strategy_instance")
-            if isinstance(inst, BaseStrategy):
-                 logger.info(f"Using injected System 2 strategy: {inst.name}")
-                 self.strategy = inst
-            else:
-                 logger.info(f"Adapting legacy strategy instance: {type(inst).__name__}")
-                 self.strategy = LegacyStrategyAdapter(inst)
-            
-        # 2. Try System 2 Registry
-        if not self.strategy:
-            self.strategy = StrategyRegistry.get(strategy_id)
-            
-        # 3. Fail if neither found
-        if not self.strategy:
-            # Fallback: Check System 1 Registry lazily? 
-            # If we are here, it means we didn't inject an instance AND it's not in System 2 registry.
-            # We can't auto-instantiate System 1 strategies here because they need 'client'.
-            raise ValueError(f"Strategy {strategy_id} not found in registry and no instance provided")
-        
+        # Runtime dependency injection accepts only CATI metadata. Historical
+        # strategy objects cannot regain signal authority through this container.
+        from app.trading_intelligence.integration.runtime_binding import CatiRuntimeBinding
+        injected = kwargs.get("strategy_instance")
+        self.strategy_id = "cati"
+        self.strategy = injected if isinstance(injected, CatiRuntimeBinding) else CatiRuntimeBinding()
+
         # Initialize safety components
         self._init_safety_stack()
         
@@ -255,152 +237,12 @@ class TradingOrchestrator:
         client,
         **kwargs
     ) -> Dict[str, Any]:
-        """
-        Process a potential trading opportunity through the complete system.
-        
-        Returns:
-            Dictionary with trade decision and details
-        """
-        result = {
-            "symbol": symbol,
-            "decision": "no_action",
-            "reason": "",
-            "details": {
-                "observability": {
-                    "bot_instance_id": kwargs.get("bot_instance_id"),
-                    "user_id": kwargs.get("user_id"),
-                    "broker_account_id": kwargs.get("broker_account_id"),
-                    "market_type": kwargs.get("market_type", "UNKNOWN"),
-                    "mode": kwargs.get("execution_mode", "paper"),
-                    "symbol": symbol,
-                    "timeframe": kwargs.get("timeframe"),
-                    "strategy_id": self.strategy_id,
-                    "run_id": kwargs.get("run_id"),
-                    "cycle_id": kwargs.get("cycle_id"),
-                    "trace_id": kwargs.get("trace_id"),
-                    "signal_source": "internal_strategy",
-                    "session_status": None,
-                    "risk_evaluated": False,
-                    "risk_allowed": None,
-                    "sizing_evaluated": False,
-                    "execution_attempted": False,
-                    "fill_recorded": False,
-                }
-            }
+        """Retired scalar entry interface; CATI TradePlans use process_trade_plan."""
+        return {
+            "symbol": symbol, "decision": "blocked",
+            "reason": "LEGACY_SCALAR_ENTRY_PATH_REMOVED",
+            "details": {"authority_owner": "NONE", "execution_attempted": False},
         }
-        
-        blocked = self._pre_signal_gates(symbol, result, kwargs)
-        if blocked is not None:
-            return blocked
-
-        # Step 2: Get strategy signal
-        try:
-            strategy_output: StrategyOutput = self.strategy.analyze(
-                symbol=symbol,
-                klines=klines,
-                current_price=current_price,
-                **kwargs
-            )
-            # Store regime for dynamic safety (circuit breakers, etc)
-            if strategy_output.meta and "regime" in strategy_output.meta:
-                self._current_regimes[symbol] = strategy_output.meta["regime"]
-        except Exception as e:
-            result["decision"] = "error"
-            result["reason"] = f"Strategy analysis failed: {str(e)}"
-            logger.error(f"Strategy {self.strategy_id} failed for {symbol}: {e}")
-            self.record_decision(
-                symbol=symbol,
-                run_id=kwargs.get("run_id"),
-                strategy_signal_json="{}",
-                risk_gate_decision_json=json.dumps({
-                    **result["details"]["observability"],
-                    "reason_code": "STRATEGY_ERROR",
-                    "reason_detail": result["reason"],
-                }),
-                sizing_decision_json=json.dumps({"sizing_evaluated": False}),
-                protection_decision_json="{}",
-                final_action="error",
-            )
-            return result
-        
-        # Validate strategy output
-        if not self.strategy.validate_output(strategy_output):
-            result["decision"] = "error"
-            result["reason"] = "Strategy output validation failed"
-            self.record_decision(
-                symbol=symbol,
-                run_id=kwargs.get("run_id"),
-                strategy_signal_json="{}",
-                risk_gate_decision_json=json.dumps({
-                    **result["details"]["observability"],
-                    "reason_code": "INVALID_STRATEGY_OUTPUT",
-                    "reason_detail": result["reason"],
-                }),
-                sizing_decision_json=json.dumps({"sizing_evaluated": False}),
-                protection_decision_json="{}",
-                final_action="error",
-            )
-            return result
-        
-        result["details"]["strategy_output"] = {
-            "signal": strategy_output.signal.value,
-            "confidence": strategy_output.confidence,
-            "suggested_stop": strategy_output.suggested_stop_distance,
-            "riskiness": strategy_output.riskiness,
-            "reason": strategy_output.reason,
-            "meta": strategy_output.meta
-        }
-        session_status = (strategy_output.meta or {}).get("session_reason_code")
-        result["details"]["observability"].update({
-            "session_status": session_status,
-            "signal": strategy_output.signal.value,
-            "confidence": strategy_output.confidence,
-            "effective_threshold": (strategy_output.meta or {}).get("effective_threshold"),
-            "risk_evaluated": strategy_output.signal != Signal.HOLD,
-        })
-        
-        # If HOLD signal, nothing to do
-        if strategy_output.signal == Signal.HOLD:
-            result["decision"] = "hold"
-            result["reason"] = strategy_output.reason or "Strategy says HOLD"
-            
-            # ✅ LOG HOLD REASON (Debugging "No Trades")
-            logger.info(
-                f"Strategy {self.strategy_id} HOLD for {symbol}. "
-                f"Confidence={strategy_output.confidence:.4f}, "
-                f"Reason={result['reason']}"
-            )
-            
-            self.record_decision(
-                symbol=symbol,
-                run_id=kwargs.get("run_id"),
-                strategy_signal_json=json.dumps(result["details"].get("strategy_output", {})),
-                risk_gate_decision_json=json.dumps({
-                    "risk_evaluated": False,
-                    "risk_allowed": None,
-                    "reason_code": strategy_output.reason or "STRATEGY_HOLD",
-                    "reason_detail": "strategy_hold_before_risk",
-                    **result["details"]["observability"],
-                }),
-                sizing_decision_json=json.dumps({"sizing_evaluated": False}),
-                protection_decision_json="{}",
-                final_action="hold"
-            )
-            return result
-        
-        return self._evaluate_hard_risk(
-            symbol=symbol,
-            klines=klines,
-            current_price=current_price,
-            current_equity=current_equity,
-            margin_used=margin_used,
-            margin_available=margin_available,
-            open_positions=open_positions,
-            client=client,
-            strategy_output=strategy_output,
-            result=result,
-            kwargs=kwargs,
-        )
 
     def process_trade_plan(
         self,

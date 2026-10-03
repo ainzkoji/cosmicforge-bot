@@ -54,6 +54,15 @@ def create_backtest(
     """
     Queue a new backtest run.
     """
+    # The product no longer queues a legacy strategy under CATI branding.
+    # Historical run read/export routes remain available. New CATI simulation
+    # requires an eligible, exactly identified artifact and a causal replay path.
+    raise HTTPException(status_code=409, detail={
+        "reason": "CATI_BACKTEST_ARTIFACT_REQUIRED",
+        "engine": "CATI",
+        "message": "New simulations require an eligible pinned CATI artifact and supported replay integration.",
+    })
+
     run_id = f"run_{uuid.uuid4().hex[:12]}"
     job_id = f"job_{uuid.uuid4().hex[:12]}"
     now = utc_now_iso()

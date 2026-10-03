@@ -1,0 +1,330 @@
+{
+  "observed_at_utc": "2026-10-03T08:59:35.512883+00:00",
+  "code_revision": "b8724a54aea91c4ac429cf9d95fc8534751f7378",
+  "working_tree_clean": false,
+  "runtime_components": {
+    "runtime_owns_lease": true,
+    "signal_scheduler_running": true,
+    "signal_scheduler_jobs": 2,
+    "calendar_sync_running": true,
+    "event_ingestion_running": true,
+    "adaptive_daily_risk_enabled": true,
+    "daily_hard_loss_fraction": 0.025
+  },
+  "running_sessions": [
+    {
+      "runtime_session_id": "rts_94e620cf60ac4433a6ef",
+      "pid": 36540,
+      "started_at": "2026-10-03T08:52:59.438530+00:00",
+      "code_revision": "b8724a54aea91c4ac429cf9d95fc8534751f7378",
+      "working_tree_dirty": 1,
+      "status": "RUNNING"
+    }
+  ],
+  "latest_cycles": [
+    {
+      "started_at": "2026-10-03T08:59:22.708950+00:00",
+      "completed_at": "2026-10-03T08:59:28.031396+00:00",
+      "symbols_seen": 100,
+      "symbols_managed": 0,
+      "new_candle_evaluations": 0,
+      "execution_attempt_count": 0,
+      "fill_count": 0,
+      "error_count": 0,
+      "reason_counts_json": "{\"NO_NEW_CANDLE\": 100}"
+    },
+    {
+      "started_at": "2026-10-03T08:59:12.641360+00:00",
+      "completed_at": "2026-10-03T08:59:17.995165+00:00",
+      "symbols_seen": 100,
+      "symbols_managed": 0,
+      "new_candle_evaluations": 0,
+      "execution_attempt_count": 0,
+      "fill_count": 0,
+      "error_count": 0,
+      "reason_counts_json": "{\"NO_NEW_CANDLE\": 100}"
+    },
+    {
+      "started_at": "2026-10-03T08:59:01.421068+00:00",
+      "completed_at": "2026-10-03T08:59:10.505825+00:00",
+      "symbols_seen": 100,
+      "symbols_managed": 0,
+      "new_candle_evaluations": 0,
+      "execution_attempt_count": 0,
+      "fill_count": 0,
+      "error_count": 0,
+      "reason_counts_json": "{\"NO_NEW_CANDLE\": 100}"
+    }
+  ],
+  "latest_snapshot": {
+    "fetched_at": "2026-10-03T08:55:48.670492+00:00",
+    "closed_candle_close_time": 1791017099999,
+    "higher_timeframe_aligned": 1,
+    "source_environment": null
+  },
+  "broker_connections": [
+    {
+      "broker_id": "binance",
+      "environment": "demo",
+      "status": "connected"
+    }
+  ],
+  "global_market_state_rows": 0,
+  "process_tree": [
+    {
+      "pid": 12076,
+      "ppid": 15892,
+      "name": "powershell.exe",
+      "create_time": 1791016049.386325,
+      "role": "FX_SUPERVISOR"
+    },
+    {
+      "pid": 19436,
+      "ppid": 15892,
+      "name": "powershell.exe",
+      "create_time": 1791016049.4113867,
+      "role": "FX_COMPLETION"
+    },
+    {
+      "pid": 25784,
+      "ppid": 12568,
+      "name": "python.exe",
+      "create_time": 1791017569.3685582,
+      "role": "RUNTIME"
+    },
+    {
+      "pid": 29932,
+      "ppid": 12076,
+      "name": "python.exe",
+      "create_time": 1791016050.527485,
+      "role": "FX_WRITER"
+    },
+    {
+      "pid": 35696,
+      "ppid": 29932,
+      "name": "python.exe",
+      "create_time": 1791016050.5363483,
+      "role": "FX_WRITER"
+    },
+    {
+      "pid": 36540,
+      "ppid": 25784,
+      "name": "python.exe",
+      "create_time": 1791017569.3782237,
+      "role": "RUNTIME"
+    }
+  ],
+  "fx_logical_writer_count": 1,
+  "fx_acquisition_plan": {
+    "pairs": 50,
+    "market_days": 652,
+    "per_pair": {
+      "AUDCAD": {
+        "done": 652,
+        "remaining": 0
+      },
+      "AUDCHF": {
+        "done": 652,
+        "remaining": 0
+      },
+      "AUDJPY": {
+        "done": 652,
+        "remaining": 0
+      },
+      "AUDNZD": {
+        "done": 652,
+        "remaining": 0
+      },
+      "AUDUSD": {
+        "done": 652,
+        "remaining": 0
+      },
+      "CADCHF": {
+        "done": 652,
+        "remaining": 0
+      },
+      "CADJPY": {
+        "done": 652,
+        "remaining": 0
+      },
+      "CHFJPY": {
+        "done": 652,
+        "remaining": 0
+      },
+      "EURAUD": {
+        "done": 652,
+        "remaining": 0
+      },
+      "EURCAD": {
+        "done": 652,
+        "remaining": 0
+      },
+      "EURCHF": {
+        "done": 652,
+        "remaining": 0
+      },
+      "EURCNH": {
+        "done": 652,
+        "remaining": 0
+      },
+      "EURDKK": {
+        "done": 652,
+        "remaining": 0
+      },
+      "EURGBP": {
+        "done": 652,
+        "remaining": 0
+      },
+      "EURHKD": {
+        "done": 652,
+        "remaining": 0
+      },
+      "EURILS": {
+        "done": 652,
+        "remaining": 0
+      },
+      "EURJPY": {
+        "done": 652,
+        "remaining": 0
+      },
+      "EURMXN": {
+        "done": 652,
+        "remaining": 0
+      },
+      "EURNOK": {
+        "done": 652,
+        "remaining": 0
+      },
+      "EURNZD": {
+        "done": 652,
+        "remaining": 0
+      },
+      "EURPLN": {
+        "done": 652,
+        "remaining": 0
+      },
+      "EURSEK": {
+        "done": 652,
+        "remaining": 0
+      },
+      "EURSGD": {
+        "done": 652,
+        "remaining": 0
+      },
+      "EURTRY": {
+        "done": 652,
+        "remaining": 0
+      },
+      "EURUSD": {
+        "done": 652,
+        "remaining": 0
+      },
+      "EURZAR": {
+        "done": 652,
+        "remaining": 0
+      },
+      "GBPAUD": {
+        "done": 652,
+        "remaining": 0
+      },
+      "GBPCAD": {
+        "done": 652,
+        "remaining": 0
+      },
+      "GBPCHF": {
+        "done": 652,
+        "remaining": 0
+      },
+      "GBPJPY": {
+        "done": 357,
+        "remaining": 295
+      },
+      "GBPNZD": {
+        "done": 0,
+        "remaining": 652
+      },
+      "GBPUSD": {
+        "done": 652,
+        "remaining": 0
+      },
+      "NZDCAD": {
+        "done": 0,
+        "remaining": 652
+      },
+      "NZDCHF": {
+        "done": 0,
+        "remaining": 652
+      },
+      "NZDJPY": {
+        "done": 0,
+        "remaining": 652
+      },
+      "NZDUSD": {
+        "done": 652,
+        "remaining": 0
+      },
+      "USDCAD": {
+        "done": 652,
+        "remaining": 0
+      },
+      "USDCHF": {
+        "done": 652,
+        "remaining": 0
+      },
+      "USDCNH": {
+        "done": 652,
+        "remaining": 0
+      },
+      "USDDKK": {
+        "done": 652,
+        "remaining": 0
+      },
+      "USDHKD": {
+        "done": 652,
+        "remaining": 0
+      },
+      "USDILS": {
+        "done": 652,
+        "remaining": 0
+      },
+      "USDJPY": {
+        "done": 652,
+        "remaining": 0
+      },
+      "USDMXN": {
+        "done": 652,
+        "remaining": 0
+      },
+      "USDNOK": {
+        "done": 652,
+        "remaining": 0
+      },
+      "USDPLN": {
+        "done": 652,
+        "remaining": 0
+      },
+      "USDSEK": {
+        "done": 652,
+        "remaining": 0
+      },
+      "USDSGD": {
+        "done": 652,
+        "remaining": 0
+      },
+      "USDTRY": {
+        "done": 652,
+        "remaining": 0
+      },
+      "USDZAR": {
+        "done": 652,
+        "remaining": 0
+      }
+    },
+    "remaining_periods": 2903,
+    "remaining_requests_estimate": 5806
+  },
+  "cati_runtime_log_evidence": [
+    "2026-10-03 10:53:12,637 INFO app.trading_intelligence.integration.cycle_shadow [CATI_LIBRARY] loaded=False library_hash=None scope=None reason=OUTCOME_LIBRARY_NOT_CONFIGURED"
+  ],
+  "holdout_queries_by_this_capture": 0
+}

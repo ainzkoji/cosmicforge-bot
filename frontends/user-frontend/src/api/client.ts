@@ -1792,6 +1792,17 @@ export const api = {
 
 
 
+    getBotEngineStatus: async (instanceId: string): Promise<{
+        engine: string; cati_runtime_active: boolean; cati_entry_authority: string;
+        phase: string | null; observe_mode: boolean; reason: string;
+    }> => {
+        const res = await fetch(`${API_BASE}/api/bot-instances/${instanceId}/engine-status`, {
+            headers: { 'Authorization': `Bearer ${localStorage.getItem('access_token')}` }
+        });
+        if (!res.ok) throw new Error("CATI status unavailable");
+        return res.json();
+    },
+
     // --- Bot Instances ---
     getBotInstances: async (): Promise<BotInstance[]> => {
         const response = await fetch(`${API_BASE}/api/v1/bot-instances`, {
