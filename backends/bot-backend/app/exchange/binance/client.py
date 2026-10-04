@@ -36,6 +36,9 @@ class BinanceFuturesClient:
         self.base_url = base_url.rstrip("/")
         from shared_lib.core.production import require_production_endpoint
         require_production_endpoint("binance", self.base_url)
+        from shared_lib.core.production import production_enabled, endpoint_environment
+        if production_enabled() and not getattr(self, "broker_environment", None):
+            self.broker_environment = endpoint_environment("binance", self.base_url)
         self.recv_window = recv_window
 
         # Use session for connection pooling
@@ -71,11 +74,15 @@ class BinanceFuturesClient:
     def _request(
         self, method: str, path: str, params=None, headers=None, max_retries: int = 6
     ):
-        require_broker_mutation_permission(method, path)
+        require_broker_mutation_permission(method, path, environment=getattr(self, "broker_environment", None),
+                                           broker="binance", base_url=self.base_url, client=self, payload=params)
         url = f"{self.base_url}{path}"
         params = dict(params or {})
         headers = dict(headers or {})
 
+        mutation = method.upper() not in {"GET", "HEAD", "OPTIONS"}
+        if mutation:
+            max_retries = 0
         last_err = None
         for attempt in range(max_retries + 1):
             try:
@@ -85,6 +92,9 @@ class BinanceFuturesClient:
                     method, url, params=params, headers=headers, timeout=5
                 )
                 self._note_weight(r)
+                if mutation:
+                    r.raise_for_status()
+                    return r.json() if r.content else None
 
                 if r.status_code in (418, 429):
                     # Preserve the terminal status for callers such as the
@@ -163,7 +173,8 @@ class BinanceFuturesClient:
     def _signed_request(
         self, method: str, path: str, params: dict | None = None
     ) -> dict:
-        require_broker_mutation_permission(method, path)
+        require_broker_mutation_permission(method, path, environment=getattr(self, "broker_environment", None),
+                                           broker="binance", base_url=self.base_url, client=self, payload=params)
         if not self.api_key or not self.api_secret:
             raise ValueError("Missing BINANCE_API_KEY or BINANCE_API_SECRET in .env")
 

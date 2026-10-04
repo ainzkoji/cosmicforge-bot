@@ -36,6 +36,9 @@ class BinanceFuturesClient:
         self.base_url = base_url.rstrip("/")
         from shared_lib.core.production import require_production_endpoint
         require_production_endpoint("binance", self.base_url)
+        from shared_lib.core.production import production_enabled, endpoint_environment
+        if production_enabled() and not getattr(self, "broker_environment", None):
+            self.broker_environment = endpoint_environment("binance", self.base_url)
         self.recv_window = recv_window
 
         self._exchange_info_cache: dict | None = None
@@ -58,7 +61,8 @@ class BinanceFuturesClient:
     def _request(
         self, method: str, path: str, params=None, headers=None, max_retries: int = 6
     ):
-        require_broker_mutation_permission(method, path)
+        require_broker_mutation_permission(method, path, environment=getattr(self, "broker_environment", None),
+                                           broker="binance", base_url=self.base_url, client=self, payload=params)
         url = f"{self.base_url}{path}"
         params = dict(params or {})
         headers = dict(headers or {})
@@ -136,7 +140,8 @@ class BinanceFuturesClient:
     def _signed_request(
         self, method: str, path: str, params: dict | None = None
     ) -> dict:
-        require_broker_mutation_permission(method, path)
+        require_broker_mutation_permission(method, path, environment=getattr(self, "broker_environment", None),
+                                           broker="binance", base_url=self.base_url, client=self, payload=params)
         if not self.api_key or not self.api_secret:
             raise ValueError("Missing BINANCE_API_KEY or BINANCE_API_SECRET in .env")
 

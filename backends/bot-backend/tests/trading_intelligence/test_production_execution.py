@@ -44,21 +44,27 @@ def live(tmp_path, monkeypatch):
     h.executor._live_symbols_override = {"ADAUSDT"}
     reservation = h.reservations.reserve(broker_account_id=h.plan.broker_account_id, bot_instance_id=h.plan.bot_instance_id,
         cycle_id=did, selected=[(did, ins.canonical_symbol, "BINANCE_USDM", "ADAUSDT", "LONG")], now_ms=h.now, ttl_seconds=900)
-    h.plan = production.build_plan(row, {"id":h.plan.broker_account_id,"user_id":h.plan.user_id}, h.plan.bot_instance_id,
+    h.plan = production.build_plan(row, {"id":h.plan.broker_account_id,"user_id":h.plan.user_id,"environment":"LIVE"}, h.plan.bot_instance_id,
                                    ins, reservation.reservation.reservation_id)
     h.adapter.execution_support_status = "PRODUCTION_VALIDATED"  # explicit test certification, never runtime promotion
     h.executor.client._production_db = h.db
     h.executor.client._production_account_id = h.plan.broker_account_id
+    h.client.broker_environment = "LIVE"
     h.client.get_instrument.return_value = ins
     h.client.get_algo_orders.return_value = []
     h.kw["evaluated"] = replace(h.kw["evaluated"], venue_observation=replace(h.kw["evaluated"].venue_observation,
-        execution_capabilities=replace(h.kw["evaluated"].venue_observation.execution_capabilities, venue_symbol="ADAUSDT")))
+        execution_capabilities=replace(h.kw["evaluated"].venue_observation.execution_capabilities, venue_symbol="ADAUSDT",
+            supported_order_types=("MARKET", "LIMIT", "STOP_MARKET", "TAKE_PROFIT_MARKET"))))
     settings = profile()
     monkeypatch.setattr(config, "settings", settings)
     monkeypatch.setattr(production, "settings", settings)
     monkeypatch.setattr("app.trading_intelligence.integration.residual_prospective.owner_current", lambda db: True)
     monkeypatch.setattr(production, "owner_current", lambda db: True)
-    h.live_boundary = lambda **kw: h.boundary(config=CATIExecutionConfig(True, False, ("LIVE",)), preflight=h.preflight(seed=False), **kw)
+    def live_boundary(**kw):
+        preflight = h.preflight(seed=False)
+        preflight.account_environment = "live"
+        return h.boundary(config=CATIExecutionConfig(True, False, ("LIVE",)), preflight=preflight, **kw)
+    h.live_boundary = live_boundary
     TradePlanEvidenceStore(h.db).append(h.plan)
     return h
 
@@ -186,7 +192,7 @@ def test_native_protection_unknown_reads_back_before_recreate(live, monkeypatch)
     from app.execution.production_protection import place_native_protection
     from app.models.unified_trading import ProtectionRequest, Side
     monkeypatch.setattr(config, "settings", profile(True))
-    client = Mock(_production_db=live.db, _production_account_id=live.plan.broker_account_id,
+    client = Mock(broker_environment="LIVE", _production_db=live.db, _production_account_id=live.plan.broker_account_id,
                   _production_intent_identity="natural-test-intent")
     client.get_instrument.return_value = SimpleNamespace(tick_size=.01)
     client.get_algo_orders.return_value = []
@@ -220,7 +226,7 @@ def test_runtime_persists_disabled_reason_without_mutation(live, monkeypatch):
     live.client.last_price.return_value = 100.
     live.client.klines.return_value = []
     live.client.exchange_info_cached.return_value = {"symbols": [{"symbol":"ADAUSDT", "baseAsset":"ADA",
-        "quoteAsset":"USDT", "marginAsset":"USDT", "contractType":"PERPETUAL", "orderTypes":["MARKET","STOP_MARKET"],
+        "quoteAsset":"USDT", "marginAsset":"USDT", "contractType":"PERPETUAL", "orderTypes":["MARKET","STOP_MARKET","TAKE_PROFIT_MARKET"],
         "timeInForce":["GTC"], "filters":[{"filterType":"PRICE_FILTER","tickSize":".01"},
         {"filterType":"LOT_SIZE","stepSize":".001","minQty":".001"}]}]}
     monkeypatch.setattr(production, "persisted_risk_controls", lambda *a: {})
@@ -283,7 +289,7 @@ def test_account_factory_constructs_live_components_without_legacy_runner(live, 
     assert boundary.orchestrator.validated_config.paper_mode is False
     assert boundary.adapter.executor.execution_mode == "live"
     assert boundary.adapter.executor._broker_account_id == instance.broker_account_id
-    assert boundary.config.allowed_environments == ("LIVE",)
+    assert boundary.config.allowed_environments == ("DEMO", "LIVE")
 
 
 def test_production_quantity_uses_connected_account_metadata(live, monkeypatch):

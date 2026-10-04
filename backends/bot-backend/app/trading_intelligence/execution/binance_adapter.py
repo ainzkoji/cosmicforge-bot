@@ -62,10 +62,13 @@ def _f(v) -> Optional[float]:
 
 class BinanceExecutionAdapter:
     #: The wrapper passes the broker contract suite (tests/trading_intelligence/
-    #: test_section20_execution_boundary.py). It is not DEMO_VALIDATED until
-    #: this adapter itself has demo-run evidence; the wrapped executor keeps
-    #: its own operational history.
+    #: test_section20_execution_boundary.py), plus the account-scoped DEMO
+    #: lifecycle contract suite. This is not real-money certification or
+    #: evidence of a broker order being placed by this implementation task.
     execution_support_status = ExecutionSupportStatus.CONTRACT_VALIDATED.value
+    # Environment-specific contract certification. DEMO never promotes LIVE.
+    environment_certifications = {"DEMO": ExecutionSupportStatus.DEMO_VALIDATED.value,
+                                  "LIVE": ExecutionSupportStatus.CONTRACT_VALIDATED.value}
     protocol_version = EXECUTION_ADAPTER_PROTOCOL_VERSION
 
     def __init__(self, executor: Any, *, venue: str = "BINANCE_USDM", position_manager: Any = None,
@@ -243,6 +246,7 @@ def executor_adapter_for(broker: str, executor: Any, *, position_manager: Any = 
     adapter = BinanceExecutionAdapter(executor, venue=venue, position_manager=position_manager)
     if key != "binance":
         adapter.execution_support_status = support
+        adapter.environment_certifications = {}
         adapter.adapter_id = f"executor_wrapper:{venue}"
     return adapter
 

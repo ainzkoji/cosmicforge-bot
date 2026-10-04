@@ -11,17 +11,37 @@ from app.core.config import settings
 from shared_lib.broker.environment import BrokerEnvironment, normalize_environment
 from shared_lib.broker.resolver import resolve_broker_auth
 from shared_lib.broker.client_factory import build_client_from_auth
+from shared_lib.core.production import order_submission_gate
 from .residual_prospective import FAMILY, REGISTRY_HASH, owner_current, schedule as residual_schedule
 from .forward_observe import schedule as forward_schedule
 
 logger = logging.getLogger(__name__)
 
 
-def live_accounts(db):
+def execution_accounts(db):
     with db.connect() as c:
         rows = [dict(r) for r in c.execute("SELECT id,user_id,broker_id,environment,status FROM broker_accounts")]
-    return [r for r in rows if str(r["status"]).lower() in {"connected", "active"}
-            and str(r["environment"]).lower() in {"live", "mainnet", "production"}]
+    accounts = []
+    for row in rows:
+        if str(row["status"]).lower() not in {"connected", "active"}:
+            continue
+        try:
+            row["environment"] = normalize_environment(row["environment"]).value.upper()
+        except ValueError:
+            continue
+        accounts.append(row)
+    return accounts
+
+
+def account_identity(account):
+    from shared_lib.broker.environment import resolve_base_url
+    env = normalize_environment(account["environment"])
+    try:
+        url = resolve_base_url(account["broker_id"], env)
+    except ValueError:
+        url = None
+    return {"account_id": account["id"], "broker": account["broker_id"].upper(), "environment": env.value.upper(),
+            "canonical_base_url": url, "order_submission_gate": order_submission_gate(env)}
 
 
 def initialize(db):
@@ -31,10 +51,14 @@ def initialize(db):
 
 
 def sync_account(db, account, *, factory=build_client_from_auth, execute=False):
-    """Only broker GETs. A failed partial read never becomes a fresh snapshot."""
+    """Read account-scoped broker truth; optionally dispatch the canonical boundary."""
     auth = resolve_broker_auth(account["id"], account["user_id"], db)
-    if normalize_environment(auth.environment) != BrokerEnvironment.LIVE:
-        raise ValueError("PRODUCTION_REQUIRES_LIVE_BROKER_ACCOUNT")
+    env = normalize_environment(auth.environment)
+    if account.get("environment") and normalize_environment(account["environment"]) != env:
+        raise ValueError("BROKER_ENVIRONMENT_MISMATCH")
+    account = {**account, "environment": env.value.upper(),
+               "broker_id": account.get("broker_id", getattr(auth, "broker_type", "binance"))}
+    gate = order_submission_gate(env)
     client = factory(auth)
     client._production_credential_version = getattr(auth, "credential_version", None)
     balance = client.get_balance()
@@ -43,7 +67,7 @@ def sync_account(db, account, *, factory=build_client_from_auth, execute=False):
     if not isinstance(balance, dict) or not isinstance(positions, list) or not isinstance(orders, list):
         raise ValueError("BROKER_READ_SHAPE_INVALID")
     # Reuse canonical position reconciliation; it changes local projections,
-    # never the exchange. Each projection keeps its LIVE account provenance.
+    # never the exchange. Each projection keeps its resolved account provenance.
     from app.execution.position_reconciliation import parse_broker_positions, reconcile_position_rows, _position_spec
     with db.connect() as c:
         bots = c.execute("SELECT id FROM bot_instances WHERE broker_account_id=? AND status='active'",
@@ -55,16 +79,16 @@ def sync_account(db, account, *, factory=build_client_from_auth, execute=False):
         reconciliation.append(reconcile_position_rows(db, bot_instance_id=bots[0][0], broker_account_id=account["id"],
             broker_positions=parse_broker_positions(positions, hedge_mode=hedge),
             position_mode="HEDGE" if hedge else "ONE_WAY", spec_resolver=lambda s: _position_spec(client, s),
-            execution_mode="broker", broker_environment="live"))
+            execution_mode="broker", broker_environment=env.value.upper().lower()))
     from app.activation.account_status import refresh_if_stale
     discovery = refresh_if_stale(db, auth, client_factory=factory)
     now = int(time.time() * 1000)
-    result = {"status": "SYNCED", "environment": "LIVE", "balance": balance, "positions": positions,
+    result = {**account_identity(account), "status": "SYNCED", "balance": balance, "positions": positions,
               "orders": orders, "discovery": discovery, "reconciliation": reconciliation,
               "reconciliation_status": "SYNCED" if len(bots) == 1 else "ACCOUNT_OWNER_MAPPING_REQUIRED",
               "risk": {"daily_hard_loss_fraction": min(.025, settings.ADAPTIVE_DAILY_RISK_MAX_DAILY_LOSS_PCT),
-                       "entry_permission": "BLOCKED", "reason": "LIVE_ORDER_SUBMISSION_DISABLED"
-                       if not settings.LIVE_ORDER_SUBMISSION_ENABLED else "ACCOUNT_RISK_PENDING"},
+                       "entry_permission": "BLOCKED", "reason": gate["reason"]
+                       if not gate["enabled"] else "ACCOUNT_RISK_PENDING"},
               "observed_at": now}
     if execute:
         from .production_execution import process_account
@@ -78,9 +102,10 @@ def sync_account(db, account, *, factory=build_client_from_auth, execute=False):
                 code = candidate if candidate.replace("_", "").isalnum() and candidate.upper() == candidate else None
             result["execution"] = {"execution_permission": "BLOCKED_ACCOUNT", "reason":
                 code or type(exc).__name__}
-            if not settings.LIVE_ORDER_SUBMISSION_ENABLED:
-                result["execution"].update(execution_permission="BLOCKED_ORDER_GATE",
-                    block_reason_before_order_gate=result["execution"]["reason"], reason="LIVE_ORDER_SUBMISSION_DISABLED")
+            if not gate["enabled"]:
+                result["execution"].update(execution_permission="BLOCKED_"+env.value.upper()+"_ORDER_GATE",
+                    block_reason_before_order_gate=result["execution"]["reason"], reason=gate["reason"])
+    result["execution_permission"] = result.get("execution", {}).get("execution_permission", "BLOCKED_ACCOUNT")
     result["credential_version"] = getattr(auth, "credential_version", None)
     save(db, account["id"], account["user_id"], now, result)
     return result
@@ -96,22 +121,33 @@ def sync(db):
     if not owner_current(db):
         return
     initialize(db)
-    accounts = live_accounts(db)
+    accounts = execution_accounts(db)
     for account in accounts:
         if not owner_current(db):
             return
+        if account["broker_id"].lower() not in {"binance", "bybit", "bingx"}:
+            save(db, account["id"], account["user_id"], int(time.time()*1000),
+                 {**account_identity(account), "status": "CAPABILITY_UNAVAILABLE",
+                  "execution_permission": "BLOCKED_ACCOUNT", "execution": {
+                      "execution_permission": "BLOCKED_ACCOUNT", "reason": "DEMO_ADAPTER_UNVALIDATED"
+                      if account["environment"] == "DEMO" else "EXECUTION_ADAPTER_UNVALIDATED"},
+                  "balance": None, "positions": None, "orders": None})
+            continue
         try:
             sync_account(db, account, execute=True)
         except Exception as exc:
             # Never publish credentials or signed exception URLs.
             save(db, account["id"], account["user_id"], int(time.time()*1000),
-                 {"status": "READ_FAILED", "environment": "LIVE", "reason": type(exc).__name__,
+                 {**account_identity(account), "status": "READ_FAILED", "reason":
+                  getattr(exc, "reason_code", None) or type(exc).__name__,
+                  "execution_permission": "BLOCKED_ACCOUNT", "execution": {"execution_permission": "BLOCKED_ACCOUNT",
+                      "reason": getattr(exc, "reason_code", None) or type(exc).__name__},
                   "balance": None, "positions": None, "orders": None})
             logger.warning("[CATI_PRODUCTION] broker read failed: %s", type(exc).__name__)
 
 
 def status(db, *, user_id=None):
-    accounts = live_accounts(db)
+    accounts = execution_accounts(db)
     if user_id is not None:
         accounts = [a for a in accounts if a["user_id"] == user_id]
     states = []
@@ -122,20 +158,35 @@ def status(db, *, user_id=None):
                             (account["id"], account["user_id"])).fetchone() if exists else None
             if row:
                 data = json.loads(row[1])
+                if data.get("environment") and normalize_environment(data["environment"]) != normalize_environment(account["environment"]):
+                    data = {"status": "ENVIRONMENT_CHANGED", "execution": {
+                        "execution_permission": "BLOCKED_ACCOUNT", "reason": "BROKER_ENVIRONMENT_MISMATCH"}}
                 data["age_seconds"] = max(0, (time.time()*1000-row[0])/1000)
-                if data["age_seconds"] > 120:
+                if data["age_seconds"] > 120 and data.get("status") == "SYNCED":
                     data["status"] = "STALE"
                     data["execution"] = {"execution_permission": "BLOCKED_ACCOUNT", "reason": "BROKER_SNAPSHOT_STALE"}
-                states.append({"account_id": account["id"], **data})
+                gate = order_submission_gate(account["environment"])
+                if not gate["enabled"]:
+                    data["execution"] = {**data.get("execution", {}),
+                        "block_reason_before_order_gate": data.get("execution", {}).get("reason"),
+                        "execution_permission": "BLOCKED_"+account["environment"]+"_ORDER_GATE",
+                        "reason": gate["reason"]}
+                data["execution_permission"] = data.get("execution", {}).get("execution_permission", "BLOCKED_ACCOUNT")
+                states.append({**data, **account_identity(account)})
             else:
-                states.append({"account_id": account["id"], "status": "AWAITING_FIRST_LIVE_SYNC"})
+                identity = account_identity(account)
+                gate = identity["order_submission_gate"]
+                states.append({**identity, "status": "AWAITING_FIRST_BROKER_SYNC",
+                    "execution_permission": "BLOCKED_ACCOUNT" if gate["enabled"] else
+                        "BLOCKED_"+account["environment"]+"_ORDER_GATE",
+                    "reason": "AWAITING_FIRST_BROKER_SYNC" if gate["enabled"] else gate["reason"]})
     return {"configuration": settings.configuration_matrix(), "strategy": FAMILY, "registry_hash": REGISTRY_HASH,
-            "status": "LIVE_ACCOUNTS_PRESENT" if accounts else "LIVE_ACCOUNT_REQUIRED",
-            "accounts": states, "order_submission_enabled": settings.LIVE_ORDER_SUBMISSION_ENABLED,
-            "cati_mode": "LIVE", "trading": "ACTIVE", "broker_environment": "LIVE",
-            "execution_permission": "BLOCKED_ORDER_GATE" if not settings.LIVE_ORDER_SUBMISSION_ENABLED else
-                next((s.get("execution", {}).get("execution_permission") for s in states
-                      if s.get("execution", {}).get("execution_permission")), "BLOCKED_ACCOUNT"),
+            "status": "EXECUTION_ACCOUNTS_PRESENT" if accounts else "BROKER_ACCOUNT_REQUIRED",
+            "accounts": states, "broker_execution_scope": "ACCOUNT_SCOPED",
+            "demo_order_submission_enabled": settings.DEMO_ORDER_SUBMISSION_ENABLED,
+            "live_order_submission_enabled": settings.LIVE_ORDER_SUBMISSION_ENABLED,
+            "cati_mode": "LIVE", "trading": "ACTIVE",
+            "execution_permission": "ACCOUNT_SCOPED",
             "daily_hard_loss_fraction": min(.025, settings.ADAPTIVE_DAILY_RISK_MAX_DAILY_LOSS_PCT)}
 
 

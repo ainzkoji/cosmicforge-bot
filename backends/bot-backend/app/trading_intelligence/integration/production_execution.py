@@ -14,6 +14,8 @@ import math
 import time
 
 from app.core.config import settings
+from shared_lib.broker.environment import normalize_environment
+from shared_lib.core.production import order_submission_gate
 from .residual_prospective import FAMILY, REGISTRY_HASH, SOURCE, Q, owner_current, frozen_definition
 
 _boundaries = {}
@@ -232,7 +234,7 @@ def build_plan(row, account, bot_id, instrument, reservation_id):
     bps = rates["slippage"] * 10000
     return TradePlan.build(**lineage, forecast_id="NOT_APPLICABLE_FROZEN_RESIDUAL",
         portfolio_reservation_id=reservation_id, user_id=account["user_id"], broker_account_id=account["id"],
-        bot_instance_id=bot_id, run_id=None, cycle_id=did, instrument_key=key, venue=key.venue, environment="LIVE",
+        bot_instance_id=bot_id, run_id=None, cycle_id=did, instrument_key=key, venue=key.venue, environment=normalize_environment(account["environment"]).value.upper(),
         side=row["side"], setup_family=FAMILY, setup_version=REGISTRY_HASH,
         decision_time=row["decision_time"], entry_reference=px,
         allowed_entry_zone=AllowedEntryZone(px, px*(1-bps/10000), px*(1+bps/10000), bps, 0., deadline),
@@ -263,6 +265,9 @@ def boundary_for(db, account, bot, client):
     from app.trading_intelligence.execution.preflight import SubmissionPreflight
     from app.trading_intelligence.execution.binance_adapter import executor_adapter_for
     from app.trading_intelligence.execution.boundary import CATIExecutionBoundary
+    environment = normalize_environment(account["environment"]).value.upper()
+    if normalize_environment(client.broker_environment).value.upper() != environment:
+        raise ValueError("BROKER_ENVIRONMENT_MISMATCH")
     service = BotInstanceService(db=db)
     instance = service.get_bot_instance(bot["id"])
     if instance is None or instance.user_id != account["user_id"] or instance.broker_account_id != account["id"]:
@@ -270,7 +275,7 @@ def boundary_for(db, account, bot, client):
     if instance.strategy_id not in ("cati", FAMILY):
         raise ValueError("PRODUCTION_REQUIRES_CATI_BOT")
     assert_broker_execution_capability(db, user_id=account["user_id"], broker_account_id=account["id"])
-    policy = resolve_effective_bot_policy(instance=instance, broker_environment="live",
+    policy = resolve_effective_bot_policy(instance=instance, broker_environment=environment.lower(),
         risk_params=service.get_risk_profile_preset(instance.risk_level))
     if policy.execution_mode != "broker":
         raise ValueError("PRODUCTION_REJECTS_PAPER_BOT")
@@ -309,7 +314,7 @@ def boundary_for(db, account, bot, client):
     client._production_db = db
     client._production_account_id = account["id"]
     preflight = SubmissionPreflight(catalog=InstrumentCatalog(db), broker=account["broker_id"],
-        venue_key=VENUE_KEY[account["broker_id"].lower()], catalog_environment="LIVE", account_environment="live")
+        venue_key=VENUE_KEY[account["broker_id"].lower()], catalog_environment=environment, account_environment=environment.lower())
     with db.connect() as c:
         preflight.permissions = load_permission_evidence(c, account["id"])
     boundary = CATIExecutionBoundary(orchestrator=orchestrator, adapter=adapter, db=db,
@@ -333,16 +338,22 @@ def process_account(db, account, client, snapshot, *, now_ms=None, boundary_fact
         raise ValueError("CATI_PRODUCTION_PROFILE_REQUIRED")
     if not owner_current(db):
         raise ValueError("CANONICAL_RUNTIME_LEASE_REQUIRED")
-    if str(account.get("environment", "")).lower() not in ("live", "mainnet", "production"):
-        raise ValueError("PRODUCTION_REQUIRES_LIVE_BROKER_ACCOUNT")
+    environment = normalize_environment(account["environment"]).value.upper()
+    gate = order_submission_gate(environment)
     row = latest_decision(db)
     result = {"latest_cati_decision": row, "eligibility": None, "execution_permission": "BLOCKED_ACCOUNT",
               "reason": None, "broker_account_id": account["id"], "orders_submitted": False,
-              "credential_version": getattr(client, "_production_credential_version", None)}
+              "credential_version": getattr(client, "_production_credential_version", None),
+              "environment": environment, "order_submission_gate": gate}
     with db.connect() as c:
         bots = [dict(b) for b in c.execute("SELECT * FROM bot_instances WHERE broker_account_id=? AND status='active'", (account["id"],))]
     if any(b.get("user_id") != account["user_id"] for b in bots):
         result["reason"] = "BROKER_ACCOUNT_OWNERSHIP_MISMATCH"
+    elif account["broker_id"].lower() != "binance":
+        # Existing crypto clients lack complete income/protection recovery; other
+        # broker products must never be routed through Binance-specific risk.
+        result["reason"] = ("DEMO_CAPABILITY_UNAVAILABLE" if environment == "DEMO" else "EXECUTION_ADAPTER_UNVALIDATED")
+        result["missing_capabilities"] = ["COMPLETE_ACCOUNT_INCOME_HISTORY", "DURABLE_PROTECTION_READ_BACK"]
     else:
         # Multiple owners must never each claim the account. Resolve a unique
         # execution bot; risk still includes ALL broker and bot activity.
@@ -373,13 +384,16 @@ def process_account(db, account, client, snapshot, *, now_ms=None, boundary_fact
             result["eligibility"] = {"eligible": why is None, "reason": why}
             if why:
                 result["reason"] = why
-                result["execution_permission"] = "BLOCKED_RISK"
+                result["execution_permission"] = ("WAITING_SIGNAL" if why in {
+                    "AWAITING_NATURAL_CATI_DECISION", "PROSPECTIVE_ENTRY_WINDOW_EXPIRED",
+                    "NEXT_NATIVE_OPEN_REFERENCE_REQUIRED"} and not result["risk"]["reason"]
+                    and not result["kill_switch"] else "BLOCKED_RISK")
             elif result["risk"]["reason"]:
                 result.update(reason=result["risk"]["reason"], execution_permission="BLOCKED_RISK")
             elif any(r["status"] == "STILL_UNKNOWN" for r in result["recovery"]):
                 result.update(reason="ACCOUNT_SUBMIT_OUTCOME_UNRESOLVED", execution_permission="BLOCKED_RISK")
             else:
-                catalog = boundary.preflight.catalog.record(boundary.preflight.venue_key, "LIVE", row["selected_symbol"])
+                catalog = boundary.preflight.catalog.record(boundary.preflight.venue_key, environment, row["selected_symbol"])
                 if not catalog:
                     result["reason"] = "INSTRUMENT_UNKNOWN"
                 else:
@@ -402,8 +416,8 @@ def process_account(db, account, client, snapshot, *, now_ms=None, boundary_fact
                         price = float(client.last_price(ins.venue_symbol))
                         price_observed_at = now if now_ms is not None else int(time.time()*1000)
                         klines = client.klines(symbol=ins.venue_symbol, interval="15m", limit=250)
-                        kyc = evaluate_execution_kyc(user_id=account["user_id"], broker_environment="live")
-                        readiness = evaluate_execution_readiness(db=db, bot_instance_id=bots[0]["id"], broker_environment="live")
+                        kyc = evaluate_execution_kyc(user_id=account["user_id"], broker_environment=environment.lower())
+                        readiness = evaluate_execution_readiness(db=db, bot_instance_id=bots[0]["id"], broker_environment=environment.lower())
                         risk = result["risk"]
                         controls = persisted_risk_controls(db, bots[0]["id"], risk, now)
                         result["risk_controls"] = controls
@@ -415,7 +429,7 @@ def process_account(db, account, client, snapshot, *, now_ms=None, boundary_fact
                             c.execute("INSERT OR REPLACE INTO cati_production_decisions VALUES(?,?,?,?,?)",
                                 (account["id"], row["decision_id"], bots[0]["id"], submission_time, json.dumps(result, default=str)))
                         out = boundary.process_trade_plan(plan, market_reference=MarketReference(price, price_observed_at),
-                            broker_health=BrokerHealthContext(account["id"], plan.venue, "LIVE", "HEALTHY", now, "BROKER_SYNC"),
+                            broker_health=BrokerHealthContext(account["id"], plan.venue, environment, "HEALTHY", now, "BROKER_SYNC"),
                             venue_capabilities=caps, account=AccountState(risk["equity"], risk["margin_used"], risk["free_capital"], risk["open_positions"]),
                             klines=klines, atr=json.loads(row["snapshot_json"])["candidate"]["atr14"], now_ms=submission_time,
                             capital=CapitalReadiness(True, "LOGICAL"), user_kyc_approved=kyc.allowed,
@@ -423,14 +437,14 @@ def process_account(db, account, client, snapshot, *, now_ms=None, boundary_fact
                             execution_mode="broker", market_type="CRYPTO", **controls)
                         result["boundary"] = asdict(out)
                         result["reason"] = out.reason_codes[0] if out.reason_codes else out.status
-                        result["execution_permission"] = ("BLOCKED_ORDER_GATE" if out.status == "LIVE_ORDER_SUBMISSION_DISABLED"
+                        result["execution_permission"] = ("BLOCKED_"+environment+"_ORDER_GATE" if out.status == gate["reason"]
                             else "ORDER_ACTIVE" if out.status in ("EXECUTED", "SUBMIT_UNKNOWN_PENDING_RECONCILIATION")
                             else "BLOCKED_RISK")
                         result["orders_submitted"] = bool(out.attempt and out.attempt.broker_order_id)
-    if not settings.LIVE_ORDER_SUBMISSION_ENABLED:
-        result["execution_permission"] = "BLOCKED_ORDER_GATE"
+    if not gate["enabled"]:
+        result["execution_permission"] = "BLOCKED_"+environment+"_ORDER_GATE"
         result["block_reason_before_order_gate"] = result["reason"]
-        result["reason"] = "LIVE_ORDER_SUBMISSION_DISABLED"
+        result["reason"] = gate["reason"]
     if row:
         with db.connect() as c:
             c.execute("INSERT OR REPLACE INTO cati_production_decisions VALUES(?,?,?,?,?)", (account["id"], row["decision_id"],
@@ -483,7 +497,7 @@ def reconcile_executions(db, boundary, client, now):
         if order.answered and order.executed_qty > 0 and position.answered and position.side == plan.side and position.quantity > 0 \
                 and position.quantity <= order.executed_qty and position.entry_price and order.avg_price \
                 and abs(position.entry_price-order.avg_price) <= 1e-8*order.avg_price:
-            if settings.LIVE_ORDER_SUBMISSION_ENABLED:
+            if order_submission_gate(plan.environment)["enabled"]:
                 client._production_intent_identity = f"{plan.trade_plan_id}|{plan.trade_plan_hash}"
                 try:
                     item["protection"] = boundary.adapter.submit_protection(plan.instrument_key.venue_symbol,
@@ -492,6 +506,6 @@ def reconcile_executions(db, boundary, client, now):
                 except Exception as exc:
                     item["protection"] = {"status": "UNCONFIRMED", "reason": type(exc).__name__}
             else:
-                item["protection"] = "LIVE_ORDER_SUBMISSION_DISABLED"
+                item["protection"] = order_submission_gate(plan.environment)["reason"]
         history.append(item)
     return history

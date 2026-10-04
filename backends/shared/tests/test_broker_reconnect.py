@@ -55,7 +55,10 @@ def _utc() -> str:
 
 def _make_db() -> DB:
     """Create an in-memory SQLite DB with the broker tables needed for tests."""
-    db = DB(path=":memory:")
+    # The current DB constructor initializes the full application schema. This
+    # resolver fixture deliberately supplies its own minimal schema instead.
+    with patch.object(DB, "_init", lambda self: None):
+        db = DB(path=":memory:")
     with db.connect() as conn:
         conn.executescript("""
             CREATE TABLE broker_accounts (
@@ -65,7 +68,12 @@ def _make_db() -> DB:
                 environment TEXT NOT NULL DEFAULT 'live',
                 status TEXT NOT NULL DEFAULT 'connected',
                 active_credential_version INTEGER,
-                last_error_message TEXT
+                last_error_message TEXT,
+                validation_error TEXT,
+                permission_status TEXT,
+                capabilities TEXT,
+                last_validated_at TEXT,
+                updated_at TEXT
             );
 
             CREATE TABLE broker_credentials_v2 (
@@ -81,6 +89,7 @@ def _make_db() -> DB:
                 superseded_at TEXT,
                 last_validated_at TEXT,
                 validation_error TEXT,
+                permissions_json TEXT,
                 UNIQUE (account_id, version)
             );
 
@@ -90,6 +99,10 @@ def _make_db() -> DB:
                 encrypted_blob TEXT NOT NULL,
                 key_metadata TEXT,
                 updated_at TEXT NOT NULL
+            );
+            CREATE TABLE broker_audit_log (
+                id TEXT PRIMARY KEY, broker_account_id TEXT, user_id TEXT,
+                event_type TEXT, details_json TEXT, timestamp_utc TEXT
             );
         """)
     return db
@@ -122,7 +135,7 @@ def _insert_cred_v2(conn, account_id: str, version: int = 1, status: str = "acti
     conn.execute(
         """INSERT INTO broker_credentials_v2
            (account_id, version, status, encrypted_blob, key_fingerprint, created_at, updated_at)
-           VALUES (?, ?, ?, ?, '...abc1', ?, ?)""",
+           VALUES (?, ?, ?, ?, NULL, ?, ?)""",
         (account_id, version, status, blob, now, now),
     )
 
@@ -265,7 +278,7 @@ def test_t9_health_cache_expiry():
 
 # ── T10: reconnect happy path → version incremented ───────────────────────────
 
-def test_t10_reconnect_success():
+def test_t10_reconnect_success(monkeypatch):
     """validate_and_activate_credential_v2 promotes new version atomically."""
     db = _make_db()
     with db.connect() as conn:
@@ -276,6 +289,11 @@ def test_t10_reconnect_success():
     # Mock the exchange test so we don't hit real Binance
     sys.path.insert(0, os.path.join(_ROOT, "user-backend"))
     import app.core.broker_service as bsvc
+
+    monkeypatch.setattr(bsvc, "_evaluate_key_permissions", lambda *a: {
+        "evidence": {"permissions": {"TRADE": True, "WITHDRAW": False}},
+        "decision": "ALLOWED", "message": "isolated permission evidence"})
+    monkeypatch.setattr(bsvc, "get_db", lambda: db)
 
     original_test = bsvc._test_broker_connection
 
@@ -314,7 +332,7 @@ def test_t10_reconnect_success():
 
 # ── T11: reconnect failure → account=invalid, old creds intact ─────────────────
 
-def test_t11_reconnect_failure():
+def test_t11_reconnect_failure(monkeypatch):
     db = _make_db()
     with db.connect() as conn:
         _insert_account(conn, "brk_11", "user_A", environment="live", active_version=1)
@@ -323,6 +341,7 @@ def test_t11_reconnect_failure():
 
     sys.path.insert(0, os.path.join(_ROOT, "user-backend"))
     import app.core.broker_service as bsvc
+    monkeypatch.setattr(bsvc, "get_db", lambda: db)
 
     original_test = bsvc._test_broker_connection
 

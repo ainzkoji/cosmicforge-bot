@@ -17,8 +17,9 @@ class OandaClient:
         else:
             self.base_url = "https://api-fxtrade.oanda.com/v3"
             
-        from shared_lib.core.production import require_live_account
-        require_live_account("demo" if practice else "live")
+        from shared_lib.core.production import require_execution_account
+        self.broker_environment = "DEMO" if practice else "LIVE"
+        require_execution_account(self.broker_environment, "oanda", self.base_url.removesuffix("/v3"))
         self.headers = {
             "Authorization": f"Bearer {self.api_token}",
             "Content-Type": "application/json",
@@ -27,7 +28,8 @@ class OandaClient:
 
     def _request(self, method: str, endpoint: str, params: Optional[Dict] = None) -> Dict[str, Any]:
         from shared_lib.core.production import require_broker_mutation_permission
-        require_broker_mutation_permission(method, endpoint)
+        require_broker_mutation_permission(method, endpoint, environment=self.broker_environment,
+                                           broker="oanda", base_url=self.base_url.removesuffix("/v3"))
         url = f"{self.base_url}{endpoint}"
         try:
             response = requests.request(method, url, headers=self.headers, params=params, timeout=10)

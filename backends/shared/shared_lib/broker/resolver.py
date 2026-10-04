@@ -176,9 +176,9 @@ def resolve_broker_auth(
                 account_id=account_id,
             )
 
-        from shared_lib.core.production import require_live_account
+        from shared_lib.core.production import require_execution_account
         try:
-            require_live_account(environment.value)
+            require_execution_account(environment.value)
         except ValueError as exc:
             raise BrokerResolverError(BrokerResolverError.REASON_ENV_MISMATCH, str(exc), account_id=account_id) from exc
 

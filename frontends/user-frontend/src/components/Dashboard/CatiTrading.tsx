@@ -2,7 +2,9 @@ import { useQuery } from '@tanstack/react-query';
 import { apiClient } from '@/api/client';
 
 type Account = {
-  account_id: string; status: string; age_seconds?: number;
+  account_id: string; status: string; age_seconds?: number; broker: string; environment: 'DEMO' | 'LIVE';
+  canonical_base_url?: string; execution_permission: string;
+  order_submission_gate: { name: string; enabled: boolean };
   balance?: Record<string, unknown> | null; positions?: Record<string, unknown>[] | null;
   orders?: Record<string, unknown>[] | null; reconciliation_status?: string;
   execution?: {
@@ -15,7 +17,8 @@ type Account = {
 };
 type State = {
   status: string; strategy: string; configuration: Record<string, string | boolean>;
-  accounts: Account[]; execution_permission: string; order_submission_enabled: boolean;
+  accounts: Account[]; execution_permission: string; broker_execution_scope: string;
+  demo_order_submission_enabled: boolean; live_order_submission_enabled: boolean;
   daily_hard_loss_fraction: number;
 };
 const display = (value: unknown) => value == null ? '—' : typeof value === 'object' ? JSON.stringify(value) : String(value);
@@ -29,16 +32,18 @@ export function CatiTrading() {
   return <section className="mb-6 rounded-xl border border-slate-700 bg-slate-900 p-5 text-slate-100" aria-label="CATI production trading">
     <div className="flex flex-wrap items-center justify-between gap-2">
       <h2 className="text-lg font-semibold">CATI · Production · LIVE</h2>
-      <span className="rounded bg-indigo-950 px-3 py-1 text-sm">Order submission {state?.order_submission_enabled ? 'enabled · risk approval required' : 'disabled'}</span>
+      <span className="rounded bg-indigo-950 px-3 py-1 text-sm">DEMO orders {state?.demo_order_submission_enabled ? 'enabled' : 'disabled'} · Real-money LIVE orders {state?.live_order_submission_enabled ? 'enabled' : 'disabled'}</span>
     </div>
     {query.isPending && <p className="mt-3">Loading production state…</p>}
     {query.isError && <p role="alert" className="mt-3 text-red-300">Production state unavailable: {query.error.message}</p>}
     {state && <>
-      <p className="mt-2 text-sm text-slate-300">{state.status} · {state.strategy} · Entry permission {state.execution_permission}</p>
+      <p className="mt-2 text-sm text-slate-300">{state.status} · {state.strategy} · Execution scope {state.broker_execution_scope}</p>
       <p className="mt-2">Permanent daily hard-loss ceiling: {(state.daily_hard_loss_fraction * 100).toFixed(1)}%</p>
-      {state.accounts.length === 0 && <p className="mt-4 text-amber-300">Connect a validated LIVE broker account to receive balances, positions, and orders.</p>}
+      {state.accounts.length === 0 && <p className="mt-4 text-amber-300">Connect a DEMO or LIVE broker account to receive balances, positions, and orders.</p>}
       {state.accounts.map(account => <div key={account.account_id} className="mt-5 border-t border-slate-700 pt-4">
-        <h3 className="font-semibold">LIVE account {account.account_id} · {account.status}</h3>
+        <h3 className="font-semibold">{account.broker} · {account.environment} account {account.account_id} · {account.status}</h3>
+        <p className="text-sm">{account.order_submission_gate.name}: {account.order_submission_gate.enabled ? 'enabled · risk approval required' : 'disabled'} · {account.execution_permission}</p>
+        <p className="text-sm text-slate-400">{account.canonical_base_url}</p>
         <p className="text-sm text-slate-400">Snapshot age {account.age_seconds == null ? '—' : `${account.age_seconds.toFixed(1)}s`} · Reconciliation {account.reconciliation_status || 'Awaiting broker reads'}</p>
         {account.execution && <div className="mt-3 text-sm">
           <p>Entry permission {account.execution.execution_permission} · {account.execution.reason}</p>

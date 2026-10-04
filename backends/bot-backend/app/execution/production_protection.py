@@ -12,9 +12,10 @@ def place_native_protection(client, request):
     from app.models.unified_trading import ProtectionResult, Side
     from app.exchange.binance.filters import normalize_protection_price
     # Transport remains the final gate as well; do not create an intent when off.
-    from app.core.config import settings
-    if not settings.LIVE_ORDER_SUBMISSION_ENABLED:
-        raise ValueError("LIVE_ORDER_SUBMISSION_DISABLED")
+    from shared_lib.core.production import order_submission_gate
+    gate = order_submission_gate(client.broker_environment)
+    if not gate["enabled"]:
+        raise ValueError(gate["reason"])
     db = getattr(client, "_production_db", None)
     account = getattr(client, "_production_account_id", None)
     if db is None or not account:
@@ -51,6 +52,7 @@ def place_native_protection(client, request):
         found = next((o for o in orders if o.get("clientAlgoId") == cid), None)
         if found is not None and (str(found.get("symbol")) != request.symbol or found.get("side") != exit_side
                 or found.get("type", found.get("orderType")) != kind
+                or Decimal(str(found.get("triggerPrice", found.get("stopPrice", 0)))) != Decimal(normalized)
                 or str(found.get("closePosition", "")).lower() != "true"):
             raise ValueError("PROTECTION_READ_BACK_GEOMETRY_MISMATCH")
         if found is None:

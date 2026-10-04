@@ -50,7 +50,11 @@ class BingXClient:
     def _request(self, method: str, path: str, payload: dict | None = None) -> dict:
         from shared_lib.core.production import require_production_endpoint
         require_production_endpoint("bingx", self.base_url)
-        require_broker_mutation_permission(method, path)
+        from shared_lib.core.production import production_enabled, endpoint_environment
+        if production_enabled() and not getattr(self, "broker_environment", None):
+            self.broker_environment = endpoint_environment("bingx", self.base_url)
+        require_broker_mutation_permission(method, path, environment=getattr(self, "broker_environment", None),
+                                           broker="bingx", base_url=self.base_url, client=self, payload=payload)
         url = f"{self.base_url}{path}"
         payload = payload or {}
         

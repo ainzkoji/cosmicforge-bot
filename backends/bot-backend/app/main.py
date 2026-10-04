@@ -1013,7 +1013,8 @@ def root():
     return {
         "status": "ok",
         "environment": settings.APP_ENV,
-        "broker_environment": settings.BROKER_ENVIRONMENT,
+        "broker_execution_scope": "ACCOUNT_SCOPED",
+        "demo_order_submission_enabled": settings.DEMO_ORDER_SUBMISSION_ENABLED,
         "live_order_submission_enabled": settings.LIVE_ORDER_SUBMISSION_ENABLED,
         "api_key_loaded": bool(settings.BINANCE_API_KEY),
         "api_secret_loaded": bool(settings.BINANCE_API_SECRET),
@@ -1689,6 +1690,8 @@ def runner_status() -> dict:
                 "strategy": settings.STRATEGY_NAME, "configuration": settings.configuration_matrix(),
                 "owns_runtime": bool(getattr(multi, "owns_runtime", False)),
                 "live_order_submission_enabled": settings.LIVE_ORDER_SUBMISSION_ENABLED,
+                "demo_order_submission_enabled": settings.DEMO_ORDER_SUBMISSION_ENABLED,
+                "broker_execution_scope": "ACCOUNT_SCOPED",
                 "legacy_instances_scheduled": False, "bots": []}
     multi = runner_service.multi_runner
     bots = []

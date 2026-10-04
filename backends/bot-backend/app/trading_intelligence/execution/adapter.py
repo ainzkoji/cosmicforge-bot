@@ -150,9 +150,14 @@ MIN_SUPPORT_BY_ENVIRONMENT: Mapping[str, str] = {
 }
 
 
-def adapter_supports(adapter: Any, environment: str) -> bool:
+def adapter_supports(adapter: Any, environment: str, *, production_scope: bool = False) -> bool:
     required = MIN_SUPPORT_BY_ENVIRONMENT.get(str(environment).upper(), ExecutionSupportStatus.PRODUCTION_VALIDATED.value)
     have = getattr(adapter, "execution_support_status", ExecutionSupportStatus.UNVALIDATED.value)
+    if production_scope:
+        required = "DEMO_VALIDATED" if environment == "DEMO" else "PRODUCTION_VALIDATED"
+        certifications = getattr(adapter, "environment_certifications", {})
+        if have != "PRODUCTION_VALIDATED":
+            have = certifications.get(environment, have)
     return SUPPORT_RANK.get(have, 0) >= SUPPORT_RANK[required]
 
 

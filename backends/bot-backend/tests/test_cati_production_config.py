@@ -105,8 +105,8 @@ def test_demo_identity_and_endpoint_cannot_enter_production(monkeypatch):
     with pytest.raises(ValueError, match="CANONICAL_LIVE_ENDPOINT"):
         require_live_account("live", "binance", "https://testnet.binancefuture.com")
     from app.exchange.binance.client import BinanceFuturesClient
-    with pytest.raises(ValueError, match="CANONICAL_LIVE_ENDPOINT"):
-        BinanceFuturesClient("key", "secret", "https://demo-fapi.binance.com")
+    demo = BinanceFuturesClient("key", "secret", "https://demo-fapi.binance.com")
+    assert demo.broker_environment.value.upper() == "DEMO"
 
 
 def test_production_does_not_construct_legacy_runner(monkeypatch):
@@ -162,9 +162,9 @@ def test_production_status_is_owner_scoped_and_not_virtual(monkeypatch, db):
     runtime.initialize(db)
     runtime.save(db, "live", "alice", 1, {"status": "SYNCED", "balance": {"equity": 10}})
     state = runtime.status(db, user_id="alice")
-    assert [r["account_id"] for r in state["accounts"]] == ["live"]
+    assert [r["account_id"] for r in state["accounts"]] == ["live", "demo"]
     assert state["accounts"][0]["status"] == "STALE"
-    assert state["execution_permission"] == "BLOCKED_ORDER_GATE"
+    assert state["execution_permission"] == "ACCOUNT_SCOPED"
     assert "cash" not in state and "fills" not in state
     with db.connect() as c:
         assert c.execute("SELECT environment FROM broker_accounts WHERE id='demo'").fetchone()[0] == "demo"
@@ -174,7 +174,8 @@ def test_first_sync_is_pending_without_creating_tables(monkeypatch, db):
     from app.trading_intelligence.integration import production_runtime as runtime
     monkeypatch.setattr(runtime, "settings", production())
     result = runtime.status(db, user_id="alice")
-    assert result["accounts"] == [{"account_id": "live", "status": "AWAITING_FIRST_LIVE_SYNC"}]
+    assert [a["environment"] for a in result["accounts"]] == ["LIVE", "DEMO"]
+    assert all(a["status"] == "AWAITING_FIRST_BROKER_SYNC" for a in result["accounts"])
     with db.connect() as c:
         assert not c.execute("SELECT 1 FROM sqlite_master WHERE name='cati_production_state'").fetchone()
 

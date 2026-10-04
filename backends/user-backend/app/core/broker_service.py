@@ -296,8 +296,8 @@ def submit_broker_credentials(user_id: str, account_id: str, credentials: Dict[s
     # Extract environment if present (metadata), remove from blob if desired, or keep it.
     # Usually we want environment in the table for easy querying.
     environment = credentials.get("environment", "live")
-    from shared_lib.core.production import require_live_account
-    require_live_account(environment)
+    from shared_lib.core.production import require_execution_account
+    require_execution_account(environment)
     
     # Check broker_id from account
     with db.connect() as conn:
@@ -623,11 +623,12 @@ def _evaluate_key_permissions(broker_id: str, environment: str, credentials: Dic
 def _test_broker_connection(broker_id: str, credentials: Dict[str, Any], environment: str) -> Dict[str, Any]:
     """Test connection to a specific broker using their API"""
     try:
-        from shared_lib.core.production import require_live_account
-        require_live_account(environment)
+        from shared_lib.core.production import require_execution_account
+        require_execution_account(environment)
         if broker_id == "binance":
             from app.exchange.binance_client import BinanceClient
-            testnet = (environment == "demo" or environment == "testnet")
+            from shared_lib.broker.environment import normalize_environment, BrokerEnvironment
+            testnet = normalize_environment(environment) == BrokerEnvironment.DEMO
             client = BinanceClient(
                 api_key=credentials.get("api_key"),
                 api_secret=credentials.get("api_secret"),
@@ -929,8 +930,8 @@ def link_ibkr_account(user_id: str, data: Dict[str, Any]) -> List[str]:
     now = utc_now_iso()
     accounts = data.get("accounts", [])
     environment = data.get("environment", "live")
-    from shared_lib.core.production import require_live_account, production_enabled
-    require_live_account(environment)
+    from shared_lib.core.production import require_execution_account, production_enabled
+    require_execution_account(environment)
     if production_enabled() and any(str(a).upper().startswith("D") for a in accounts):
         raise ValueError("PRODUCTION_REQUIRES_LIVE_IBKR_ACCOUNT")
     

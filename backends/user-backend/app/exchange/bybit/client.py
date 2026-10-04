@@ -25,10 +25,14 @@ class BybitClient:
             
         from shared_lib.core.production import require_production_endpoint
         require_production_endpoint("bybit", self.base_url)
+        from shared_lib.core.production import production_enabled, endpoint_environment
+        if production_enabled() and not getattr(self, "broker_environment", None):
+            self.broker_environment = endpoint_environment("bybit", self.base_url)
         self.recv_window = 5000
     
     def _request_v5(self, method: str, path: str, payload: dict | None = None) -> dict:
-        require_broker_mutation_permission(method, path)
+        require_broker_mutation_permission(method, path, environment=getattr(self, "broker_environment", None),
+                                           broker="bybit", base_url=self.base_url, client=self, payload=payload)
         """
         Execute V5 Signed Request
         """

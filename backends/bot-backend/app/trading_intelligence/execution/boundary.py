@@ -159,9 +159,17 @@ class CATIExecutionBoundary:
             if plan.setup_family != FAMILY or dict(plan.versions).get("residual_registry") != REGISTRY_HASH:
                 return BoundaryResult(BoundaryStatus.GOVERNANCE_NOT_AUTHORIZED, plan.trade_plan_id,
                                       ("PRODUCTION_REQUIRES_FROZEN_RESIDUAL_DECISION",))
-            if plan.environment.upper() != "LIVE":
+            from shared_lib.broker.environment import normalize_environment
+            try:
+                resolved_environment = normalize_environment(self.preflight.account_environment).value.upper()
+                if plan.environment != resolved_environment:
+                    raise ValueError("BROKER_ENVIRONMENT_MISMATCH")
+                client = getattr(getattr(self.adapter, "executor", None), "client", None)
+                if client is not None and normalize_environment(client.broker_environment).value.upper() != resolved_environment:
+                    raise ValueError("BROKER_ENVIRONMENT_MISMATCH")
+            except (ValueError, AttributeError):
                 return BoundaryResult(BoundaryStatus.ENVIRONMENT_NOT_ALLOWED, plan.trade_plan_id,
-                                      ("PRODUCTION_REQUIRES_LIVE_BROKER_ACCOUNT",))
+                                      ("BROKER_ENVIRONMENT_MISMATCH",))
             from app.trading_intelligence.integration.production_execution import eligibility
             with self._db.connect() as c:
                 exists = c.execute("SELECT 1 FROM sqlite_master WHERE name='cati_residual_decisions'").fetchone()
@@ -278,12 +286,15 @@ class CATIExecutionBoundary:
         )
         # This independent mutation gate is evaluated AFTER hard risk; observations
         # and risk evidence continue even while submission is disabled.
-        if settings.production and not settings.LIVE_ORDER_SUBMISSION_ENABLED:
-            return BoundaryResult("LIVE_ORDER_SUBMISSION_DISABLED", plan.trade_plan_id,
-                                  ("LIVE_ORDER_SUBMISSION_DISABLED",), risk_decision=risk,
+        from shared_lib.core.production import order_submission_gate
+        gate = order_submission_gate(plan.environment)
+        if settings.production and not gate["enabled"]:
+            return BoundaryResult(gate["reason"], plan.trade_plan_id,
+                                  (gate["reason"],), risk_decision=risk,
                                   reservation_status=self._res_status(plan))
-        if settings.production and not adapter_supports(self.adapter, plan.environment):
+        if settings.production and not adapter_supports(self.adapter, plan.environment, production_scope=True):
             return self._fail_before_risk(plan, now, BoundaryStatus.ADAPTER_UNVALIDATED,
+                                          "DEMO_ADAPTER_UNVALIDATED" if plan.environment == "DEMO" else
                                           "PRODUCTION_EXECUTION_ADAPTER_CERTIFICATION_REQUIRED")
         if settings.production:
             from app.trading_intelligence.integration.residual_prospective import owner_current
@@ -294,8 +305,10 @@ class CATIExecutionBoundary:
             if not authorized:
                 return self._fail_before_risk(plan, now, BoundaryStatus.GOVERNANCE_NOT_AUTHORIZED, why)
         caps = venue_capabilities
-        if settings.production and not (caps and caps.supports_stop_market and caps.supports_reduce_only):
+        if settings.production and not (caps and caps.supports_stop_market and caps.supports_reduce_only
+                                        and "TAKE_PROFIT_MARKET" in caps.supported_order_types):
             return self._fail_before_risk(plan, now, BoundaryStatus.PREFLIGHT_BLOCKED,
+                                          "DEMO_CAPABILITY_UNAVAILABLE" if plan.environment == "DEMO" else
                                           "NATIVE_REDUCE_ONLY_PROTECTION_REQUIRED")
         base = self._attempt(plan, attempt_id, risk.risk_decision_id, req, status=X.PENDING_SUBMIT.value, now=now)
         executor = getattr(self.adapter, "executor", None)
@@ -387,6 +400,14 @@ class CATIExecutionBoundary:
         + position query. Unknown stays unknown (reservation untouched); it is
         never re-submitted."""
         now = int(now_ms if now_ms is not None else self._clock())
+        from app.core.config import settings
+        if settings.production:
+            from shared_lib.broker.environment import normalize_environment
+            client = getattr(getattr(self.adapter, "executor", None), "client", None)
+            if (plan.user_id, plan.broker_account_id) != self.account_scope:
+                return BoundaryResult(BoundaryStatus.STILL_UNKNOWN, plan.trade_plan_id, ("EXECUTION_ACCOUNT_SCOPE_MISMATCH",))
+            if client is None or normalize_environment(client.broker_environment).value.upper() != plan.environment:
+                return BoundaryResult(BoundaryStatus.STILL_UNKNOWN, plan.trade_plan_id, ("BROKER_ENVIRONMENT_MISMATCH",))
         attempt_id = ExecutionAttempt.build_id(trade_plan_id=plan.trade_plan_id, trade_plan_hash=plan.trade_plan_hash,
                                                broker_account_id=plan.broker_account_id)
         rows = self.attempts.history(plan.broker_account_id, attempt_id)
@@ -419,7 +440,8 @@ class CATIExecutionBoundary:
             # Never fabricate protection on recovered fills. The existing certified
             # executor confirms/repairs native protection on the same account.
             from app.core.config import settings
-            if not settings.production or settings.LIVE_ORDER_SUBMISSION_ENABLED:
+            from shared_lib.core.production import order_submission_gate
+            if not settings.production or order_submission_gate(plan.environment)["enabled"]:
                 if settings.production:
                     self.adapter.executor.client._production_intent_identity = f"{plan.trade_plan_id}|{plan.trade_plan_hash}"
                 self.adapter.submit_protection(sym, side=plan.side, quantity=float(filled),

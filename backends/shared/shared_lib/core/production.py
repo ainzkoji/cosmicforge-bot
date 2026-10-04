@@ -25,7 +25,7 @@ class ProductionSettings(BaseSettings):
     CATI_SOLE_ENGINE: bool = True
     TRADING_ENABLED: bool = True
     MARKET_DATA_MODE: str = "LIVE"
-    BROKER_ENVIRONMENT: str = "LIVE"
+    BROKER_ENVIRONMENT: str = "ACCOUNT_SCOPED"
     BROKER_DISCOVERY_ENABLED: bool = True
     BALANCE_SYNC_ENABLED: bool = True
     POSITION_SYNC_ENABLED: bool = True
@@ -41,13 +41,14 @@ class ProductionSettings(BaseSettings):
     LEGACY_V2_ENABLED: bool = False
     FALLBACK_ENGINE_ENABLED: bool = False
     LIVE_ORDER_SUBMISSION_ENABLED: bool = False
+    DEMO_ORDER_SUBMISSION_ENABLED: bool = False
 
     @model_validator(mode="after")
     def validate_production_profile(self):
         if self.APP_ENV != "PRODUCTION":
             return self
         expected = {"RUNTIME_ENV": "PRODUCTION", "CATI_MODE": "LIVE",
-                    "MARKET_DATA_MODE": "LIVE", "BROKER_ENVIRONMENT": "LIVE",
+                    "MARKET_DATA_MODE": "LIVE", "BROKER_ENVIRONMENT": "ACCOUNT_SCOPED",
                     "API_ENV": "PRODUCTION", "UI_ENV": "PRODUCTION",
                     "DATABASE_ROLE": "production", "ENVIRONMENT_NAME": "production",
                     "EXECUTION_MODE": "live", "STRATEGY_NAME": FROZEN_STRATEGY,
@@ -83,12 +84,13 @@ class ProductionSettings(BaseSettings):
         return {"APP/RUNTIME": self.RUNTIME_ENV, "CATI_MODE": self.CATI_MODE,
                 "CATI": "SOLE ENGINE" if self.CATI_SOLE_ENGINE else "MULTIPLE",
                 "TRADING": "ACTIVE" if self.TRADING_ENABLED else "DISABLED",
-                "MARKET DATA": self.MARKET_DATA_MODE, "BROKER ENVIRONMENT": self.BROKER_ENVIRONMENT,
+                "MARKET DATA": self.MARKET_DATA_MODE, "BROKER_EXECUTION_SCOPE": "ACCOUNT_SCOPED",
                 **{k.removesuffix("_ENABLED").replace("_", " "): "ACTIVE" if getattr(self, k) else "DISABLED"
                    for k in ACTIVE_FLAGS}, "API/UI": f"{self.API_ENV}/{self.UI_ENV}",
                 "DATABASE ROLE": self.DATABASE_ROLE.upper(),
                 "LEGACY V2/FALLBACK": "DISABLED" if not self.LEGACY_V2_ENABLED and not self.FALLBACK_ENGINE_ENABLED else "ENABLED",
                 "LIVE_ORDER_SUBMISSION_ENABLED": self.LIVE_ORDER_SUBMISSION_ENABLED,
+                "DEMO_ORDER_SUBMISSION_ENABLED": self.DEMO_ORDER_SUBMISSION_ENABLED,
                 "STRATEGY": FROZEN_STRATEGY, "DAILY_HARD_LOSS_CAP": "2.5% maximum"}
 
 
@@ -103,13 +105,61 @@ class LiveOrderSubmissionDisabled(PermissionError):
     pass
 
 
-def require_broker_mutation_permission(method: str, path: str = "") -> None:
+class DemoOrderSubmissionDisabled(PermissionError):
+    pass
+
+
+def order_submission_gate(environment):
+    from app.core.config import settings
+    from shared_lib.broker.environment import BrokerEnvironment, normalize_environment
+    env = normalize_environment(environment)
+    name = "DEMO_ORDER_SUBMISSION_ENABLED" if env == BrokerEnvironment.DEMO else "LIVE_ORDER_SUBMISSION_ENABLED"
+    return {"name": name, "enabled": bool(getattr(settings, name, False)),
+            "reason": name.replace("_ENABLED", "_DISABLED"), "environment": env.value.upper()}
+
+
+def require_execution_account(environment, broker: str = "", base_url: str = "") -> None:
+    from shared_lib.broker.environment import normalize_environment, resolve_base_url
+    env = normalize_environment(environment)
+    if broker and base_url:
+        if base_url.rstrip("/") != resolve_base_url(broker.lower(), env).rstrip("/"):
+            raise ValueError("BROKER_ENVIRONMENT_MISMATCH")
+
+
+def endpoint_environment(broker: str, base_url: str):
+    from shared_lib.broker.environment import BrokerEnvironment, resolve_base_url
+    for env in BrokerEnvironment:
+        if base_url.rstrip("/") == resolve_base_url(broker.lower(), env).rstrip("/"):
+            return env
+    raise ValueError("BROKER_ENVIRONMENT_MISMATCH")
+
+
+def require_broker_mutation_permission(method: str, path: str = "", *, environment=None,
+                                       broker: str = "", base_url: str = "", client=None, payload=None) -> None:
     if method.upper() in {"GET", "HEAD", "OPTIONS"}:
         return
     from app.core.config import settings
-    # Historical DEMO operations belong to explicit nonproduction profiles.
-    if settings.production and not settings.LIVE_ORDER_SUBMISSION_ENABLED:
-        raise LiveOrderSubmissionDisabled("LIVE_ORDER_SUBMISSION_ENABLED=false: broker mutation blocked")
+    if settings.production:
+        # Unbound legacy transports retain the conservative real-money gate.
+        env = environment or (endpoint_environment(broker, base_url) if broker and base_url else "LIVE")
+        require_execution_account(env, broker, base_url)
+        gate = order_submission_gate(env)
+        if not gate["enabled"]:
+            error = DemoOrderSubmissionDisabled if gate["environment"] == "DEMO" else LiveOrderSubmissionDisabled
+            raise error(gate["reason"])
+        entry_paths = {"binance": "/fapi/v1/order", "bybit": "/v5/order/create",
+                       "bingx": "/openApi/swap/v2/trade/order"}
+        if method.upper() == "POST" and path == entry_paths.get(broker):
+            params = payload or {}
+            closing = any(str(params.get(key, "")).lower() == "true" for key in ("reduceOnly", "closePosition"))
+            if not closing:
+                try:
+                    from app.trading_intelligence.execution.entry_permit import transport_entry_permitted
+                    permitted = transport_entry_permitted(client, params.get("symbol"), params.get("side"))
+                except ImportError:
+                    permitted = False
+                if not permitted:
+                    raise ValueError("CATI_ENTRY_AUTHORITY_REQUIRED")
 
 
 def require_live_account(environment: str, broker: str = "", base_url: str = "") -> None:
@@ -124,4 +174,5 @@ def require_live_account(environment: str, broker: str = "", base_url: str = "")
 
 
 def require_production_endpoint(broker: str, base_url: str) -> None:
-    require_live_account("live", broker, base_url)
+    if production_enabled():
+        endpoint_environment(broker, base_url)
