@@ -339,6 +339,9 @@ class TradingOrchestrator:
         long_side = plan.side == "LONG"
         inv = float(plan.structural_invalidation_price)
         stop_distance = abs(price - inv) / price
+        if plan.setup_family == "RESIDUAL_MOMENTUM_PORTFOLIO_TOP1" and stop_distance > self.risk_policy.config.max_stop_loss_pct:
+            result["reason"] = "STOP_DISTANCE_EXCEEDS_HARD_MAXIMUM"
+            return rejected((result["reason"],), RiskRejectionFamily.SIZING.value)
         target = None
         if plan.target_zones:
             z = plan.target_zones[0]
@@ -388,6 +391,10 @@ class TradingOrchestrator:
             result["reason"] = "STOP_GEOMETRY_WIDENED"
             return rejected(("STOP_GEOMETRY_WIDENED",), RiskRejectionFamily.SIZING.value, trade_params=tp)
         tightened = abs(resolved_stop - inv) > 1e-9 * price
+        if plan.setup_family == "RESIDUAL_MOMENTUM_PORTFOLIO_TOP1":
+            if tightened or target is None or abs(float(tp["take_profit"]) - target) > 1e-9 * price:
+                result["reason"] = "FROZEN_GEOMETRY_CHANGED_BY_RISK"
+                return rejected((result["reason"],), RiskRejectionFamily.SIZING.value, trade_params=tp)
         result["risk_decision"] = build_risk_decision(
             plan, approved=True, stage=RiskStage.PRE_EXECUTION.value, reason_codes=("APPROVED_FOR_EXECUTION",),
             decision_time=now_ms, runtime_session_id=runtime_session_id, trade_params=tp, allocation=alloc,
@@ -615,6 +622,10 @@ class TradingOrchestrator:
             daily_trade_count=int(kwargs.get("daily_trade_count", 0)),
             adaptive_daily_risk=kwargs.get("adaptive_daily_risk"),
             kill_switch=bool(kwargs.get("kill_switch", False)),
+            consecutive_losses=int(kwargs.get("consecutive_losses", 0)),
+            consec_loss_cooldown_until_ms=int(kwargs.get("consec_loss_cooldown_until_ms", 0)),
+            consec_loss_day_paused=bool(kwargs.get("consec_loss_day_paused", False)),
+            min_stop_atr_multiplier=float(kwargs.get("min_stop_atr_multiplier", 0.5)),
             max_daily_loss=float(kwargs.get("max_daily_loss", effective_equity)),
             max_daily_trades=kwargs.get("max_daily_trades"),
             daily_trade_cap_enabled=bool(kwargs.get("daily_trade_cap_enabled", False)),

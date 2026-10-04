@@ -120,6 +120,7 @@ def test_production_does_not_construct_legacy_runner(monkeypatch):
 
 
 def test_production_health_and_status_report_loaded_profile(monkeypatch):
+    asyncio.set_event_loop(asyncio.new_event_loop())
     from app import main
     monkeypatch.setattr(main, "settings", production())
     state = main.runner_status()
@@ -163,7 +164,7 @@ def test_production_status_is_owner_scoped_and_not_virtual(monkeypatch, db):
     state = runtime.status(db, user_id="alice")
     assert [r["account_id"] for r in state["accounts"]] == ["live"]
     assert state["accounts"][0]["status"] == "STALE"
-    assert state["execution_permission"] == "BLOCKED"
+    assert state["execution_permission"] == "BLOCKED_ORDER_GATE"
     assert "cash" not in state and "fills" not in state
     with db.connect() as c:
         assert c.execute("SELECT environment FROM broker_accounts WHERE id='demo'").fetchone()[0] == "demo"

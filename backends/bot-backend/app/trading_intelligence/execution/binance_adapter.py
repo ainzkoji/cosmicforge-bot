@@ -78,12 +78,20 @@ class BinanceExecutionAdapter:
 
     # -- entry --------------------------------------------------------------------------------------
     def submit_entry(self, request: EntryRequest) -> EntryResult:
+        from app.core.config import settings
+        if settings.production:
+            self.executor.client._production_intent_identity = request.intent_identity
         from app.execution.executor import ExchangeError
 
         signal = "BUY" if request.side == "LONG" else "SELL"
         try:
             res = self._submit(request, signal)
         except ExchangeError as exc:
+            if settings.production:
+                # A generic exchange exception does not prove CREATE was rejected.
+                # The durable client ID remains owned until broker read-back.
+                return EntryResult(status=X.SUBMIT_UNKNOWN.value, raw_status="EXCHANGE_OUTCOME_UNKNOWN",
+                                   reason_codes=("SUBMIT_OUTCOME_UNKNOWN_EXCEPTION",))
             # The executor classifies this as PRE-SUBMIT (order never dispatched) and has
             # already released its entry lock: honour that verdict. Any OTHER exception
             # propagates and the boundary treats the outcome as UNKNOWN (never re-submits).
@@ -170,6 +178,14 @@ class BinanceExecutionAdapter:
     # -- protection / exits ----------------------------------------------------------------------------
     def submit_protection(self, venue_symbol: str, *, side: str, quantity: float, stop_price: float,
                           target_price: Optional[float]) -> Dict[str, Any]:
+        from app.core.config import settings
+        if settings.production:
+            from app.models.unified_trading import ProtectionRequest, Side
+            from decimal import Decimal
+            result = self.executor.client.place_protection(ProtectionRequest(symbol=venue_symbol,
+                position_side=Side.BUY if side == "LONG" else Side.SELL, qty=Decimal(str(quantity)),
+                sl_price=str(stop_price), tp_price=str(target_price)))
+            return result.model_dump()
         return self.executor.ensure_protection(venue_symbol, signal="BUY" if side == "LONG" else "SELL",
                                                qty=float(quantity), sl_price=float(stop_price),
                                                tp_price=float(target_price or 0.0), repair_source="CALLER")

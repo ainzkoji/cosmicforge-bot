@@ -389,6 +389,10 @@ class BinanceFuturesClient:
         NOTE: Binance /fapi/v1/algoOrder responses use 'algoId' (NOT 'orderId').
         Prices are rounded to the symbol's tick size to avoid HTTP -1111 errors.
         """
+        from app.core.config import settings
+        if settings.production:
+            from app.execution.production_protection import place_native_protection
+            return place_native_protection(self, req)
         from app.models.unified_trading import ProtectionResult, Side
         from app.exchange.binance.filters import round_price_down, round_price_up, _tick
         import logging

@@ -816,7 +816,11 @@ class BinanceExecutor:
         # Workaround: Iterating usually not generic. 
         # Better: ExchangeClient should expose `get_instrument(symbol)`? 
         # Or just use registry with "binance" for now since this IS the Binance Executor technically.
-        spec = registry.get_spec("binance", symbol)
+        if settings.production:
+            instrument = self.client.get_instrument(symbol)
+            spec = instrument.to_instrument_spec("binance") if instrument is not None else None
+        else:
+            spec = registry.get_spec("binance", symbol)
         if not spec:
             # Try to refresh? Or just fail?
             return 0.0, {"error": "Instrument spec not found", "symbol": symbol}
@@ -2098,10 +2102,16 @@ class BinanceExecutor:
                 
             try:
                 from app.exchange.binance.filters import normalize_protection_price, _tick
-                try:
-                    tick_size = _tick(symbol)
-                except Exception:
-                    tick_size = 0.0001
+                if settings.production:
+                    instrument = self.client.get_instrument(symbol)
+                    if instrument is None or not instrument.tick_size:
+                        raise ValueError("PROTECTION_PRECISION_UNKNOWN")
+                    tick_size = float(instrument.tick_size)
+                else:
+                    try:
+                        tick_size = _tick(symbol)
+                    except Exception:
+                        tick_size = 0.0001
                 
                 pos_side_str = "LONG" if side_enum == Side.BUY else "SHORT"
                 
@@ -2109,6 +2119,8 @@ class BinanceExecutor:
                 final_sl = normalize_protection_price(sl_price, tick_size, pos_side_str, "SL")
                 final_tp = normalize_protection_price(tp_price, tick_size, pos_side_str, "TP")
             except Exception as norm_err:
+                if settings.production:
+                    raise
                 _log.getLogger(__name__).warning(f"Normalization failed for {symbol}: {norm_err}. Falling back to float string.")
                 # If we cannot get tick size, we should still provide an exact string representation, not a float with rounding artifacts.
                 # However, since tick size is unknown, we will quantize to 5 places as a safe default for crypto.

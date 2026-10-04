@@ -5,6 +5,13 @@ type Account = {
   account_id: string; status: string; age_seconds?: number;
   balance?: Record<string, unknown> | null; positions?: Record<string, unknown>[] | null;
   orders?: Record<string, unknown>[] | null; reconciliation_status?: string;
+  execution?: {
+    execution_permission: string; reason?: string; block_reason_before_order_gate?: string;
+    latest_cati_decision?: Record<string, unknown> | null;
+    eligibility?: { eligible: boolean; reason?: string } | null;
+    kill_switch?: boolean; risk?: Record<string, unknown>;
+    execution_history?: Record<string, unknown>[];
+  };
 };
 type State = {
   status: string; strategy: string; configuration: Record<string, string | boolean>;
@@ -33,6 +40,17 @@ export function CatiTrading() {
       {state.accounts.map(account => <div key={account.account_id} className="mt-5 border-t border-slate-700 pt-4">
         <h3 className="font-semibold">LIVE account {account.account_id} · {account.status}</h3>
         <p className="text-sm text-slate-400">Snapshot age {account.age_seconds == null ? '—' : `${account.age_seconds.toFixed(1)}s`} · Reconciliation {account.reconciliation_status || 'Awaiting broker reads'}</p>
+        {account.execution && <div className="mt-3 text-sm">
+          <p>Entry permission {account.execution.execution_permission} · {account.execution.reason}</p>
+          {account.execution.block_reason_before_order_gate && <p>Account/risk result: {account.execution.block_reason_before_order_gate}</p>}
+          <p>Kill switch {account.execution.kill_switch == null ? 'Unavailable' : account.execution.kill_switch ? 'Active' : 'Inactive'}</p>
+          <p>Latest decision {display(account.execution.latest_cati_decision?.decision_id)} · Eligibility {account.execution.eligibility?.eligible ? 'Accepted' : account.execution.eligibility?.reason || 'Unavailable'}</p>
+          {account.execution.risk && <dl>{['equity', 'realized_pnl', 'unrealized_pnl', 'daily_loss_usage', 'remaining_daily_risk'].map(key =>
+            <div key={key} className="flex gap-3"><dt>{key.split('_').join(' ')}</dt><dd>{display(account.execution?.risk?.[key])}</dd></div>)}</dl>}
+          <details className="mt-2"><summary>Broker order and fill history</summary>
+            <pre className="max-h-64 overflow-auto">{display(account.execution.execution_history || [])}</pre>
+          </details>
+        </div>}
         <h4 className="mt-3 font-semibold">Broker balances</h4>
         {account.balance ? <dl>{Object.entries(account.balance).map(([key, value]) => <div key={key} className="flex gap-3 text-sm"><dt>{key}</dt><dd>{display(value)}</dd></div>)}</dl> : <p>Unavailable</p>}
         <div className="mt-4 grid gap-4 lg:grid-cols-2">

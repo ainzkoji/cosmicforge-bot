@@ -153,6 +153,26 @@ class CATIExecutionBoundary:
         ready -> CAPITAL_NOT_READY before hard risk and before the broker: a transfer that is only
         planned/submitted/unknown never funds an entry; a logical allocation needs a valid reservation."""
         now = int(now_ms if now_ms is not None else self._clock())
+        from app.core.config import settings
+        if settings.production:
+            from app.trading_intelligence.integration.residual_prospective import FAMILY, REGISTRY_HASH
+            if plan.setup_family != FAMILY or dict(plan.versions).get("residual_registry") != REGISTRY_HASH:
+                return BoundaryResult(BoundaryStatus.GOVERNANCE_NOT_AUTHORIZED, plan.trade_plan_id,
+                                      ("PRODUCTION_REQUIRES_FROZEN_RESIDUAL_DECISION",))
+            if plan.environment.upper() != "LIVE":
+                return BoundaryResult(BoundaryStatus.ENVIRONMENT_NOT_ALLOWED, plan.trade_plan_id,
+                                      ("PRODUCTION_REQUIRES_LIVE_BROKER_ACCOUNT",))
+            from app.trading_intelligence.integration.production_execution import eligibility
+            with self._db.connect() as c:
+                exists = c.execute("SELECT 1 FROM sqlite_master WHERE name='cati_residual_decisions'").fetchone()
+                row = c.execute("SELECT * FROM cati_residual_decisions WHERE decision_id=?",
+                                (plan.source_candidate_id,)).fetchone() if exists else None
+            why = eligibility(dict(row) if row else None, now)
+            if why or row["side"] != plan.side or row["selected_symbol"] != plan.instrument_key.venue_symbol \
+                    or float(row["stop"]) != plan.structural_invalidation_price \
+                    or not plan.target_zones or float(row["target"]) != plan.target_zones[0].price_high:
+                return BoundaryResult(BoundaryStatus.GOVERNANCE_NOT_AUTHORIZED, plan.trade_plan_id,
+                                      (why or "FROZEN_RESIDUAL_PLAN_GEOMETRY_MISMATCH",))
         ids = dict(cycle_id=plan.cycle_id, user_id=plan.user_id, broker_account_id=plan.broker_account_id,
                    bot_instance_id=plan.bot_instance_id)
         # 20.18 -- the path exists but is OFF unless explicitly enabled (no orchestrator call, no mutation)
@@ -183,7 +203,7 @@ class CATIExecutionBoundary:
 
         if str(getattr(self.adapter, "venue", "")).upper() != plan.venue.upper():
             return self._fail_before_risk(plan, now, BoundaryStatus.VENUE_MISMATCH, "EXECUTION_VENUE_MISMATCH")
-        if not adapter_supports(self.adapter, plan.environment):
+        if not settings.production and not adapter_supports(self.adapter, plan.environment):
             return self._fail_before_risk(plan, now, BoundaryStatus.ADAPTER_UNVALIDATED,
                                           f"EXECUTION_SUPPORT:{getattr(self.adapter, 'execution_support_status', None)}")
 
@@ -256,8 +276,45 @@ class CATIExecutionBoundary:
             current_open_count=int(account.open_positions), current_equity=float(account.current_equity),
             cycle_id=plan.cycle_id, intent_identity=f"{plan.trade_plan_id}|{plan.trade_plan_hash}",
         )
+        # This independent mutation gate is evaluated AFTER hard risk; observations
+        # and risk evidence continue even while submission is disabled.
+        if settings.production and not settings.LIVE_ORDER_SUBMISSION_ENABLED:
+            return BoundaryResult("LIVE_ORDER_SUBMISSION_DISABLED", plan.trade_plan_id,
+                                  ("LIVE_ORDER_SUBMISSION_DISABLED",), risk_decision=risk,
+                                  reservation_status=self._res_status(plan))
+        if settings.production and not adapter_supports(self.adapter, plan.environment):
+            return self._fail_before_risk(plan, now, BoundaryStatus.ADAPTER_UNVALIDATED,
+                                          "PRODUCTION_EXECUTION_ADAPTER_CERTIFICATION_REQUIRED")
+        if settings.production:
+            from app.trading_intelligence.integration.residual_prospective import owner_current
+            if not owner_current(self._db):
+                return self._fail_before_risk(plan, now, BoundaryStatus.GOVERNANCE_NOT_AUTHORIZED,
+                                              "CANONICAL_RUNTIME_LEASE_REQUIRED")
+            authorized, why = self.authority.authorize_entry(plan)
+            if not authorized:
+                return self._fail_before_risk(plan, now, BoundaryStatus.GOVERNANCE_NOT_AUTHORIZED, why)
+        caps = venue_capabilities
+        if settings.production and not (caps and caps.supports_stop_market and caps.supports_reduce_only):
+            return self._fail_before_risk(plan, now, BoundaryStatus.PREFLIGHT_BLOCKED,
+                                          "NATIVE_REDUCE_ONLY_PROTECTION_REQUIRED")
         base = self._attempt(plan, attempt_id, risk.risk_decision_id, req, status=X.PENDING_SUBMIT.value, now=now)
-        self.attempts.append(base, 0)  # evidence exists BEFORE the broker is touched
+        executor = getattr(self.adapter, "executor", None)
+        if executor is not None and hasattr(executor, "_build_entry_idempotency"):
+            _, cid = executor._build_entry_idempotency(symbol=req.venue_symbol, side=req.side, usdt=req.notional,
+                sl_price=req.stop_price, tp_price=req.target_price, intent_identity=req.intent_identity)
+            base = replace(base, client_order_id=cid)
+        if not self.attempts.append(base, 0):  # atomic claim: only the inserting process may CREATE
+            return BoundaryResult(BoundaryStatus.DUPLICATE_PLAN, plan.trade_plan_id,
+                                  ("DUPLICATE_TRADE_PLAN_EXECUTION",))
+        claimed = self.reservations.mark_resolution_pending(plan.portfolio_reservation_id, now,
+            trade_plan_id=plan.trade_plan_id, execution_attempt_id=attempt_id,
+            resolution_deadline=now + self.resolution_escalation_ms, note="ORDER_INTENT_PERSISTED")
+        if not claimed:
+            failed = replace(base, status=X.ERROR_PRE_SUBMIT.value, resolved_at=now,
+                             reason_codes=("PORTFOLIO_RESERVATION_LOST_BEFORE_CREATE",))
+            self.attempts.append(failed, 1)
+            return BoundaryResult(BoundaryStatus.EXECUTION_REJECTED, plan.trade_plan_id,
+                                  failed.reason_codes, attempt=failed)
 
         t1 = time.perf_counter()
         try:
@@ -303,7 +360,7 @@ class CATIExecutionBoundary:
             METRICS.inc("cati_hard_risk_rejections_total", reason_family=entry.rejection_family, stage=risk.stage)
 
         if status in POSITION_EXISTS:
-            self.reservations.consume(plan.portfolio_reservation_id, now)
+            self._resolve(plan, "CONSUMED", now, "BROKER_CONFIRMED_ENTRY")
             self._register_lifecycle(plan, req, entry, position_id)
             outcome = BoundaryStatus.EXECUTED
         elif keep_reserved:
@@ -315,7 +372,7 @@ class CATIExecutionBoundary:
             METRICS.inc("cati_reservation_resolution_pending_total", venue=plan.venue)
             outcome = BoundaryStatus.SUBMIT_UNKNOWN
         else:
-            self.reservations.release(plan.portfolio_reservation_id, now)
+            self._resolve(plan, "RELEASED", now, "BROKER_CONFIRMED_NO_ENTRY")
             outcome = BoundaryStatus.EXECUTION_REJECTED
         log_stage(component="boundary.execution", status=status, reason_codes=entry.reason_codes,
                   runtime_session_id=runtime_session_id, bot_run_id=plan.run_id, cycle_id=plan.cycle_id,
@@ -333,7 +390,7 @@ class CATIExecutionBoundary:
         attempt_id = ExecutionAttempt.build_id(trade_plan_id=plan.trade_plan_id, trade_plan_hash=plan.trade_plan_hash,
                                                broker_account_id=plan.broker_account_id)
         rows = self.attempts.history(plan.broker_account_id, attempt_id)
-        if not rows or rows[-1]["status"] != X.SUBMIT_UNKNOWN.value:
+        if not rows or rows[-1]["status"] not in (X.SUBMIT_UNKNOWN.value, X.PENDING_SUBMIT.value):
             return BoundaryResult(BoundaryStatus.STILL_UNKNOWN if not rows else BoundaryStatus.RECONCILED,
                                   plan.trade_plan_id, ("NOTHING_TO_RECONCILE",))
         last = rows[-1]["payload"]
@@ -350,12 +407,25 @@ class CATIExecutionBoundary:
             return BoundaryResult(BoundaryStatus.STILL_UNKNOWN, plan.trade_plan_id, ("RECONCILIATION_ERROR",),
                                   reservation_status=self._res_status(plan))
         base = self._attempt_from_payload(plan, last)
-        if pos.answered and pos.side == plan.side and pos.quantity > 0 and (not order.answered or order.executed_qty > 0):
+        from app.core.config import settings
+        confirmed_order = order.answered and order.executed_qty > 0
+        if pos.answered and pos.side == plan.side and pos.quantity > 0 and \
+                (confirmed_order or (not settings.production and not order.answered)):
             filled = order.executed_qty if order.answered and order.executed_qty > 0 else pos.quantity
             resolved = replace(base, status=X.RECONCILED_POSITION_EXISTS.value, filled_quantity=float(filled),
                                filled_price=order.avg_price or pos.entry_price, position_id=f"cati_{attempt_id}",
                                resolved_at=now, recorded_at=now,
                                reason_codes=base.reason_codes + ("RECONCILED_FROM_BROKER",))
+            # Never fabricate protection on recovered fills. The existing certified
+            # executor confirms/repairs native protection on the same account.
+            from app.core.config import settings
+            if not settings.production or settings.LIVE_ORDER_SUBMISSION_ENABLED:
+                if settings.production:
+                    self.adapter.executor.client._production_intent_identity = f"{plan.trade_plan_id}|{plan.trade_plan_hash}"
+                self.adapter.submit_protection(sym, side=plan.side, quantity=float(filled),
+                    stop_price=plan.structural_invalidation_price,
+                    target_price=(plan.target_zones[0].price_high if plan.side == "LONG"
+                                  else plan.target_zones[0].price_low) if plan.target_zones else None)
             self.attempts.append(resolved, len(rows))
             self._resolve(plan, "CONSUMED", now, "BROKER_CONFIRMED_ENTRY")
             METRICS.inc("cati_execution_reconciliation_total", outcome="POSITION_EXISTS")
@@ -394,7 +464,22 @@ class CATIExecutionBoundary:
         now = int(now_ms if now_ms is not None else self._clock())
         plans = TradePlanEvidenceStore(self._db)
         out = []
+        # A process may die between the durable attempt and reservation update.
+        # Discover those attempts as well; their existence forbids another CREATE.
+        if self.account_scope is not None:
+            latest = {}
+            for row in self.attempts.for_account(self.account_scope[1]):
+                latest[row["execution_attempt_id"]] = row
+            for row in latest.values():
+                if row["status"] == X.PENDING_SUBMIT.value:
+                    plan = plans.load_plan(self.account_scope[1], row["trade_plan_id"])
+                    if plan is not None and (plan.user_id, plan.broker_account_id) == self.account_scope:
+                        self.reservations.mark_resolution_pending(plan.portfolio_reservation_id, now,
+                            trade_plan_id=plan.trade_plan_id, execution_attempt_id=row["execution_attempt_id"],
+                            resolution_deadline=now + self.resolution_escalation_ms, note="RESTART_RECOVERY")
         for row in self.reservations.pending_resolutions():
+            if self.account_scope is None or row["broker_account_id"] != self.account_scope[1]:
+                continue
             plan = None
             try:
                 if row.get("trade_plan_id"):
@@ -406,6 +491,8 @@ class CATIExecutionBoundary:
                                         ("TRADE_PLAN_EVIDENCE_UNAVAILABLE",), reservation_status=row["status"])
             elif plan.venue.upper() != str(getattr(self.adapter, "venue", "")).upper():
                 continue  # another venue's adapter owns this reconciliation
+            elif (plan.user_id, plan.broker_account_id) != self.account_scope:
+                continue
             else:
                 result = self.reconcile_submit_unknown(plan, now_ms=now)
             deadline = row.get("resolution_deadline")
@@ -471,6 +558,9 @@ class CATIExecutionBoundary:
         try:
             self.risk_store.append(risk)
         except Exception as exc:
+            from app.core.config import settings
+            if settings.production:
+                raise  # no durable hard-risk evidence -> no CREATE
             record_stage_error("boundary.risk_evidence", "RISK", exc, db=None,
                                broker_account_id=risk.broker_account_id, bot_instance_id=risk.bot_instance_id)
 
@@ -501,7 +591,7 @@ class CATIExecutionBoundary:
         return replace(base, status=status, requested_quantity=e.requested_qty, submitted_quantity=e.submitted_qty,
                        filled_quantity=e.filled_qty, actual_order_type=e.actual_order_type,
                        submitted_price=e.submitted_price, filled_price=e.avg_fill_price,
-                       broker_order_id=e.broker_order_id, client_order_id=e.client_order_id, position_id=position_id,
+                       broker_order_id=e.broker_order_id, client_order_id=e.client_order_id or base.client_order_id, position_id=position_id,
                        acknowledged_at=now if e.broker_order_id else None,
                        resolved_at=now if status != X.SUBMIT_UNKNOWN.value else None, recorded_at=now,
                        realized_costs=realized, protection=dict(e.protection), reason_codes=tuple(e.reason_codes),

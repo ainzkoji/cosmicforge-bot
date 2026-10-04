@@ -1,8 +1,4 @@
-"""CATI production collection and broker-authoritative read/reconciliation.
-
-No execution fallback, virtual capital, account migration, or order dispatch.
-Configuration on disk takes effect only at an authorized future startup.
-"""
+"""Canonical CATI production collection, execution and broker reconciliation."""
 from __future__ import annotations
 
 import asyncio
@@ -34,12 +30,13 @@ def initialize(db):
             account_id TEXT PRIMARY KEY, user_id TEXT, observed_at INTEGER NOT NULL, document TEXT NOT NULL)""")
 
 
-def sync_account(db, account, *, factory=build_client_from_auth):
+def sync_account(db, account, *, factory=build_client_from_auth, execute=False):
     """Only broker GETs. A failed partial read never becomes a fresh snapshot."""
     auth = resolve_broker_auth(account["id"], account["user_id"], db)
     if normalize_environment(auth.environment) != BrokerEnvironment.LIVE:
         raise ValueError("PRODUCTION_REQUIRES_LIVE_BROKER_ACCOUNT")
     client = factory(auth)
+    client._production_credential_version = getattr(auth, "credential_version", None)
     balance = client.get_balance()
     positions = client.position_risk()
     orders = client.open_orders()
@@ -66,8 +63,25 @@ def sync_account(db, account, *, factory=build_client_from_auth):
               "orders": orders, "discovery": discovery, "reconciliation": reconciliation,
               "reconciliation_status": "SYNCED" if len(bots) == 1 else "ACCOUNT_OWNER_MAPPING_REQUIRED",
               "risk": {"daily_hard_loss_fraction": min(.025, settings.ADAPTIVE_DAILY_RISK_MAX_DAILY_LOSS_PCT),
-                       "entry_permission": "BLOCKED", "reason": "LIVE_ORDER_SUBMISSION_DISABLED"},
+                       "entry_permission": "BLOCKED", "reason": "LIVE_ORDER_SUBMISSION_DISABLED"
+                       if not settings.LIVE_ORDER_SUBMISSION_ENABLED else "ACCOUNT_RISK_PENDING"},
               "observed_at": now}
+    if execute:
+        from .production_execution import process_account
+        try:
+            result["execution"] = process_account(db, account, client, result)
+            result["risk"] = result["execution"].get("risk", result["risk"])
+        except Exception as exc:
+            code = getattr(exc, "reason_code", None)
+            if not code and isinstance(exc, ValueError):
+                candidate = str(exc)
+                code = candidate if candidate.replace("_", "").isalnum() and candidate.upper() == candidate else None
+            result["execution"] = {"execution_permission": "BLOCKED_ACCOUNT", "reason":
+                code or type(exc).__name__}
+            if not settings.LIVE_ORDER_SUBMISSION_ENABLED:
+                result["execution"].update(execution_permission="BLOCKED_ORDER_GATE",
+                    block_reason_before_order_gate=result["execution"]["reason"], reason="LIVE_ORDER_SUBMISSION_DISABLED")
+    result["credential_version"] = getattr(auth, "credential_version", None)
     save(db, account["id"], account["user_id"], now, result)
     return result
 
@@ -87,7 +101,7 @@ def sync(db):
         if not owner_current(db):
             return
         try:
-            sync_account(db, account)
+            sync_account(db, account, execute=True)
         except Exception as exc:
             # Never publish credentials or signed exception URLs.
             save(db, account["id"], account["user_id"], int(time.time()*1000),
@@ -111,13 +125,17 @@ def status(db, *, user_id=None):
                 data["age_seconds"] = max(0, (time.time()*1000-row[0])/1000)
                 if data["age_seconds"] > 120:
                     data["status"] = "STALE"
+                    data["execution"] = {"execution_permission": "BLOCKED_ACCOUNT", "reason": "BROKER_SNAPSHOT_STALE"}
                 states.append({"account_id": account["id"], **data})
             else:
                 states.append({"account_id": account["id"], "status": "AWAITING_FIRST_LIVE_SYNC"})
     return {"configuration": settings.configuration_matrix(), "strategy": FAMILY, "registry_hash": REGISTRY_HASH,
             "status": "LIVE_ACCOUNTS_PRESENT" if accounts else "LIVE_ACCOUNT_REQUIRED",
             "accounts": states, "order_submission_enabled": settings.LIVE_ORDER_SUBMISSION_ENABLED,
-            "execution_permission": "BLOCKED" if not settings.LIVE_ORDER_SUBMISSION_ENABLED else "RISK_AND_GOVERNANCE_REQUIRED",
+            "cati_mode": "LIVE", "trading": "ACTIVE", "broker_environment": "LIVE",
+            "execution_permission": "BLOCKED_ORDER_GATE" if not settings.LIVE_ORDER_SUBMISSION_ENABLED else
+                next((s.get("execution", {}).get("execution_permission") for s in states
+                      if s.get("execution", {}).get("execution_permission")), "BLOCKED_ACCOUNT"),
             "daily_hard_loss_fraction": min(.025, settings.ADAPTIVE_DAILY_RISK_MAX_DAILY_LOSS_PCT)}
 
 

@@ -43,8 +43,10 @@ class CATIExecutionConfig:
 
     @classmethod
     def from_env(cls) -> "CATIExecutionConfig":
+        from app.core.config import settings
         return cls(active_execution_enabled=_flag(ENV_ACTIVE_EXECUTION),
-                   exit_intent_routing_enabled=_flag(ENV_EXIT_INTENT_ROUTING))
+                   exit_intent_routing_enabled=_flag(ENV_EXIT_INTENT_ROUTING),
+                   allowed_environments=("LIVE",) if settings.production else ("DEMO", "TESTNET", "PAPER"))
 
 
 def is_active_execution_enabled() -> bool:
