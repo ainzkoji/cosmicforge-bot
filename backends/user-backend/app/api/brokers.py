@@ -144,7 +144,7 @@ async def test_broker_connection(
             json_body={
                 "broker_id": "ibkr",
                 "credentials": creds,
-                "environment": account.get("environment", "paper")
+                "environment": account.get("environment", "live")
             },
             method="POST"
         )
@@ -297,7 +297,7 @@ async def start_ibkr_link(
             # Persist accounts immediately
             link_ibkr_account(user_id, {
                 "accounts": data["accounts"],
-                "environment": "live" if any(not a.startswith("D") for a in data["accounts"]) else "paper" # Heuristic fallback
+                "environment": data.get("environment") or "unknown" # Never infer account environment from labels
             })
             
         return data

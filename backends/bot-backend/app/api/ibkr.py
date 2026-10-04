@@ -32,6 +32,7 @@ class ConnectResponse(BaseModel):
     accounts: Optional[List[str]] = None
     status: Optional[str] = "pending"
     message: Optional[str] = None
+    environment: Optional[str] = None
 
 class CallbackResponse(BaseModel):
     connection_id: str
@@ -68,6 +69,9 @@ async def connect_start(req: ConnectStartRequest):
     Start IBKR connection flow (TWS/Gateway Mode).
     Connects to the specified Host/Port using IB Insync.
     """
+    from app.core.config import settings
+    if settings.production and req.port in {7497, 4002}:
+        raise HTTPException(400, "Production requires a LIVE IBKR endpoint")
     connection_id = str(uuid.uuid4())
     logger.info(f"Starting IBKR connection to {req.host}:{req.port} (Client ID: {req.client_id})")
 
@@ -95,6 +99,8 @@ async def connect_start(req: ConnectStartRequest):
             # Live: 7496, 4001
             # Paper: 7497, 4002
             is_paper = req.port in [7497, 4002] or (accounts and any(a.startswith("D") for a in accounts))
+            if settings.production and is_paper:
+                raise ValueError("PRODUCTION_REQUIRES_LIVE_IBKR_ACCOUNT")
             environment = "paper" if is_paper else "live"
             
             manager.record_connection(connection_id, {
@@ -110,6 +116,7 @@ async def connect_start(req: ConnectStartRequest):
                 connection_id=connection_id,
                 accounts=accounts,
                 status="connected",
+                environment=environment,
                 message=f"Connected to {req.bridge_mode.upper()} at {req.host}:{req.port}"
             )
     except Exception as e:

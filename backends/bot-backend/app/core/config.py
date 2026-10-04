@@ -1,21 +1,22 @@
-from pydantic_settings import BaseSettings
+from pathlib import Path
+from shared_lib.core.production import ProductionSettings, FROZEN_STRATEGY
 from pydantic import Field
 from typing import Optional
 
 
-class Settings(BaseSettings):
+class Settings(ProductionSettings):
     # Binance API
     BINANCE_API_KEY: str = ""
     BINANCE_API_SECRET: str = ""
-    BINANCE_FAPI_BASE_URL: str = "https://testnet.binancefuture.com"
+    BINANCE_FAPI_BASE_URL: str = "https://fapi.binance.com"
     BINANCE_RECV_WINDOW: int = 5000
-    BINANCE_ENV: str = "testnet"
+    BINANCE_ENV: str = "mainnet"
 
     # Bybit API (Added)
     BYBIT_API_KEY: str = ""
     BYBIT_API_SECRET: str = ""
-    BYBIT_ENV: str = "testnet"  # mainnet | testnet
-    BYBIT_BASE_URL: str = ""    # Optional override
+    BYBIT_ENV: str = "mainnet"  # mainnet | testnet
+    BYBIT_BASE_URL: str = "https://api.bybit.com"    # Optional override
     BYBIT_RECV_WINDOW: int = 5000
     BYBIT_TIMEOUT_SECONDS: int = 10
     BYBIT_ACCOUNT_TYPE: str = "" # e.g. "UNIFIED"
@@ -24,8 +25,8 @@ class Settings(BaseSettings):
     # BingX API (Future Placeholder)
     BINGX_API_KEY: str = ""
     BINGX_API_SECRET: str = ""
-    BINGX_ENV: str = "testnet"
-    BINGX_BASE_URL: str = ""
+    BINGX_ENV: str = "mainnet"
+    BINGX_BASE_URL: str = "https://open-api.bingx.com"
     BINGX_TIMEOUT_SECONDS: int = 10
     
     # Engine Authentication
@@ -52,7 +53,7 @@ class Settings(BaseSettings):
     STRIPE_WEBHOOK_SECRET: str = ""
     
     # Trading Configuration
-    EXECUTION_MODE: str = "paper"
+    EXECUTION_MODE: str = "live"
     # TRADE_SYMBOLS / MAX_SYMBOLS: development, tests, replay and the legacy
     # contextless runner ONLY. They are not a production market universe: a
     # user bot's markets come from its connected broker account (universe_mode
@@ -100,7 +101,7 @@ class Settings(BaseSettings):
     STOP_LOSS_PCT: float = 0.02
     TAKE_PROFIT_PCT: float = 0.036  # 0.036/0.02 = 1.8 R:R matching MIN_RISK_REWARD
     TRADE_MODE: str = "normal"
-    STRATEGY_NAME: str = "master_ensemble"
+    STRATEGY_NAME: str = FROZEN_STRATEGY
     STRATEGY_PARAMS_JSON: str = ""
 
     
@@ -141,7 +142,7 @@ class Settings(BaseSettings):
     TRADINGVIEW_SAFETY_LOCKOUT_REASON: str = ""
     # Legacy/pre-Phase-6 processor flags retained for backward-compatible
     # environment gating; Phase 6 limited mode still requires its own opt-in.
-    TRADINGVIEW_TESTNET_ONLY: bool = True
+    TRADINGVIEW_TESTNET_ONLY: bool = False
     TRADINGVIEW_QUEUE_MAX_PER_CYCLE: int = 3
     TRADINGVIEW_LIVE_MODE_PROOF_ENABLED: bool = False
     TRADINGVIEW_LIVE_MODE_ACKNOWLEDGED: bool = False
@@ -444,7 +445,7 @@ class Settings(BaseSettings):
     EVENT_FEED_STALE_HOURS: int = 24
     # In Binance testnet/demo validation, stale manually-seeded feeds warn only;
     # production remains fail-closed unless this is explicitly changed.
-    EVENT_FILTER_STALE_FAILSAFE_TESTNET_WARN_ONLY: bool = True
+    EVENT_FILTER_STALE_FAILSAFE_TESTNET_WARN_ONLY: bool = False
 
     # ── Event Ingestion (auto-fetch from external sources) ───────────────────
     # Master switch — enables background worker that fetches events from APIs.
@@ -603,8 +604,8 @@ class Settings(BaseSettings):
     # Phase 3 webhook ingestion works regardless of this flag.
     TRADINGVIEW_EXTERNAL_SIGNALS_ENABLED: bool = False
     # Safety guard — when True, Phase 4 only runs on non-live/sandbox-style environments.
-    # Must remain True until live-trading validation is complete.
-    TRADINGVIEW_TESTNET_ONLY: bool = True
+    # External TradingView execution is disabled in the CATI production profile.
+    TRADINGVIEW_TESTNET_ONLY: bool = False
     # Max queue rows processed per bot per cycle (prevents cycle budget overrun).
     TRADINGVIEW_QUEUE_MAX_PER_CYCLE: int = 3
     # Live-mode TradingView proof unlock (explicit opt-in safety):
@@ -622,22 +623,22 @@ class Settings(BaseSettings):
     PAPER_TRADING_MODE: bool = False
 
     # Database
-    DATABASE_URL: str = "sqlite:///../bot.db"
+    DATABASE_URL: str = "sqlite:///../shared/shared_lib/persistence/cosmicforge.db"
     # Phase 11 §21: the database's ROLE is configured, never guessed from its
     # filename. A stale OneDrive copy sitting next to the active file must
     # never be promoted just because it is newer or larger.
-    DATABASE_ROLE: str = "development"  # development | paper | research | live
+    DATABASE_ROLE: str = "production"  # configured production identity; tests use their isolated role
 
     # Phase 11 §21 again, for the other half of the identity: what this
     # deployment *is*. Previously read as ``settings.ENVIRONMENT``, which no
     # setting ever defined, so every runtime session recorded
     # environment_name="unknown". "unknown" is not a fact, and evidence rows
     # are supposed to carry facts.
-    ENVIRONMENT_NAME: str = "development_local"
+    ENVIRONMENT_NAME: str = "production"
 
     
     class Config:
-        env_file = ".env"
+        env_file = Path(__file__).resolve().parents[2] / ".env"
         case_sensitive = True
         extra = "ignore"  # Prevent startup crash when extra vars exist in .env
     

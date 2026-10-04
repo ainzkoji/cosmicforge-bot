@@ -41,7 +41,7 @@ class BrokerAccount(BaseModel):
     status: Literal['draft', 'validating', 'connected', 'disconnected', 'disabled', 'restricted', 'error']
     label: str
     masked_key: Optional[str] = None
-    environment: Literal['live', 'paper', 'testnet', 'demo'] = 'paper'
+    environment: Literal['live', 'paper', 'testnet', 'demo'] = 'live'
     capabilities: List[str] = []
     created_at: str
     last_validated_at: Optional[str] = None

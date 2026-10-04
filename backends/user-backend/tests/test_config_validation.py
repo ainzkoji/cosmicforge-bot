@@ -25,6 +25,14 @@ def test_live_mainnet_warning_not_error():
         TRADE_SYMBOLS="BTCUSDT",
         LIVE_SYMBOLS="BTCUSDT",
         MAX_SYMBOLS=1,
+        LIVE_ORDER_SUBMISSION_ENABLED=True,
     )
     warnings = s.validate_runtime()
     assert any("REAL money" in w or "REAL MONEY" in w for w in warnings)
+
+
+def test_live_reads_do_not_require_global_execution_keys_when_submission_disabled():
+    s = Settings(EXECUTION_MODE="live", BINANCE_ENV="mainnet", BINANCE_API_KEY="", BINANCE_API_SECRET="",
+                 LIVE_ORDER_SUBMISSION_ENABLED=False, TRADE_SYMBOLS="BTCUSDT", LIVE_SYMBOLS="BTCUSDT", MAX_SYMBOLS=1)
+    warnings = s.validate_runtime()
+    assert not any("REAL money" in w or "REAL MONEY" in w for w in warnings)

@@ -1,4 +1,6 @@
 from __future__ import annotations
+from shared_lib.core.production import require_broker_mutation_permission
+
 import requests
 import time
 from typing import Dict, Any, Optional
@@ -22,6 +24,9 @@ class BingXClient:
             self.base_url = resolve_base_url("bingx", BrokerEnvironment.DEMO if testnet else BrokerEnvironment.LIVE)
 
     def _request(self, method: str, path: str, payload: dict | None = None) -> dict:
+        from shared_lib.core.production import require_production_endpoint
+        require_production_endpoint("bingx", self.base_url)
+        require_broker_mutation_permission(method, path)
         url = f"{self.base_url}{path}"
         payload = payload or {}
         

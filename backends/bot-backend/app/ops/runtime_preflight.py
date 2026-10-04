@@ -190,7 +190,7 @@ def preflight(
 
         database = db if db is not None else DB()
         database_path = database.path
-        database_role = str(getattr(settings, "DATABASE_ROLE", "development"))
+        database_role = str(getattr(settings, "DATABASE_ROLE", "production"))
 
         # current_owner() returns None on *any* error, which is the right
         # failure mode for acquiring ("assume you are not the owner") and the

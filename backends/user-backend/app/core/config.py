@@ -1,12 +1,15 @@
 # app/core/config.py
 from __future__ import annotations
+from pathlib import Path
+from shared_lib.core.production import ProductionSettings
+
 
 import json
 import logging
 from typing import Any, Dict, List
 
 from pydantic import Field, field_validator
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic_settings import SettingsConfigDict
 
 log = logging.getLogger("cosmicforge.config")
 
@@ -140,13 +143,13 @@ def _parse_kv_float(v: Any) -> Dict[str, float]:
     return out
 
 
-class Settings(BaseSettings):
+class Settings(ProductionSettings):
     """Runtime configuration loaded from .env / environment variables."""
 
     # IMPORTANT:
     # enable_decoding=False prevents pydantic-settings from auto-json-decoding List/Dict fields.
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file=Path(__file__).resolve().parents[2] / ".env",
         env_file_encoding="utf-8",
         case_sensitive=True,
         extra="ignore",
@@ -216,7 +219,7 @@ class Settings(BaseSettings):
     FORCE_SIGNAL: str | None = None  # set "BUY" or "SELL" to force trades
     
     # --- Execution ---
-    EXECUTION_MODE: str = "paper"  # paper/live
+    EXECUTION_MODE: str = "live"  # paper/live
     MAX_LIVE_TRADES_PER_CYCLE: int = 1
 
     # --- Strategy controls ---
@@ -365,23 +368,23 @@ class Settings(BaseSettings):
         if "binance" in self.BROKER_ID:
             if self.BINANCE_ENV not in {"mainnet", "testnet"}:
                 errors.append("BINANCE_ENV must be 'mainnet' or 'testnet'.")
-            if self.EXECUTION_MODE == "live" and not self.BINANCE_API_KEY:
+            if self.EXECUTION_MODE == "live" and self.LIVE_ORDER_SUBMISSION_ENABLED and not self.BINANCE_API_KEY:
                  errors.append("BINANCE_API_KEY required for live execution with Binance.")
-            if self.EXECUTION_MODE == "live" and not self.BINANCE_API_SECRET:
+            if self.EXECUTION_MODE == "live" and self.LIVE_ORDER_SUBMISSION_ENABLED and not self.BINANCE_API_SECRET:
                  errors.append("BINANCE_API_SECRET required for live execution with Binance.")
 
         if "bybit" in self.BROKER_ID:
             if self.BYBIT_ENV not in {"mainnet", "testnet"}:
                 errors.append("BYBIT_ENV must be 'mainnet' or 'testnet'.")
-            if self.EXECUTION_MODE == "live" and not self.BYBIT_API_KEY:
+            if self.EXECUTION_MODE == "live" and self.LIVE_ORDER_SUBMISSION_ENABLED and not self.BYBIT_API_KEY:
                 errors.append("BYBIT_API_KEY required for live execution with Bybit.")
-            if self.EXECUTION_MODE == "live" and not self.BYBIT_API_SECRET:
+            if self.EXECUTION_MODE == "live" and self.LIVE_ORDER_SUBMISSION_ENABLED and not self.BYBIT_API_SECRET:
                 errors.append("BYBIT_API_SECRET required for live execution with Bybit.")
 
         if "bingx" in self.BROKER_ID:
              if self.BINGX_ENV not in {"mainnet", "testnet", "demo"}:
                 errors.append("BINGX_ENV must be 'mainnet', 'testnet' or 'demo'.")
-             if self.EXECUTION_MODE == "live" and not self.BINGX_API_KEY:
+             if self.EXECUTION_MODE == "live" and self.LIVE_ORDER_SUBMISSION_ENABLED and not self.BINGX_API_KEY:
                 errors.append("BINGX_API_KEY required for live execution with BingX.")
 
         # Symbols sanity
@@ -456,8 +459,8 @@ class Settings(BaseSettings):
         ):
             errors.append("BYBIT_ENV mismatch: base URL is mainnet but BYBIT_ENV is not 'mainnet'.")
 
-        # Safety warning for real money
-        if self.EXECUTION_MODE == "live":
+        # Real orders require their independent permission.
+        if self.EXECUTION_MODE == "live" and self.LIVE_ORDER_SUBMISSION_ENABLED:
              if "binance" in self.BROKER_ID and self.BINANCE_ENV == "mainnet":
                 warnings.append(
                     "EXECUTION_MODE=live with BINANCE_ENV=mainnet will trade REAL money. "

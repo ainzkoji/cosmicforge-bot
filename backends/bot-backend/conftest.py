@@ -70,6 +70,7 @@ os.environ["DATABASE_ROLE"] = TEST_DATABASE_ROLE
 os.environ["ENVIRONMENT_NAME"] = "test"
 os.environ["COSMICFORGE_TEST_DATABASE_PATH"] = TEST_DATABASE_PATH
 os.environ[TEST_MODE_ENV] = "1"
+os.environ["APP_ENV"] = "TEST"
 # Tests never operate against real capital.
 os.environ.setdefault("EXECUTION_MODE", "paper")
 

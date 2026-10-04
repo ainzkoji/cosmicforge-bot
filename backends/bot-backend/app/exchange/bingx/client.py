@@ -1,4 +1,6 @@
 from __future__ import annotations
+from shared_lib.core.production import require_broker_mutation_permission
+
 import time
 import requests
 import json
@@ -46,6 +48,9 @@ class BingXClient:
         return f"{symbol}-USDT"
 
     def _request(self, method: str, path: str, payload: dict | None = None) -> dict:
+        from shared_lib.core.production import require_production_endpoint
+        require_production_endpoint("bingx", self.base_url)
+        require_broker_mutation_permission(method, path)
         url = f"{self.base_url}{path}"
         payload = payload or {}
         

@@ -108,6 +108,8 @@ class IBKROrderManager:
         
         try:
             # Place order
+            from shared_lib.core.production import require_broker_mutation_permission
+            require_broker_mutation_permission("POST", "broker/order")
             trade: Trade = self.client.ib.placeOrder(contract, ib_order)
             
             # Wait briefly for order acknowledgment
@@ -149,6 +151,8 @@ class IBKROrderManager:
                 return False
             
             trade = trades[0]
+            from shared_lib.core.production import require_broker_mutation_permission
+            require_broker_mutation_permission("POST", "broker/order")
             self.client.ib.cancelOrder(trade.order)
             
             logger.info(f"Cancelled order: {order_id}")

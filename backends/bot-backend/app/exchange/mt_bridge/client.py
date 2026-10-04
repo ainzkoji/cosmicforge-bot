@@ -57,6 +57,8 @@ class MTBridgeClient:
         """
         Internal HTTP request wrapper with error handling.
         """
+        from shared_lib.core.production import require_broker_mutation_permission
+        require_broker_mutation_permission(method, endpoint)
         url = f"{self.base_url}{endpoint}"
         
         try:

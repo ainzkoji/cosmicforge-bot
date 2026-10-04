@@ -13,6 +13,8 @@ class BinanceClient:
         # old testnet.binancefuture.com host validated a different environment.
         from shared_lib.broker.environment import BrokerEnvironment, resolve_base_url
         base_url = resolve_base_url("binance", BrokerEnvironment.DEMO if testnet else BrokerEnvironment.LIVE)
+        from shared_lib.core.production import require_live_account
+        require_live_account("demo" if testnet else "live")
         self.client = BinanceFuturesClient(
             api_key=api_key,
             api_secret=api_secret,

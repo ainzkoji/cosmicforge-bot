@@ -176,6 +176,12 @@ def resolve_broker_auth(
                 account_id=account_id,
             )
 
+        from shared_lib.core.production import require_live_account
+        try:
+            require_live_account(environment.value)
+        except ValueError as exc:
+            raise BrokerResolverError(BrokerResolverError.REASON_ENV_MISMATCH, str(exc), account_id=account_id) from exc
+
         # ── 5. Select active credential version ──────────────────────────────
         # Primary source: broker_credentials_v2 (versioned, supports rotation).
         # Fallback: legacy broker_credentials if v2 has no row yet (supports

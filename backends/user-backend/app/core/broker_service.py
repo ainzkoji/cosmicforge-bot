@@ -134,12 +134,11 @@ BROKER_CATALOG = [
                 {"value": "ib_gateway", "label": "IB Gateway"}
             ], "required": True, "default": "ib_gateway"},
             {"name": "host", "label": "Host", "type": "text", "required": True, "default": "127.0.0.1", "help": "Bridge host address"},
-            {"name": "port", "label": "Port", "type": "number", "required": True, "default": 4001, "help": "TWS: 7496 (live) / 7497 (paper), Gateway: 4001 (live) / 4002 (paper)"},
+            {"name": "port", "label": "Port", "type": "number", "required": True, "default": 4001, "help": "LIVE TWS: 7496, LIVE Gateway: 4001"},
             {"name": "client_id", "label": "Client ID", "type": "number", "required": True, "default": 1, "help": "Unique client identifier (1-32)"},
             {"name": "environment", "label": "Environment", "type": "select", "options": [
-                {"value": "paper", "label": "Paper Trading"},
                 {"value": "live", "label": "Live Trading"}
-            ], "required": True, "default": "paper"}
+            ], "required": True, "default": "live"}
         ],
         "features": ["forex", "stocks"],
         "required_permissions": ["Trading", "Account Info"],
@@ -279,8 +278,8 @@ def create_broker_account_draft(user_id: str, broker_id: str, market_type: str, 
         conn.execute(
             """
             INSERT INTO broker_accounts 
-            (id, user_id, broker_id, market_type, label, status, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, 'draft', ?, ?)
+            (id, user_id, broker_id, market_type, label, status, environment, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, 'draft', 'live', ?, ?)
             """,
             (account_id, user_id, broker_id, market_type, label, now, now)
         )
@@ -297,6 +296,8 @@ def submit_broker_credentials(user_id: str, account_id: str, credentials: Dict[s
     # Extract environment if present (metadata), remove from blob if desired, or keep it.
     # Usually we want environment in the table for easy querying.
     environment = credentials.get("environment", "live")
+    from shared_lib.core.production import require_live_account
+    require_live_account(environment)
     
     # Check broker_id from account
     with db.connect() as conn:
@@ -622,6 +623,8 @@ def _evaluate_key_permissions(broker_id: str, environment: str, credentials: Dic
 def _test_broker_connection(broker_id: str, credentials: Dict[str, Any], environment: str) -> Dict[str, Any]:
     """Test connection to a specific broker using their API"""
     try:
+        from shared_lib.core.production import require_live_account
+        require_live_account(environment)
         if broker_id == "binance":
             from app.exchange.binance_client import BinanceClient
             testnet = (environment == "demo" or environment == "testnet")
@@ -926,6 +929,10 @@ def link_ibkr_account(user_id: str, data: Dict[str, Any]) -> List[str]:
     now = utc_now_iso()
     accounts = data.get("accounts", [])
     environment = data.get("environment", "live")
+    from shared_lib.core.production import require_live_account, production_enabled
+    require_live_account(environment)
+    if production_enabled() and any(str(a).upper().startswith("D") for a in accounts):
+        raise ValueError("PRODUCTION_REQUIRES_LIVE_IBKR_ACCOUNT")
     
     if not accounts:
         return []

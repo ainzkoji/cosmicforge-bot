@@ -193,6 +193,9 @@ def _connected_pairs(db: Any) -> Dict[tuple, List[tuple]]:
             e = normalize_environment(env).value.upper()
         except Exception:
             continue  # an environment we cannot name is never guessed
+        from shared_lib.core.production import production_enabled
+        if production_enabled() and e != "LIVE":
+            continue
         out.setdefault((b, e), []).append((acc, user))
     return out
 

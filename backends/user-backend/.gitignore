@@ -102,3 +102,6 @@ site/
 .pdm-build/
 .pixi
 __pypackages__/
+
+# Reviewable production template; local credentials remain ignored.
+!.env.example

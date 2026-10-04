@@ -49,7 +49,7 @@ class IBKRTwsAdapter:
     def __init__(
         self,
         host: str = "127.0.0.1",
-        port: int = 7497,
+        port: int = 7496,
         client_id: int = 1,
         account_id: Optional[str] = None,
         readonly: bool = False

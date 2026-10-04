@@ -1,5 +1,6 @@
 import os
 import pytest
+os.environ["APP_ENV"] = "TEST"
 
 
 @pytest.fixture(autouse=True)

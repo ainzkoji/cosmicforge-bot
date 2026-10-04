@@ -7,7 +7,7 @@ class OandaClient:
     Full trading logic is in bot-backend, this is just for connection storage verification.
     """
     
-    def __init__(self, api_token: str, account_id: str, practice: bool = True):
+    def __init__(self, api_token: str, account_id: str, practice: bool = False):
         self.api_token = api_token
         self.account_id = account_id
         self.environment = "practice" if practice else "live"
@@ -17,6 +17,8 @@ class OandaClient:
         else:
             self.base_url = "https://api-fxtrade.oanda.com/v3"
             
+        from shared_lib.core.production import require_live_account
+        require_live_account("demo" if practice else "live")
         self.headers = {
             "Authorization": f"Bearer {self.api_token}",
             "Content-Type": "application/json",
@@ -24,6 +26,8 @@ class OandaClient:
         }
 
     def _request(self, method: str, endpoint: str, params: Optional[Dict] = None) -> Dict[str, Any]:
+        from shared_lib.core.production import require_broker_mutation_permission
+        require_broker_mutation_permission(method, endpoint)
         url = f"{self.base_url}{endpoint}"
         try:
             response = requests.request(method, url, headers=self.headers, params=params, timeout=10)

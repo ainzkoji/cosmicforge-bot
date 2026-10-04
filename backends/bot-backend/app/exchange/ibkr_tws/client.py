@@ -31,7 +31,7 @@ class IBKRTwsClient:
     def __init__(
         self,
         host: str = "127.0.0.1",
-        port: int = 7497,
+        port: int = 7496,
         client_id: int = 1,
         readonly: bool = False
     ):
@@ -47,7 +47,10 @@ class IBKRTwsClient:
         self.host = host
         self.port = port
         self.client_id = client_id
-        self.readonly = readonly
+        from app.core.config import settings
+        if settings.production and port in {7497, 4002}:
+            raise ValueError("PRODUCTION_REQUIRES_LIVE_IBKR_ENDPOINT")
+        self.readonly = readonly or (settings.production and not settings.LIVE_ORDER_SUBMISSION_ENABLED)
         
         self.ib = IB()
         self._connected = False

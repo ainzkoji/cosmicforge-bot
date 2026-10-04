@@ -191,7 +191,8 @@ def test_every_legacy_global_route_is_admin_only(api_client):
 
     app = api_client.app
 
-    public = {"/", "/health"}
+    # The static monitor shell has no account data; its /api/ reads require auth.
+    public = {"/", "/health", "/cati"}
     for route in app.routes:
         path = getattr(route, "path", "")
         if not path or path in public or path.startswith("/api/") or not getattr(route, "endpoint", None):

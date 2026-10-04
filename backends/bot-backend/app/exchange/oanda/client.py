@@ -24,7 +24,7 @@ class OandaClient:
         self,
         api_token: str,
         account_id: str,
-        practice: bool = True,
+        practice: bool = False,
         timeout: int = 30
     ):
         self.api_token = api_token
@@ -38,6 +38,8 @@ class OandaClient:
         else:
             self.base_url = "https://api-fxtrade.oanda.com"
         
+        from shared_lib.core.production import require_live_account
+        require_live_account("demo" if practice else "live")
         # Headers
         self.headers = {
             "Authorization": f"Bearer {self.api_token}",
@@ -196,6 +198,8 @@ class OandaClient:
         """
         url = f"{self.base_url}/v3/accounts/{self.account_id}/orders"
         
+        from shared_lib.core.production import require_broker_mutation_permission
+        require_broker_mutation_permission("POST", "broker/order")
         resp = requests.post(url, headers=self.headers, json=order_spec, timeout=self.timeout)
         resp.raise_for_status()
         return resp.json()
@@ -234,6 +238,8 @@ class OandaClient:
         Cancels an order.
         """
         url = f"{self.base_url}/v3/accounts/{self.account_id}/orders/{order_id}/cancel"
+        from shared_lib.core.production import require_broker_mutation_permission
+        require_broker_mutation_permission("POST", "broker/order")
         resp = requests.put(url, headers=self.headers, timeout=self.timeout)
         resp.raise_for_status()
         return resp.json()
@@ -277,6 +283,8 @@ class OandaClient:
         url = f"{self.base_url}/v3/accounts/{self.account_id}/trades/{trade_id}/close"
         body = {"units": units}
         
+        from shared_lib.core.production import require_broker_mutation_permission
+        require_broker_mutation_permission("POST", "broker/order")
         resp = requests.put(url, headers=self.headers, json=body, timeout=self.timeout)
         resp.raise_for_status()
         return resp.json()
@@ -295,6 +303,8 @@ class OandaClient:
         """
         url = f"{self.base_url}/v3/accounts/{self.account_id}/trades/{trade_id}/orders"
         
+        from shared_lib.core.production import require_broker_mutation_permission
+        require_broker_mutation_permission("POST", "broker/order")
         resp = requests.put(url, headers=self.headers, json=modifications, timeout=self.timeout)
         resp.raise_for_status()
         return resp.json()
@@ -324,6 +334,8 @@ class OandaClient:
             "shortUnits": short_units
         }
         
+        from shared_lib.core.production import require_broker_mutation_permission
+        require_broker_mutation_permission("POST", "broker/order")
         resp = requests.put(url, headers=self.headers, json=body, timeout=self.timeout)
         resp.raise_for_status()
         return resp.json()

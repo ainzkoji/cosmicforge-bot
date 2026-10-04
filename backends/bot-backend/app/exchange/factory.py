@@ -50,6 +50,10 @@ def build_exchange_client(context: BotRunContext) -> Any:
     
     Returns: Broker-specific client (legacy)
     """
+    from shared_lib.core.production import production_enabled, require_live_account
+    if production_enabled():
+        require_live_account(context.broker_environment, context.broker_type, context.broker_base_url)
+        raise ValueError("PRODUCTION_REQUIRES_RESOLVED_BROKER_AUTH_FACTORY")
     broker_type = (context.broker_type or "binance").lower()
     
     # 1. Binance

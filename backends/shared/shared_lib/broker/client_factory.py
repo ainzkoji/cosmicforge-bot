@@ -40,6 +40,8 @@ def build_client_from_auth(auth: BrokerAuth) -> Any:
         BrokerResolverError(REASON_AUTH_FAILED) if the broker type has no
         registered client builder.
     """
+    from shared_lib.core.production import require_live_account
+    require_live_account(auth.environment.value, auth.broker_type.lower(), auth.base_url)
     broker = auth.broker_type.lower()
     logger.debug(
         "build_client_from_auth broker=%s account=%s env=%s fingerprint=%s",

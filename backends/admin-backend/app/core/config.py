@@ -1,10 +1,13 @@
 from __future__ import annotations
+from pathlib import Path
+from shared_lib.core.production import ProductionSettings
+
 
 import json
 from functools import lru_cache
 from typing import Any
 
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic_settings import SettingsConfigDict
 
 
 def _parse_origins(value: Any) -> list[str]:
@@ -26,7 +29,7 @@ def _parse_origins(value: Any) -> list[str]:
     return [item.strip() for item in raw.split(",") if item.strip()]
 
 
-class Settings(BaseSettings):
+class Settings(ProductionSettings):
     """Admin Backend shell configuration.
 
     The default database URL intentionally matches the existing local shared DB.
@@ -34,7 +37,7 @@ class Settings(BaseSettings):
     """
 
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file=Path(__file__).resolve().parents[2] / ".env",
         env_file_encoding="utf-8",
         case_sensitive=True,
         extra="ignore",

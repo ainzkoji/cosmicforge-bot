@@ -10,6 +10,8 @@ import { api } from "../api/client";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import MultiAssetPanel from "../components/Broker/MultiAssetPanel";
 
+const productionProfile = (import.meta.env.VITE_APP_ENV || "PRODUCTION") === "PRODUCTION";
+
 // --- Components ---
 function CapitalSummary({ accountId }: { accountId: string }) {
     const { data: summary, isLoading, refetch } = useQuery({
@@ -92,6 +94,11 @@ export default function BrokerConnection() {
 
     const [accountId, setAccountId] = useState<string | null>(null);
     const [credentials, setCredentials] = useState<Record<string, string>>({});
+
+    // Derive missing port defaults without a render-time state update.
+    const ibkrDefaultPort = environment === "live"
+        ? (credentials.bridge_mode === "gateway" ? "4001" : "7496")
+        : (credentials.bridge_mode === "gateway" ? "4002" : "7497");
 
     // MT Pairing State (Magic Link Flow)
     const [setupLinkToken, setSetupLinkToken] = useState<string | null>(null);
@@ -221,20 +228,17 @@ export default function BrokerConnection() {
 
 
 
+    const displayedPairingStatus = pairingQuery.data?.status || pairingStatus;
+    const displayedConnectorState = pairingQuery.data?.status === "paired" ? "connected" : connectorState;
+
     useEffect(() => {
-        if (pairingQuery.data) {
-            if (pairingQuery.data.status === "paired") {
-                setPairingStatus("paired");
-                setConnectorState("connected"); // Show success state first
-                setTimeout(() => {
-                    setStep("success");
-                    queryClient.invalidateQueries({ queryKey: ["broker-accounts"] });
-                }, 2000); // Show connected animation for 2 seconds
-            } else if (pairingQuery.data.status === "expired") {
-                setPairingStatus("expired");
-            }
-        }
-    }, [pairingQuery.data]);
+        if (pairingQuery.data?.status !== "paired") return;
+        const timeout = setTimeout(() => {
+            setStep("success");
+            queryClient.invalidateQueries({ queryKey: ["broker-accounts"] });
+        }, 2000);
+        return () => clearTimeout(timeout);
+    }, [pairingQuery.data?.status, queryClient]);
 
     // Countdown effect
     const [timeLeft, setTimeLeft] = useState(0);
@@ -679,7 +683,7 @@ export default function BrokerConnection() {
                     <div className="bg-card border border-border/50 rounded-xl p-8 space-y-6">
 
                         {/* State 1: Not Installed */}
-                        {connectorState === "not_installed" && (
+                        {displayedConnectorState === "not_installed" && (
                             <>
                                 <div className="text-center space-y-6">
                                     <div className="w-20 h-20 mx-auto bg-blue-500/10 rounded-full flex items-center justify-center">
@@ -704,7 +708,7 @@ export default function BrokerConnection() {
                         )}
 
                         {/* State 2: Waiting for Connection */}
-                        {connectorState === "waiting" && (
+                        {displayedConnectorState === "waiting" && (
                             <>
                                 <div className="text-center space-y-6">
                                     <div className="w-20 h-20 mx-auto bg-green-500/10 rounded-full flex items-center justify-center">
@@ -760,7 +764,7 @@ export default function BrokerConnection() {
                                         <summary className="cursor-pointer text-xs text-muted-foreground/70 hover:text-muted-foreground font-medium">Advanced (Support Only)</summary>
                                         <div className="mt-3 p-4 bg-muted/20 rounded-lg space-y-2 text-xs font-mono">
                                             <div><span className="text-muted-foreground">Session ID:</span> {pairingSessionId}</div>
-                                            <div><span className="text-muted-foreground">Status:</span> {pairingStatus}</div>
+                                            <div><span className="text-muted-foreground">Status:</span> {displayedPairingStatus}</div>
                                             <div><span className="text-muted-foreground">Last Checked:</span> {new Date().toLocaleTimeString()}</div>
                                         </div>
                                     </details>
@@ -769,7 +773,7 @@ export default function BrokerConnection() {
                         )}
 
                         {/* State 3: Connected */}
-                        {connectorState === "connected" && (
+                        {displayedConnectorState === "connected" && (
                             <div className="text-center space-y-6">
                                 <div className="w-20 h-20 mx-auto bg-green-500/10 rounded-full flex items-center justify-center">
                                     <CheckCircle2 className="w-10 h-10 text-green-500" />
@@ -808,30 +812,12 @@ export default function BrokerConnection() {
                     setCredentials(prev => ({ ...prev, [key]: value }));
                 };
 
-                // Initialize defaults if empty
-                useEffect(() => {
-                    if (!credentials.host) updateIbkrConfig("host", "127.0.0.1");
-                    if (!credentials.client_id) updateIbkrConfig("client_id", "1");
-                    if (!credentials.bridge_mode) updateIbkrConfig("bridge_mode", "tws");
-
-                    // Port logic based on mode/env
-                    const mode = credentials.bridge_mode || "tws";
-                    const isPaper = environment === "demo";
-                    let defaultPort = "7496";
-                    if (mode === "tws") defaultPort = isPaper ? "7497" : "7496";
-                    if (mode === "gateway") defaultPort = isPaper ? "4002" : "4001";
-
-                    // Only set if not already set (or if we want to auto-switch, which is complex. 
-                    // Let's just set it if empty, or force update if it matches a "known default" of another mode? 
-                    // Simpler: Just set it if empty.)
-                    if (!credentials.port) updateIbkrConfig("port", defaultPort);
-                }, [environment, credentials.bridge_mode]);
-
+                // Missing connection values use the derived LIVE defaults.
                 const handleTestIBKR = async () => {
                     try {
                         const config = {
                             host: credentials.host || "127.0.0.1",
-                            port: parseInt(credentials.port || "7496"),
+                            port: parseInt(credentials.port || ibkrDefaultPort),
                             client_id: parseInt(credentials.client_id || "1"),
                             bridge_mode: credentials.bridge_mode || "tws",
                             test: true
@@ -855,7 +841,7 @@ export default function BrokerConnection() {
                     try {
                         const config = {
                             host: credentials.host || "127.0.0.1",
-                            port: parseInt(credentials.port || "7496"),
+                            port: parseInt(credentials.port || ibkrDefaultPort),
                             client_id: parseInt(credentials.client_id || "1"),
                             bridge_mode: credentials.bridge_mode || "tws"
                         };
@@ -896,12 +882,12 @@ export default function BrokerConnection() {
                                         >
                                             LIVE
                                         </button>
-                                        <button
+                                        {!productionProfile && <button
                                             onClick={() => setEnvironment("demo")}
                                             className={`px-3 py-1 text-xs font-bold rounded-md transition-all ${environment === 'demo' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground hover:bg-muted/50'}`}
                                         >
                                             PAPER
-                                        </button>
+                                        </button>}
                                     </div>
                                 </div>
                             </div>
@@ -959,7 +945,7 @@ export default function BrokerConnection() {
                                     <label className="text-sm font-semibold text-foreground/80">Port</label>
                                     <input
                                         type="number"
-                                        value={credentials.port || (environment === "demo" ? "7497" : "7496")}
+                                        value={credentials.port || ibkrDefaultPort}
                                         onChange={(e) => updateIbkrConfig("port", e.target.value)}
                                         className="w-full h-11 rounded-lg border border-input bg-background/50 px-3 text-sm font-mono"
                                     />
@@ -1066,12 +1052,12 @@ export default function BrokerConnection() {
                         >
                             Live Trading
                         </button>
-                        <button
+                        {!productionProfile && <button
                             onClick={() => setEnvironment("demo")}
                             className={`flex-1 py-2 text-sm font-semibold rounded-md transition-all ${environment === 'demo' ? 'bg-background shadow-sm text-foreground ring-1 ring-border/50' : 'text-muted-foreground hover:bg-muted/50'}`}
                         >
                             Testnet / Demo
-                        </button>
+                        </button>}
                     </div>
 
                     <div className="space-y-5">

@@ -14,6 +14,9 @@ def get_db():
 @router.get("/status")
 def status(user: dict = Depends(get_current_active_user), db=Depends(get_db),
            permission=Depends(require_permission("bot:read"))):
+    from app.core.config import settings
+    if settings.production:
+        raise HTTPException(410, "Historical simulation ledger is not the production trading runtime")
     result = Book(db).status()
     if result.get("owner_user_id") and result["owner_user_id"] != user["id"]:
         raise HTTPException(403, "CATI simulation belongs to another user")

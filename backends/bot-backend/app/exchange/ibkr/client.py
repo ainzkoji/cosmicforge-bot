@@ -219,6 +219,8 @@ class IBKRClient:
         ib_order.account = account_id
         
         # 3. Place
+        from shared_lib.core.production import require_broker_mutation_permission
+        require_broker_mutation_permission("POST", "broker/order")
         trade = self.ib.placeOrder(contract, ib_order)
         # trade is non-blocking object
         
@@ -260,6 +262,8 @@ class IBKRClient:
         # ib.orders() lists open orders.
         for o in self.ib.orders():
             if str(o.orderId) == str(order_id) or str(o.permId) == str(order_id):
+                from shared_lib.core.production import require_broker_mutation_permission
+                require_broker_mutation_permission("POST", "broker/order")
                 self.ib.cancelOrder(o)
                 return True
         return False

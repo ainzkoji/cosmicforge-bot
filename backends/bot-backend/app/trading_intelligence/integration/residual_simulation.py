@@ -67,6 +67,9 @@ class Book:
             """)
 
     def activate(self, owner, now, capital=10000.):
+        from app.core.config import settings
+        if settings.production:
+            raise ValueError("SIMULATION_ACTIVATION_DISABLED_IN_PRODUCTION")
         if not owner or not math.isfinite(capital) or capital <= 0:
             raise ValueError("VALID_OWNER_AND_VIRTUAL_CAPITAL_REQUIRED")
         day, week = periods(now)
@@ -473,6 +476,9 @@ def tick(book, market):
 
 
 async def run(db):
+    from app.core.config import settings
+    if settings.production:
+        raise ValueError("SIMULATION_RUNTIME_DISABLED_IN_PRODUCTION")
     book, market = Book(db), PublicMarket()
     fx_check = 0.
     while True:

@@ -340,6 +340,8 @@ app.include_router(bot_instances_router, prefix="/api/v1")
 from app.api.cati_simulation import router as cati_simulation_router
 from app.trading_intelligence.integration.residual_simulation import health as simulation_health
 app.include_router(cati_simulation_router)
+from app.api.cati_runtime import router as cati_runtime_router
+app.include_router(cati_runtime_router)
 
 # Register Auto Pilot
 from app.api.auto_pilot import router as auto_pilot_router
@@ -666,6 +668,8 @@ async def _shutdown_run_manager():
 
 
 def get_runner() -> PaperRunner:
+    if settings.production:
+        raise HTTPException(410, "Legacy runner disabled: CATI is the sole production engine")
     global paper_runner_instance
 
     client = BinanceFuturesClient(
@@ -858,8 +862,12 @@ async def _startup_background_jobs():
             return
         print(f"[BACKGROUND_JOBS] BACKGROUND_JOBS_OWNER reason={reason}")
         if os.environ.get("COSMICFORGE_TEST_MODE") != "1":
-            from app.trading_intelligence.integration.residual_simulation import run as run_simulation
-            app.state.cati_simulation_task = asyncio.create_task(run_simulation(DB()))
+            if settings.production:
+                from app.trading_intelligence.integration.production_runtime import run as run_production
+                app.state.cati_production_task = asyncio.create_task(run_production(DB()))
+            else:
+                from app.trading_intelligence.integration.residual_simulation import run as run_simulation
+                app.state.cati_simulation_task = asyncio.create_task(run_simulation(DB()))
         await _startup_signal_scheduler()
 
     asyncio.create_task(_when_owner())
@@ -867,7 +875,7 @@ async def _startup_background_jobs():
 
 @app.on_event("shutdown")
 async def _shutdown_cati_simulation():
-    task = getattr(app.state, "cati_simulation_task", None)
+    task = getattr(app.state, "cati_production_task", None) or getattr(app.state, "cati_simulation_task", None)
     if task:
         task.cancel()
         try:
@@ -909,6 +917,11 @@ async def _startup_signal_scheduler():
     )
 
     # Historical V2 dataset/model jobs are not runtime scheduled.
+
+    if settings.production:
+        scheduler.start()
+        _signal_scheduler = scheduler
+        return
 
     try:
         from scripts.validation.daily_paper_validation_monitor import (
@@ -999,7 +1012,9 @@ async def runner_loop():
 def root():
     return {
         "status": "ok",
-        "exchange": "binance-futures-testnet",
+        "environment": settings.APP_ENV,
+        "broker_environment": settings.BROKER_ENVIRONMENT,
+        "live_order_submission_enabled": settings.LIVE_ORDER_SUBMISSION_ENABLED,
         "api_key_loaded": bool(settings.BINANCE_API_KEY),
         "api_secret_loaded": bool(settings.BINANCE_API_SECRET),
     }
@@ -1668,6 +1683,13 @@ async def runner_live_stop():
 
 
 def runner_status() -> dict:
+    if settings.production:
+        multi = runner_service.multi_runner
+        return {"running": bool(runner_service.running), "mode": "live", "engine": "CATI",
+                "strategy": settings.STRATEGY_NAME, "configuration": settings.configuration_matrix(),
+                "owns_runtime": bool(getattr(multi, "owns_runtime", False)),
+                "live_order_submission_enabled": settings.LIVE_ORDER_SUBMISSION_ENABLED,
+                "legacy_instances_scheduled": False, "bots": []}
     multi = runner_service.multi_runner
     bots = []
     db = DB(path=get_db_path())
@@ -2914,7 +2936,7 @@ async def health():
     component_state = {
         "runtime_owns_lease": bool(getattr(multi, "owns_runtime", False)),
         "signal_scheduler_running": bool(_signal_scheduler and _signal_scheduler.running),
-        "cati_simulation_running": bool(getattr(app.state, "cati_simulation_task", None) and not app.state.cati_simulation_task.done()),
+        **({} if settings.production else {"cati_simulation_running": bool(getattr(app.state, "cati_simulation_task", None) and not app.state.cati_simulation_task.done())}),
         "signal_scheduler_jobs": len(_signal_scheduler.get_jobs()) if _signal_scheduler else 0,
         "calendar_sync_running": bool(calendar_sync_worker.running),
         "event_ingestion_running": bool(getattr(event_ingestion_worker, "_running", False)),
@@ -2928,7 +2950,9 @@ async def health():
         "execution_mode": settings.EXECUTION_MODE,
         "binance_env": settings.BINANCE_ENV,
         "binance_base_url": settings.BINANCE_FAPI_BASE_URL,
-        "cati_simulation": simulation_health(_worker_db),
+        **({"production_configuration": settings.configuration_matrix(),
+             "cati_production_running": bool(getattr(app.state, "cati_production_task", None) and not app.state.cati_production_task.done())}
+           if settings.production else {"cati_simulation": simulation_health(_worker_db)}),
         "default_interval": settings.DEFAULT_INTERVAL,
         "trade_symbols_count": len(trade_symbols),
         "trade_symbols": ",".join(trade_symbols[:20]),

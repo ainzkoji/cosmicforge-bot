@@ -1,4 +1,6 @@
 from __future__ import annotations
+from shared_lib.core.production import require_broker_mutation_permission
+
 import time
 import requests
 import json
@@ -21,9 +23,12 @@ class BybitClient:
         else:
             self.base_url = "https://api-testnet.bybit.com" if testnet else "https://api.bybit.com"
             
+        from shared_lib.core.production import require_production_endpoint
+        require_production_endpoint("bybit", self.base_url)
         self.recv_window = 5000
     
     def _request_v5(self, method: str, path: str, payload: dict | None = None) -> dict:
+        require_broker_mutation_permission(method, path)
         """
         Execute V5 Signed Request
         """

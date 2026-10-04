@@ -83,7 +83,7 @@ class MultiBotRunner:
             self._ownership = RuntimeOwnership(
                 self.db,
                 database_path=self.db.path,
-                database_role=str(getattr(settings, "DATABASE_ROLE", "development")),
+                database_role=str(getattr(settings, "DATABASE_ROLE", "production")),
                 runtime_session_id=self._runtime_session_id(),
             )
             result = self._ownership.acquire()
@@ -397,7 +397,7 @@ class MultiBotRunner:
         Continuous execution loop.
         """
         self.running = True
-        logger.info("Multi-Bot Runner Loop Started (Routed via PaperRunner)")
+        logger.info("CATI runtime ownership loop started")
 
         # ── Phase 4 config visibility (logged once at startup) ───────────────
         try:
@@ -481,7 +481,9 @@ class MultiBotRunner:
 
             # §5/§7: detect a stalled strategy clock and recover safely.
             try:
-                self._check_strategy_clocks()
+                from app.core.config import settings
+                if not settings.production:
+                    self._check_strategy_clocks()
             except Exception as _wd_exc:
                 logger.error("[WATCHDOG] clock check failed: %s", _wd_exc)
             
@@ -501,6 +503,11 @@ class MultiBotRunner:
     async def run_once(self):
         """Execution of one cycle for all bots using PaperRunner."""
         self.iteration += 1
+        from app.core.config import settings
+        if settings.production:
+            # Ownership/watchdog continue; only the dedicated frozen CATI
+            # worker collects and reconciles. Never instantiate V2/PaperRunner.
+            return
         
         # ✅ DEBUG: Entry point (print bypasses log level filter)
         print(f"[CYCLE] >> Iteration {self.iteration} started")

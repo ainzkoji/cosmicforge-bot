@@ -1,4 +1,6 @@
 from __future__ import annotations
+from shared_lib.core.production import require_broker_mutation_permission
+
 
 import random
 import time
@@ -32,6 +34,8 @@ class BinanceFuturesClient:
         self.api_key = api_key
         self.api_secret = api_secret
         self.base_url = base_url.rstrip("/")
+        from shared_lib.core.production import require_production_endpoint
+        require_production_endpoint("binance", self.base_url)
         self.recv_window = recv_window
 
         self._exchange_info_cache: dict | None = None
@@ -54,6 +58,7 @@ class BinanceFuturesClient:
     def _request(
         self, method: str, path: str, params=None, headers=None, max_retries: int = 6
     ):
+        require_broker_mutation_permission(method, path)
         url = f"{self.base_url}{path}"
         params = dict(params or {})
         headers = dict(headers or {})
@@ -131,6 +136,7 @@ class BinanceFuturesClient:
     def _signed_request(
         self, method: str, path: str, params: dict | None = None
     ) -> dict:
+        require_broker_mutation_permission(method, path)
         if not self.api_key or not self.api_secret:
             raise ValueError("Missing BINANCE_API_KEY or BINANCE_API_SECRET in .env")
 
