@@ -1,9 +1,21 @@
 from __future__ import annotations
 
 import pytest
+from types import SimpleNamespace
 
 from app.execution.executor import BinanceExecutor
 from app.execution.paper_executor import PaperExecutor
+from app.trading_intelligence.execution.entry_permit import boundary_entry_permit
+
+
+def permitted_paper_entry(executor, *args, **kwargs):
+    """Test the paper transport after CATI's existing boundary authorization."""
+    request = SimpleNamespace(risk_decision_id="synthetic-risk", trade_plan_id="synthetic-plan",
+                              trade_plan_hash="synthetic-hash", venue_symbol=args[0],
+                              side="LONG" if args[1] == "BUY" else "SHORT", notional=args[2],
+                              intent_identity="synthetic-paper-intent")
+    with boundary_entry_permit(request):
+        return executor.execute_signal(*args, **kwargs, intent_identity=request.intent_identity)
 
 
 class PriceOnlyClient:
@@ -50,7 +62,7 @@ def test_paper_mode_open_returns_internal_fill_without_live_order_calls():
     client = PriceOnlyClient(price=100.0)
     executor = BinanceExecutor(client=client, execution_mode="paper")
 
-    result = executor.execute_signal(
+    result = permitted_paper_entry(executor,
         "BTCUSDT",
         "BUY",
         25.0,
@@ -90,7 +102,7 @@ def test_paper_mode_close_requires_an_existing_internal_position():
 def test_paper_mode_close_uses_open_position_side_and_quantity():
     client = PriceOnlyClient(price=100.0)
     executor = BinanceExecutor(client=client, execution_mode="paper")
-    opened = executor.execute_signal("BTCUSDT", "BUY", 25.0)
+    opened = permitted_paper_entry(executor, "BTCUSDT", "BUY", 25.0)
 
     result = executor.execute_signal("BTCUSDT", "CLOSE", 0.0)
 
@@ -109,7 +121,7 @@ def test_paper_mode_reports_error_when_reference_price_is_missing():
     client = PriceOnlyClient(price=None)
     executor = BinanceExecutor(client=client, execution_mode="paper")
 
-    result = executor.execute_signal("BTCUSDT", "BUY", 25.0)
+    result = permitted_paper_entry(executor, "BTCUSDT", "BUY", 25.0)
 
     assert result.success is False
     assert result.status == "PAPER_ERROR"
@@ -127,4 +139,12 @@ def test_paper_executor_sell_slippage_and_fee_are_explicit():
     assert result.avg_price == pytest.approx(199.9)
     assert result.filled_qty == pytest.approx(100.0 / 199.9)
     assert result.fee == pytest.approx(result.filled_qty * 199.9 * 0.001)
+    assert client.live_order_calls == []
+
+
+def test_paper_mode_still_blocks_entries_without_cati_permit():
+    client = PriceOnlyClient()
+    result = BinanceExecutor(client=client, execution_mode="paper").execute_signal("BTCUSDT", "BUY", 25.)
+    assert result.status == "BLOCKED"
+    assert result.error == "CATI_BOUNDARY_PERMIT_REQUIRED"
     assert client.live_order_calls == []

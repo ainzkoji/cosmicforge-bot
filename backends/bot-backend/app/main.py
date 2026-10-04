@@ -337,6 +337,10 @@ from app.api.bot_instances import router as bot_instances_router
 
 app.include_router(bot_instances_router, prefix="/api/v1")
 
+from app.api.cati_simulation import router as cati_simulation_router
+from app.trading_intelligence.integration.residual_simulation import health as simulation_health
+app.include_router(cati_simulation_router)
+
 # Register Auto Pilot
 from app.api.auto_pilot import router as auto_pilot_router
 
@@ -853,9 +857,23 @@ async def _startup_background_jobs():
             )
             return
         print(f"[BACKGROUND_JOBS] BACKGROUND_JOBS_OWNER reason={reason}")
+        if os.environ.get("COSMICFORGE_TEST_MODE") != "1":
+            from app.trading_intelligence.integration.residual_simulation import run as run_simulation
+            app.state.cati_simulation_task = asyncio.create_task(run_simulation(DB()))
         await _startup_signal_scheduler()
 
     asyncio.create_task(_when_owner())
+
+
+@app.on_event("shutdown")
+async def _shutdown_cati_simulation():
+    task = getattr(app.state, "cati_simulation_task", None)
+    if task:
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
 
 
 async def _startup_signal_scheduler():
@@ -985,6 +1003,23 @@ def root():
         "api_key_loaded": bool(settings.BINANCE_API_KEY),
         "api_secret_loaded": bool(settings.BINANCE_API_SECRET),
     }
+
+
+# Production build of the CATI monitor, served by the canonical runtime.
+# Trading data requires the existing authenticated owner-scoped API.
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
+_cati_frontend_dist = Path(__file__).resolve().parents[3] / "frontends/user-frontend/dist"
+if (_cati_frontend_dist / "assets").is_dir():
+    app.mount("/assets", StaticFiles(directory=_cati_frontend_dist / "assets"), name="cati-ui-assets")
+
+
+@app.get("/cati", include_in_schema=False)
+def cati_monitor():
+    path = _cati_frontend_dist / "cati.html"
+    if not path.is_file():
+        raise HTTPException(503, "CATI UI build is not available")
+    return FileResponse(path)
 
 
 @app.get("/binance/ping", dependencies=_LEGACY_ADMIN_ONLY)
@@ -2879,6 +2914,7 @@ async def health():
     component_state = {
         "runtime_owns_lease": bool(getattr(multi, "owns_runtime", False)),
         "signal_scheduler_running": bool(_signal_scheduler and _signal_scheduler.running),
+        "cati_simulation_running": bool(getattr(app.state, "cati_simulation_task", None) and not app.state.cati_simulation_task.done()),
         "signal_scheduler_jobs": len(_signal_scheduler.get_jobs()) if _signal_scheduler else 0,
         "calendar_sync_running": bool(calendar_sync_worker.running),
         "event_ingestion_running": bool(getattr(event_ingestion_worker, "_running", False)),
@@ -2892,6 +2928,7 @@ async def health():
         "execution_mode": settings.EXECUTION_MODE,
         "binance_env": settings.BINANCE_ENV,
         "binance_base_url": settings.BINANCE_FAPI_BASE_URL,
+        "cati_simulation": simulation_health(_worker_db),
         "default_interval": settings.DEFAULT_INTERVAL,
         "trade_symbols_count": len(trade_symbols),
         "trade_symbols": ",".join(trade_symbols[:20]),
