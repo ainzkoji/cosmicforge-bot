@@ -115,6 +115,11 @@ def latest_decision(db):
 
 
 def eligibility(row, now):
+    """Execution signal provenance; research portfolio occupancy has no authority.
+
+    The caller supplies only latest_decision(), then revalidates it before CREATE.
+    Account occupancy is evaluated separately from broker/durable execution truth.
+    """
     if row is None:
         return "AWAITING_NATURAL_CATI_DECISION"
     state = json.loads(row["risk_state_json"])
@@ -125,22 +130,33 @@ def eligibility(row, now):
         return "RESIDUAL_DECISION_ID_MISMATCH"
     if state.get("reason") != "SELECTED_TOP1" or snapshot.get("reason") != "SELECTED_TOP1":
         return state.get("reason", "CATI_NOT_ELIGIBLE")
-    if not row["portfolio_selected"] or state.get("overlap_rejected"):
-        return "RESIDUAL_PORTFOLIO_OVERLAP"
     if not row["decision_time"] < row["recorded_at"] <= now < row["decision_time"] + Q:
         return "PROSPECTIVE_ENTRY_WINDOW_EXPIRED"
     if row.get("entry_price") is None:
         return "NEXT_NATIVE_OPEN_REFERENCE_REQUIRED"
+    outcome = json.loads(row.get("outcome_json") or "{}")
+    if (row.get("entry_time") != row["decision_time"] + 1
+            or outcome.get("entry_reference_kind") != "NEXT_NATIVE15M_OPEN_REFERENCE_NOT_A_FILL"
+            or not row["recorded_at"] <= outcome.get("entry_received_at", -1) <= now):
+        return "NEXT_NATIVE_OPEN_PROVENANCE_REQUIRED"
+    if row.get("lifecycle") == "NON_EXECUTABLE_GAP":
+        return "NON_EXECUTABLE_GAP"
+    if row.get("lifecycle") != "OPEN":
+        return "PROSPECTIVE_ENTRY_NOT_OPEN"
     entry = float(row["entry_price"])
     if not math.isfinite(entry) or not (min(float(row["stop"]), float(row["target"])) < entry <
                                       max(float(row["stop"]), float(row["target"]))):
         return "NON_EXECUTABLE_GAP"
     candidate = snapshot.get("candidate") or {}
+    if json.loads(row["eligible_universe_json"]) != snapshot.get("eligible_universe"):
+        return "RESIDUAL_DECISION_CONTENT_MISMATCH"
     for key, field in (("symbol", "selected_symbol"), ("side", "side"), ("score", "score"),
                        ("entry_reference", "entry_reference"), ("stop", "stop"), ("target", "target"), ("risk", "risk")):
         if candidate.get(key) != row[field]:
             return "RESIDUAL_DECISION_CONTENT_MISMATCH"
-    if abs(float(row["score"])) < 2 or len(snapshot.get("eligible_universe", [])) < 30:
+    if (not math.isfinite(float(row["score"])) or abs(float(row["score"])) < 2
+            or len(set(snapshot.get("eligible_universe", []))) < 30
+            or row["selected_symbol"] not in snapshot.get("eligible_universe", [])):
         return "RESIDUAL_DECISION_NOT_QUALIFIED"
     family, _ = frozen_definition()
     if row["selected_symbol"] not in family["universe"]:
@@ -400,6 +416,10 @@ def process_account(db, account, client, snapshot, *, now_ms=None, boundary_fact
               "reason": None, "broker_account_id": account["id"], "orders_submitted": False,
               "credential_version": getattr(client, "_production_credential_version", None),
               "environment": environment, "order_submission_gate": gate}
+    research_state = json.loads(row['risk_state_json']) if row else {}
+    result['research_observation_overlap'] = bool(research_state.get('overlap_rejected'))
+    with db.connect() as c:
+        result['research_portfolio_active'] = bool(c.execute("SELECT 1 FROM cati_residual_decisions WHERE registry_hash=? AND portfolio_selected=1 AND lifecycle IN ('PENDING_ENTRY','OPEN') LIMIT 1", (REGISTRY_HASH,)).fetchone()) if row else False
     with db.connect() as c:
         bots = [dict(b) for b in c.execute("SELECT * FROM bot_instances WHERE broker_account_id=? AND status='active'", (account["id"],))]
         from shared_lib.broker.auto_trading import authorization
@@ -417,6 +437,7 @@ def process_account(db, account, client, snapshot, *, now_ms=None, boundary_fact
             if row and row["selected_symbol"]:
                 symbols.add(row["selected_symbol"])
             with db.connect() as c:
+                symbols.update(r[0] for r in c.execute("SELECT e.symbol FROM pending_entries e JOIN bot_instances b ON b.id=e.bot_id WHERE b.broker_account_id=? AND e.state!='OPEN_FAILED'", (account['id'],)))
                 if c.execute("SELECT 1 FROM sqlite_master WHERE name='cati_production_protection'").fetchone():
                     symbols.update(json.loads(r[0])["symbol"] for r in c.execute(
                         "SELECT document FROM cati_production_protection WHERE account_id=?", (account["id"],)))
@@ -432,6 +453,10 @@ def process_account(db, account, client, snapshot, *, now_ms=None, boundary_fact
             boundary = boundary_factory(db, account, bots[0], client)
             result["recovery"] = [asdict(r) for r in boundary.recover_pending(now_ms=now)]
             result["execution_history"] = reconcile_executions(db, boundary, client, now)
+            from .production_portfolio import execution_portfolio, reconcile_confirmed_intents
+            result['intent_reconciliation'] = reconcile_confirmed_intents(db, account, snapshot)
+            result['execution_portfolio'] = execution_portfolio(db, account, snapshot, result['execution_history'], now)
+            result['execution_portfolio_active'] = result['execution_portfolio']['active']
             result["kill_switch"] = boundary.authority.gov.kill_switch_on(scope=account["id"])
             controls = persisted_risk_controls(db, bots[0]["id"], result["risk"], now)
             result["risk_controls"] = controls
@@ -451,11 +476,13 @@ def process_account(db, account, client, snapshot, *, now_ms=None, boundary_fact
                 result.update(reason=result["risk"]["reason"], execution_permission="BLOCKED_RISK")
             elif any(r["status"] == "STILL_UNKNOWN" for r in result["recovery"]):
                 result.update(reason="ACCOUNT_SUBMIT_OUTCOME_UNRESOLVED", execution_permission="BLOCKED_RISK")
+            elif result['execution_portfolio']['active']:
+                result.update(reason=result['execution_portfolio']['reason'], execution_permission='BLOCKED_RISK')
             elif why:
                 result["reason"] = why
                 result["execution_permission"] = ("WAITING_SIGNAL" if why in {
                     "AWAITING_NATURAL_CATI_DECISION", "PROSPECTIVE_ENTRY_WINDOW_EXPIRED",
-                    "NEXT_NATIVE_OPEN_REFERENCE_REQUIRED", "RESIDUAL_PORTFOLIO_OVERLAP",
+                    "NEXT_NATIVE_OPEN_REFERENCE_REQUIRED",
                     "NO_ELIGIBLE_TOP1", "MISSED_PROSPECTIVE_BOUNDARY"} and not result["risk"]["reason"]
                     and not result["kill_switch"] else "BLOCKED_RISK")
             else:
@@ -468,7 +495,7 @@ def process_account(db, account, client, snapshot, *, now_ms=None, boundary_fact
                     reservation = boundary.reservations.reserve(broker_account_id=account["id"], bot_instance_id=bots[0]["id"],
                         cycle_id=row["decision_id"], selected=[(row["decision_id"], ins.canonical_symbol, boundary.adapter.venue,
                         ins.venue_symbol, row["side"])], now_ms=now, ttl_seconds=max(1, (row["decision_time"]+Q-now)//1000),
-                        max_open_positions=1)
+                        max_open_positions=1, mode='PRODUCTION', production_scope=(account['user_id'], account['id']))
                     if not reservation.reserved:
                         result.update(reason=reservation.conflict_reason, execution_permission="BLOCKED_RISK")
                     else:
@@ -497,6 +524,18 @@ def process_account(db, account, client, snapshot, *, now_ms=None, boundary_fact
                         if not owner_current(db):
                             raise ValueError("CANONICAL_RUNTIME_LEASE_REQUIRED")
                         submission_time = now if now_ms is not None else int(time.time()*1000)
+                        current = latest_decision(db)
+                        stale = ("CURRENT_CATI_DECISION_CHANGED" if not current or current['decision_id'] != row['decision_id']
+                                 else eligibility(current, submission_time))
+                        if stale:
+                            boundary.reservations.release(plan.portfolio_reservation_id, submission_time)
+                            result.update(reason=stale, execution_permission='WAITING_SIGNAL')
+                            result['execution_portfolio'] = execution_portfolio(db, account, snapshot, result['execution_history'], submission_time)
+                            result['execution_portfolio_active'] = result['execution_portfolio']['active']
+                            with db.connect() as c:
+                                c.execute("INSERT OR REPLACE INTO cati_production_decisions VALUES(?,?,?,?,?)",
+                                    (account['id'], row['decision_id'], bots[0]['id'], now, json.dumps(result, default=str)))
+                            return result
                         result["stage"] = "DECISION_ACCEPTED"
                         with db.connect() as c:
                             c.execute("INSERT OR REPLACE INTO cati_production_decisions VALUES(?,?,?,?,?)",
@@ -514,6 +553,9 @@ def process_account(db, account, client, snapshot, *, now_ms=None, boundary_fact
                             else "ORDER_ACTIVE" if out.status in ("EXECUTED", "SUBMIT_UNKNOWN_PENDING_RECONCILIATION")
                             else "BLOCKED_RISK")
                         result["orders_submitted"] = bool(out.attempt and out.attempt.broker_order_id)
+                        result['execution_portfolio'] = execution_portfolio(db, account, snapshot,
+                            reconcile_executions(db, boundary, client, submission_time), submission_time)
+                        result['execution_portfolio_active'] = result['execution_portfolio']['active']
     if not gate["enabled"]:
         result["execution_permission"] = "BLOCKED_"+environment+"_ORDER_GATE"
         result["block_reason_before_order_gate"] = result["reason"]

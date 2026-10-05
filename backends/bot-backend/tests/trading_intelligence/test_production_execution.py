@@ -206,6 +206,9 @@ def test_native_protection_unknown_reads_back_before_recreate(live, monkeypatch)
 
 
 def test_runtime_persists_disabled_reason_without_mutation(live, monkeypatch):
+    # process_account owns reservation acquisition. Start with a free execution
+    # portfolio rather than the Harness's pre-reserved boundary-only plan.
+    live.reservations.release(live.plan.portfolio_reservation_id, live.now)
     from shared_lib.broker.auto_trading import set_authorization
     with live.db.connect() as c:
         set_authorization(c, account_id=live.plan.broker_account_id, user_id=live.plan.user_id,

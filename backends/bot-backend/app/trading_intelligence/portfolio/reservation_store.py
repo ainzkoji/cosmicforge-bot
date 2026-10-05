@@ -2,9 +2,10 @@
 
 Three separate authorities -- never confused:
 
-* CATI portfolio reservation (this module): portfolio-SELECTION consistency
-  across bots sharing a broker account. SHADOW mode: production execution
-  and risk never read it.
+* CATI portfolio reservation (this module): portfolio consistency across
+  bots sharing an account. SHADOW selection reservations do not occupy
+  production capacity. Ownership-validated PRODUCTION reservations enforce
+  one execution slot per account over durable intents and reservations.
 * production position-slot reservation (``app.execution.position_slots``):
   a bot's open-position capacity. Only READ here (to revalidate capacity),
   never written.
@@ -70,6 +71,7 @@ from app.trading_intelligence.portfolio.exposure_builder import (
 
 TABLE = "cati_portfolio_reservations"
 MODE_SHADOW = "SHADOW"
+MODE_PRODUCTION = "PRODUCTION"
 
 #: Section 17.8/17.9 capital conflicts (the reservation is refused, nothing is substituted)
 CAPITAL_ALREADY_RESERVED = "CAPITAL_ALREADY_RESERVED"
@@ -193,6 +195,7 @@ class CATIReservationStore:
         expected_available_slots: Optional[int] = None,
         max_open_positions: Optional[int] = None, policy_version: Optional[str] = None,
         policy_hash: Optional[str] = None, capital: Optional[Mapping[str, Any]] = None,
+        production_scope: Optional[Tuple[str, str]] = None,
     ) -> ReservationOutcome:
         """Atomic revalidate-and-insert under the account lock. On any
         conflict NOTHING is substituted or mutated.
@@ -203,7 +206,7 @@ class CATIReservationStore:
         processes): per trading wallet against its broker-reported basis (+ a
         planned inbound transfer), and per market family against its logical
         budget over the ONE account basis."""
-        if mode != MODE_SHADOW:
+        if mode != MODE_SHADOW and not (mode == MODE_PRODUCTION and production_scope):
             raise ValueError("only SHADOW reservations are permitted in this phase")
         candidate_ids = tuple(sorted(s[0] for s in selected))
         rid = short_id("resv", {"acct": broker_account_id, "bot": bot_instance_id, "cycle": cycle_id, "cands": list(candidate_ids)})
@@ -211,15 +214,30 @@ class CATIReservationStore:
         with _account_lock(broker_account_id):
             with self._db.connect() as conn:
                 conn.execute("BEGIN IMMEDIATE")  # account-scoped serialization point (DB-wide writer lock)
+                if mode == MODE_PRODUCTION:
+                    owner = conn.execute("SELECT b.user_id,a.user_id FROM bot_instances b JOIN broker_accounts a ON a.id=b.broker_account_id WHERE b.id=? AND a.id=?", (bot_instance_id, broker_account_id)).fetchone()
+                    if production_scope[1] != broker_account_id or not owner or owner[0] != production_scope[0] or owner[1] != production_scope[0]:
+                        raise ValueError("BROKER_ACCOUNT_OWNERSHIP_MISMATCH")
                 self._expire(conn, now_ms, broker_account_id)
                 existing = conn.execute(f"SELECT * FROM {TABLE} WHERE reservation_id=?", (rid,)).fetchone()
                 if existing is not None and existing["status"] == ReservationStatus.RESERVED.value:
+                    if existing["mode"] != mode:
+                        return ReservationOutcome(None, ACCOUNT_RESERVATION_CONFLICT, (reservation_id_note(rid),))
                     return ReservationOutcome(_row_to_reservation(existing))  # idempotent retry
                 if existing is not None and existing["status"] == ReservationStatus.RESOLUTION_PENDING.value:
                     # unresolved broker ownership is never deleted / re-reserved
                     return ReservationOutcome(None, ACCOUNT_RESERVATION_CONFLICT, (reservation_id_note(rid),))
                 opens, pending = load_open_and_pending(conn, broker_account_id)
                 active = self._active(conn, broker_account_id, now_ms)
+                if mode == MODE_PRODUCTION:
+                    from app.trading_intelligence.integration.production_portfolio import durable_occupancy
+                    occupied = durable_occupancy(conn, broker_account_id, now_ms)
+                    if occupied["active"]:
+                        return ReservationOutcome(None, occupied["reason"], ())
+                    # Shadow research reservations never acquire execution capacity.
+                    active = [r for r in active if r.mode == MODE_PRODUCTION]
+                    if opens or pending or active:
+                        return ReservationOutcome(None, "EXECUTION_PORTFOLIO_OVERLAP", ())
 
                 # 1) direct instrument clashes
                 taken: Dict[str, Tuple[str, str]] = {}
