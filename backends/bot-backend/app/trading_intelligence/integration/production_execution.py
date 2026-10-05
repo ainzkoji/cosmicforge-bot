@@ -196,6 +196,7 @@ def account_risk(db, account, client, positions, orders, bots, now):
     realized = sum(float(p["income"]) for p in history if p["incomeType"] in trading)
     fees = -sum(float(p['income']) for p in history if p['incomeType'] == 'COMMISSION')
     funding = sum(float(p['income']) for p in history if p['incomeType'] == 'FUNDING_FEE')
+    flows = sum(float(p["income"]) for p in history if p["incomeType"] not in trading)
     from app.risk.daily_loss import DailyLossState
     streak = DailyLossState(risk_date)
     realized_events = sorted((p for p in history if p["incomeType"] == "REALIZED_PNL" and float(p["income"]) != 0),
@@ -214,6 +215,9 @@ def account_risk(db, account, client, positions, orders, bots, now):
         c.execute("INSERT OR IGNORE INTO cati_production_daily_risk VALUES(?,?,?,0)", (account["id"], day, opening))
         state = c.execute("SELECT * FROM cati_production_daily_risk WHERE account_id=? AND day=?", (account["id"], day)).fetchone()
         basis = float(state["opening_wallet"])
+        # The broker income ledger can lag the wallet. Trading PnL never reads
+        # better than the wallet's own change since the day's opening basis.
+        realized = min(realized, wallet - basis - flows)
         loss = max(0., -realized - unrealized)
         limit = basis * min(.025, settings.ADAPTIVE_DAILY_RISK_MAX_DAILY_LOSS_PCT)
         latched = bool(state["loss_latched"]) or loss >= limit

@@ -123,3 +123,23 @@ def test_fees_and_funding_are_visible_and_counted_exactly_once(fresh):
     assert risk['fees']==pytest.approx(.1) and risk['funding']==pytest.approx(-.2)
     assert risk['adaptive_daily_risk']['risk_budget_consumed_usdt']==pytest.approx(1.3)
     assert risk['adaptive_daily_risk']['fees_today']==pytest.approx(.1)
+
+
+def test_lagging_income_ledger_cannot_hide_a_realized_wallet_loss(fresh):
+    # Binance DEMO: the close debits the wallet immediately while the income
+    # ledger is still empty. The daily cap must read the wallet, not the lag.
+    production.initialize(fresh.db)
+    fresh.client.income_history.return_value=[]
+    def wallet(value):
+        fresh.client.account.return_value=dict(totalWalletBalance=value,totalMarginBalance=value,availableBalance=value,
+                                               totalInitialMargin=0,totalUnrealizedProfit=0)
+    wallet(426.38)
+    assert production.account_risk(fresh.db,fresh.account,fresh.client,[],[],[],fresh.now)['daily_loss_usage']==0
+    wallet(418.61)
+    risk=production.account_risk(fresh.db,fresh.account,fresh.client,[],[],[],fresh.now)
+    assert risk['daily_loss_usage']==pytest.approx(7.77) and risk['realized_pnl']==pytest.approx(-7.77)
+    assert risk['adaptive_daily_risk']['risk_budget_consumed_usdt']==pytest.approx(7.77)
+    assert not risk['loss_latched'] and risk['reason'] is None
+    wallet(415.)
+    risk=production.account_risk(fresh.db,fresh.account,fresh.client,[],[],[],fresh.now)
+    assert risk['loss_latched'] and risk['reason']=='DAILY_HARD_LOSS_CAP_REACHED'
