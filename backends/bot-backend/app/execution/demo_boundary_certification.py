@@ -183,6 +183,17 @@ def run(db, account_id, run_id, *, action='close', symbol='ADAUSDT'):
                                                       bot_instance_id=bot['id'])
     client._production_intent_identity = f'{plan.trade_plan_id}|{plan.trade_plan_hash}'
     history = reconcile_executions(db,boundary,client,int(time.time()*1000))
+    closed = broker_confirmed_exit(db,account_id,plan,report)
+    if closed:
+        # The runtime's horizon close or a native SL/TP already ended the
+        # position; reconciliation recorded it only from broker truth.
+        final = {'positions':client.position_risk(),'orders':client.open_orders()+client.get_algo_orders(symbol,raise_on_error=True)}
+        report.update(closed,final_portfolio=execution_portfolio(db,account,final,history,int(time.time()*1000)))
+        if report['final_portfolio']['active'] or float(client.get_position_amt(symbol)):
+            raise ValueError('CERTIFICATION_FINAL_FLAT_OR_CLOSE_FILL_UNCONFIRMED')
+        report.update(status='COMPLETED',completed_at=int(time.time()*1000))
+        save(db,report,'COMPLETED')
+        return report
     entry = next((h for h in history if h['trade_plan_id']==plan.trade_plan_id),None)
     if entry:
         report['entry_reconciliation'] = entry
@@ -217,6 +228,39 @@ def run(db, account_id, run_id, *, action='close', symbol='ADAUSDT'):
     report.update(status='COMPLETED',completed_at=int(time.time()*1000))
     save(db,report,'COMPLETED')
     return report
+
+
+def broker_confirmed_exit(db, account_id, plan, report):
+    """Completion evidence for a certification position that was already
+    closed: the attempt reached POSITION_CLOSED, broker exit fills cover the
+    entry fills, and both native legs were confirmed by broker read-back."""
+    from app.trading_intelligence.contracts.execution import ExecutionAttempt
+    from app.trading_intelligence.evidence.stores import ExecutionAttemptStore
+    aid = ExecutionAttempt.build_id(trade_plan_id=plan.trade_plan_id,trade_plan_hash=plan.trade_plan_hash,
+                                    broker_account_id=account_id)
+    rows = ExecutionAttemptStore(db).history(account_id,aid)
+    if not rows or rows[-1]['status'] != 'POSITION_CLOSED':
+        return None
+    with db.connect() as c:
+        fills = [json.loads(r[0]) for r in c.execute('SELECT document FROM cati_production_fills WHERE account_id=? AND symbol=?',
+                                                     (account_id,plan.instrument_key.venue_symbol))]
+        close = c.execute('SELECT status,document FROM cati_production_closes WHERE account_id=? AND identity=?',
+                          (account_id,f'{plan.trade_plan_id}|{plan.trade_plan_hash}')).fetchone()             if c.execute("SELECT 1 FROM sqlite_master WHERE name='cati_production_closes'").fetchone() else None
+    fills = [f for f in fills if f.get('_execution',{}).get('trade_plan_id') == plan.trade_plan_id]
+    entry = [f for f in fills if f['_execution']['leg'] == 'ENTRY']
+    exits = [f for f in fills if f['_execution']['leg'] == 'EXIT']
+    entered = sum(float(f['qty']) for f in entry)
+    if not entered or sum(float(f['qty']) for f in exits) < entered*(1-1e-9):
+        return None
+    # Production protection returns success only after reading both legs back.
+    protection = report.get('protection_verified') or next((r['payload'].get('protection') for r in rows
+        if isinstance(r['payload'].get('protection'),dict) and r['payload']['protection'].get('status') == 'success'
+        and r['payload']['protection'].get('sl_order_id') and r['payload']['protection'].get('tp_order_id')),None)
+    if not protection:
+        return None
+    return {'position_verified':entered,'protection_verified':protection,'entry_fills':entry,'close_fills':exits,
+            'close':json.loads(close['document']) if close and close['status'] == 'CLOSED' else 'NATIVE_PROTECTION_EXIT',
+            'closed_by':'RUNTIME_CLOSE' if close else 'NATIVE_PROTECTION'}
 
 
 def save(db,report,status):

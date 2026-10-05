@@ -194,3 +194,36 @@ def test_rounded_broker_avg_price_still_verifies_protection_without_new_legs(bro
     assert sum(1 for c in h.client._signed_post.call_args_list if c.args[0].endswith('algoOrder'))==2
     report=cert.run(h.db,h.account['id'],'cert-rounded-avg',action='close')
     assert report['status']=='COMPLETED' and state['qty']==0 and not state['legs']
+
+
+def test_runtime_horizon_close_completes_certification_from_broker_evidence(broker,monkeypatch):
+    # Live sequence: protected certification position, restart, the runtime
+    # reaches the plan's declared horizon and closes it before the operator.
+    h,state=broker
+    report=cert.run(h.db,h.account['id'],'cert-horizon',action='hold')
+    assert report['status']=='PROTECTED'
+    with h.db.connect() as c:  # the operator's PROTECTED record is not required
+        c.execute("UPDATE cati_demo_certifications SET status='SUBMITTED',document=? WHERE run_id='cert-horizon'",
+                  (json.dumps({k:v for k,v in report.items() if k not in ('position_verified','protection_verified','status')}),))
+    later=h.now+3_600_000
+    monkeypatch.setattr(cert.time,'time',lambda:later/1000)
+    for _ in range(2):  # close, then broker-confirmed POSITION_CLOSED
+        production.reconcile_executions(h.db,h.boundary_for(),h.client,later)
+    assert state['qty']==0 and not state['legs']
+    posts=h.client._signed_post.call_count
+    report=cert.run(h.db,h.account['id'],'cert-horizon',action='close')
+    assert report['status']=='COMPLETED' and report['closed_by']=='RUNTIME_CLOSE',report
+    assert report['protection_verified']['status']=='success' and report['close_fills']
+    assert h.client._signed_post.call_count==posts and state['create_count']==1
+
+
+def test_native_stop_exit_completes_certification_without_close_mutation(broker):
+    h,state=broker
+    cert.run(h.db,h.account['id'],'cert-native-stop',action='hold')
+    q=state['qty'];state['qty']=0.;state['legs'].clear()  # broker executed the native STOP_MARKET leg
+    state['fills'].append({'id':9,'orderId':777,'symbol':'ADAUSDT','side':'SELL','qty':str(q),'price':'99','time':h.now})
+    production.reconcile_executions(h.db,h.boundary_for(),h.client,h.now)
+    posts=h.client._signed_post.call_count
+    report=cert.run(h.db,h.account['id'],'cert-native-stop',action='close')
+    assert report['status']=='COMPLETED' and report['closed_by']=='NATIVE_PROTECTION',report
+    assert not report['final_portfolio']['active'] and h.client._signed_post.call_count==posts
