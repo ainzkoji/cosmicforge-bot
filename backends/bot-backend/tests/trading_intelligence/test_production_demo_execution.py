@@ -137,6 +137,14 @@ def test_demo_native_protection_is_account_scoped_close_only(demo):
 @pytest.mark.parametrize("broker", ["bybit","bingx","oanda","ibkr","mt5"])
 def test_unsupported_demo_adapter_truthful_and_never_uses_binance(demo, broker):
     account = {**demo.account, "broker_id":broker}
+    if broker in {"bybit", "bingx"}:
+        # The implemented contracts now require broker-wide risk rather than
+        # returning capability-unavailable. An incomplete account read fails.
+        with pytest.raises(KeyError):
+            production.process_account(demo.db, account, demo.client, {"positions":[],"orders":[]}, now_ms=demo.now)
+        demo.client.account.assert_called_once()
+        demo.client.place_order.assert_not_called()
+        return
     out = production.process_account(demo.db, account, demo.client, {"positions":[],"orders":[]}, now_ms=demo.now)
     assert out["reason"] == "DEMO_CAPABILITY_UNAVAILABLE"
     assert out["execution_permission"] == "BLOCKED_ACCOUNT"

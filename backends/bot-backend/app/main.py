@@ -2930,6 +2930,11 @@ async def tradingview_processor_status():
 
 @app.get("/health")
 async def health():
+    production_health = {}
+    if settings.production:
+        from app.trading_intelligence.integration.production_runtime import health_summary
+        production_health = health_summary(_worker_db)
+        production_health["runtime_revision"] = RUNTIME_BASELINE.get("code_revision")
     trade_symbols = parse_symbols(settings.TRADE_SYMBOLS, settings.MAX_SYMBOLS)
     live_symbols = parse_symbols(settings.LIVE_SYMBOLS, settings.MAX_SYMBOLS)
     strong_trend_guard = evaluate_strong_trend_guard(settings)
@@ -2948,6 +2953,7 @@ async def health():
     }
     return {
         "status": "ok",
+        **production_health,
         "components": component_state,
         "time_utc": datetime.now(timezone.utc).isoformat(),
         "execution_mode": settings.EXECUTION_MODE,

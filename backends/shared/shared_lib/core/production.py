@@ -158,6 +158,9 @@ def require_broker_mutation_permission(method: str, path: str = "", *, environme
                     permitted = transport_entry_permitted(client, params.get("symbol"), params.get("side"))
                 except ImportError:
                     permitted = False
+                if not permitted and gate["environment"] == "DEMO" and broker == "binance":
+                    from app.execution.demo_transport_smoke import permitted as smoke_permitted
+                    permitted = smoke_permitted(client, params)
                 if not permitted:
                     raise ValueError("CATI_ENTRY_AUTHORITY_REQUIRED")
 

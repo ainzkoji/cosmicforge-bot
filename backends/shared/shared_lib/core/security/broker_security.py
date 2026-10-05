@@ -84,7 +84,7 @@ def _as_fernet_key(secret: str) -> bytes:
 
 def _legacy_keys() -> List[bytes]:
     keys: List[bytes] = []
-    app_secret = _settings_value("SECRET_KEY")
+    app_secret = os.getenv("SECRET_KEY") or _settings_value("SECRET_KEY")
     if app_secret:
         keys.append(base64.urlsafe_b64encode(hashlib.sha256(app_secret.encode()).digest()))
     keys.append(_ZERO_KEY)

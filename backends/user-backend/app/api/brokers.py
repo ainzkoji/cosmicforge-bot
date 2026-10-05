@@ -26,9 +26,11 @@ from typing import Optional
 class CreateDraftRequest(BaseModel):
     broker_id: str
     market_type: str
+    environment: str = "live"
 
 class CredentialsRequest(BaseModel):
     credentials: Dict[str, Any]
+    environment: Optional[str] = None
 
 class UpdateLabelRequest(BaseModel):
     label: str
@@ -62,7 +64,7 @@ def start_connection(
     Returns account_id to be used in subsequent steps.
     """
     try:
-        account_id = create_broker_account_draft(user_id, req.broker_id, req.market_type)
+        account_id = create_broker_account_draft(user_id, req.broker_id, req.market_type, environment=req.environment)
         return {"success": True, "account_id": account_id}
     except ValueError as e:
         error_msg = str(e)
@@ -79,11 +81,14 @@ def submit_credentials(
     Step 2: Submit API keys/credentials securely.
     """
     # Verify ownership handled in core service
-    success = submit_broker_credentials(user_id, account_id, req.credentials)
-    if not success:
+    from app.core.broker_service import submit_broker_credentials_v2
+    if not get_broker_account(user_id, account_id):
         raise HTTPException(404, "Broker account not found")
-        
-    return {"success": True, "message": "Credentials stored securely"}
+    try:
+        version = submit_broker_credentials_v2(user_id, account_id, req.credentials, environment=req.environment)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    return {"success": True, "version": version, "message": "Credentials stored securely"}
 
 
 @router.post("/{account_id}/test")
@@ -150,7 +155,10 @@ async def test_broker_connection(
         )
     
     # For other brokers, use existing validation
-    result = validate_broker_account(user_id, account_id)
+    from app.core.broker_service import get_db, validate_and_activate_credential_v2
+    with get_db().connect() as conn:
+        pending = conn.execute("SELECT c.version FROM broker_credentials_v2 c JOIN broker_accounts a ON a.id=c.account_id WHERE a.id=? AND a.user_id=? AND c.status='validating' ORDER BY c.version DESC LIMIT 1", (account_id, user_id)).fetchone()
+    result = validate_and_activate_credential_v2(user_id, account_id, pending[0]) if pending else validate_broker_account(user_id, account_id)
     if "error" in result and result["error"] == "Account not found":
         raise HTTPException(404, result["error"])
         
@@ -164,7 +172,10 @@ def validate_connection(
     """
     Step 3: Trigger validation pipeline (connectivity, permissions check).
     """
-    result = validate_broker_account(user_id, account_id)
+    from app.core.broker_service import get_db, validate_and_activate_credential_v2
+    with get_db().connect() as conn:
+        pending = conn.execute("SELECT c.version FROM broker_credentials_v2 c JOIN broker_accounts a ON a.id=c.account_id WHERE a.id=? AND a.user_id=? AND c.status='validating' ORDER BY c.version DESC LIMIT 1", (account_id, user_id)).fetchone()
+    result = validate_and_activate_credential_v2(user_id, account_id, pending[0]) if pending else validate_broker_account(user_id, account_id)
     if "error" in result and result["error"]  == "Account not found":
         raise HTTPException(404, "Broker account not found")
         

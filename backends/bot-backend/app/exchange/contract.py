@@ -28,7 +28,7 @@ EXECUTOR_REQUIRED: Tuple[str, ...] = (
     "place_protection", "update_protection", "place_stop_market", "place_take_profit_market",
     # market data / metadata
     "last_price", "get_prices", "klines", "get_symbol_filters", "exchange_info", "exchange_info_cached",
-    "list_instruments", "set_leverage", "server_time", "ping",
+    "list_instruments", "get_instrument", "set_leverage", "server_time", "ping",
 )
 
 CANONICAL: Tuple[str, ...] = (

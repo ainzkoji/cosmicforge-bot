@@ -19,6 +19,74 @@ from shared_lib.core.production import order_submission_gate
 from .residual_prospective import FAMILY, REGISTRY_HASH, SOURCE, Q, owner_current, frozen_definition
 
 _boundaries = {}
+_TRADING_INCOME = {"REALIZED_PNL", "COMMISSION", "FUNDING_FEE", "INSURANCE_CLEAR", "COMMISSION_REBATE",
+                   "DELIVERED_SETTELMENT", "DELIVERED_SETTLEMENT", "POSITION_LIMIT_INCREASE_FEE", "FEE_RETURN", "API_REBATE"}
+
+
+def complete_income(client, start, now):
+    """Bounded complete history in venue-supported seven-day windows."""
+    windows, history = [], []
+    while start <= now:
+        end = min(now, start + 7*86400000 - 1)
+        windows.append((start, end))
+        start = end + 1
+    pages = 0
+    while windows:
+        pages += 1
+        if pages > 512:
+            raise ValueError("BROKER_INCOME_HISTORY_INCOMPLETE")
+        start, end = windows.pop()
+        page = client.income_history(start_time_ms=start, end_time_ms=end, limit=1000)
+        if not isinstance(page, list):
+            raise ValueError("BROKER_INCOME_HISTORY_UNAVAILABLE")
+        if any(not isinstance(p, dict) or not start <= int(p["time"]) <= end or
+               not math.isfinite(float(p["income"])) or p.get("asset", "USDT") != "USDT" for p in page):
+            raise ValueError("BROKER_INCOME_HISTORY_INVALID")
+        if len(page) < 1000:
+            history.extend(page)
+        else:
+            if start == end:
+                raise ValueError("BROKER_INCOME_HISTORY_AMBIGUOUS")
+            middle = (start+end)//2
+            windows.extend(((start, middle), (middle+1, end)))
+    return history
+
+
+def account_periods(db, account, client, wallet, equity, risk_date, zone, now):
+    """Reconstruct cash-ledger peaks, persist observed equity peaks per account.
+
+    External cash transfers change capital, not trading drawdown. No legacy
+    bot runner is required to create the weekly/monthly risk baseline.
+    """
+    from app.risk.state import get_week_start, get_month_start
+    starts = {"weekly": get_week_start(risk_date), "monthly": get_month_start(risk_date)}
+    earliest = int(datetime.combine(min(starts.values()), day_time.min, zone).timestamp()*1000)
+    history = complete_income(client, earliest, now)
+    output = {}
+    with db.connect() as c:
+        c.execute("CREATE TABLE IF NOT EXISTS cati_account_period_risk(account_id TEXT,period TEXT,start_date TEXT,peak_equity REAL NOT NULL,transfers REAL NOT NULL DEFAULT 0,PRIMARY KEY(account_id,period,start_date))")
+        for period, date in starts.items():
+            stamp = int(datetime.combine(date, day_time.min, zone).timestamp()*1000)
+            rows = sorted((r for r in history if int(r["time"]) >= stamp), key=lambda r:(int(r["time"]), str(r.get("tranId", ""))))
+            opening = wallet - sum(float(r["income"]) for r in rows)
+            transfers = sum(float(r["income"]) for r in rows if r["incomeType"] not in _TRADING_INCOME)
+            adjusted = equity
+            running = peak = opening
+            for r in rows:
+                if r["incomeType"] in _TRADING_INCOME:
+                    running += float(r["income"])
+                else:
+                    running += float(r["income"])
+                    peak += float(r["income"])
+                peak = max(peak, running)
+            peak = max(peak, adjusted)
+            if not all(math.isfinite(v) for v in (peak, adjusted)) or peak <= 0:
+                raise ValueError("BROKER_PERIOD_RISK_BASIS_UNAVAILABLE")
+            c.execute("INSERT INTO cati_account_period_risk VALUES(?,?,?,?,?) ON CONFLICT(account_id,period,start_date) DO UPDATE SET peak_equity=MAX(peak_equity+excluded.transfers-transfers,excluded.peak_equity),transfers=excluded.transfers", (account["id"],period,date.isoformat(),peak,transfers))
+            durable = c.execute("SELECT peak_equity FROM cati_account_period_risk WHERE account_id=? AND period=? AND start_date=?", (account["id"],period,date.isoformat())).fetchone()[0]
+            output[period] = {"peak_equity": durable, "adjusted_equity": adjusted,
+                "drawdown_pct": max(0., (durable-adjusted)/durable*100), "source": "BROKER_CASH_LEDGER_AND_DURABLE_EQUITY"}
+    return output
 
 
 def initialize(db):
@@ -103,29 +171,10 @@ def account_risk(db, account, client, positions, orders, bots, now):
     risk_date = datetime.fromtimestamp(now/1000, timezone.utc).astimezone(risk_zone).date()
     day_start = int(datetime.combine(risk_date, day_time.min, risk_zone).timestamp()*1000)
     # Pagination is mandatory; a full page is never mistaken for complete history.
-    history, windows = [], [(day_start, now)]
-    pages = 0
-    while windows:
-        pages += 1
-        if pages > 512:
-            raise ValueError("BROKER_INCOME_HISTORY_INCOMPLETE")
-        start, end = windows.pop()
-        page = client.income_history(start_time_ms=start, end_time_ms=end, limit=1000)
-        if not isinstance(page, list):
-            raise ValueError("BROKER_INCOME_HISTORY_UNAVAILABLE")
-        if any(not isinstance(p, dict) or not start <= int(p["time"]) <= end
-               or not math.isfinite(float(p["income"])) or p.get("asset", "USDT") != "USDT" for p in page):
-            raise ValueError("BROKER_INCOME_HISTORY_INVALID")
-        if len(page) < 1000:
-            history.extend(page)
-        else:
-            if start == end:
-                raise ValueError("BROKER_INCOME_HISTORY_AMBIGUOUS")
-            middle = (start+end)//2
-            windows.extend(((start, middle), (middle+1, end)))
+    history = complete_income(client, day_start, now)
     # Wallet cashflow reconstructs midnight wallet; transfers affect capital,
     # never realized trading PnL. All broker trading losses/fees/funding count.
-    trading = {"REALIZED_PNL", "COMMISSION", "FUNDING_FEE", "INSURANCE_CLEAR", "COMMISSION_REBATE"}
+    trading = _TRADING_INCOME
     realized = sum(float(p["income"]) for p in history if p["incomeType"] in trading)
     from app.risk.daily_loss import DailyLossState
     streak = DailyLossState(risk_date)
@@ -185,7 +234,8 @@ def account_risk(db, account, client, positions, orders, bots, now):
             "adaptive_daily_risk": adaptive.as_policy_context(), "risk_date": day,
             "consecutive_losses": streak.consecutive_losses,
             "consec_loss_day_paused": streak.consec_loss_day_paused,
-            "consec_loss_cooldown_until_ms": streak.consec_loss_cooldown_until_ms}
+            "consec_loss_cooldown_until_ms": streak.consec_loss_cooldown_until_ms,
+            "periods": account_periods(db, account, client, wallet, equity, risk_date, risk_zone, now)}
 
 
 def persisted_risk_controls(db, bot_id, risk, now):
@@ -209,10 +259,13 @@ def persisted_risk_controls(db, bot_id, risk, now):
     for period, start, loader, limit in (("weekly", get_week_start(date), store.load_weekly_snapshot, weekly_limit),
                                        ("monthly", get_month_start(date), store.load_monthly_snapshot, monthly_limit)):
         snapshot = loader(start)
-        if limit > 0 and (snapshot is None or snapshot.peak_equity <= 0):
+        broker_period = risk.get("periods", {}).get(period)
+        if broker_period:
+            controls[period+"_drawdown_pct"] = broker_period["drawdown_pct"]
+        if limit > 0 and not broker_period and (snapshot is None or snapshot.peak_equity <= 0):
             raise ValueError("PERSISTED_"+period.upper()+"_RISK_BASIS_REQUIRED")
         if snapshot:
-            controls[period+"_drawdown_pct"] = max(0., (snapshot.peak_equity-risk["equity"])/snapshot.peak_equity*100)
+            controls[period+"_drawdown_pct"] = max(controls[period+"_drawdown_pct"], (snapshot.peak_equity-risk["equity"])/snapshot.peak_equity*100)
     return controls
 
 
@@ -291,6 +344,8 @@ def boundary_for(db, account, bot, client):
     symbols = list(policy.symbols)
     if policy.universe_mode == "BROKER":
         symbols = list(frozen_definition()[0]["universe"])
+    if account["broker_id"].lower() == "bingx":
+        symbols = [client._normalize_symbol(s) for s in symbols]
     levels = {"conservative": RiskLevel.LOW, "aggressive": RiskLevel.HIGH}
     limits = UserConfigurableLimits(risk_level=levels.get(policy.risk_level, RiskLevel.MEDIUM),
         max_daily_loss_pct=min(.025, policy.max_daily_loss/policy.capital_budget), max_open_positions=1,
@@ -347,12 +402,12 @@ def process_account(db, account, client, snapshot, *, now_ms=None, boundary_fact
               "environment": environment, "order_submission_gate": gate}
     with db.connect() as c:
         bots = [dict(b) for b in c.execute("SELECT * FROM bot_instances WHERE broker_account_id=? AND status='active'", (account["id"],))]
+        from shared_lib.broker.auto_trading import authorization
+        result["auto_trading"] = authorization(c, account, bots)
     if any(b.get("user_id") != account["user_id"] for b in bots):
         result["reason"] = "BROKER_ACCOUNT_OWNERSHIP_MISMATCH"
-    elif account["broker_id"].lower() != "binance":
-        # Existing crypto clients lack complete income/protection recovery; other
-        # broker products must never be routed through Binance-specific risk.
-        result["reason"] = ("DEMO_CAPABILITY_UNAVAILABLE" if environment == "DEMO" else "EXECUTION_ADAPTER_UNVALIDATED")
+    elif account["broker_id"].lower() not in {"binance", "bybit", "bingx"}:
+        result["reason"] = "DEMO_CAPABILITY_UNAVAILABLE" if environment == "DEMO" else "EXECUTION_ADAPTER_UNVALIDATED"
         result["missing_capabilities"] = ["COMPLETE_ACCOUNT_INCOME_HISTORY", "DURABLE_PROTECTION_READ_BACK"]
     else:
         # Multiple owners must never each claim the account. Resolve a unique
@@ -372,28 +427,40 @@ def process_account(db, account, client, snapshot, *, now_ms=None, boundary_fact
                 snapshot["orders"].extend(protective)
         result["risk"] = account_risk(db, account, client, snapshot["positions"], snapshot["orders"], bots, now)
         if len(bots) != 1:
-            result["reason"] = "ACCOUNT_OWNER_MAPPING_REQUIRED"
-        elif account["broker_id"].lower() != "binance":
-            result["reason"] = "EXECUTION_ADAPTER_UNVALIDATED"
+            result["reason"] = "ACCOUNT_EXECUTION_OWNER_AMBIGUOUS" if bots else "AUTO_TRADING_DISABLED"
         else:
             boundary = boundary_factory(db, account, bots[0], client)
             result["recovery"] = [asdict(r) for r in boundary.recover_pending(now_ms=now)]
             result["execution_history"] = reconcile_executions(db, boundary, client, now)
             result["kill_switch"] = boundary.authority.gov.kill_switch_on(scope=account["id"])
+            controls = persisted_risk_controls(db, bots[0]["id"], result["risk"], now)
+            result["risk_controls"] = controls
+            control_reason = ("CATI_NEW_ENTRY_KILL_SWITCH" if result["kill_switch"] or controls.get("kill_switch") else
+                "CONSECUTIVE_LOSS_DAY_PAUSED" if controls.get("consec_loss_day_paused") else
+                "CONSECUTIVE_LOSS_COOLDOWN" if controls.get("consec_loss_cooldown_until_ms", 0) > now else
+                next((p.upper()+"_DRAWDOWN_LIMIT_REACHED" for p in ("weekly", "monthly")
+                      if controls.get("max_"+p+"_drawdown_pct", 0) > 0 and
+                      controls[p+"_drawdown_pct"] >= controls["max_"+p+"_drawdown_pct"]), None))
             why = eligibility(row, now)
             result["eligibility"] = {"eligible": why is None, "reason": why}
-            if why:
-                result["reason"] = why
-                result["execution_permission"] = ("WAITING_SIGNAL" if why in {
-                    "AWAITING_NATURAL_CATI_DECISION", "PROSPECTIVE_ENTRY_WINDOW_EXPIRED",
-                    "NEXT_NATIVE_OPEN_REFERENCE_REQUIRED"} and not result["risk"]["reason"]
-                    and not result["kill_switch"] else "BLOCKED_RISK")
+            if not result["auto_trading"]["enabled"]:
+                result.update(reason=result["auto_trading"]["reason"], execution_permission="BLOCKED_ACCOUNT")
+            elif control_reason:
+                result.update(reason=control_reason, execution_permission="BLOCKED_RISK")
             elif result["risk"]["reason"]:
                 result.update(reason=result["risk"]["reason"], execution_permission="BLOCKED_RISK")
             elif any(r["status"] == "STILL_UNKNOWN" for r in result["recovery"]):
                 result.update(reason="ACCOUNT_SUBMIT_OUTCOME_UNRESOLVED", execution_permission="BLOCKED_RISK")
+            elif why:
+                result["reason"] = why
+                result["execution_permission"] = ("WAITING_SIGNAL" if why in {
+                    "AWAITING_NATURAL_CATI_DECISION", "PROSPECTIVE_ENTRY_WINDOW_EXPIRED",
+                    "NEXT_NATIVE_OPEN_REFERENCE_REQUIRED", "RESIDUAL_PORTFOLIO_OVERLAP",
+                    "NO_ELIGIBLE_TOP1", "MISSED_PROSPECTIVE_BOUNDARY"} and not result["risk"]["reason"]
+                    and not result["kill_switch"] else "BLOCKED_RISK")
             else:
-                catalog = boundary.preflight.catalog.record(boundary.preflight.venue_key, environment, row["selected_symbol"])
+                venue_symbol = client._normalize_symbol(row["selected_symbol"]) if account["broker_id"].lower() == "bingx" else row["selected_symbol"]
+                catalog = boundary.preflight.catalog.record(boundary.preflight.venue_key, environment, venue_symbol)
                 if not catalog:
                     result["reason"] = "INSTRUMENT_UNKNOWN"
                 else:
@@ -408,11 +475,17 @@ def process_account(db, account, client, snapshot, *, now_ms=None, boundary_fact
                         plan = build_plan(row, account, bots[0]["id"], ins, reservation.reservation.reservation_id)
                         plans = TradePlanEvidenceStore(db)
                         plans.append(plan)
-                        info = client.exchange_info_cached()
-                        symbol_info = next((s for s in info["symbols"] if s["symbol"] == ins.venue_symbol), None)
-                        raw = VenueRawSnapshot(venue_symbol=ins.venue_symbol, captured_at=now,
-                            payloads={"exchange_info_symbol": symbol_info, "exchange_info_as_of": now})
-                        caps = BinanceUsdmEconomicAdapter().describe_execution_capabilities(None, raw)
+                        if account["broker_id"].lower() == "binance":
+                            info = client.exchange_info_cached()
+                            symbol_info = next((s for s in info["symbols"] if s["symbol"] == ins.venue_symbol), None)
+                            raw = VenueRawSnapshot(venue_symbol=ins.venue_symbol, captured_at=now,
+                                payloads={"exchange_info_symbol": symbol_info, "exchange_info_as_of": now})
+                            caps = BinanceUsdmEconomicAdapter().describe_execution_capabilities(None, raw)
+                        else:
+                            from app.trading_intelligence.venue.perpetual import BybitEconomicAdapter, BingXEconomicAdapter
+                            economic = BybitEconomicAdapter() if account["broker_id"].lower() == "bybit" else BingXEconomicAdapter()
+                            caps = economic.describe_execution_capabilities(None, VenueRawSnapshot(
+                                venue_symbol=ins.venue_symbol, captured_at=now, payloads={"instrument": ins, "metadata_as_of": now}))
                         price = float(client.last_price(ins.venue_symbol))
                         price_observed_at = now if now_ms is not None else int(time.time()*1000)
                         klines = client.klines(symbol=ins.venue_symbol, interval="15m", limit=250)

@@ -607,6 +607,9 @@ class BotInstanceService:
                 """,
                 (now, now, instance_id)
             )
+            from shared_lib.broker.auto_trading import set_authorization
+            set_authorization(conn, account_id=instance.broker_account_id, user_id=instance.user_id,
+                              bot_instance_id=instance_id, enabled=True, now=now)
         
         logger.info(f"Started bot instance {instance_id}")
         return self.get_bot_instance(instance_id)
@@ -635,6 +638,9 @@ class BotInstanceService:
                 "UPDATE bot_instances SET status = 'paused', updated_at = ? WHERE id = ?",
                 (now, instance_id)
             )
+            from shared_lib.broker.auto_trading import set_authorization
+            set_authorization(conn, account_id=instance.broker_account_id, user_id=instance.user_id,
+                              bot_instance_id=instance_id, enabled=False, now=now)
         
         logger.info(f"Paused bot instance {instance_id}")
         return self.get_bot_instance(instance_id)

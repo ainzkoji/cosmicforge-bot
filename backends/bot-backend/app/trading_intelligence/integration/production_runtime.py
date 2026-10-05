@@ -85,7 +85,8 @@ def sync_account(db, account, *, factory=build_client_from_auth, execute=False):
     now = int(time.time() * 1000)
     result = {**account_identity(account), "status": "SYNCED", "balance": balance, "positions": positions,
               "orders": orders, "discovery": discovery, "reconciliation": reconciliation,
-              "reconciliation_status": "SYNCED" if len(bots) == 1 else "ACCOUNT_OWNER_MAPPING_REQUIRED",
+              "reconciliation_status": "SYNCED" if len(bots) == 1 else "ACCOUNT_EXECUTION_OWNER_AMBIGUOUS" if bots else "ACCOUNT_OWNER_MAPPING_REQUIRED",
+              "credential": "READY",
               "risk": {"daily_hard_loss_fraction": min(.025, settings.ADAPTIVE_DAILY_RISK_MAX_DAILY_LOSS_PCT),
                        "entry_permission": "BLOCKED", "reason": gate["reason"]
                        if not gate["enabled"] else "ACCOUNT_RISK_PENDING"},
@@ -115,6 +116,13 @@ def save(db, account_id, user_id, now, result):
     with db.connect() as c:
         c.execute("INSERT OR REPLACE INTO cati_production_state VALUES(?,?,?,?)",
                   (account_id, user_id, now, json.dumps(result, default=str)))
+        columns = {r[1] for r in c.execute("PRAGMA table_info(bot_instances)")}
+        if {"bot_health_status", "bot_health_reason_code", "bot_health_message"} <= columns:
+            execution = result.get("execution", {})
+            health = execution.get("execution_permission", result.get("execution_permission", "BLOCKED_ACCOUNT"))
+            reason = execution.get("reason", result.get("reason", "BROKER_SYNC_PENDING"))
+            c.execute("UPDATE bot_instances SET bot_health_status=?,bot_health_reason_code=?,bot_health_message=? WHERE broker_account_id=? AND user_id=? AND status='active'",
+                (health, reason, "CATI account-scoped production state", account_id, user_id))
 
 
 def sync(db):
@@ -172,6 +180,7 @@ def status(db, *, user_id=None):
                         "execution_permission": "BLOCKED_"+account["environment"]+"_ORDER_GATE",
                         "reason": gate["reason"]}
                 data["execution_permission"] = data.get("execution", {}).get("execution_permission", "BLOCKED_ACCOUNT")
+                data["auto_trading"] = data.get("execution", {}).get("auto_trading", {"state": "UNKNOWN", "enabled": False})
                 states.append({**data, **account_identity(account)})
             else:
                 identity = account_identity(account)
@@ -190,6 +199,28 @@ def status(db, *, user_id=None):
             "daily_hard_loss_fraction": min(.025, settings.ADAPTIVE_DAILY_RISK_MAX_DAILY_LOSS_PCT)}
 
 
+def health_summary(db):
+    """Public aggregate truth; no credentials or private account identifiers."""
+    accounts = status(db)["accounts"]
+    summary = {"broker_execution_scope": "ACCOUNT_SCOPED", "strategy": FAMILY,
+        "demo_system_gate": order_submission_gate("demo")["enabled"],
+        "live_system_gate": order_submission_gate("live")["enabled"],
+        "discovered_accounts": len(accounts),
+        "demo_accounts": sum(a["environment"] == "DEMO" for a in accounts),
+        "live_accounts": sum(a["environment"] == "LIVE" for a in accounts),
+        "synced_accounts": sum(a.get("status") == "SYNCED" for a in accounts),
+        "blocked_accounts": sum(str(a.get("execution_permission", "")).startswith("BLOCKED") for a in accounts),
+        "risk_engine_health": "HEALTHY" if accounts and all(a.get("status") == "SYNCED" and "equity" in a.get("risk", {}) for a in accounts) else "AWAITING_ACCOUNT_RISK",
+        "reconciliation_health": "SYNCED" if accounts and all(a.get("status") == "SYNCED" and a.get("reconciliation_status") == "SYNCED" for a in accounts) else "NOT_SYNCED"}
+    with db.connect() as c:
+        exists = c.execute("SELECT 1 FROM sqlite_master WHERE name='cati_residual_tracker'").fetchone()
+        tracker = c.execute("SELECT heartbeat_at,status FROM cati_residual_tracker WHERE registry_hash=?", (REGISTRY_HASH,)).fetchone() if exists else None
+    summary["market_data_status"] = tracker[1] if tracker and 0 <= int(time.time()*1000)-tracker[0] <= 120000 else "STALE"
+    summary["status"] = ("ok" if summary["risk_engine_health"] == "HEALTHY"
+        and summary["reconciliation_health"] == "SYNCED" and summary["market_data_status"] != "STALE" else "degraded")
+    return summary
+
+
 async def run(db):
     if not settings.production:
         raise ValueError("CATI_PRODUCTION_PROFILE_REQUIRED")
@@ -198,6 +229,8 @@ async def run(db):
     while True:
         try:
             if owner_current(db):
+                from app.execution.demo_transport_smoke import process_local_request
+                await asyncio.to_thread(process_local_request, db)
                 residual_schedule(runner)
                 forward_schedule(runner)
                 if time.monotonic() - fx_check > 60:

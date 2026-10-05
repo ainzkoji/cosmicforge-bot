@@ -206,6 +206,10 @@ def test_native_protection_unknown_reads_back_before_recreate(live, monkeypatch)
 
 
 def test_runtime_persists_disabled_reason_without_mutation(live, monkeypatch):
+    from shared_lib.broker.auto_trading import set_authorization
+    with live.db.connect() as c:
+        set_authorization(c, account_id=live.plan.broker_account_id, user_id=live.plan.user_id,
+            bot_instance_id=live.plan.bot_instance_id, enabled=True, now="fixture")
     from app.trading_intelligence.execution.preflight import SubmissionPreflight
     from app.exchange.instruments import InstrumentCatalog
     from app.product_safety import execution_safety

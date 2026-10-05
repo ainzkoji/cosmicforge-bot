@@ -238,11 +238,13 @@ def get_broker_details(broker_id: str) -> Optional[Dict[str, Any]]:
 # Account Management
 # ============================================================================
 
-def create_broker_account_draft(user_id: str, broker_id: str, market_type: str, label: Optional[str] = None) -> str:
+def create_broker_account_draft(user_id: str, broker_id: str, market_type: str, label: Optional[str] = None, environment: str = "live") -> str:
     """
     Creates a new broker account in DRAFT state.
     Returns account_id.
     """
+    from shared_lib.broker.environment import normalize_environment
+    environment = normalize_environment(environment).value
     db = get_db()
     account_id = f"brk_{uuid.uuid4().hex[:12]}"
     now = utc_now_iso()
@@ -259,8 +261,8 @@ def create_broker_account_draft(user_id: str, broker_id: str, market_type: str, 
     # Check for existing DRAFT for this broker (resume flow of existing draft)
     with db.connect() as conn:
         existing_draft = conn.execute(
-            "SELECT id FROM broker_accounts WHERE user_id = ? AND broker_id = ? AND status = 'draft'",
-            (user_id, broker_id)
+            "SELECT id FROM broker_accounts WHERE user_id = ? AND broker_id = ? AND environment = ? AND status = 'draft'",
+            (user_id, broker_id, environment)
         ).fetchone()
         
         if existing_draft:
@@ -279,9 +281,9 @@ def create_broker_account_draft(user_id: str, broker_id: str, market_type: str, 
             """
             INSERT INTO broker_accounts 
             (id, user_id, broker_id, market_type, label, status, environment, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, 'draft', 'live', ?, ?)
+            VALUES (?, ?, ?, ?, ?, 'draft', ?, ?, ?)
             """,
-            (account_id, user_id, broker_id, market_type, label, now, now)
+            (account_id, user_id, broker_id, market_type, label, environment, now, now)
         )
         
     return account_id
@@ -295,16 +297,17 @@ def submit_broker_credentials(user_id: str, account_id: str, credentials: Dict[s
     
     # Extract environment if present (metadata), remove from blob if desired, or keep it.
     # Usually we want environment in the table for easy querying.
-    environment = credentials.get("environment", "live")
-    from shared_lib.core.production import require_execution_account
-    require_execution_account(environment)
     
     # Check broker_id from account
     with db.connect() as conn:
-        acc_row = conn.execute("SELECT broker_id FROM broker_accounts WHERE id = ? AND user_id = ?", (account_id, user_id)).fetchone()
+        acc_row = conn.execute("SELECT broker_id,environment FROM broker_accounts WHERE id = ? AND user_id = ?", (account_id, user_id)).fetchone()
         if not acc_row:
             return False
         broker_id = acc_row["broker_id"]
+        from shared_lib.broker.environment import normalize_environment
+        environment = normalize_environment(acc_row.get("environment", "live") if isinstance(acc_row, dict) else acc_row["environment"]).value
+        if credentials.get("environment") and normalize_environment(credentials["environment"]).value != environment:
+            raise ValueError("BROKER_ENVIRONMENT_MISMATCH")
     
     # KYC Check for IBKR Live Trading
     if broker_id == "ibkr" and environment == "live":
@@ -339,10 +342,10 @@ def submit_broker_credentials(user_id: str, account_id: str, credentials: Dict[s
         conn.execute(
             """
             UPDATE broker_accounts 
-            SET masked_key = ?, status = 'validating', environment = ?, updated_at = ?
+            SET masked_key = ?, status = 'validating', updated_at = ?
             WHERE id = ?
             """,
-            (masked, environment, now, account_id)
+            (masked, now, account_id)
         )
         
         # Log event
@@ -1025,6 +1028,7 @@ def submit_broker_credentials_v2(
     user_id: str,
     account_id: str,
     credentials: Dict[str, Any],
+    *, environment: Optional[str] = None,
 ) -> int:
     """
     Store a NEW credential version in broker_credentials_v2 without activating
@@ -1041,8 +1045,9 @@ def submit_broker_credentials_v2(
     # cross-check purposes only.  We strip it out to avoid re-introducing the
     # env-mismatch bug that caused this incident.
     with db.connect() as conn:
+        conn.execute("BEGIN IMMEDIATE")
         acc_row = conn.execute(
-            "SELECT broker_id, environment, user_id FROM broker_accounts WHERE id = ? AND user_id = ?",
+            "SELECT broker_id, environment, user_id, status FROM broker_accounts WHERE id = ? AND user_id = ?",
             (account_id, user_id),
         ).fetchone()
         if not acc_row:
@@ -1050,7 +1055,14 @@ def submit_broker_credentials_v2(
 
         broker_id  = acc_row["broker_id"]
         # Authoritative environment from account row (never from blob)
-        account_env = acc_row["environment"] or "live"
+        from shared_lib.broker.environment import normalize_environment, resolve_base_url
+        account_env = normalize_environment(acc_row["environment"]).value
+        if environment is not None:
+            selected = normalize_environment(environment).value
+            if selected != account_env and acc_row["status"] != "draft":
+                raise ValueError("BROKER_ENVIRONMENT_MISMATCH")
+            conn.execute("UPDATE broker_accounts SET environment=? WHERE id=? AND user_id=?", (selected, account_id, user_id))
+            account_env = selected
 
         # If the caller included environment in credentials, it MUST match the
         # account row or we refuse early (loud failure > silent mismatch).
@@ -1077,7 +1089,13 @@ def submit_broker_credentials_v2(
 
         # Encrypt
         from shared_lib.core.security.broker_security import encrypt_credentials, mask_credentials
-        encrypted_blob = encrypt_credentials(credentials)
+        payload = dict(credentials)
+        payload.pop("environment", None)
+        if broker_id in {"binance", "bybit", "bingx", "oanda"} and payload.get("base_url"):
+            if str(payload["base_url"]).rstrip("/") != resolve_base_url(broker_id, normalize_environment(account_env)):
+                raise ValueError("BROKER_ENVIRONMENT_MISMATCH")
+            payload.pop("base_url")
+        encrypted_blob = encrypt_credentials(payload)
         masked         = mask_credentials(credentials)
 
         api_key = credentials.get("api_key") or credentials.get("key") or ""
@@ -1145,6 +1163,7 @@ def validate_and_activate_credential_v2(
     now = utc_now_iso()
 
     with db.connect() as conn:
+        conn.execute("BEGIN IMMEDIATE")
         # Ownership check
         acc_row = conn.execute(
             "SELECT broker_id, environment, user_id FROM broker_accounts WHERE id = ? AND user_id = ?",
@@ -1264,6 +1283,8 @@ def validate_and_activate_credential_v2(
             """,
             (version, json.dumps(capabilities), now, permission["decision"], now, account_id),
         )
+        if "last_error_code" in {r[1] for r in conn.execute("PRAGMA table_info(broker_accounts)")}:
+            conn.execute("UPDATE broker_accounts SET last_error_code=NULL WHERE id=?", (account_id,))
 
         _log_audit_event(conn, account_id, user_id, "credentials_activated_v2", {
             "version": version, "capabilities": capabilities,

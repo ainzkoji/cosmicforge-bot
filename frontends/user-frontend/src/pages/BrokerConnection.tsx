@@ -9,8 +9,8 @@ import {
 import { api } from "../api/client";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import MultiAssetPanel from "../components/Broker/MultiAssetPanel";
+import { brokerEnvironment } from "../lib/brokerEnvironment";
 
-const productionProfile = (import.meta.env.VITE_APP_ENV || "PRODUCTION") === "PRODUCTION";
 
 // --- Components ---
 function CapitalSummary({ accountId }: { accountId: string }) {
@@ -126,6 +126,8 @@ export default function BrokerConnection() {
         queryKey: ["broker-accounts"],
         queryFn: api.getBrokerAccounts,
     });
+    const environmentLocked = !!accountId && accountsQuery.data?.accounts.some(
+        (account: BrokerAccount) => account.id === accountId && account.status !== "draft");
 
     const [searchParams] = useSearchParams();
     const returnUrl = searchParams.get("return_url");
@@ -140,7 +142,7 @@ export default function BrokerConnection() {
     });
 
     const submitCredsMutation = useMutation({
-        mutationFn: (creds: any) => api.submitBrokerCredentials(accountId!, { ...creds, environment }),
+        mutationFn: (creds: any) => api.submitBrokerCredentials(accountId!, creds, environment),
         onSuccess: () => {
             if (returnUrl) {
                 setTimeout(() => {
@@ -275,7 +277,7 @@ export default function BrokerConnection() {
             setAccountId(existingDraft.id);
             setStep("input");
         } else {
-            connectMutation.mutate({ broker_id: brokerId, market_type: selectedMarket });
+            connectMutation.mutate({ broker_id: brokerId, market_type: selectedMarket, environment });
         }
     };
 
@@ -460,20 +462,19 @@ export default function BrokerConnection() {
 
                                     <div className="flex items-center gap-3 w-full md:w-auto justify-end relative">
                                         {/* Resume Setup Button for Drafts */}
-                                        {account.status === 'draft' && (
-                                            <button
-                                                onClick={() => {
-                                                    setSelectedBrokerId(account.broker_id);
-                                                    setAccountId(account.id);
-                                                    setStep("input");
-                                                    setView("connect");
-                                                }}
-                                                className="px-4 py-2 bg-primary text-primary-foreground text-sm font-semibold rounded-lg shadow-md hover:bg-primary/90 transition-colors mr-2"
-                                            >
-                                                Resume Setup
-                                            </button>
-                                        )}
-
+                                        <button
+                                            onClick={() => {
+                                                setSelectedBrokerId(account.broker_id);
+                                                setAccountId(account.id);
+                                                setEnvironment(brokerEnvironment(account.environment || 'live'));
+                                                setCredentials({});
+                                                setStep("input");
+                                                setView("connect");
+                                            }}
+                                            className="px-4 py-2 bg-primary text-primary-foreground text-sm font-semibold rounded-lg"
+                                        >
+                                            {account.status === 'draft' ? 'Resume Setup' : 'Update Credentials'}
+                                        </button>
                                         {/* Quick Actions Dropdown */}
                                         <div className="relative">
                                             <button
@@ -877,16 +878,18 @@ export default function BrokerConnection() {
                                     <span>Target Environment:</span>
                                     <div className="flex p-0.5 bg-muted/40 rounded-lg">
                                         <button
+                                            disabled={environmentLocked}
                                             onClick={() => setEnvironment("live")}
                                             className={`px-3 py-1 text-xs font-bold rounded-md transition-all ${environment === 'live' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground hover:bg-muted/50'}`}
                                         >
                                             LIVE
                                         </button>
-                                        {!productionProfile && <button
+                                        {<button
+                                            disabled={environmentLocked}
                                             onClick={() => setEnvironment("demo")}
                                             className={`px-3 py-1 text-xs font-bold rounded-md transition-all ${environment === 'demo' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground hover:bg-muted/50'}`}
                                         >
-                                            PAPER
+                                            DEMO
                                         </button>}
                                     </div>
                                 </div>
@@ -1047,16 +1050,18 @@ export default function BrokerConnection() {
                     {/* Environment Toggle */}
                     <div className="flex p-1 bg-muted/40 rounded-lg">
                         <button
+                            disabled={environmentLocked}
                             onClick={() => setEnvironment("live")}
                             className={`flex-1 py-2 text-sm font-semibold rounded-md transition-all ${environment === 'live' ? 'bg-background shadow-sm text-foreground ring-1 ring-border/50' : 'text-muted-foreground hover:bg-muted/50'}`}
                         >
-                            Live Trading
+                            LIVE — real money
                         </button>
-                        {!productionProfile && <button
+                        {<button
+                            disabled={environmentLocked}
                             onClick={() => setEnvironment("demo")}
                             className={`flex-1 py-2 text-sm font-semibold rounded-md transition-all ${environment === 'demo' ? 'bg-background shadow-sm text-foreground ring-1 ring-border/50' : 'text-muted-foreground hover:bg-muted/50'}`}
                         >
-                            Testnet / Demo
+                            DEMO — virtual funds
                         </button>}
                     </div>
 

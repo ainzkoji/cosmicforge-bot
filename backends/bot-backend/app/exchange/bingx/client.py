@@ -223,6 +223,7 @@ class BingXClient:
             "totalWalletBalance": float(bal_data.get("balance", 0.0)),
             "totalMarginBalance": float(bal_data.get("equity", 0.0)),
             "availableBalance": float(bal_data.get("availableMargin", 0.0)),
+            "totalInitialMargin": float(bal_data["usedMargin"]) + float(bal_data.get("freezedMargin", 0)),
             "totalUnrealizedProfit": float(bal_data.get("unrealisedPNL", 0.0))
         }
 
@@ -237,10 +238,18 @@ class BingXClient:
             "equity": float(acc.get("totalMarginBalance", 0.0)),
             "available_balance": float(acc.get("availableBalance", 0.0)),
             "unrealized_pnl": float(acc.get("totalUnrealizedProfit", 0.0)),
-            "margin_used": 0.0,  # BingX doesn't expose margin directly
+            "margin_used": acc["totalInitialMargin"],
             "currency": "USDT",
             "raw": acc
         }
+
+    def income_history(self, start_time_ms, end_time_ms, limit=1000):
+        data = self._request("GET", "/openApi/swap/v2/user/income", {
+            "startTime": start_time_ms, "endTime": end_time_ms, "limit": min(limit, 1000)})["data"]
+        if not isinstance(data, list):
+            raise ValueError("BROKER_INCOME_HISTORY_INVALID")
+        return [{**r, "incomeType": "COMMISSION" if r["incomeType"] == "TRADING_FEE" else
+                 "INSURANCE_CLEAR" if r["incomeType"] in {"ADL", "SYSTEM_DEDUCTION", "GTD_PRICE"} else r["incomeType"]} for r in data]
 
     # ------------------ WALLET / INTERNAL TRANSFER ------------------
     # Moves between THIS account's own wallets only (FUND <-> PFUTURES).
@@ -291,7 +300,7 @@ class BingXClient:
             side_str = p.get("positionSide", "LONG") # LONG or SHORT
             
             # Sign the amount
-            final_amt = raw_amt if side_str == "LONG" else -raw_amt
+            final_amt = raw_amt if side_str == "BOTH" else abs(raw_amt) if side_str == "LONG" else -abs(raw_amt)
             
             remapped.append({
                 "symbol": self._runtime_symbol(p["symbol"]),
@@ -301,7 +310,8 @@ class BingXClient:
                 "leverage": p.get("leverage", "1"),
                 "liquidationPrice": float(p.get("liquidationPrice", 0.0)),
                 "marginType": "isolated" if p.get("marginMode") == "ISOLATED" else "cross",
-                "bingx_side": side_str
+                "bingx_side": side_str,
+                "positionSide": str(p.get("positionSide", "UNKNOWN")).upper()
             })
             
         return remapped
@@ -332,6 +342,13 @@ class BingXClient:
         """
         side = side.upper() # BUY/SELL
         symbol_normalized = self._normalize_symbol(symbol)
+        from app.core.config import settings
+        if settings.production:
+            mode = self._request("GET", "/openApi/swap/v1/positionSide/dual")["data"]["dualSidePosition"]
+            if mode is not False:
+                raise ValueError("NATIVE_PROTECTION_REQUIRES_ONE_WAY_ACCOUNT")
+            return self._request("POST", "/openApi/swap/v2/trade/leverage", {
+                "symbol": symbol_normalized, "leverage": str(leverage), "side": "BOTH"})
         
         payload = {
             "symbol": symbol_normalized,
@@ -552,6 +569,7 @@ class BingXClient:
             "avgPrice": o.get("avgPrice") or "0", "side": str(o.get("side", "")).upper(),
             "type": str(o.get("type", "")).upper(), "stopPrice": o.get("stopPrice") or None,
             "reduceOnly": str(o.get("reduceOnly", "")).lower() == "true",
+            "closePosition": str(o.get("closePosition", "")).lower() == "true",
             "updateTime": int(o.get("updateTime") or o.get("time") or 0),
         }
 
@@ -567,7 +585,7 @@ class BingXClient:
         if not market:
             payload["price"] = str(req.price)
         if getattr(req, "client_order_id", None):
-            payload["clientOrderID"] = str(req.client_order_id)[:40]
+            payload["clientOrderId"] = str(req.client_order_id).lower()[:40]
         if req.reduce_only:
             payload["reduceOnly"] = "true"
         res = self._request("POST", "/openApi/swap/v2/trade/order", payload)
@@ -576,7 +594,7 @@ class BingXClient:
         status = {"FILLED": OrderStatus.FILLED, "PARTIALLY_FILLED": OrderStatus.PARTIALLY_FILLED,
                   "CANCELED": OrderStatus.CANCELED, "REJECTED": OrderStatus.REJECTED}.get(view["status"], OrderStatus.NEW)
         return UnifiedOrder(
-            client_order_id=str(view["clientOrderId"] or payload.get("clientOrderID") or ""),
+            client_order_id=str(view["clientOrderId"] or payload.get("clientOrderId") or ""),
             broker_order_id=str(view["orderId"] or ""), symbol=req.symbol, side=req.side, type=req.type,
             qty_ordered=req.qty, qty_filled=Decimal(str(view["executedQty"] or 0)),
             avg_fill_price=Decimal(str(view["avgPrice"] or 0)), status=status, timestamp=int(time.time() * 1000),
@@ -591,7 +609,7 @@ class BingXClient:
         return self._query_order(symbol, orderId=str(order_id))
 
     def get_order_by_client_order_id(self, symbol: str, client_order_id: str) -> dict:
-        return self._query_order(symbol, clientOrderId=str(client_order_id))
+        return self._query_order(symbol, clientOrderId=str(client_order_id).lower())
 
     def open_orders(self, symbol: str | None = None) -> list:
         params = {"symbol": self._normalize_symbol(symbol)} if symbol else {}
@@ -617,15 +635,30 @@ class BingXClient:
         return self.cancel_all_orders(symbol)
 
     def user_trades(self, symbol: str, start_time_ms: int | None = None, end_time_ms: int | None = None,
-                    limit: int = 100) -> list:
+                    limit: int = 100, *, _budget=None) -> list:
+        _budget = [512] if _budget is None else _budget
+        _budget[0] -= 1
+        if _budget[0] < 0:
+            raise ValueError("BROKER_FILL_HISTORY_INCOMPLETE")
         now = int(time.time() * 1000)
         res = self._request("GET", "/openApi/swap/v2/trade/allFillOrders", {
             "symbol": self._normalize_symbol(symbol), "tradingUnit": "COIN",
             "startTs": start_time_ms or now - 7 * 86_400_000, "endTs": end_time_ms or now})
-        rows = (res.get("data") or {}).get("fill_orders") or (res.get("data") or {}).get("fillOrders") or []
+        data = res.get("data")
+        rows = data if isinstance(data, list) else data.get("fill_orders", data.get("fillOrders")) if isinstance(data, dict) else None
+        if not isinstance(rows, list):
+            raise ValueError("BROKER_FILL_HISTORY_UNAVAILABLE")
+        if len(rows) >= 1000:
+            start, end = start_time_ms if start_time_ms is not None else now-7*86400000, end_time_ms if end_time_ms is not None else now
+            if start >= end:
+                raise ValueError("BROKER_FILL_HISTORY_INCOMPLETE")
+            mid = (start+end)//2
+            return self.user_trades(symbol,start,mid,limit,_budget=_budget) + self.user_trades(symbol,mid+1,end,limit,_budget=_budget)
+        rows = [f for f in rows if self._runtime_symbol(f["symbol"]) == self._runtime_symbol(symbol)]
         return [{"symbol": self._runtime_symbol(f.get("symbol")), "orderId": str(f.get("orderId", "")),
                  "id": f.get("tradeId") or f.get("filledTm"), "qty": f.get("volume") or f.get("qty"),
-                 "price": f.get("price"), "commission": abs(float(f.get("commission") or 0)),
+                 "time": f.get("time") or f.get("filledTm"), "realizedPnl": f.get("realizedPnl"),
+                 "price": f.get("price"), "commission": abs(float(f.get("commission", f.get("fee", 0)) or 0)),
                  "commissionAsset": f.get("currency") or "USDT", "side": str(f.get("side", "")).upper()}
                 for f in rows]
 
@@ -656,6 +689,10 @@ class BingXClient:
         return out
 
     def place_protection(self, req):
+        from app.core.config import settings
+        if settings.production:
+            from app.execution.perpetual_protection import place_protection
+            return place_protection(self, req, broker="bingx")
         from app.models.unified_trading import ProtectionResult, Side
         result = ProtectionResult(status="initiated")
         exit_side = "SELL" if req.position_side == Side.BUY else "BUY"

@@ -228,7 +228,7 @@ def resolve_broker_auth(
 
         # Legacy fallback: broker_credentials_v2 has no row or table doesn't exist.
         # This handles databases where migrations have not been run yet.
-        if cred_row is None:
+        if cred_row is None and not active_version:
             try:
                 legacy_row = conn.execute(
                     """
@@ -333,19 +333,20 @@ def resolve_broker_auth(
                         ),
                         account_id=account_id,
                     )
-            except ValueError:
-                # Blob has an unrecognized env string — account row wins, log warning
-                logger.warning(
-                    "broker_blob_env_unrecognized account_id=%s blob_env=%r "
-                    "using account_row_env=%s",
-                    account_id, blob_env_raw, environment.value,
-                )
+            except ValueError as exc:
+                raise BrokerResolverError(BrokerResolverError.REASON_ENV_MISMATCH,
+                    "BROKER_ENVIRONMENT_MISMATCH", account_id=account_id) from exc
 
         # ── 8. Resolve base URL ───────────────────────────────────────────────
 
         # Explicit base_url in blob overrides table (supports MT bridge, IBKR, custom)
         explicit_base_url = decrypted.get("base_url")
-        if explicit_base_url:
+        if broker_type in _KEY_SECRET_BROKERS or broker_type == "oanda":
+            base_url = resolve_base_url(broker_type, environment)
+            if explicit_base_url and str(explicit_base_url).rstrip("/") != base_url.rstrip("/"):
+                raise BrokerResolverError(BrokerResolverError.REASON_ENV_MISMATCH,
+                    "BROKER_ENVIRONMENT_MISMATCH", account_id=account_id)
+        elif explicit_base_url:
             base_url = explicit_base_url
         elif broker_type not in _KEY_SECRET_BROKERS and broker_type != "oanda":
             base_url = decrypted.get("bridge_url") or ""

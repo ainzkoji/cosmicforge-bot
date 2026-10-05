@@ -31,6 +31,21 @@ def fresh(stamp, now, ttl):
 class PerpetualEconomicAdapter(BaseVenueEconomicAdapter):
     supported_asset_classes = ("CRYPTO", "FX")
 
+    def describe_execution_capabilities(self, request, raw):
+        from app.trading_intelligence.contracts.venue_economics import ExecutionCapabilities
+        meta = self.resolve_instrument_metadata(request, raw)
+        if meta is None:
+            return None
+        return ExecutionCapabilities(supported_order_types=("MARKET", "LIMIT", "STOP_MARKET", "TAKE_PROFIT_MARKET"),
+            supports_market=True, supports_limit=True, supports_stop=False, supports_stop_market=True,
+            supports_post_only=False, supports_reduce_only=True, supports_partial_close=True,
+            supports_native_oco=False, supports_hedge_mode=False, supports_one_way_mode=True,
+            tick_size=float(meta.tick_size), step_size=float(meta.step_size), minimum_quantity=float(meta.minimum_quantity),
+            minimum_notional=float(meta.minimum_notional) if meta.minimum_notional is not None else None,
+            contract_multiplier=float(meta.contract_multiplier), margin_modes=("CROSSED", "ISOLATED"),
+            settlement_currency=meta.settlement_currency, supported_time_in_force=("GTC", "IOC"),
+            venue_symbol=meta.venue_symbol, source=f"{self.broker}:native_perpetual_contract")
+
     def __init__(self, policy=None, status_registry=None):
         super().__init__(policy or MultiAssetVenueCostPolicy(), status_registry)
         if not getattr(self.policy, "strict_required_components", False):

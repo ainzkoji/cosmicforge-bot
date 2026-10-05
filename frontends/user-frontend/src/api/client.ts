@@ -1169,7 +1169,7 @@ export const api = {
         return res.json();
     },
 
-    startBrokerConnection: async (data: { broker_id: string, market_type: string, label?: string }): Promise<{ account_id: string, status: string }> => {
+    startBrokerConnection: async (data: { broker_id: string, market_type: string, label?: string, environment?: string }): Promise<{ account_id: string, status: string }> => {
         const res = await fetch(`${API_BASE}/api/v1/brokers/connect`, {
             method: 'POST',
             headers: {
@@ -1198,14 +1198,14 @@ export const api = {
         return res.json();
     },
 
-    submitBrokerCredentials: async (accountId: string, credentials: any): Promise<{ success: boolean, status: string }> => {
+    submitBrokerCredentials: async (accountId: string, credentials: any, environment?: string): Promise<{ success: boolean, status: string }> => {
         const res = await fetch(`${API_BASE}/api/v1/brokers/${accountId}/credentials`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
                 'Authorization': `Bearer ${localStorage.getItem('access_token')}`
             },
-            body: JSON.stringify({ credentials })
+            body: JSON.stringify({ credentials, environment })
         });
         if (!res.ok) throw new Error("Failed to submit credentials");
         return res.json();

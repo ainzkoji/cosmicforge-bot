@@ -18,7 +18,9 @@ def test_account_normalization(bingx_client):
                 "balance": "1000.50",
                 "equity": "1050.75",
                 "availableMargin": "900.25",
-                "unrealisedPNL": "50.25"
+                "unrealisedPNL": "50.25",
+                "usedMargin": "100",
+                "freezedMargin": "50.50"
             }
         }
     }
@@ -31,6 +33,7 @@ def test_account_normalization(bingx_client):
     assert account["totalMarginBalance"] == 1050.75
     assert account["availableBalance"] == 900.25
     assert account["totalUnrealizedProfit"] == 50.25
+    assert account["totalInitialMargin"] == 150.50
 
 def test_position_risk_normalization(bingx_client):
     """

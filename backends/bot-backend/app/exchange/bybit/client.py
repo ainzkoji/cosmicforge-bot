@@ -24,7 +24,8 @@ class BybitClient:
         if base_url:
             self.base_url = base_url.rstrip("/")
         else:
-            self.base_url = "https://api-testnet.bybit.com" if testnet else "https://api.bybit.com"
+            from shared_lib.broker.environment import BrokerEnvironment, resolve_base_url
+            self.base_url = resolve_base_url("bybit", BrokerEnvironment.DEMO if testnet else BrokerEnvironment.LIVE)
             
         from shared_lib.core.production import require_production_endpoint
         require_production_endpoint("bybit", self.base_url)
@@ -155,6 +156,7 @@ class BybitClient:
             "totalWalletBalance": total_wallet,
             "totalMarginBalance": total_equity,
             "availableBalance": total_avail, 
+            "totalInitialMargin": float(wallet["totalInitialMargin"]),
             "totalUnrealizedProfit": float(wallet.get("totalPerpUPL", 0.0)) 
         }
 
@@ -223,12 +225,10 @@ class BybitClient:
         if symbol:
             params["symbol"] = symbol.upper()
             
-        data = self._request_v5("GET", "/v5/position/list", params)
-        if data["retCode"] != 0:
-            return []
+        rows = self._pages("/v5/position/list", params)
             
         remapped = []
-        for p in data["result"]["list"]:
+        for p in rows:
              # Calculate signed size for Binance compatibility
             size = float(p.get("size", 0.0))
             side = p.get("side", "")
@@ -243,7 +243,8 @@ class BybitClient:
                 "liquidationPrice": p.get("liqPrice", 0.0),
                 "marginType": "cross" if p.get("tradeMode", 0) == 0 else "isolated", # 0=Cross, 1=Isolated
                 # Provide raw fields incase of debugging needs
-                "bybit_side": side
+                "bybit_side": side,
+                "positionSide": "BOTH" if int(p.get("positionIdx", 0)) == 0 else "LONG" if int(p["positionIdx"]) == 1 else "SHORT"
             })
         return remapped
 
@@ -541,6 +542,46 @@ class BybitClient:
             raise RuntimeError(f"Bybit {what} failed: retCode={res.get('retCode')} {res.get('retMsg')}")
         return res.get("result") or {}
 
+    def _pages(self, path, params):
+        """Complete cursor traversal, with a bounded fail-closed loop."""
+        rows, seen, cursor = [], set(), None
+        for _ in range(512):
+            result = self._ok(self._request_v5("GET", path, {**params, **({"cursor": cursor} if cursor else {})}), "paginated read")
+            page = result.get("list")
+            if not isinstance(page, list):
+                raise ValueError("BROKER_READ_SHAPE_INVALID")
+            rows.extend(page)
+            cursor = result.get("nextPageCursor")
+            if not cursor:
+                return rows
+            if cursor in seen:
+                break
+            seen.add(cursor)
+        raise ValueError("BROKER_HISTORY_INCOMPLETE")
+
+    def income_history(self, start_time_ms, end_time_ms, limit=1000):
+        """UTA cash ledger: change = cashFlow + funding - fee.
+
+        All USDT categories count towards account cash flow; transfers are
+        separated from trading loss. Never filter to this bot's trades.
+        """
+        records = self._pages("/v5/account/transaction-log", {"accountType": "UNIFIED", "currency": "USDT",
+            "startTime": start_time_ms, "endTime": end_time_ms, "limit": 50})
+        out = []
+        for r in records:
+            common = {"time": int(r["transactionTime"]), "asset": r["currency"], "tranId": r["id"]}
+            cash, funding, fee, change = (float(r.get(k) or 0) for k in ("cashFlow", "funding", "fee", "change"))
+            if abs(cash + funding - fee - change) > 1e-8 * max(1, abs(change)):
+                raise ValueError("BROKER_CASH_LEDGER_MISMATCH")
+            # Only documented capital movements are transfers. Interest,
+            # delivery and other account expenses must never disappear from risk.
+            kind = "TRANSFER" if r["type"] in {"TRANSFER_IN", "TRANSFER_OUT", "AIRDROP", "BONUS", "BONUS_RECOLLECT", "BONUS_TRANSFER_IN", "BONUS_TRANSFER_OUT"} else "REALIZED_PNL"
+            for suffix, income, itype in (("cash", cash, kind), ("funding", funding, "FUNDING_FEE"), ("fee", -fee, "COMMISSION")):
+                out.append({**common, "tranId": str(r["id"])+":"+suffix, "income": income, "incomeType": itype})
+        # This method already consumed every page; the risk caller may safely
+        # subdivide a full result window but must not truncate it here.
+        return out
+
     def _category_for(self, symbol: str) -> str:
         return "linear"
 
@@ -562,6 +603,8 @@ class BybitClient:
         stop_type = str(o.get("stopOrderType", ""))
         if stop_type in ("StopLoss", "Stop", "PartialStopLoss", "TrailingStop"):
             otype = "STOP_MARKET"
+            if stop_type == "Stop" and o.get("closeOnTrigger") and int(o.get("triggerDirection") or 0) == (1 if str(o.get("side")).upper() == "SELL" else 2):
+                otype = "TAKE_PROFIT_MARKET"
         elif stop_type in ("TakeProfit", "PartialTakeProfit"):
             otype = "TAKE_PROFIT_MARKET"
         return {
@@ -626,8 +669,7 @@ class BybitClient:
                 params["symbol"] = symbol.upper()
             else:
                 params["settleCoin"] = "USDT"
-            res = self._ok(self._request_v5("GET", "/v5/order/realtime", params), "open orders")
-            out.extend(self._order_view(o) for o in res.get("list") or [])
+            out.extend(self._order_view(o) for o in self._pages("/v5/order/realtime", params))
         return out
 
     def get_open_orders(self, symbol: str | None = None) -> list:
@@ -651,11 +693,11 @@ class BybitClient:
         """Executions in Binance userTrades shape (orderId, qty, price, commission)."""
         params = {"category": "linear", "symbol": symbol.upper(), "limit": min(int(limit), 100),
                   "startTime": start_time_ms, "endTime": end_time_ms}
-        res = self._ok(self._request_v5("GET", "/v5/execution/list", params), "executions")
+        rows = self._pages("/v5/execution/list", params)
         return [{"symbol": e.get("symbol"), "orderId": e.get("orderId"), "id": e.get("execId"),
                  "qty": e.get("execQty"), "price": e.get("execPrice"), "commission": e.get("execFee"),
                  "commissionAsset": e.get("feeCurrency") or "USDT", "time": int(e.get("execTime") or 0),
-                 "side": str(e.get("side", "")).upper()} for e in res.get("list") or []]
+                 "side": str(e.get("side", "")).upper()} for e in rows]
 
     def position_risk_all(self) -> list:
         return self.position_risk()
@@ -685,6 +727,10 @@ class BybitClient:
         return 0.0
 
     def place_protection(self, req):
+        from app.core.config import settings
+        if settings.production:
+            from app.execution.perpetual_protection import place_protection
+            return place_protection(self, req, broker="bybit")
         """Position-attached SL/TP via /v5/position/trading-stop (tpslMode=Full):
         closes the whole position, is atomic per call, and is amended in place
         by update_protection (no cancel-then-replace window without a stop)."""

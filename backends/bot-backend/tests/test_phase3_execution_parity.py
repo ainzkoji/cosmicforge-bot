@@ -179,7 +179,7 @@ def test_bingx_symbols_round_trip_and_order_identity():
     o = c.place_order(OrderRequest(symbol="ETHUSDT", side=Side.SELL, type=OrderType.MARKET, qty=Decimal("0.509"),
                                    client_order_id="cf-1"))
     sent = calls[-1][2]
-    assert sent["symbol"] == "ETH-USDT" and sent["quantity"] == "0.5" and sent["clientOrderID"] == "cf-1"
+    assert sent["symbol"] == "ETH-USDT" and sent["quantity"] == "0.5" and sent["clientOrderId"] == "cf-1"
     assert o.broker_order_id == "99" and o.qty_filled == Decimal("0.5")
     assert c.get_order_by_client_order_id("ETHUSDT", "cf-1")["symbol"] == "ETHUSDT"
     assert c.position_risk()[0]["symbol"] == "ETHUSDT"  # runtime namespace, never BTC-USDT
