@@ -110,3 +110,16 @@ def test_signal_expiring_during_hard_risk_never_reaches_create(fresh,monkeypatch
     assert result['reason']=='PROSPECTIVE_ENTRY_WINDOW_EXPIRED'
     assert result['reservation_status']=='RELEASED'
     fresh.client.place_order.assert_not_called()
+
+
+def test_fees_and_funding_are_visible_and_counted_exactly_once(fresh):
+    production.initialize(fresh.db)
+    fresh.client.income_history.return_value=[
+        {'incomeType':kind,'income':str(value),'time':fresh.now,'tranId':i}
+        for i,(kind,value) in enumerate([('REALIZED_PNL',-1),('COMMISSION',-.1),('FUNDING_FEE',-.2)])]
+    risk=production.account_risk(fresh.db,fresh.account,fresh.client,[],[],[],fresh.now)
+    assert risk['realized_pnl']==pytest.approx(-1.3)
+    assert risk['daily_loss_usage']==pytest.approx(1.3)
+    assert risk['fees']==pytest.approx(.1) and risk['funding']==pytest.approx(-.2)
+    assert risk['adaptive_daily_risk']['risk_budget_consumed_usdt']==pytest.approx(1.3)
+    assert risk['adaptive_daily_risk']['fees_today']==pytest.approx(.1)

@@ -135,3 +135,17 @@ def test_certificate_plan_cannot_authorize_itself_outside_local_scope(fresh):
     result=fresh.run(fresh.demo_boundary(),plan=plan,atr=1.)
     assert result.reason_codes==('PRODUCTION_REQUIRES_FROZEN_RESIDUAL_DECISION',)
     fresh.client.place_order.assert_not_called()
+
+
+def test_stale_catalog_refresh_precedes_certification_plan(broker):
+    h,state=broker
+    preflight=h.boundary_for().preflight
+    preflight.catalog.upsert(preflight.venue_key,'DEMO',[h.instrument('ADAUSDT')],h.now-7200000)
+    refreshed=[]
+    def refresh():
+        refreshed.append(True)
+        preflight.catalog.upsert(preflight.venue_key,'DEMO',[h.instrument('ADAUSDT')],h.now)
+    preflight.refresh=refresh
+    report=cert.run(h.db,h.account['id'],'cert-refresh',action='hold')
+    assert report['status']=='PROTECTED',report
+    assert refreshed==[True] and state['create_count']==1

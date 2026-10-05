@@ -31,13 +31,14 @@ def permitted(db, plan):
     return bool(row)
 
 
-def build_plan(account,bot,instrument,reservation_id,run_id,price,now):
+def build_plan(account,bot,instrument,reservation_id,run_id,price,now,*,distance=None):
     from app.trading_intelligence.contracts.trade_plan import TradePlan,AllowedEntryZone,TargetZone,ExpectedCosts,ExecutionPreferences
     lineage = {k:run_id for k in ('snapshot_id','market_state_id','regime_distribution_id','source_candidate_id',
         'venue_observation_id','cost_estimate_id','economic_opportunity_id','veto_decision_id',
         'ranking_batch_id','ranked_opportunity_id','portfolio_decision_id')}
     # Deterministic transport geometry, explicitly outside the strategy registry.
-    stop,target,distance = price*.99,price*1.025,price*.01
+    distance = price*.01 if distance is None else distance
+    stop,target = price-distance,price+2.5*distance
     return TradePlan.build(**lineage,forecast_id='NOT_APPLICABLE_TRANSPORT_CERTIFICATION',
         portfolio_reservation_id=reservation_id,user_id=account['user_id'],broker_account_id=account['id'],
         bot_instance_id=bot['id'],run_id=run_id,cycle_id=run_id,instrument_key=instrument.to_instrument_key(),
@@ -125,14 +126,20 @@ def run(db, account_id, run_id, *, action='close', symbol='ADAUSDT'):
             raise ValueError(reservation.conflict_reason)
         rid = reservation.reservation.reservation_id
         try:
-            plan = build_plan(account,bot,instrument,rid,run_id,float(client.last_price(symbol)),now)
+            from app.policy.policy_engine import calculate_atr
+            bars = client.klines(symbol=symbol,interval='15m',limit=250)
+            closed_bars = [b for b in bars if int(b[6]) < int(time.time()*1000)]
+            atr = float(calculate_atr(closed_bars,period=14))
+            if not atr > 0:
+                raise ValueError('CERTIFICATION_ATR_UNAVAILABLE')
+            plan = build_plan(account,bot,instrument,rid,run_id,float(client.last_price(symbol)),now,distance=atr)
             plans.append(plan)
             report = {'classification':PURPOSE,'run_id':run_id,'account_id':account_id,'symbol':symbol,
                       'started_at':now,'trade_plan_id':plan.trade_plan_id,'reservation_id':rid,'risk':risk}
             with db.connect() as c:
                 c.execute("INSERT INTO cati_demo_certifications VALUES(?,?,?,?,'PREPARED',?)",
                           (run_id,account_id,account['user_id'],plan.trade_plan_id,json.dumps(report)))
-            prepared = prepare_submission(db,account,bot,client,boundary,plan,instrument,risk,atr=None)
+            prepared = prepare_submission(db,account,bot,client,boundary,plan,instrument,risk,atr=atr)
             report['risk_controls'] = prepared.pop('controls_evidence')
             token = _permit.set((str(db.path),account_id,plan.trade_plan_id,plan.trade_plan_hash))
             try:

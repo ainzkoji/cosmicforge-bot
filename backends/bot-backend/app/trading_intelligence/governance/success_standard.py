@@ -105,7 +105,7 @@ def _risk_execution() -> Tuple[bool, str]:
     from app.trading_intelligence.execution import boundary
     from app.trading_intelligence.execution.config import CATIExecutionConfig
 
-    src = inspect.getsource(boundary.CATIExecutionBoundary.process_trade_plan)
+    src = inspect.getsource(boundary.CATIExecutionBoundary.process_trade_plan) + inspect.getsource(boundary.CATIExecutionBoundary._process_trade_plan)
     cfg = CATIExecutionConfig()
     return ("orchestrator.process_trade_plan" in src and "authorize_entry" in src and not cfg.active_execution_enabled,
             "hard risk via the existing orchestrator; governance dual key; OFF by default")

@@ -414,14 +414,20 @@ def test_boundary_needs_governance_even_with_the_flag_on(tmp_path):
 
     h = Harness(tmp_path)
     TradePlanEvidenceStore(h.db).append(h.plan)
+    original = h.reservations.get(h.plan.portfolio_reservation_id)
     res = h.run(h.boundary(authority=GovernanceAuthority(h.db)))   # real governance, fresh DB = M0
     assert res.status == B.GOVERNANCE_NOT_AUTHORIZED and not h.seen["orders"]
-    assert h.reservation_status() == "RESERVED"                     # nothing consumed, nothing corrupted
+    assert h.reservation_status() == "RELEASED"  # definitive refusal frees execution capacity
     gov = PromotionGovernance(h.db)
     _advance(gov, "M6")
     gov.set_kill_switch(True, reason="stop new entries", actor_ref="op")
     assert h.run(h.boundary(authority=GovernanceAuthority(h.db))).reason_codes == ("CATI_NEW_ENTRY_KILL_SWITCH",)
     gov.set_kill_switch(False, reason="resume", actor_ref="op")
+    again = h.reservations.reserve(broker_account_id=original.broker_account_id,
+        bot_instance_id=original.bot_instance_id,cycle_id=original.cycle_id,
+        selected=[(cid,*ins) for cid,ins in zip(original.selected_candidate_ids,original.selected_instruments)],
+        now_ms=h.now,ttl_seconds=900)
+    assert again.reserved and again.reservation.reservation_id == original.reservation_id
     assert h.run(h.boundary(authority=GovernanceAuthority(h.db))).status == B.EXECUTED
     assert StaticAuthority(False).authorize_entry(h.plan) == (False, "STATIC")
 

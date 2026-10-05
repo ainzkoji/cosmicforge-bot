@@ -184,8 +184,6 @@ def test_leverage_is_clamped_by_system_limits(tmp_path):
                                                                 allowed_symbols=["BTCUSDT"], use_fixed_size=True,
                                                                 fixed_size_usdt=120.0),
                                  "cati", "binance", strategy_instance=NeverAnalyze())
-    res = h.run(h.boundary(config=CATIExecutionConfig(active_execution_enabled=False)))
-    assert res.status == B.DISABLED  # flag still gates
     out = h.orch.process_trade_plan(
         h.plan, now_ms=h.now, market_reference=MarketReference(100.0, h.now - 100, 1.0),
         broker_health=BrokerHealthContext(h.plan.broker_account_id, h.plan.venue, "DEMO", "HEALTHY", h.now, "t"),
@@ -193,6 +191,8 @@ def test_leverage_is_clamped_by_system_limits(tmp_path):
         venue_capabilities=h.kw["evaluated"].venue_observation.execution_capabilities, klines=[],
         current_equity=50000.0, margin_used=0.0, margin_available=50000.0, open_positions=0, atr=2.0)
     assert out["risk_decision"].approved, out["risk_decision"].reason_codes
+    res = h.run(h.boundary(config=CATIExecutionConfig(active_execution_enabled=False)))
+    assert res.status == B.DISABLED and res.reservation_status == 'RELEASED'
     assert out["risk_decision"].resolved_leverage <= 10.0  # major-crypto ceiling, whatever CATI "prefers"
 
 
