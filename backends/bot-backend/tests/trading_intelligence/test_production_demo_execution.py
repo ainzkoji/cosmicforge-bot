@@ -122,13 +122,22 @@ def test_demo_native_protection_is_account_scoped_close_only(demo):
     from app.execution.production_protection import place_native_protection
     from app.models.unified_trading import ProtectionRequest, Side
     demo.client._production_intent_identity = demo.plan.trade_plan_id + "|" + demo.plan.trade_plan_hash
-    demo.client._signed_post.side_effect = [{"algoId":"sl"},{"algoId":"tp"}]
+    book=[]
+    def create_leg(path,*,params):
+        leg={**params,'algoId':'sl' if not book else 'tp'}
+        book.append(leg)
+        return leg
+    demo.client._signed_post.side_effect = create_leg
+    demo.client.get_algo_orders.side_effect = lambda *a,**k:list(book)
     req = ProtectionRequest(symbol="ADAUSDT", position_side=Side.BUY, qty=1, sl_price="98", tp_price="105")
     assert place_native_protection(demo.client, req).status == "success"
     for call in demo.client._signed_post.call_args_list:
         params = call.kwargs["params"]
         assert params["closePosition"] == "true" and params["side"] == "SELL"
         assert "quantity" not in params and params["clientAlgoId"]
+    assert place_native_protection(demo.client,req).status=='success'
+    assert demo.client._signed_post.call_count==2
+    book.clear()  # Missing acknowledged legs must not be blindly recreated.
     with pytest.raises(ValueError, match="OUTCOME_UNKNOWN"):
         place_native_protection(demo.client, req)
     assert demo.client._signed_post.call_count == 2

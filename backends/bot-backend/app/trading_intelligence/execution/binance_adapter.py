@@ -216,6 +216,11 @@ class BinanceExecutionAdapter:
             tp_order_id=tp_order_id, tp1_fraction=float(fraction), position_manager=self.position_manager)
 
     def submit_exit(self, venue_symbol: str, *, side: str, quantity: Optional[float] = None) -> Dict[str, Any]:
+        from app.core.config import settings
+        if settings.production and self.venue == 'BINANCE_USDM':
+            from app.execution.production_close import close_position
+            order = close_position(self.executor.client,venue_symbol)
+            return {'status':'CLOSED_POSITION','success':True,'order':order}
         res = self.executor.execute_signal(venue_symbol, "CLOSE", 0.0, position_side=side,
                                            remaining_quantity=quantity)
         return {"status": getattr(res, "status", None), "success": bool(getattr(res, "success", False)),

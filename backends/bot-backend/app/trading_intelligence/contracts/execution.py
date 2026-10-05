@@ -64,6 +64,7 @@ class ExecutionAttemptStatus(str, Enum):
     RECONCILED_POSITION_EXISTS = "RECONCILED_POSITION_EXISTS"
     RECONCILED_NO_POSITION = "RECONCILED_NO_POSITION"
     ERROR_PRE_SUBMIT = "ERROR_PRE_SUBMIT"
+    POSITION_CLOSED = "POSITION_CLOSED"
 
 
 #: an authoritative position exists at the broker

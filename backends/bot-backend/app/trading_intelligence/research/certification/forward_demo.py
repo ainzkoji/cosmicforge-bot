@@ -24,7 +24,7 @@ from app.trading_intelligence.versions import FORWARD_DEMO_TRACKER_VERSION
 
 DAY_MS = 86_400_000
 NO_CAPITAL_ENVIRONMENTS = ("DEMO", "TESTNET")
-EXECUTED_STATUSES = ("FILLED", "PARTIALLY_FILLED", "RECONCILED_POSITION_EXISTS")
+EXECUTED_STATUSES = ("FILLED", "PARTIALLY_FILLED", "RECONCILED_POSITION_EXISTS", "POSITION_CLOSED")
 
 
 def _rows(db: Any, sql: str, params: Sequence[Any] = ()) -> list:
@@ -64,7 +64,7 @@ class ForwardDemoCertificationTracker:
                 "min_days": self.min_days, "min_executed": self.min_executed}
         try:
             plans = _rows(self._db, "SELECT trade_plan_id, broker_account_id, canonical_symbol, venue, environment, "
-                                    "created_at FROM cati_trade_plans ORDER BY created_at")
+                                    "created_at FROM cati_trade_plans WHERE mode!='DEMO_CERTIFICATION' ORDER BY created_at")
         except EvidenceUnavailable:
             return {**base, "status": "REQUIRED", "reason": "FORWARD_DEMO_EVIDENCE_UNAVAILABLE", "elapsed_days": 0.0,
                     "executed_count": 0}

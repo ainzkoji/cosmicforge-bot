@@ -52,6 +52,8 @@ def durable_occupancy(conn, account_id, now):
         (unknown if r['submit_state'] == 'SUBMIT_UNKNOWN' else active).append(r['id'])
     if conn.execute("SELECT 1 FROM sqlite_master WHERE name='cati_production_protection'").fetchone():
         unknown.extend(r[0] for r in conn.execute("SELECT client_id FROM cati_production_protection WHERE account_id=? AND response IS NULL", (account_id,)))
+    if conn.execute("SELECT 1 FROM sqlite_master WHERE name='cati_production_closes'").fetchone():
+        unknown.extend(r[0] for r in conn.execute("SELECT client_id FROM cati_production_closes WHERE account_id=? AND status!='CLOSED'",(account_id,)))
     return {'active': bool(unknown or active), 'state': 'UNKNOWN' if unknown else 'RESERVED' if active else 'AVAILABLE',
             'reason': 'ACCOUNT_SUBMIT_OUTCOME_UNRESOLVED' if unknown else 'EXECUTION_PORTFOLIO_OVERLAP' if active else None,
             'durable_ids': unknown + active}

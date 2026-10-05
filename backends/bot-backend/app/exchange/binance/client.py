@@ -826,6 +826,10 @@ class BinanceFuturesClient:
         return best
 
     def close_position_market(self, symbol: str) -> dict:
+        from app.core.config import settings
+        if settings.production and getattr(self,'_production_db',None) is not None:
+            from app.execution.production_close import close_position
+            return close_position(self,symbol)
         amt = self.get_position_amt(symbol)
         if abs(amt) < 1e-12:
             return {"status": "no_position", "symbol": symbol}

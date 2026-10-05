@@ -145,7 +145,26 @@ class CATIExecutionBoundary:
         self.authority = authority
 
     # ---------------------------------------------------------------------------------------
-    def process_trade_plan(self, plan: TradePlan, *, market_reference: Any, broker_health: Any,
+    def process_trade_plan(self, plan: TradePlan, **kwargs) -> BoundaryResult:
+        """One cleanup boundary for every definitive pre-mutation return/exception.
+
+        The atomic cleanup cannot release an attempt already claimed by another
+        cycle, nor RESOLUTION_PENDING, nor a foreign tenant's reservation.
+        """
+        now = int(kwargs.get('now_ms') if kwargs.get('now_ms') is not None else self._clock())
+        try:
+            result = self._process_trade_plan(plan, **kwargs)
+        except BaseException:
+            self.reservations.release_unsubmitted(plan.portfolio_reservation_id, now,
+                account_scope=self.account_scope, bot_instance_id=plan.bot_instance_id, trade_plan_id=plan.trade_plan_id)
+            raise
+        pending_capital = result.status == BoundaryStatus.CAPITAL_NOT_READY and getattr(kwargs.get('capital'), 'pending', False)
+        if result.status not in {BoundaryStatus.EXECUTED, BoundaryStatus.SUBMIT_UNKNOWN, BoundaryStatus.DUPLICATE_PLAN} and not pending_capital:
+            self.reservations.release_unsubmitted(plan.portfolio_reservation_id, now,
+                account_scope=self.account_scope, bot_instance_id=plan.bot_instance_id, trade_plan_id=plan.trade_plan_id)
+        return replace(result, reservation_status=self._res_status(plan))
+
+    def _process_trade_plan(self, plan: TradePlan, *, market_reference: Any, broker_health: Any,
                            venue_capabilities: Any, account: AccountState, klines: list = (),
                            atr: Optional[float] = None, runtime_session_id: Optional[str] = None,
                            now_ms: Optional[int] = None, capital: Any = None, **risk_kwargs: Any) -> BoundaryResult:
@@ -153,12 +172,9 @@ class CATIExecutionBoundary:
         ready -> CAPITAL_NOT_READY before hard risk and before the broker: a transfer that is only
         planned/submitted/unknown never funds an entry; a logical allocation needs a valid reservation."""
         now = int(now_ms if now_ms is not None else self._clock())
+        started = time.monotonic()
         from app.core.config import settings
         if settings.production:
-            from app.trading_intelligence.integration.residual_prospective import FAMILY, REGISTRY_HASH
-            if plan.setup_family != FAMILY or dict(plan.versions).get("residual_registry") != REGISTRY_HASH:
-                return BoundaryResult(BoundaryStatus.GOVERNANCE_NOT_AUTHORIZED, plan.trade_plan_id,
-                                      ("PRODUCTION_REQUIRES_FROZEN_RESIDUAL_DECISION",))
             from shared_lib.broker.environment import normalize_environment
             try:
                 resolved_environment = normalize_environment(self.preflight.account_environment).value.upper()
@@ -170,17 +186,9 @@ class CATIExecutionBoundary:
             except (ValueError, AttributeError):
                 return BoundaryResult(BoundaryStatus.ENVIRONMENT_NOT_ALLOWED, plan.trade_plan_id,
                                       ("BROKER_ENVIRONMENT_MISMATCH",))
-            from app.trading_intelligence.integration.production_execution import eligibility
-            with self._db.connect() as c:
-                exists = c.execute("SELECT 1 FROM sqlite_master WHERE name='cati_residual_decisions'").fetchone()
-                row = c.execute("SELECT * FROM cati_residual_decisions WHERE decision_id=?",
-                                (plan.source_candidate_id,)).fetchone() if exists else None
-            why = eligibility(dict(row) if row else None, now)
-            if why or row["side"] != plan.side or row["selected_symbol"] != plan.instrument_key.venue_symbol \
-                    or float(row["stop"]) != plan.structural_invalidation_price \
-                    or not plan.target_zones or float(row["target"]) != plan.target_zones[0].price_high:
-                return BoundaryResult(BoundaryStatus.GOVERNANCE_NOT_AUTHORIZED, plan.trade_plan_id,
-                                      (why or "FROZEN_RESIDUAL_PLAN_GEOMETRY_MISMATCH",))
+            why = self._production_plan_reason(plan, now)
+            if why:
+                return BoundaryResult(BoundaryStatus.GOVERNANCE_NOT_AUTHORIZED, plan.trade_plan_id, (why,))
         ids = dict(cycle_id=plan.cycle_id, user_id=plan.user_id, broker_account_id=plan.broker_account_id,
                    bot_instance_id=plan.bot_instance_id)
         # 20.18 -- the path exists but is OFF unless explicitly enabled (no orchestrator call, no mutation)
@@ -254,7 +262,7 @@ class CATIExecutionBoundary:
         self._append_risk(risk)
         METRICS.observe("cati_stage_latency_ms", (time.perf_counter() - t0) * 1000.0, stage="RISK")
         if not risk.approved:
-            released = self.reservations.release(plan.portfolio_reservation_id, now)
+            released = self._release_unsubmitted(plan, now)
             METRICS.inc("cati_hard_risk_rejections_total", reason_family=risk.rejection_family or F.OTHER.value,
                         stage=risk.stage)
             log_stage(component="boundary.risk", status="REJECTED", reason_codes=risk.reason_codes,
@@ -268,7 +276,7 @@ class CATIExecutionBoundary:
         # 18.5 -- the risk-sized quantity must be executable under the CURRENT venue metadata
         qty = self.preflight.quantity(plan, float(tp["quantity"]), float(tp["entry_price"]), now)
         if not qty.ok:
-            released = self.reservations.release(plan.portfolio_reservation_id, now)
+            released = self._release_unsubmitted(plan, now)
             METRICS.inc("cati_execution_boundary_total", status=BoundaryStatus.PREFLIGHT_BLOCKED)
             return BoundaryResult(BoundaryStatus.PREFLIGHT_BLOCKED, plan.trade_plan_id, qty.reason_codes,
                                   risk_decision=risk, reservation_status="RELEASED" if released else self._res_status(plan),
@@ -310,6 +318,13 @@ class CATIExecutionBoundary:
             return self._fail_before_risk(plan, now, BoundaryStatus.PREFLIGHT_BLOCKED,
                                           "DEMO_CAPABILITY_UNAVAILABLE" if plan.environment == "DEMO" else
                                           "NATIVE_REDUCE_ONLY_PROTECTION_REQUIRED")
+        if settings.production:
+            # Include time spent inside metadata, risk and sizing; a supplied
+            # observation timestamp must not freeze the prospective deadline.
+            submit_now = now + int((time.monotonic()-started)*1000)
+            why = self._production_plan_reason(plan, submit_now)
+            if why:
+                return self._fail_before_risk(plan,submit_now,BoundaryStatus.GOVERNANCE_NOT_AUTHORIZED,why)
         base = self._attempt(plan, attempt_id, risk.risk_decision_id, req, status=X.PENDING_SUBMIT.value, now=now)
         executor = getattr(self.adapter, "executor", None)
         if executor is not None and hasattr(executor, "_build_entry_idempotency"):
@@ -444,10 +459,15 @@ class CATIExecutionBoundary:
             if not settings.production or order_submission_gate(plan.environment)["enabled"]:
                 if settings.production:
                     self.adapter.executor.client._production_intent_identity = f"{plan.trade_plan_id}|{plan.trade_plan_hash}"
-                self.adapter.submit_protection(sym, side=plan.side, quantity=float(filled),
-                    stop_price=plan.structural_invalidation_price,
-                    target_price=(plan.target_zones[0].price_high if plan.side == "LONG"
-                                  else plan.target_zones[0].price_low) if plan.target_zones else None)
+                try:
+                    self.adapter.submit_protection(sym, side=plan.side, quantity=float(filled),
+                        stop_price=plan.structural_invalidation_price,
+                        target_price=(plan.target_zones[0].price_high if plan.side == "LONG"
+                                      else plan.target_zones[0].price_low) if plan.target_zones else None)
+                except Exception:
+                    if settings.production:
+                        self.adapter.submit_exit(sym,side=plan.side,quantity=float(pos.quantity))
+                    raise
             self.attempts.append(resolved, len(rows))
             self._resolve(plan, "CONSUMED", now, "BROKER_CONFIRMED_ENTRY")
             METRICS.inc("cati_execution_reconciliation_total", outcome="POSITION_EXISTS")
@@ -568,9 +588,33 @@ class CATIExecutionBoundary:
 
     # -- helpers ----------------------------------------------------------------------------------
     def _fail_before_risk(self, plan, now, status, *codes) -> BoundaryResult:
-        self.reservations.release(plan.portfolio_reservation_id, now)
+        self._release_unsubmitted(plan, now)
         METRICS.inc("cati_execution_boundary_total", status=status)
         return BoundaryResult(status, plan.trade_plan_id, tuple(codes), reservation_status=self._res_status(plan))
+
+    def _production_plan_reason(self, plan, now):
+        from app.trading_intelligence.integration.production_execution import eligibility, latest_decision
+        from app.trading_intelligence.integration.residual_prospective import FAMILY, REGISTRY_HASH
+        from app.execution.demo_boundary_certification import permitted
+        if permitted(self._db, plan):
+            return 'PROSPECTIVE_ENTRY_WINDOW_EXPIRED' if now >= plan.plan_expiry_time else None
+        if plan.setup_family != FAMILY or dict(plan.versions).get('residual_registry') != REGISTRY_HASH:
+            return 'PRODUCTION_REQUIRES_FROZEN_RESIDUAL_DECISION'
+        row = latest_decision(self._db)
+        if row is None or row['decision_id'] != plan.source_candidate_id:
+            return 'CURRENT_CATI_DECISION_CHANGED'
+        why = eligibility(row, now)
+        if why:
+            return why
+        if row['side'] != plan.side or row['selected_symbol'] != plan.instrument_key.venue_symbol \
+                or float(row['stop']) != plan.structural_invalidation_price \
+                or not plan.target_zones or float(row['target']) != plan.target_zones[0].price_high:
+            return 'FROZEN_RESIDUAL_PLAN_GEOMETRY_MISMATCH'
+        return None
+
+    def _release_unsubmitted(self, plan, now):
+        return self.reservations.release_unsubmitted(plan.portfolio_reservation_id, now,
+            account_scope=self.account_scope, bot_instance_id=plan.bot_instance_id, trade_plan_id=plan.trade_plan_id)
 
     def _res_status(self, plan) -> Optional[str]:
         r = self.reservations.get(plan.portfolio_reservation_id)

@@ -101,8 +101,8 @@ def sync_account(db, account, *, factory=build_client_from_auth, execute=False):
             if not code and isinstance(exc, ValueError):
                 candidate = str(exc)
                 code = candidate if candidate.replace("_", "").isalnum() and candidate.upper() == candidate else None
-            result["execution"] = {"execution_permission": "BLOCKED_ACCOUNT", "reason":
-                code or type(exc).__name__}
+            result["execution"] = getattr(exc, 'production_evaluation', None) or {
+                "execution_permission": "BLOCKED_ACCOUNT", "reason": code or type(exc).__name__}
             if not gate["enabled"]:
                 result["execution"].update(execution_permission="BLOCKED_"+env.value.upper()+"_ORDER_GATE",
                     block_reason_before_order_gate=result["execution"]["reason"], reason=gate["reason"])
@@ -227,12 +227,15 @@ async def run(db):
     runner = SimpleNamespace(db=db)
     fx_check = 0.
     while True:
+        cycle_started = time.monotonic()
         try:
             if owner_current(db):
-                from app.execution.demo_transport_smoke import process_local_request
-                await asyncio.to_thread(process_local_request, db)
                 residual_schedule(runner)
                 forward_schedule(runner)
+                from app.execution.demo_transport_smoke import process_local_request
+                await asyncio.to_thread(process_local_request, db)
+                from app.execution.demo_boundary_certification import process_local_request as certify_boundary
+                await asyncio.to_thread(certify_boundary, db)
                 if time.monotonic() - fx_check > 60:
                     from .residual_simulation import ensure_fx_watcher
                     await asyncio.to_thread(ensure_fx_watcher)
@@ -242,4 +245,4 @@ async def run(db):
             raise
         except Exception:
             logger.exception("[CATI_PRODUCTION] collection cycle failed; broker mutations remain guarded")
-        await asyncio.sleep(30)
+        await asyncio.sleep(max(1.,30.-(time.monotonic()-cycle_started)))

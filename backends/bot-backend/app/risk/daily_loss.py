@@ -61,6 +61,7 @@ class DailyLossState:
         cooldown_minutes: int = 120,
         hard_limit: int = 5,
         now_ms: Optional[int] = None,
+        emit_events: bool = True,
     ) -> None:
         """
         Call after every closed trade.
@@ -74,7 +75,7 @@ class DailyLossState:
         _now_ms = now_ms if now_ms is not None else int(time.time() * 1000)
 
         if is_win:
-            if self.consecutive_losses > 0:
+            if emit_events and self.consecutive_losses > 0:
                 logger.info(
                     "CONSECUTIVE_LOSS_COUNTER_RESET_AFTER_WIN — was %d, reset to 0.",
                     self.consecutive_losses,
@@ -86,29 +87,32 @@ class DailyLossState:
             return
 
         self.consecutive_losses += 1
-        logger.warning(
-            "CONSECUTIVE_LOSS_RECORDED — streak now %d (soft=%d hard=%d).",
-            self.consecutive_losses, soft_limit, hard_limit,
-        )
+        if emit_events:
+            logger.warning(
+                "CONSECUTIVE_LOSS_RECORDED — streak now %d (soft=%d hard=%d).",
+                self.consecutive_losses, soft_limit, hard_limit,
+            )
 
         if self.consecutive_losses >= hard_limit and not self.consec_loss_day_paused:
             self.consec_loss_day_paused = True
             self.consec_loss_cooldown_until_ms = 0
-            logger.error(
-                "CONSECUTIVE_LOSS_DAY_PAUSE_STARTED — %d consecutive losses. "
-                "All new entries blocked for the remainder of the trading day.",
-                self.consecutive_losses,
-            )
+            if emit_events:
+                logger.error(
+                    "CONSECUTIVE_LOSS_DAY_PAUSE_STARTED — %d consecutive losses. "
+                    "All new entries blocked for the remainder of the trading day.",
+                    self.consecutive_losses,
+                )
         elif self.consecutive_losses >= soft_limit and not self.consec_loss_day_paused:
             cooldown_ms = cooldown_minutes * 60 * 1000
             if self.consec_loss_cooldown_until_ms <= _now_ms:
                 # Start a new cooldown window
                 self.consec_loss_cooldown_until_ms = _now_ms + cooldown_ms
-                logger.warning(
-                    "CONSECUTIVE_LOSS_COOLDOWN_STARTED — %d losses. "
-                    "New entries paused for %d minutes.",
-                    self.consecutive_losses, cooldown_minutes,
-                )
+                if emit_events:
+                    logger.warning(
+                        "CONSECUTIVE_LOSS_COOLDOWN_STARTED — %d losses. "
+                        "New entries paused for %d minutes.",
+                        self.consecutive_losses, cooldown_minutes,
+                    )
 
     def is_entry_paused(self, now_ms: Optional[int] = None) -> tuple[bool, str]:
         """

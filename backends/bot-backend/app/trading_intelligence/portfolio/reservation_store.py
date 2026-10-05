@@ -227,6 +227,12 @@ class CATIReservationStore:
                 if existing is not None and existing["status"] == ReservationStatus.RESOLUTION_PENDING.value:
                     # unresolved broker ownership is never deleted / re-reserved
                     return ReservationOutcome(None, ACCOUNT_RESERVATION_CONFLICT, (reservation_id_note(rid),))
+                if mode == MODE_PRODUCTION and existing is not None:
+                    attempted = conn.execute('''SELECT 1 FROM cati_trade_plans p JOIN cati_execution_attempts e
+                        ON e.trade_plan_id=p.trade_plan_id AND e.broker_account_id=p.broker_account_id
+                        WHERE p.reservation_id=? LIMIT 1''',(rid,)).fetchone()
+                    if attempted:
+                        return ReservationOutcome(None, 'CATI_DECISION_ALREADY_ATTEMPTED', ())
                 opens, pending = load_open_and_pending(conn, broker_account_id)
                 active = self._active(conn, broker_account_id, now_ms)
                 if mode == MODE_PRODUCTION:
@@ -417,6 +423,29 @@ class CATIReservationStore:
     def release(self, reservation_id: str, now_ms: int) -> bool:
         """E.g. hard risk rejected the selected candidate. Never substitutes rank #2."""
         return self._transition(reservation_id, ReservationStatus.RELEASED.value, now_ms)
+
+    def release_unsubmitted(self, reservation_id: str, now_ms: int, *, account_scope,
+                            bot_instance_id: str, trade_plan_id=None) -> bool:
+        """Release only this tenant's unclaimed reservation, atomically with CREATE claims.
+
+        A crash after the attempt insert but before RESOLUTION_PENDING must keep
+        ownership. Never release a different account's reservation on rejection.
+        """
+        if account_scope is None:
+            return False
+        user_id, account_id = account_scope
+        with self._db.connect() as c:
+            c.execute('BEGIN IMMEDIATE')
+            owner = c.execute('SELECT b.user_id,a.user_id FROM bot_instances b JOIN broker_accounts a ON a.id=b.broker_account_id WHERE b.id=? AND a.id=?', (bot_instance_id, account_id)).fetchone()
+            if not owner or owner[0] != user_id or owner[1] != user_id:
+                return False
+            return c.execute("""UPDATE cati_portfolio_reservations SET status='RELEASED',updated_at=?
+                WHERE reservation_id=? AND broker_account_id=? AND bot_instance_id=? AND status='RESERVED'
+                AND NOT EXISTS (SELECT 1 FROM cati_execution_attempts e WHERE e.trade_plan_id=? AND e.broker_account_id=?)
+                AND NOT EXISTS (SELECT 1 FROM cati_trade_plans p JOIN cati_execution_attempts e
+                    ON e.trade_plan_id=p.trade_plan_id AND e.broker_account_id=p.broker_account_id
+                    WHERE p.reservation_id=cati_portfolio_reservations.reservation_id)""",
+                (now_ms, reservation_id, account_id, bot_instance_id, trade_plan_id, account_id)).rowcount == 1
 
     def consume(self, reservation_id: str, now_ms: int) -> bool:
         return self._transition(reservation_id, ReservationStatus.CONSUMED.value, now_ms)

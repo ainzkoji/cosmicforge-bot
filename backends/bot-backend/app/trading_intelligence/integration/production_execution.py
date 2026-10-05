@@ -103,6 +103,8 @@ def initialize(db):
             account_id TEXT NOT NULL, trade_id TEXT NOT NULL, order_id TEXT NOT NULL,
             symbol TEXT NOT NULL, document TEXT NOT NULL, PRIMARY KEY(account_id,symbol,trade_id));
         """)
+        from .production_evidence import initialize as initialize_evaluations
+        initialize_evaluations(c)
 
 
 def latest_decision(db):
@@ -199,7 +201,7 @@ def account_risk(db, account, client, positions, orders, bots, now):
     for event in realized_events:
         streak.record_trade_result(float(event["income"]) > 0, soft_limit=settings.MAX_CONSECUTIVE_LOSSES_SOFT,
             hard_limit=settings.MAX_CONSECUTIVE_LOSSES_HARD, cooldown_minutes=settings.CONSECUTIVE_LOSS_COOLDOWN_MINUTES,
-            now_ms=int(event["time"]))
+            now_ms=int(event["time"]), emit_events=False)
     unrealized = float(raw["totalUnrealizedProfit"])
     opening = wallet - sum(float(p["income"]) for p in history)
     if not math.isfinite(opening) or opening <= 0 or not math.isfinite(realized + unrealized):
@@ -334,6 +336,7 @@ def boundary_for(db, account, bot, client):
     from app.trading_intelligence.execution.preflight import SubmissionPreflight
     from app.trading_intelligence.execution.binance_adapter import executor_adapter_for
     from app.trading_intelligence.execution.boundary import CATIExecutionBoundary
+    from app.trading_intelligence.governance.account_authority import AccountExecutionAuthority
     environment = normalize_environment(account["environment"]).value.upper()
     if normalize_environment(client.broker_environment).value.upper() != environment:
         raise ValueError("BROKER_ENVIRONMENT_MISMATCH")
@@ -389,12 +392,44 @@ def boundary_for(db, account, bot, client):
     with db.connect() as c:
         preflight.permissions = load_permission_evidence(c, account["id"])
     boundary = CATIExecutionBoundary(orchestrator=orchestrator, adapter=adapter, db=db,
-        preflight=preflight, account_scope=(account["user_id"], account["id"]))
+        preflight=preflight, account_scope=(account["user_id"], account["id"]),
+        authority=AccountExecutionAuthority(db, (account['user_id'], account['id'])))
+    from app.exchange.instruments import sync_instruments
+    preflight.refresh = lambda: sync_instruments(boundary.adapter.executor.client,catalog=preflight.catalog,
+        venue=preflight.venue_key,environment=preflight.catalog_environment,now_ms=int(time.time()*1000))
     _boundaries[cache_key] = (policy.policy_hash, boundary)
     return boundary
 
 
 def process_account(db, account, client, snapshot, *, now_ms=None, boundary_factory=boundary_for):
+    """Preserve every evaluation, including exceptions before an attempt exists."""
+    initialize(db)
+    result = {}
+    failure = None
+    try:
+        _process_account(db, account, client, snapshot, now_ms=now_ms,
+                         boundary_factory=boundary_factory, evaluation=result)
+    except Exception as exc:
+        failure = exc
+        code = getattr(exc, 'reason_code', None)
+        if not code and isinstance(exc, ValueError) and str(exc).replace('_','').isalnum() and str(exc).upper() == str(exc):
+            code = str(exc)
+        result.update(reason=code or type(exc).__name__, execution_permission='BLOCKED_ACCOUNT', stage='EVALUATION_FAILED')
+    finally:
+        now = int(time.time()*1000) if now_ms is None else now_ms
+        if result.get('reservation_id') and result.get('bot_instance_id'):
+            from app.trading_intelligence.portfolio.reservation_store import CATIReservationStore
+            CATIReservationStore(db).release_unsubmitted(result['reservation_id'],now,
+                account_scope=(account['user_id'],account['id']),bot_instance_id=result['bot_instance_id'])
+    from .production_evidence import record
+    record(db, account, result, now)
+    if failure is not None:
+        failure.production_evaluation = result
+        raise failure
+    return result
+
+
+def _process_account(db, account, client, snapshot, *, now_ms=None, boundary_factory=boundary_for, evaluation):
     from app.trading_intelligence.execution.boundary import AccountState
     from app.trading_intelligence.trade_plan.evidence_store import TradePlanEvidenceStore
     from app.trading_intelligence.capital.planner import CapitalReadiness
@@ -412,10 +447,11 @@ def process_account(db, account, client, snapshot, *, now_ms=None, boundary_fact
     environment = normalize_environment(account["environment"]).value.upper()
     gate = order_submission_gate(environment)
     row = latest_decision(db)
-    result = {"latest_cati_decision": row, "eligibility": None, "execution_permission": "BLOCKED_ACCOUNT",
+    result = evaluation
+    result.update({"latest_cati_decision": row, "eligibility": None, "execution_permission": "BLOCKED_ACCOUNT",
               "reason": None, "broker_account_id": account["id"], "orders_submitted": False,
               "credential_version": getattr(client, "_production_credential_version", None),
-              "environment": environment, "order_submission_gate": gate}
+              "environment": environment, "order_submission_gate": gate})
     research_state = json.loads(row['risk_state_json']) if row else {}
     result['research_observation_overlap'] = bool(research_state.get('overlap_rejected'))
     with db.connect() as c:
@@ -424,6 +460,7 @@ def process_account(db, account, client, snapshot, *, now_ms=None, boundary_fact
         bots = [dict(b) for b in c.execute("SELECT * FROM bot_instances WHERE broker_account_id=? AND status='active'", (account["id"],))]
         from shared_lib.broker.auto_trading import authorization
         result["auto_trading"] = authorization(c, account, bots)
+    result['bot_instance_id'] = bots[0]['id'] if len(bots) == 1 else None
     if any(b.get("user_id") != account["user_id"] for b in bots):
         result["reason"] = "BROKER_ACCOUNT_OWNERSHIP_MISMATCH"
     elif account["broker_id"].lower() not in {"binance", "bybit", "bingx"}:
@@ -483,11 +520,14 @@ def process_account(db, account, client, snapshot, *, now_ms=None, boundary_fact
                 result["execution_permission"] = ("WAITING_SIGNAL" if why in {
                     "AWAITING_NATURAL_CATI_DECISION", "PROSPECTIVE_ENTRY_WINDOW_EXPIRED",
                     "NEXT_NATIVE_OPEN_REFERENCE_REQUIRED",
-                    "NO_ELIGIBLE_TOP1", "MISSED_PROSPECTIVE_BOUNDARY"} and not result["risk"]["reason"]
+                    "NO_ELIGIBLE_TOP1", "NO_SCORE_AT_LEAST_2", "MISSED_PROSPECTIVE_BOUNDARY"} and not result["risk"]["reason"]
                     and not result["kill_switch"] else "BLOCKED_RISK")
             else:
                 venue_symbol = client._normalize_symbol(row["selected_symbol"]) if account["broker_id"].lower() == "bingx" else row["selected_symbol"]
                 catalog = boundary.preflight.catalog.record(boundary.preflight.venue_key, environment, venue_symbol)
+                if not boundary.preflight._fresh(catalog,now) and boundary.preflight.refresh is not None:
+                    boundary.preflight.refresh()
+                    catalog = boundary.preflight.catalog.record(boundary.preflight.venue_key, environment, venue_symbol)
                 if not catalog:
                     result["reason"] = "INSTRUMENT_UNKNOWN"
                 else:
@@ -497,30 +537,18 @@ def process_account(db, account, client, snapshot, *, now_ms=None, boundary_fact
                         ins.venue_symbol, row["side"])], now_ms=now, ttl_seconds=max(1, (row["decision_time"]+Q-now)//1000),
                         max_open_positions=1, mode='PRODUCTION', production_scope=(account['user_id'], account['id']))
                     if not reservation.reserved:
-                        result.update(reason=reservation.conflict_reason, execution_permission="BLOCKED_RISK")
+                        result.update(reason=reservation.conflict_reason, execution_permission='WAITING_SIGNAL'
+                            if reservation.conflict_reason=='CATI_DECISION_ALREADY_ATTEMPTED' else "BLOCKED_RISK")
                     else:
+                        result['reservation_id'] = reservation.reservation.reservation_id
+                        result['reservation_status'] = reservation.reservation.status
                         plan = build_plan(row, account, bots[0]["id"], ins, reservation.reservation.reservation_id)
+                        result['trade_plan_id'] = plan.trade_plan_id
                         plans = TradePlanEvidenceStore(db)
                         plans.append(plan)
-                        if account["broker_id"].lower() == "binance":
-                            info = client.exchange_info_cached()
-                            symbol_info = next((s for s in info["symbols"] if s["symbol"] == ins.venue_symbol), None)
-                            raw = VenueRawSnapshot(venue_symbol=ins.venue_symbol, captured_at=now,
-                                payloads={"exchange_info_symbol": symbol_info, "exchange_info_as_of": now})
-                            caps = BinanceUsdmEconomicAdapter().describe_execution_capabilities(None, raw)
-                        else:
-                            from app.trading_intelligence.venue.perpetual import BybitEconomicAdapter, BingXEconomicAdapter
-                            economic = BybitEconomicAdapter() if account["broker_id"].lower() == "bybit" else BingXEconomicAdapter()
-                            caps = economic.describe_execution_capabilities(None, VenueRawSnapshot(
-                                venue_symbol=ins.venue_symbol, captured_at=now, payloads={"instrument": ins, "metadata_as_of": now}))
-                        price = float(client.last_price(ins.venue_symbol))
-                        price_observed_at = now if now_ms is not None else int(time.time()*1000)
-                        klines = client.klines(symbol=ins.venue_symbol, interval="15m", limit=250)
-                        kyc = evaluate_execution_kyc(user_id=account["user_id"], broker_environment=environment.lower())
-                        readiness = evaluate_execution_readiness(db=db, bot_instance_id=bots[0]["id"], broker_environment=environment.lower())
-                        risk = result["risk"]
-                        controls = persisted_risk_controls(db, bots[0]["id"], risk, now)
-                        result["risk_controls"] = controls
+                        prepared = prepare_submission(db, account, bots[0], client, boundary, plan, ins,
+                                                      result["risk"], now_ms=now_ms)
+                        result["risk_controls"] = prepared.pop("controls_evidence")
                         if not owner_current(db):
                             raise ValueError("CANONICAL_RUNTIME_LEASE_REQUIRED")
                         submission_time = now if now_ms is not None else int(time.time()*1000)
@@ -528,26 +556,17 @@ def process_account(db, account, client, snapshot, *, now_ms=None, boundary_fact
                         stale = ("CURRENT_CATI_DECISION_CHANGED" if not current or current['decision_id'] != row['decision_id']
                                  else eligibility(current, submission_time))
                         if stale:
-                            boundary.reservations.release(plan.portfolio_reservation_id, submission_time)
+                            boundary._release_unsubmitted(plan, submission_time)
                             result.update(reason=stale, execution_permission='WAITING_SIGNAL')
                             result['execution_portfolio'] = execution_portfolio(db, account, snapshot, result['execution_history'], submission_time)
                             result['execution_portfolio_active'] = result['execution_portfolio']['active']
-                            with db.connect() as c:
-                                c.execute("INSERT OR REPLACE INTO cati_production_decisions VALUES(?,?,?,?,?)",
-                                    (account['id'], row['decision_id'], bots[0]['id'], now, json.dumps(result, default=str)))
                             return result
                         result["stage"] = "DECISION_ACCEPTED"
-                        with db.connect() as c:
-                            c.execute("INSERT OR REPLACE INTO cati_production_decisions VALUES(?,?,?,?,?)",
-                                (account["id"], row["decision_id"], bots[0]["id"], submission_time, json.dumps(result, default=str)))
-                        out = boundary.process_trade_plan(plan, market_reference=MarketReference(price, price_observed_at),
-                            broker_health=BrokerHealthContext(account["id"], plan.venue, environment, "HEALTHY", now, "BROKER_SYNC"),
-                            venue_capabilities=caps, account=AccountState(risk["equity"], risk["margin_used"], risk["free_capital"], risk["open_positions"]),
-                            klines=klines, atr=json.loads(row["snapshot_json"])["candidate"]["atr14"], now_ms=submission_time,
-                            capital=CapitalReadiness(True, "LOGICAL"), user_kyc_approved=kyc.allowed,
-                            live_readiness_approved=readiness.allowed, kyc_status=kyc.state, live_readiness_status=readiness.state,
-                            execution_mode="broker", market_type="CRYPTO", **controls)
+                        from .production_evidence import record
+                        record(db, account, result, submission_time)
+                        out = boundary.process_trade_plan(plan, **prepared)
                         result["boundary"] = asdict(out)
+                        result['stage'] = 'BOUNDARY_RESULT'
                         result["reason"] = out.reason_codes[0] if out.reason_codes else out.status
                         result["execution_permission"] = ("BLOCKED_"+environment+"_ORDER_GATE" if out.status == gate["reason"]
                             else "ORDER_ACTIVE" if out.status in ("EXECUTED", "SUBMIT_UNKNOWN_PENDING_RECONCILIATION")
@@ -560,11 +579,48 @@ def process_account(db, account, client, snapshot, *, now_ms=None, boundary_fact
         result["execution_permission"] = "BLOCKED_"+environment+"_ORDER_GATE"
         result["block_reason_before_order_gate"] = result["reason"]
         result["reason"] = gate["reason"]
-    if row:
-        with db.connect() as c:
-            c.execute("INSERT OR REPLACE INTO cati_production_decisions VALUES(?,?,?,?,?)", (account["id"], row["decision_id"],
-                bots[0]["id"] if len(bots) == 1 else None, now, json.dumps(result, default=str)))
     return result
+
+
+def prepare_submission(db, account, bot, client, boundary, plan, instrument, risk, *, now_ms=None, atr=None):
+    """Common production preparation for natural entries and labelled DEMO certification."""
+    from app.trading_intelligence.execution.boundary import AccountState
+    from app.trading_intelligence.capital.planner import CapitalReadiness
+    from app.trading_intelligence.trade_plan.validation import MarketReference
+    from app.trading_intelligence.contracts.system_health import BrokerHealthContext
+    from app.trading_intelligence.venue.binance import BinanceUsdmEconomicAdapter
+    from app.trading_intelligence.venue.adapter import VenueRawSnapshot
+    from app.product_safety.execution_safety import evaluate_execution_kyc, evaluate_execution_readiness
+    now = int(time.time()*1000) if now_ms is None else now_ms
+    if account['broker_id'].lower() == 'binance':
+        info = client.exchange_info_cached()
+        metadata = next((s for s in info['symbols'] if s['symbol'] == instrument.venue_symbol), None)
+        caps = BinanceUsdmEconomicAdapter().describe_execution_capabilities(None, VenueRawSnapshot(
+            venue_symbol=instrument.venue_symbol, captured_at=now,
+            payloads={'exchange_info_symbol':metadata, 'exchange_info_as_of':now}))
+    else:
+        from app.trading_intelligence.venue.perpetual import BybitEconomicAdapter, BingXEconomicAdapter
+        economic = BybitEconomicAdapter() if account['broker_id'].lower() == 'bybit' else BingXEconomicAdapter()
+        caps = economic.describe_execution_capabilities(None, VenueRawSnapshot(venue_symbol=instrument.venue_symbol,
+            captured_at=now, payloads={'instrument':instrument, 'metadata_as_of':now}))
+    klines = client.klines(symbol=instrument.venue_symbol, interval='15m', limit=250)
+    kyc = evaluate_execution_kyc(user_id=account['user_id'], broker_environment=plan.environment.lower())
+    readiness = evaluate_execution_readiness(db=db, bot_instance_id=bot['id'], broker_environment=plan.environment.lower())
+    controls = persisted_risk_controls(db,bot['id'],risk,now)
+    # Read the executable price last, after slower metadata/history work.
+    price = float(client.last_price(instrument.venue_symbol))
+    observed = int(time.time()*1000) if now_ms is None else now_ms
+    if atr is None and plan.mode != 'DEMO_CERTIFICATION':
+        with db.connect() as c:
+            row = c.execute('SELECT snapshot_json FROM cati_residual_decisions WHERE decision_id=?',(plan.source_candidate_id,)).fetchone()
+        atr = json.loads(row[0])['candidate']['atr14'] if row else None
+    return dict(market_reference=MarketReference(price,observed),
+        broker_health=BrokerHealthContext(account['id'],plan.venue,plan.environment,'HEALTHY',now,'BROKER_SYNC'),
+        venue_capabilities=caps, account=AccountState(risk['equity'],risk['margin_used'],risk['free_capital'],risk['open_positions']),
+        klines=klines, atr=atr, now_ms=observed, capital=CapitalReadiness(True,'LOGICAL'),
+        user_kyc_approved=kyc.allowed, live_readiness_approved=readiness.allowed,
+        kyc_status=kyc.state,live_readiness_status=readiness.state,execution_mode='broker',market_type='CRYPTO',
+        controls_evidence=controls, **controls)
 
 
 def reconcile_executions(db, boundary, client, now):
@@ -575,12 +631,29 @@ def reconcile_executions(db, boundary, client, now):
     plans = TradePlanEvidenceStore(db)
     attempts = ExecutionAttemptStore(db)
     account = boundary.account_scope[1]
+    # Resolve a CLOSE whose acknowledgement was lost before considering new
+    # capacity. The durable row makes close_position read-only on replay.
+    with db.connect() as c:
+        pending_closes = []
+        if c.execute("SELECT 1 FROM sqlite_master WHERE name='cati_production_closes'").fetchone():
+            pending_closes = [dict(r) for r in c.execute(
+                "SELECT * FROM cati_production_closes WHERE account_id=? AND status!='CLOSED'", (account,))]
+    for pending in pending_closes:
+        plan = plans.load_plan(account,pending['identity'].split('|')[0])
+        if plan is None or (plan.user_id,plan.broker_account_id) != boundary.account_scope:
+            raise ValueError('CLOSE_ACCOUNT_OWNERSHIP_UNCONFIRMED')
+        client._production_intent_identity = pending['identity']
+        from app.execution.production_close import close_position
+        close_position(client,pending['symbol'])
     latest = {}
     for attempt in attempts.for_account(account):
         if attempt["user_id"] == boundary.account_scope[0]:
             latest[attempt["execution_attempt_id"]] = attempt
     history = []
     for attempt in latest.values():
+        from app.trading_intelligence.contracts.execution import NO_POSITION
+        if attempt['status'] in NO_POSITION or attempt['status'] == 'POSITION_CLOSED':
+            continue
         plan = plans.load_plan(account, attempt["trade_plan_id"])
         if plan is None or (plan.user_id, plan.broker_account_id) != boundary.account_scope:
             continue
@@ -590,23 +663,25 @@ def reconcile_executions(db, boundary, client, now):
         order = boundary.adapter.query_order(plan.instrument_key.venue_symbol,
             broker_order_id=payload.get("broker_order_id"), client_order_id=payload.get("client_order_id"))
         position = boundary.adapter.reconcile_position(plan.instrument_key.venue_symbol)
-        fills = client.user_trades(symbol=plan.instrument_key.venue_symbol,
+        all_fills = client.user_trades(symbol=plan.instrument_key.venue_symbol,
             start_time_ms=max(plan.decision_time, now-6*86_400_000), end_time_ms=now, limit=1000)
-        if not isinstance(fills, list):
+        if not isinstance(all_fills, list) or len(all_fills) >= 1000:
             raise ValueError("BROKER_FILL_HISTORY_UNAVAILABLE")
         # Only actual broker fills for this order belong to this intent.
         oid = order.broker_order_id or payload.get("broker_order_id")
-        fills = [f for f in fills if str(f.get("orderId")) == str(oid)]
+        fills = [f for f in all_fills if str(f.get("orderId")) == str(oid)]
         with db.connect() as c:
             for fill in fills:
                 if fill.get("id") is None:
                     raise ValueError("BROKER_FILL_ID_UNAVAILABLE")
                 c.execute("INSERT OR IGNORE INTO cati_production_fills VALUES(?,?,?,?,?)",
-                    (account, str(fill["id"]), str(oid), plan.instrument_key.venue_symbol, json.dumps(fill)))
+                    (account, str(fill["id"]), str(oid), plan.instrument_key.venue_symbol, json.dumps({**fill,
+                        '_execution': {'purpose':plan.mode,'trade_plan_id':plan.trade_plan_id,'leg':'ENTRY'}})))
             fills = [json.loads(r[0]) for r in c.execute(
                 "SELECT document FROM cati_production_fills WHERE account_id=? AND symbol=? AND order_id=?",
                 (account, plan.instrument_key.venue_symbol, str(oid)))]
         item = {"trade_plan_id": plan.trade_plan_id, "cati_decision_id": plan.source_candidate_id,
+                "classification": 'DEMO_CERTIFICATION' if plan.mode == 'DEMO_CERTIFICATION' else 'NATURAL_CATI',
                 "order": asdict(order), "position": asdict(position), "fills": fills,
                 "protection": "NOT_REQUIRED_FLAT" if position.answered and position.quantity == 0 else "UNCONFIRMED"}
         if order.answered and order.executed_qty > 0 and position.answered and position.side == plan.side and position.quantity > 0 \
@@ -620,7 +695,44 @@ def reconcile_executions(db, boundary, client, now):
                         stop_price=plan.structural_invalidation_price, target_price=plan.target_zones[0].price_high)
                 except Exception as exc:
                     item["protection"] = {"status": "UNCONFIRMED", "reason": type(exc).__name__}
+                    # An acknowledged live entry without proven native protection
+                    # uses the same durable reduce-only fail-safe close.
+                    item['fail_safe_close'] = boundary.adapter.submit_exit(plan.instrument_key.venue_symbol,
+                        side=plan.side,quantity=position.quantity)
+                if now >= plan.decision_time + 1 + plan.expected_holding_time_ms:
+                    item['horizon_close'] = boundary.adapter.submit_exit(plan.instrument_key.venue_symbol,
+                        side=plan.side,quantity=position.quantity)
             else:
                 item["protection"] = order_submission_gate(plan.environment)["reason"]
+        if order.answered and order.executed_qty > 0 and position.answered and position.quantity == 0:
+            # A historical FILLED entry + flat snapshot alone can be eventual
+            # consistency. Require an acknowledged close or actual exit fills.
+            identity = f'{plan.trade_plan_id}|{plan.trade_plan_hash}'
+            with db.connect() as c:
+                closed = c.execute("SELECT 1 FROM sqlite_master WHERE name='cati_production_closes'").fetchone()
+                closed = closed and c.execute("SELECT 1 FROM cati_production_closes WHERE account_id=? AND identity=? AND status='CLOSED'",(account,identity)).fetchone()
+            entry_time = max((int(f.get('time',now)) for f in fills),default=now)
+            exits = [f for f in all_fills if int(f.get('time',0)) >= entry_time
+                     and f.get('side') == ('SELL' if plan.side == 'LONG' else 'BUY')]
+            if closed or (fills and sum(float(f.get('qty',0)) for f in exits) >= order.executed_qty):
+                with db.connect() as c:
+                    for fill in exits:
+                        if fill.get('id') is None or fill.get('orderId') is None:
+                            raise ValueError('BROKER_FILL_ID_UNAVAILABLE')
+                        c.execute('INSERT OR IGNORE INTO cati_production_fills VALUES(?,?,?,?,?)',
+                            (account,str(fill['id']),str(fill['orderId']),plan.instrument_key.venue_symbol,
+                             json.dumps({**fill,'_execution':{'purpose':plan.mode,
+                                 'trade_plan_id':plan.trade_plan_id,'leg':'EXIT'}})))
+                from app.execution.production_protection import cancel_flat_protection
+                cancel_flat_protection(client,identity)
+                from app.execution.entry_protection import get_entry_protection
+                get_entry_protection(db).mark_closed(plan.bot_instance_id,plan.instrument_key.venue_symbol,plan.side)
+                from dataclasses import replace
+                base = boundary._attempt_from_payload(plan,payload)
+                records = attempts.history(account,attempt['execution_attempt_id'])
+                attempts.append(replace(base,status='POSITION_CLOSED',resolved_at=now,recorded_at=now,
+                    reason_codes=tuple(base.reason_codes)+('BROKER_CONFIRMED_FLAT_AND_EXIT_FILL',)),len(records))
+                boundary._resolve(plan,'CONSUMED',now,'BROKER_CONFIRMED_ENTRY_AND_CLOSE')
+                item.update(lifecycle='CLOSED',exit_fills=exits)
         history.append(item)
     return history

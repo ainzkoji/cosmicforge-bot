@@ -339,7 +339,7 @@ class TradingOrchestrator:
         long_side = plan.side == "LONG"
         inv = float(plan.structural_invalidation_price)
         stop_distance = abs(price - inv) / price
-        if plan.setup_family == "RESIDUAL_MOMENTUM_PORTFOLIO_TOP1" and stop_distance > self.risk_policy.config.max_stop_loss_pct:
+        if plan.setup_family in {"RESIDUAL_MOMENTUM_PORTFOLIO_TOP1", "DEMO_CERTIFICATION"} and stop_distance > self.risk_policy.config.max_stop_loss_pct:
             result["reason"] = "STOP_DISTANCE_EXCEEDS_HARD_MAXIMUM"
             return rejected((result["reason"],), RiskRejectionFamily.SIZING.value)
         target = None
@@ -391,7 +391,7 @@ class TradingOrchestrator:
             result["reason"] = "STOP_GEOMETRY_WIDENED"
             return rejected(("STOP_GEOMETRY_WIDENED",), RiskRejectionFamily.SIZING.value, trade_params=tp)
         tightened = abs(resolved_stop - inv) > 1e-9 * price
-        if plan.setup_family == "RESIDUAL_MOMENTUM_PORTFOLIO_TOP1":
+        if plan.setup_family in {"RESIDUAL_MOMENTUM_PORTFOLIO_TOP1", "DEMO_CERTIFICATION"}:
             if tightened or target is None or abs(float(tp["take_profit"]) - target) > 1e-9 * price:
                 result["reason"] = "FROZEN_GEOMETRY_CHANGED_BY_RISK"
                 return rejected((result["reason"],), RiskRejectionFamily.SIZING.value, trade_params=tp)
