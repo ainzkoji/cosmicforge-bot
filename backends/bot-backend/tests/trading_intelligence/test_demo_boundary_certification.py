@@ -149,3 +149,24 @@ def test_stale_catalog_refresh_precedes_certification_plan(broker):
     report=cert.run(h.db,h.account['id'],'cert-refresh',action='hold')
     assert report['status']=='PROTECTED',report
     assert refreshed==[True] and state['create_count']==1
+
+
+def test_small_account_certification_stop_stays_inside_unchanged_hard_risk(broker):
+    # Live account geometry: ~426 USDT equity, fixed 120 USDT margin. One ATR
+    # (1.0 at price 100) would breach the 1%-of-equity loss cap, so the stop
+    # must come from the window hard risk admits, never from a relaxed limit.
+    h,state=broker
+    h.client.account.return_value=dict(totalWalletBalance=426.38,totalMarginBalance=426.38,availableBalance=426.38,
+                                       totalInitialMargin=0,totalUnrealizedProfit=0)
+    orch=h.boundary_for().orchestrator
+    lev=float(orch.validated_config.requested_leverage['ADAUSDT'])
+    cap=426.38*.01/(120*lev)*100
+    assert cap<1.
+    with pytest.raises(ValueError,match='CERTIFICATION_RISK_WINDOW_UNAVAILABLE'):
+        cert.risk_bounded_distance(orch,'ADAUSDT',100.,1.,426.38*.004)
+    report=cert.run(h.db,h.account['id'],'cert-small-account',action='hold')
+    assert report['status']=='PROTECTED',report
+    from app.trading_intelligence.trade_plan.evidence_store import TradePlanEvidenceStore
+    distance=TradePlanEvidenceStore(h.db).load_plan(h.account['id'],report['trade_plan_id']).initial_risk_distance
+    assert .5<=distance<=cap and distance==pytest.approx((.5+cap)/2)
+    assert state['create_count']==1 and len(state['legs'])==2

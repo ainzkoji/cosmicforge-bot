@@ -56,6 +56,28 @@ def build_plan(account,bot,instrument,reservation_id,run_id,price,now,*,distance
         versions=(('execution_purpose',PURPOSE),),mode=PURPOSE,plan_created_at=now)
 
 
+def risk_bounded_distance(orchestrator, symbol, price, atr, equity, floor_multiplier=None):
+    """Certification stop distance from measured ATR, inside the window the
+    unchanged hard-risk path admits: at least the ATR noise floor, at most one
+    ATR, the profile's maximum stop and the per-trade loss cap of the account's
+    own sizing. Never widens a limit; an empty window refuses certification."""
+    from app.policy.policy_engine import PolicyContext
+    defaults = PolicyContext.__dataclass_fields__
+    if floor_multiplier is None:
+        floor_multiplier = defaults['min_stop_atr_multiplier'].default
+    floor = float(floor_multiplier) * atr
+    ceiling = min(atr, price * orchestrator.risk_policy.config.max_stop_loss_pct)
+    cfg = orchestrator.validated_config
+    if cfg.use_fixed_size and cfg.fixed_size_usdt:
+        notional = cfg.fixed_size_usdt * max(1., float(cfg.requested_leverage.get(symbol, 10.)))
+        max_loss = equity * cfg.capital_allocation_pct * defaults['max_risk_per_trade_pct'].default / 100.
+        ceiling = min(ceiling, max_loss / notional * price)
+    if not ceiling >= floor * 1.2:
+        raise ValueError('CERTIFICATION_RISK_WINDOW_UNAVAILABLE')
+    # The midpoint tolerates price drift between plan build and hard risk.
+    return (floor + ceiling) / 2
+
+
 def run(db, account_id, run_id, *, action='close', symbol='ADAUSDT'):
     from shared_lib.broker.resolver import resolve_broker_auth
     from shared_lib.broker.client_factory import build_client_from_auth
@@ -132,7 +154,11 @@ def run(db, account_id, run_id, *, action='close', symbol='ADAUSDT'):
             atr = float(calculate_atr(closed_bars,period=14))
             if not atr > 0:
                 raise ValueError('CERTIFICATION_ATR_UNAVAILABLE')
-            plan = build_plan(account,bot,instrument,rid,run_id,float(client.last_price(symbol)),now,distance=atr)
+            price = float(client.last_price(symbol))
+            import app.trading_intelligence.integration.production_execution as production
+            floor = production.persisted_risk_controls(db,bot['id'],risk,now).get('min_stop_atr_multiplier')
+            distance = risk_bounded_distance(boundary.orchestrator,symbol,price,atr,risk['equity'],floor)
+            plan = build_plan(account,bot,instrument,rid,run_id,price,now,distance=distance)
             plans.append(plan)
             report = {'classification':PURPOSE,'run_id':run_id,'account_id':account_id,'symbol':symbol,
                       'started_at':now,'trade_plan_id':plan.trade_plan_id,'reservation_id':rid,'risk':risk}
