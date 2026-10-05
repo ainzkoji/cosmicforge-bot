@@ -170,3 +170,27 @@ def test_small_account_certification_stop_stays_inside_unchanged_hard_risk(broke
     distance=TradePlanEvidenceStore(h.db).load_plan(h.account['id'],report['trade_plan_id']).initial_risk_distance
     assert .5<=distance<=cap and distance==pytest.approx((.5+cap)/2)
     assert state['create_count']==1 and len(state['legs'])==2
+
+
+def test_rounded_broker_avg_price_still_verifies_protection_without_new_legs(broker):
+    # Binance: two fills, order avgPrice printed rounded, position entryPrice exact.
+    h,state=broker
+    original=h.client.place_order.side_effect
+    state['entry']=100.
+    def entry(req):
+        res=original(req)
+        q=state['qty'];a=round(q*.04,3);b=q-a
+        state['fills'][-1:]=[{'id':1,'orderId':555,'symbol':'ADAUSDT','side':'BUY','qty':str(a),'price':'99.9','time':h.now},
+                             {'id':3,'orderId':555,'symbol':'ADAUSDT','side':'BUY','qty':str(b),'price':'100.04','time':h.now}]
+        state['entry']=(a*99.9+b*100.04)/q
+        state['orders'][req.client_order_id]['avgPrice']=f"{state['entry']:.2f}"
+        return res
+    h.client.place_order.side_effect=entry
+    h.client.get_position_info.side_effect=lambda *a:{'positionAmt':str(state['qty']),'entryPrice':repr(state['entry'])}
+    report=cert.run(h.db,h.account['id'],'cert-rounded-avg',action='hold')
+    assert report['status']=='PROTECTED',report
+    assert abs(float(state['orders'][report['boundary']['attempt']['client_order_id']]['avgPrice'])-state['entry'])>1e-8*state['entry']
+    assert len(state['legs'])==2 and state['create_count']==1
+    assert sum(1 for c in h.client._signed_post.call_args_list if c.args[0].endswith('algoOrder'))==2
+    report=cert.run(h.db,h.account['id'],'cert-rounded-avg',action='close')
+    assert report['status']=='COMPLETED' and state['qty']==0 and not state['legs']

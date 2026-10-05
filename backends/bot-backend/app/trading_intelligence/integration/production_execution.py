@@ -687,9 +687,14 @@ def reconcile_executions(db, boundary, client, now):
                 "classification": 'DEMO_CERTIFICATION' if plan.mode == 'DEMO_CERTIFICATION' else 'NATURAL_CATI',
                 "order": asdict(order), "position": asdict(position), "fills": fills,
                 "protection": "NOT_REQUIRED_FLAT" if position.answered and position.quantity == 0 else "UNCONFIRMED"}
+        # Binance prints avgPrice rounded; the order's own complete fills give
+        # the exact average the position entryPrice is computed from.
+        fill_qty = sum(float(f.get("qty", 0)) for f in fills)
+        entry_avg = (sum(float(f["price"])*float(f["qty"]) for f in fills)/fill_qty
+                     if fill_qty and abs(fill_qty-order.executed_qty) <= 1e-9*order.executed_qty else order.avg_price)
         if order.answered and order.executed_qty > 0 and position.answered and position.side == plan.side and position.quantity > 0 \
-                and position.quantity <= order.executed_qty and position.entry_price and order.avg_price \
-                and abs(position.entry_price-order.avg_price) <= 1e-8*order.avg_price:
+                and position.quantity <= order.executed_qty and position.entry_price and entry_avg \
+                and abs(position.entry_price-entry_avg) <= 1e-8*entry_avg:
             if order_submission_gate(plan.environment)["enabled"]:
                 client._production_intent_identity = f"{plan.trade_plan_id}|{plan.trade_plan_hash}"
                 try:
