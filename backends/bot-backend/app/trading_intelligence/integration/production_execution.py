@@ -194,6 +194,8 @@ def account_risk(db, account, client, positions, orders, bots, now):
     # never realized trading PnL. All broker trading losses/fees/funding count.
     trading = _TRADING_INCOME
     realized = sum(float(p["income"]) for p in history if p["incomeType"] in trading)
+    fees = -sum(float(p['income']) for p in history if p['incomeType'] == 'COMMISSION')
+    funding = sum(float(p['income']) for p in history if p['incomeType'] == 'FUNDING_FEE')
     from app.risk.daily_loss import DailyLossState
     streak = DailyLossState(risk_date)
     realized_events = sorted((p for p in history if p["incomeType"] == "REALIZED_PNL" and float(p["income"]) != 0),
@@ -235,7 +237,7 @@ def account_risk(db, account, client, positions, orders, bots, now):
         max_daily_loss_pct=min(.025, settings.ADAPTIVE_DAILY_RISK_MAX_DAILY_LOSS_PCT),
         timezone_name=settings.ADAPTIVE_DAILY_RISK_TIMEZONE), db=db).evaluate(AdaptiveDailyRiskInputs(
             bot_instance_id=account["id"], risk_date=risk_date, day_open_equity=basis,
-            current_equity=equity, realized_pnl_today=realized))
+            current_equity=equity, realized_pnl_today=realized, fees_today=fees, funding_today=funding))
     # The frozen portfolio admits only one position. Any existing account
     # exposure, even on another bot/symbol, prevents a new residual entry.
     reason = "DAILY_HARD_LOSS_CAP_REACHED" if latched else "ACCOUNT_WIDE_POSITION_OR_ORDER_ACTIVE" if active or entry_orders else None
@@ -245,6 +247,7 @@ def account_risk(db, account, client, positions, orders, bots, now):
         reason = "NATIVE_PROTECTION_REQUIRES_ONE_WAY_ACCOUNT"
     return {"equity": equity, "wallet": wallet, "free_capital": free, "margin_used": margin,
             "opening_equity": basis, "realized_pnl": realized, "unrealized_pnl": unrealized,
+            "fees": fees, "funding": funding,
             "daily_loss_usage": loss, "remaining_daily_risk": max(0., limit-loss),
             "daily_hard_loss_fraction": .025, "loss_latched": latched,
             "open_positions": len(active), "entry_orders": len(entry_orders),

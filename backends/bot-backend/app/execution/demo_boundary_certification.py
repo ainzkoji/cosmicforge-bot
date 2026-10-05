@@ -111,6 +111,10 @@ def run(db, account_id, run_id, *, action='close', symbol='ADAUSDT'):
         if risk['reason']:
             raise ValueError(risk['reason'])
         rec = boundary.preflight.catalog.record(boundary.preflight.venue_key,'DEMO',symbol)
+        if not boundary.preflight._fresh(rec,now) and boundary.preflight.refresh is not None:
+            boundary.preflight.refresh()
+            now = int(time.time()*1000)
+            rec = boundary.preflight.catalog.record(boundary.preflight.venue_key,'DEMO',symbol)
         if not rec:
             raise ValueError('INSTRUMENT_UNKNOWN')
         instrument = rec['instrument']
