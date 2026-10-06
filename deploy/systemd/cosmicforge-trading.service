@@ -1,0 +1,76 @@
+# CosmicForge trading backend -- the ONE canonical CATI production runtime.
+#
+# Install:   sudo cp deploy/systemd/cosmicforge-trading.service /etc/systemd/system/
+#            sudo systemctl daemon-reload && sudo systemctl enable --now cosmicforge-trading
+# Guide:     docs/VPS_TRADING_DEPLOYMENT.md
+#
+# Exactly one process. Never add --reload or raise --workers: each uvicorn
+# worker imports the application and would try to become a trading scheduler.
+# The runtime lease in the database refuses the duplicate, but there must be no
+# duplicate to refuse.
+
+[Unit]
+Description=CosmicForge trading backend (single canonical CATI runtime)
+Documentation=file:///opt/cosmicforge/cosmicforge-bot/docs/VPS_TRADING_DEPLOYMENT.md
+# Signed broker requests need the network up and the clock right.
+Wants=network-online.target
+After=network-online.target time-sync.target
+# Never give up restarting: an outage at boot must not leave the bot down.
+StartLimitIntervalSec=0
+
+[Service]
+# READY=1 is sent by the runtime supervisor once this process HOLDS THE LEASE
+# and the CATI production task is running -- not when the socket opens. A
+# process that cannot become the trading runtime never reports ready and is
+# restarted after TimeoutStartSec.
+Type=notify
+NotifyAccess=main
+User=cosmicforge
+Group=cosmicforge
+WorkingDirectory=/opt/cosmicforge/cosmicforge-bot/backends/bot-backend
+
+Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONUTF8=1
+Environment=COSMICFORGE_RUNTIME_PORT=9000
+# Configuration and secrets are read by the application from
+# backends/bot-backend/.env (mode 600, owned by the service user).
+
+ExecStart=/opt/cosmicforge/cosmicforge-bot/backends/venv/bin/python -u -X utf8 -m uvicorn app.main:app \
+    --host 127.0.0.1 --port 9000 --workers 1 --log-level info --timeout-graceful-shutdown 20
+
+# Crash, supervisor exit (status 70), watchdog kill, OOM: always come back.
+Restart=always
+RestartSec=10
+TimeoutStartSec=300
+
+# The supervisor sends a keep-alive every 15 s while the scheduler is healthy.
+# A process frozen too hard to exit by itself is killed and restarted.
+WatchdogSec=180
+
+# systemctl stop -> SIGTERM -> uvicorn shutdown -> the runtime stops new
+# entries, lets the broker cycle in flight finish its protection, releases the
+# lease and closes its session. Only then is anything killed.
+KillSignal=SIGTERM
+KillMode=mixed
+TimeoutStopSec=120
+
+# Least privilege. The repository (/opt) and the data directory (/var/lib)
+# stay writable for the service user; the rest of the system does not.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+UMask=0077
+LimitNOFILE=65536
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=cosmicforge-trading
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,29 @@
+# One consistent, verified backup of the production trading database.
+# Triggered by cosmicforge-db-backup.timer; safe while the runtime is running
+# (SQLite online backup API -- never a file copy of a live WAL database).
+#
+# Run by hand:  sudo systemctl start cosmicforge-db-backup && journalctl -u cosmicforge-db-backup -n 20
+
+[Unit]
+Description=CosmicForge trading database backup
+Documentation=file:///opt/cosmicforge/cosmicforge-bot/docs/VPS_TRADING_DEPLOYMENT.md
+
+[Service]
+Type=oneshot
+# The service user: it owns the database directory and can read the .env that
+# names the database.
+User=cosmicforge
+Group=cosmicforge
+WorkingDirectory=/opt/cosmicforge/cosmicforge-bot
+ExecStart=/opt/cosmicforge/cosmicforge-bot/backends/venv/bin/python -u scripts/backup_trading_db.py \
+    --output-dir /var/backups/cosmicforge --keep 7 --compress
+# The copy must not compete with the trading loop for the disk or the CPU.
+Nice=10
+IOSchedulingClass=idle
+TimeoutStartSec=3h
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+SyslogIdentifier=cosmicforge-db-backup

@@ -122,7 +122,12 @@ def test_public_health_reports_stale_account_evidence(demo,monkeypatch):
  assert 'account_id' not in healthy and 'user_id' not in healthy
  monkeypatch.setattr(runtime.time,'time',lambda:demo.now/1000+121)
  stale=runtime.health_summary(demo.db)
- assert stale['status']=='degraded' and stale['synced_accounts']==0 and stale['market_data_status']=='STALE'
+ assert stale['status']=='degraded' and stale['synced_accounts']==0
+ # The collector beats once per pass; the hourly pass over the whole universe
+ # takes a few minutes and is not an outage.
+ assert stale['market_data_status']=='COLLECTING'
+ monkeypatch.setattr(runtime.time,'time',lambda:demo.now/1000+361)
+ assert runtime.health_summary(demo.db)['market_data_status']=='STALE'
 
 def test_smoke_full_lifecycle_is_separate_and_idempotent(demo,monkeypatch):
  from app.execution import demo_transport_smoke as smoke

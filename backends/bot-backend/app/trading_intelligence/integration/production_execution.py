@@ -427,6 +427,9 @@ def boundary_for(db, account, bot, client):
                                       broker_id=account["id"], effective_policy=policy)
     # Dependency injection must bind every safety projection to this database.
     orchestrator.db = orchestrator.safety.db = orchestrator.protection.db = db
+    # The safety engine created its monitoring tables on the database it was
+    # constructed with; the one it is bound to must have them as well.
+    orchestrator.safety._init_monitoring_state()
     executor = BinanceExecutor(client, execution_mode="live", live_symbols=symbols, bot_instance_id=bot["id"], db=db,
                                market_data_interval="15m")
     executor._broker_account_id = account["id"]
@@ -602,6 +605,11 @@ def _process_account(db, account, client, snapshot, *, now_ms=None, boundary_fac
                         result["risk_controls"] = prepared.pop("controls_evidence")
                         if not owner_current(db):
                             raise ValueError("CANONICAL_RUNTIME_LEASE_REQUIRED")
+                        from app.ops.runtime_shutdown import stop_requested
+                        if stop_requested():
+                            # A stopping runtime finishes what it has begun; it does
+                            # not open a position it will not be there to manage.
+                            raise ValueError("RUNTIME_SHUTDOWN_IN_PROGRESS")
                         submission_time = now if now_ms is not None else int(time.time()*1000)
                         current = latest_decision(db)
                         stale = ("CURRENT_CATI_DECISION_CHANGED" if not current or current['decision_id'] != row['decision_id']

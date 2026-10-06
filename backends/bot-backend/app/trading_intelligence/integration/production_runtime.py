@@ -4,6 +4,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import threading
 import time
 from types import SimpleNamespace
 
@@ -16,6 +17,41 @@ from .residual_prospective import FAMILY, REGISTRY_HASH, owner_current, schedule
 from .forward_observe import schedule as forward_schedule
 
 logger = logging.getLogger(__name__)
+
+#: How old the collector's heartbeat may be before market data is called stale.
+#: It beats every minute, except at the top of each hour, when one pass walks
+#: the whole universe (two to three minutes) and beats only at the end. A
+#: 120-second limit therefore reported STALE -- and the whole runtime as
+#: degraded -- for a minute or two of every healthy hour.
+COLLECTOR_HEARTBEAT_FRESH_MS = 360_000
+
+#: Set while no broker cycle is running. A stop waits on it so an entry that
+#: has reached the broker gets its protection before the process exits.
+_idle = threading.Event()
+_idle.set()
+#: Liveness evidence for the runtime supervisor (monotonic seconds).
+_progress = {"loop_started": None, "cycle_started": None, "cycle_completed": None,
+             "cycles": 0, "cycles_without_lease": 0, "last_error": None}
+
+
+def wait_idle(timeout):
+    """True once no broker cycle is in flight (immediately when none is)."""
+    return _idle.wait(timeout)
+
+
+def _age(stamp, now):
+    return None if stamp is None else round(now - stamp, 1)
+
+
+def progress():
+    """When the loop last finished a cycle, for the supervisor and /health."""
+    now = time.monotonic()
+    return {"loop_running_seconds": _age(_progress["loop_started"], now),
+            "last_cycle_started_age_seconds": _age(_progress["cycle_started"], now),
+            "last_cycle_completed_age_seconds": _age(_progress["cycle_completed"], now),
+            "cycles_completed": _progress["cycles"],
+            "cycles_without_lease": _progress["cycles_without_lease"],
+            "cycle_in_flight": not _idle.is_set(), "last_error": _progress["last_error"]}
 
 
 def execution_accounts(db):
@@ -133,6 +169,10 @@ def sync(db):
     for account in accounts:
         if not owner_current(db):
             return
+        from app.ops.runtime_shutdown import stop_requested
+        if stop_requested():
+            # A stop lets the account in flight finish; it does not start another.
+            return
         if account["broker_id"].lower() not in {"binance", "bybit", "bingx"}:
             save(db, account["id"], account["user_id"], int(time.time()*1000),
                  {**account_identity(account), "status": "CAPABILITY_UNAVAILABLE",
@@ -215,9 +255,77 @@ def health_summary(db):
     with db.connect() as c:
         exists = c.execute("SELECT 1 FROM sqlite_master WHERE name='cati_residual_tracker'").fetchone()
         tracker = c.execute("SELECT heartbeat_at,status FROM cati_residual_tracker WHERE registry_hash=?", (REGISTRY_HASH,)).fetchone() if exists else None
-    summary["market_data_status"] = tracker[1] if tracker and 0 <= int(time.time()*1000)-tracker[0] <= 120000 else "STALE"
+    summary["market_data_status"] = (tracker[1] if tracker and
+        0 <= int(time.time()*1000)-tracker[0] <= COLLECTOR_HEARTBEAT_FRESH_MS else "STALE")
     summary["status"] = ("ok" if summary["risk_engine_health"] == "HEALTHY"
         and summary["reconciliation_health"] == "SYNCED" and summary["market_data_status"] != "STALE" else "degraded")
+    return summary
+
+
+def _isolated(name, step, *args):
+    """Run one auxiliary step. Its failure is logged and never costs the cycle.
+
+    Collection, the labelled certification requests and the FX watcher used to
+    share one try block with the broker sync, so an exception in any of them
+    skipped trading and reconciliation for that cycle -- and one that failed
+    every cycle would have stopped trading while the loop kept running.
+    """
+    try:
+        step(*args)
+    except Exception as exc:
+        _progress["last_error"] = f"{name}:{type(exc).__name__}"
+        logger.exception("[CATI_PRODUCTION] %s failed; the broker cycle continues", name)
+
+
+def broker_cycle(db):
+    """Everything in a cycle that can reach the broker, as one unit of work.
+
+    Runs on a worker thread and marks itself in flight, so a stop can wait for
+    an entry's protection instead of exiting between the fill and the stop.
+    """
+    _idle.clear()
+    try:
+        from app.ops.runtime_shutdown import stop_requested
+        if not stop_requested():
+            from app.execution.demo_transport_smoke import process_local_request
+            _isolated("demo_transport_request", process_local_request, db)
+            from app.execution.demo_boundary_certification import process_local_request as certify_boundary
+            _isolated("demo_certification_request", certify_boundary, db)
+        sync(db)
+    finally:
+        _idle.set()
+
+
+def operations_summary(db):
+    """What the runtime is doing about trading right now, in aggregate.
+
+    Public: counts and states only -- never credentials or account identifiers.
+    """
+    accounts = status(db)["accounts"]
+    executions = [a.get("execution") or {} for a in accounts]
+    ages = [a["age_seconds"] for a in accounts if a.get("age_seconds") is not None]
+    summary = {
+        "auto_trading_enabled_accounts": sum(bool((a.get("auto_trading") or {}).get("enabled")) for a in accounts),
+        "kill_switch_engaged_accounts": sum(bool(e.get("kill_switch")) for e in executions),
+        "execution_permissions": sorted({str(a.get("execution_permission")) for a in accounts}),
+        "execution_reasons": sorted({str(e["reason"]) for e in executions if e.get("reason")}),
+        "execution_portfolio_states": sorted({str((e.get("execution_portfolio") or {}).get("state", "UNKNOWN"))
+                                              for e in executions}),
+        "accounts_with_open_execution": sum(bool(e.get("execution_portfolio_active")) for e in executions),
+        "broker_sync_max_age_seconds": round(max(ages), 1) if ages else None,
+        "latest_decision": None,
+    }
+    with db.connect() as c:
+        if c.execute("SELECT 1 FROM sqlite_master WHERE name='cati_residual_decisions'").fetchone():
+            row = c.execute("SELECT decision_time,recorded_at,selected_symbol,side,entry_reference,risk,"
+                            "risk_state_json FROM cati_residual_decisions WHERE registry_hash=? "
+                            "ORDER BY decision_time DESC LIMIT 1", (REGISTRY_HASH,)).fetchone()
+            if row:
+                summary["latest_decision"] = {
+                    "decision_time_ms": row[0], "recorded_at_ms": row[1],
+                    "age_seconds": round((time.time()*1000 - row[0]) / 1000, 1),
+                    "reason": json.loads(row[6]).get("reason"), "symbol": row[2], "side": row[3],
+                    "structural_stop_fraction": (row[5] / row[4]) if row[4] and row[5] else None}
     return summary
 
 
@@ -226,23 +334,26 @@ async def run(db):
         raise ValueError("CATI_PRODUCTION_PROFILE_REQUIRED")
     runner = SimpleNamespace(db=db)
     fx_check = 0.
+    _progress["loop_started"] = time.monotonic()
     while True:
-        cycle_started = time.monotonic()
+        cycle_started = _progress["cycle_started"] = time.monotonic()
+        _progress["last_error"] = None  # what is reported is the latest cycle's, not history
         try:
             if owner_current(db):
-                residual_schedule(runner)
-                forward_schedule(runner)
-                from app.execution.demo_transport_smoke import process_local_request
-                await asyncio.to_thread(process_local_request, db)
-                from app.execution.demo_boundary_certification import process_local_request as certify_boundary
-                await asyncio.to_thread(certify_boundary, db)
+                _isolated("residual_collection_schedule", residual_schedule, runner)
+                _isolated("forward_observation_schedule", forward_schedule, runner)
                 if time.monotonic() - fx_check > 60:
                     from .residual_simulation import ensure_fx_watcher
-                    await asyncio.to_thread(ensure_fx_watcher)
                     fx_check = time.monotonic()
-                await asyncio.to_thread(sync, db)
+                    await asyncio.to_thread(_isolated, "fx_watcher", ensure_fx_watcher)
+                await asyncio.to_thread(broker_cycle, db)
+                _progress["cycles"] += 1
+            else:
+                _progress["cycles_without_lease"] += 1
+            _progress["cycle_completed"] = time.monotonic()
         except asyncio.CancelledError:
             raise
-        except Exception:
+        except Exception as exc:
+            _progress["last_error"] = f"cycle:{type(exc).__name__}"
             logger.exception("[CATI_PRODUCTION] collection cycle failed; broker mutations remain guarded")
         await asyncio.sleep(max(1.,30.-(time.monotonic()-cycle_started)))

@@ -16,6 +16,26 @@ def utc_now_iso() -> str:
 
 
 # =========================
+# Durability
+# =========================
+def synchronous_mode() -> str:
+    """The ``PRAGMA synchronous`` level every connection uses.
+
+    NORMAL (the default) keeps a WAL database consistent through a process
+    crash and through power loss, but the most recent commits may be missing
+    after a power loss or kernel crash. FULL makes each commit durable before
+    it returns.
+
+    That difference matters for exactly one thing here: the order intent that
+    is persisted BEFORE a broker CREATE. On an always-on server it must survive
+    a host failure, so the production environment sets
+    ``SQLITE_SYNCHRONOUS=FULL``. OFF is never accepted.
+    """
+    mode = os.environ.get("SQLITE_SYNCHRONOUS", "NORMAL").strip().upper()
+    return mode if mode in ("NORMAL", "FULL", "EXTRA") else "NORMAL"
+
+
+# =========================
 # Database class
 # =========================
 class DB:
@@ -112,7 +132,7 @@ class DB:
         # ✅ ADD: improve concurrent read/write + wait on locks instead of failing
         try:
             conn.execute("PRAGMA journal_mode=WAL;")
-            conn.execute("PRAGMA synchronous=NORMAL;")
+            conn.execute(f"PRAGMA synchronous={synchronous_mode()};")
             conn.execute("PRAGMA busy_timeout=10000;")  # 10s wait on locks
         except Exception:
             # pragma failures shouldn't crash app; continue with defaults
@@ -141,7 +161,7 @@ class DB:
             # ✅ ADD: same hardening for init connection as well
             try:
                 conn.execute("PRAGMA journal_mode=WAL;")
-                conn.execute("PRAGMA synchronous=NORMAL;")
+                conn.execute(f"PRAGMA synchronous={synchronous_mode()};")
                 conn.execute("PRAGMA busy_timeout=10000;")
             except Exception:
                 pass

@@ -20,6 +20,13 @@ Quiescing is idempotent and ordered so that the dangerous work stops first:
     4. release the ownership lease
     5. close the runtime session
 
+Step 3 matters most for the production broker cycle. An entry is one
+synchronous sequence -- CREATE, fill resolution, native stop and target -- and
+a process that exits between the fill and the protection leaves an unprotected
+position behind a runtime that is no longer running. So a stop first forbids
+any NEW entry, then waits (bounded) for the cycle in flight to finish its
+protection and reconciliation, and only then gives up the lease.
+
 **Positions are never flattened here.** A process stopping is not a reason to
 exit a trade. Position state is persisted and restart-restorable, which is the
 property Phase 12 proved; closing on shutdown would destroy it.
@@ -38,6 +45,12 @@ logger = logging.getLogger(__name__)
 #: Longest we wait for an in-flight cycle to finish before proceeding anyway.
 #: A cycle is ~10s; beyond this it is not going to finish on its own.
 CYCLE_DRAIN_TIMEOUT_S = 15.0
+
+#: Longest we wait for the production broker cycle. An entry that has reached
+#: the broker needs its fill resolved and its protection placed; a cycle that
+#: is still running after this is stuck on the network, and its durable intent
+#: is recovered by read-back on the next start.
+PRODUCTION_CYCLE_DRAIN_TIMEOUT_S = 30.0
 
 #: Where the operator scripts ask for a graceful stop. Windows has no usable
 #: "please stop cleanly" signal for a process started by another process, so
@@ -62,6 +75,18 @@ STOPPED_MARKER = os.path.join(_RUNTIME_LOG_DIR, "STOPPED_BY_OPERATOR")
 _LOCK = threading.Lock()
 _STATE: dict[str, Any] = {"done": False, "report": None}
 
+#: Set the moment a stop begins, before anything else: no new entry may start.
+_STOP_REQUESTED = threading.Event()
+
+
+def request_stop() -> None:
+    """Forbid new entries. Reconciliation and protection of existing work go on."""
+    _STOP_REQUESTED.set()
+
+
+def stop_requested() -> bool:
+    return _STOP_REQUESTED.is_set()
+
 
 @dataclass
 class QuiesceReport:
@@ -72,6 +97,7 @@ class QuiesceReport:
     entries_stopped: bool = False
     scheduler_stopped: bool = False
     cycle_drained: bool = False
+    production_cycle_drained: bool = False
     lease_released: bool = False
     session_closed: bool = False
     runtime_session_id: str | None = None
@@ -93,6 +119,7 @@ class QuiesceReport:
             "entries_stopped": self.entries_stopped,
             "scheduler_stopped": self.scheduler_stopped,
             "cycle_drained": self.cycle_drained,
+            "production_cycle_drained": self.production_cycle_drained,
             "lease_released": self.lease_released,
             "session_closed": self.session_closed,
             "runtime_session_id": self.runtime_session_id,
@@ -112,6 +139,9 @@ def quiesce(reason: str = "OPERATOR_SHUTDOWN", *, timeout_s: float | None = None
     which can both fire for the same stop, so the first call does the work and
     the rest return its report.
     """
+    # Before the lock: a second caller blocked behind a draining first one must
+    # still have stopped new entries.
+    request_stop()
     with _LOCK:
         if _STATE["done"]:
             return _STATE["report"]
@@ -128,6 +158,7 @@ def quiesce(reason: str = "OPERATOR_SHUTDOWN", *, timeout_s: float | None = None
         _STATE["report"] = report
         logger.info("[RUNTIME_SHUTDOWN] %s", report.to_dict())
         print(f"[RUNTIME_SHUTDOWN] clean={report.clean} reason={reason} "
+              f"production_cycle_drained={report.production_cycle_drained} "
               f"lease_released={report.lease_released} "
               f"session_closed={report.session_closed}")
         return report
@@ -167,6 +198,20 @@ def _quiesce_inner(report: QuiesceReport, timeout_s: float) -> None:
         report.cycle_drained = _wait_for_idle(multi, timeout_s)
     except Exception as exc:
         report.errors.append(f"drain: {exc}")
+
+    # The broker cycle runs on its own thread, so it finishes while we wait.
+    # The lease is still held here: protection placement and reconciliation
+    # complete under ownership, and no new entry can begin (request_stop).
+    try:
+        from app.trading_intelligence.integration import production_runtime
+
+        report.production_cycle_drained = production_runtime.wait_idle(PRODUCTION_CYCLE_DRAIN_TIMEOUT_S)
+        if not report.production_cycle_drained:
+            logger.error("[RUNTIME_SHUTDOWN] production cycle still running after %.0fs; "
+                         "its durable intent is reconciled by read-back on the next start",
+                         PRODUCTION_CYCLE_DRAIN_TIMEOUT_S)
+    except Exception as exc:
+        report.errors.append(f"production_drain: {exc}")
 
     # ── 4. Release the lease ────────────────────────────────────────────────
     # This is the step force-kill skipped, and the reason a dead PID kept
@@ -259,6 +304,7 @@ def reset_for_tests() -> None:
     with _LOCK:
         _STATE["done"] = False
         _STATE["report"] = None
+    _STOP_REQUESTED.clear()
 
 
 def last_report() -> QuiesceReport | None:

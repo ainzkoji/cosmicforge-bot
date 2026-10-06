@@ -563,6 +563,20 @@ async def _startup_stop_file_watcher():
 
 
 @app.on_event("startup")
+async def _startup_runtime_supervisor():
+    """Supervise the trading loop itself, not merely the web server.
+
+    A process whose scheduler has died keeps answering HTTP. The supervisor
+    notices -- lease never taken, heartbeat stale, production task gone, cycle
+    or collector stalled -- and exits non-zero so the service manager restarts
+    the runtime. Production serving processes only.
+    """
+    from app.ops import runtime_supervisor
+
+    runtime_supervisor.start()
+
+
+@app.on_event("startup")
 async def _startup_run_manager():
     # create a run record in DB
     info = run_manager.start()
@@ -610,7 +624,9 @@ async def _shutdown_run_manager():
     # quiesce needs to release through.
     try:
         from app.ops.runtime_shutdown import quiesce
+        from app.ops.runtime_supervisor import sd_notify
 
+        sd_notify("STOPPING=1")
         quiesce(reason="APPLICATION_SHUTDOWN")
     except Exception as _quiesce_exc:
         print(f"[RUNTIME_SHUTDOWN_WARNING] quiesce_failed={_quiesce_exc}")
@@ -2928,13 +2944,44 @@ async def tradingview_processor_status():
     }
 
 
+def _runtime_liveness() -> dict:
+    """Is the trading loop advancing? Public: no credentials, no account ids."""
+    from app.ops.runtime_supervisor import get_supervisor
+
+    supervisor = get_supervisor()
+    if supervisor is None:
+        return {"state": "UNSUPERVISED", "faults": [], "warnings": []}
+    return {**supervisor.snapshot(), "runtime_session_id": RUNTIME_SESSION_ID, "pid": os.getpid(),
+            "runtime_revision": RUNTIME_BASELINE.get("code_revision"),
+            "process_started_at": PROCESS_STARTED_AT}
+
+
+@app.get("/health/runtime")
+async def health_runtime():
+    """Readiness of the TRADING RUNTIME, as an HTTP status a monitor can act on.
+
+    200 only while the supervisor finds the scheduler healthy; 503 while it is
+    starting, stopping or failing. ``/health`` stays 200 for as long as the web
+    server answers, which is a different question.
+    """
+    from fastapi.responses import JSONResponse
+
+    liveness = _runtime_liveness()
+    healthy = liveness["state"] in ("HEALTHY", "UNSUPERVISED")
+    return JSONResponse(liveness, status_code=200 if healthy else 503)
+
+
 @app.get("/health")
 async def health():
     production_health = {}
     if settings.production:
-        from app.trading_intelligence.integration.production_runtime import health_summary
+        from app.trading_intelligence.integration.production_runtime import health_summary, operations_summary
         production_health = health_summary(_worker_db)
         production_health["runtime_revision"] = RUNTIME_BASELINE.get("code_revision")
+        production_health["runtime"] = _runtime_liveness()
+        production_health["trading"] = operations_summary(_worker_db)
+        if production_health["runtime"]["state"] == "FAILING":
+            production_health["status"] = "degraded"
     trade_symbols = parse_symbols(settings.TRADE_SYMBOLS, settings.MAX_SYMBOLS)
     live_symbols = parse_symbols(settings.LIVE_SYMBOLS, settings.MAX_SYMBOLS)
     strong_trend_guard = evaluate_strong_trend_guard(settings)

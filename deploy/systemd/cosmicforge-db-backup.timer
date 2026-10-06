@@ -1,0 +1,19 @@
+# Daily database backup at a time no CATI decision window is open.
+# Decisions are enrolled on the hour and may be entered until :15, so the
+# backup starts at :30.
+#
+# Install:  sudo cp deploy/systemd/cosmicforge-db-backup.* /etc/systemd/system/
+#           sudo systemctl daemon-reload && sudo systemctl enable --now cosmicforge-db-backup.timer
+# Inspect:  systemctl list-timers cosmicforge-db-backup.timer
+
+[Unit]
+Description=Daily CosmicForge trading database backup
+
+[Timer]
+OnCalendar=*-*-* 03:30:00 UTC
+# A server that was off at 03:30 takes the backup when it comes back.
+Persistent=true
+RandomizedDelaySec=120
+
+[Install]
+WantedBy=timers.target

@@ -14,6 +14,8 @@ frontends/
 
 Legacy note: the old tracked `backend/` and `frontend/` roots were split into `backends/` and `frontends/`. Use the plural paths for all development commands.
 
+Running the trading backend unattended on a server (systemd service, database backup, health check, upgrade and rollback): [docs/VPS_TRADING_DEPLOYMENT.md](docs/VPS_TRADING_DEPLOYMENT.md). Deployment artifacts live in `deploy/`.
+
 # Backend Reference
 ## Folder Structure
 ```text

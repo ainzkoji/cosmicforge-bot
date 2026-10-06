@@ -143,11 +143,17 @@ def port_listener_pid(port: int) -> int | None:
 def port_is_free(port: int, host: str = "0.0.0.0") -> bool:
     """Bind test. Authoritative for "can I listen", unlike a PID lookup.
 
-    Deliberately does not set SO_REUSEADDR: the question is whether this
-    process could actually bind, and on Windows a reuse flag would answer a
-    different question.
+    The question is whether the server could actually bind, so the probe binds
+    the way the server does. On Windows that means WITHOUT SO_REUSEADDR, which
+    there lets a second socket take a port that is actively in use. On POSIX it
+    means WITH it: the flag never permits a bind against a live listener, but
+    without it the bind also fails while connections of the PREVIOUS process sit
+    in TIME_WAIT -- so every restart of a healthy service was refused as "port
+    occupied" for up to a minute after the old process had gone.
     """
     probe = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    if os.name != "nt":
+        probe.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     try:
         probe.bind((host, port))
         return True
@@ -183,8 +189,8 @@ def preflight(
         from app.ops.runtime_ownership import (
             TRADING_SCHEDULER,
             current_owner,
+            holder_is_alive,
             lease_is_stale,
-            pid_is_alive,
         )
         from shared_lib.persistence.db import DB
 
@@ -238,7 +244,9 @@ def preflight(
         lease_pid = int(owner.get("pid") or 0) or None
         heartbeat = owner.get("heartbeat_at")
         stale = lease_is_stale(heartbeat)
-        alive = pid_is_alive(lease_pid) if lease_pid else False
+        # The process that wrote the lease, not merely whatever holds its PID
+        # now: after a reboot that can be an unrelated process, or this one.
+        alive = holder_is_alive(lease_pid, owner.get("started_at")) if lease_pid else False
         age = _age_seconds(heartbeat)
         revision = _session_revision(database, owner.get("runtime_session_id"))
 
@@ -391,8 +399,10 @@ def render_refusal(result: PreflightResult) -> str:
         "  No runtime evidence was written.",
         "",
         "  Use the running runtime, or stop it first:",
-        "    .\\scripts\\trading_runtime.ps1 status",
-        "    .\\scripts\\trading_runtime.ps1 stop",
+        *(("    .\\scripts\\trading_runtime.ps1 status",
+           "    .\\scripts\\trading_runtime.ps1 stop") if os.name == "nt" else
+          ("    systemctl status cosmicforge-trading",
+           "    sudo systemctl stop cosmicforge-trading")),
         "",
     ]
     return "\n".join(lines)

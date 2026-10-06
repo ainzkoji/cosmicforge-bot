@@ -38,6 +38,9 @@ LEASE_RENEW_SECONDS = 10
 
 TRADING_SCHEDULER = "trading_scheduler"
 
+#: Slack between a process's creation time and the lease it later writes.
+PROCESS_START_TOLERANCE_SECONDS = 2.0
+
 
 def _now() -> datetime:
     return datetime.now(timezone.utc)
@@ -103,6 +106,7 @@ class RuntimeOwnership:
         self.runtime_owner_id = f"own_{uuid.uuid4().hex[:20]}"
         self.hostname = socket.gethostname()
         self._is_owner = False
+        self.renew_failures = 0
 
     # ── Acquisition ─────────────────────────────────────────────────────────
 
@@ -111,7 +115,11 @@ class RuntimeOwnership:
         try:
             ensure_ownership_schema(self.db)
             now = _now()
+            takeover_reason = None
             with self.db.connect() as conn:
+                # Read-then-write under one write lock: two processes starting
+                # together cannot both find the lease free and both take it.
+                conn.execute("BEGIN IMMEDIATE")
                 row = conn.execute(
                     """SELECT * FROM runtime_ownership
                        WHERE lease_name=? AND database_path=?""",
@@ -121,7 +129,7 @@ class RuntimeOwnership:
                 if row is not None and row["released_at"] is None:
                     holder_pid = int(row["pid"])
                     heartbeat = row["heartbeat_at"]
-                    if not self._is_stale(heartbeat, now) and self._pid_alive(holder_pid):
+                    if not self._is_stale(heartbeat, now) and holder_is_alive(holder_pid, row["started_at"]):
                         # A live holder exists. This process must not schedule.
                         return OwnershipResult(
                             acquired=False,
@@ -157,6 +165,11 @@ class RuntimeOwnership:
                      now.isoformat(), now.isoformat(), self.database_role),
                 )
             self._is_owner = True
+            # Printed, not only logged: an ownership change must reach the
+            # service journal whatever the logging configuration is.
+            print(f"[RUNTIME_OWNERSHIP] acquired pid={os.getpid()} host={self.hostname} "
+                  f"runtime_session_id={self.runtime_session_id} owner_id={self.runtime_owner_id} "
+                  f"took_over={takeover_reason or 'NO'}", flush=True)
             return OwnershipResult(
                 acquired=True, runtime_owner_id=self.runtime_owner_id, reason="ACQUIRED",
             )
@@ -186,10 +199,19 @@ class RuntimeOwnership:
                     self._is_owner = False
                     logger.error("[RUNTIME_OWNERSHIP] lost: lease taken by another process")
                     return False
+            self.renew_failures = 0
             return True
         except Exception as exc:
-            logger.error("[RUNTIME_OWNERSHIP] renew failed: %s", exc)
-            return False
+            # A heartbeat that could not be WRITTEN is not a lease that was
+            # LOST: nobody took it. Treating a transient "database is locked"
+            # as loss stopped the scheduler for good while the process stayed
+            # up. Ownership is kept and the heartbeat simply ages; a holder
+            # that cannot renew for the whole stale window is taken over by the
+            # ordinary staleness rule, and every trading gate reads the
+            # persisted heartbeat, so nothing trades on a lease that went stale.
+            self.renew_failures += 1
+            logger.error("[RUNTIME_OWNERSHIP] renew failed (%d consecutive): %s", self.renew_failures, exc)
+            return True
 
     def release(self, *, reason: str = "SHUTDOWN") -> None:
         """Release the lease so a replacement can start immediately."""
@@ -203,6 +225,8 @@ class RuntimeOwnership:
                     (_now().isoformat(), reason, self.lease_name,
                      self.database_path, self.runtime_owner_id),
                 )
+            print(f"[RUNTIME_OWNERSHIP] released pid={os.getpid()} reason={reason} "
+                  f"owner_id={self.runtime_owner_id}", flush=True)
         except Exception as exc:
             logger.error("[RUNTIME_OWNERSHIP] release failed: %s", exc)
         finally:
@@ -258,6 +282,54 @@ def pid_is_alive(pid: int | None) -> bool:
     if not pid:
         return False
     return RuntimeOwnership._pid_alive(int(pid))
+
+
+_OWN_CREATED_AT: float | None = None
+
+
+def _process_created_at(pid: int) -> float | None:
+    """Creation time of ``pid`` in epoch seconds; None when it is gone."""
+    global _OWN_CREATED_AT
+    import psutil
+
+    if pid == os.getpid():
+        if _OWN_CREATED_AT is None:
+            _OWN_CREATED_AT = psutil.Process(pid).create_time()
+        return _OWN_CREATED_AT
+    try:
+        return psutil.Process(pid).create_time()
+    except psutil.NoSuchProcess:
+        return None
+
+
+def holder_is_alive(pid: int | None, started_at: str | None) -> bool:
+    """Is the process that WROTE this lease still running?
+
+    A PID alone cannot answer that. After a reboot the service returns with a
+    low and frequently identical PID, so an unreleased lease from before the
+    reboot names a live process -- possibly this very one -- that never held
+    it, and the runtime refused to start against its own ghost until the
+    heartbeat aged out. A process created after the lease was written is not
+    its holder.
+
+    Unknown stays alive: a lease is never taken from a process that cannot be
+    inspected.
+    """
+    if not pid:
+        return False
+    pid = int(pid)
+    if not RuntimeOwnership._pid_alive(pid):
+        return False
+    try:
+        created = _process_created_at(pid)
+        if created is None:
+            return False
+        started = datetime.fromisoformat(str(started_at).replace("Z", "+00:00"))
+        if started.tzinfo is None:
+            started = started.replace(tzinfo=timezone.utc)
+        return created <= started.timestamp() + PROCESS_START_TOLERANCE_SECONDS
+    except Exception:
+        return True
 
 
 def lease_is_stale(heartbeat_at: str | None, *, stale_seconds: int = LEASE_STALE_SECONDS) -> bool:

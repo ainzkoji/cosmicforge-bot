@@ -93,6 +93,10 @@ rccomponentsui
 # Local cleanup archives.
 /repo_cleanup_backup_*/
 
+# Local database and configuration backups (scripts/backup_trading_db.py
+# output, pre-change copies). They hold account data: never committed.
+/backups/
+
 # Local env / secrets.
 .env
 .env.*
