@@ -60,6 +60,20 @@ def test_stale_metadata_is_refreshed_before_submission(h):
     assert catalog_refresh.pending("binance_usdm", "DEMO")["trigger"] == "PRE_SUBMIT_METADATA_STALE"
 
 
+def test_refresh_stamped_after_the_evaluation_started_is_fresh(h):
+    # Production's refresh stamps the wall clock, later than the ``now`` the
+    # evaluation began with. The record just fetched is not a stale one.
+    h.seed_catalog(now=h.now - 3 * 3_600_000)
+    res = h.run(h.boundary(preflight=h.preflight(seed=False, refresh=lambda: h.seed_catalog(now=h.now + 1_500))))
+    assert res.status == B.EXECUTED, res.reason_codes
+
+
+def test_metadata_stamped_far_in_the_future_is_not_trusted(h):
+    h.seed_catalog(now=h.now + 3_600_000)  # a clock fault, not a refresh
+    res = h.run(h.boundary(preflight=h.preflight(seed=False)))
+    assert res.status == B.PREFLIGHT_BLOCKED and res.reason_codes == ("CAPABILITY_STALE",)
+
+
 def test_failed_refresh_blocks_the_order(h):
     h.seed_catalog(now=h.now - 3 * 3_600_000)
 

@@ -31,6 +31,13 @@ from typing import Any, Callable, Mapping, Optional, Tuple
 PREFLIGHT_VERSION = "submission-preflight-v1"
 TRIGGER_PRE_SUBMIT_STALE = "PRE_SUBMIT_METADATA_STALE"
 
+#: A refresh performed DURING an evaluation stamps the record with the wall
+#: clock, which is later than the ``now`` that evaluation was started with. Such
+#: a record is the freshest the venue can supply, not a stale one: reading it as
+#: stale blocked the first entry attempt after every hourly catalog refresh.
+#: Anything further ahead than this is a clock fault and stays not-fresh.
+REFRESH_AHEAD_TOLERANCE_MS = 120_000
+
 
 @dataclass(frozen=True)
 class PreflightResult:
@@ -65,7 +72,9 @@ class SubmissionPreflight:
         return self.catalog.record(self.venue_key, self.catalog_environment, symbol)
 
     def _fresh(self, rec: Optional[Mapping[str, Any]], now: int) -> bool:
-        return rec is not None and rec.get("last_seen_ms") is not None and 0 <= now - int(rec["last_seen_ms"]) <= self.max_age
+        if rec is None or rec.get("last_seen_ms") is None:
+            return False
+        return -REFRESH_AHEAD_TOLERANCE_MS <= now - int(rec["last_seen_ms"]) <= self.max_age
 
     def instrument(self, plan: Any, now: int) -> PreflightResult:
         from app.exchange.catalog_refresh import request_refresh
@@ -131,4 +140,5 @@ class SubmissionPreflight:
                                detail={"requested": str(q), "rounded": str(rounded), "step": str(step)})
 
 
-__all__ = ["PREFLIGHT_VERSION", "PreflightResult", "SubmissionPreflight", "TRIGGER_PRE_SUBMIT_STALE"]
+__all__ = ["PREFLIGHT_VERSION", "PreflightResult", "REFRESH_AHEAD_TOLERANCE_MS", "SubmissionPreflight",
+           "TRIGGER_PRE_SUBMIT_STALE"]
