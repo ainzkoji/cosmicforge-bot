@@ -45,7 +45,13 @@ def validate_trade_plan_for_submission(
     broker_health: Optional[BrokerHealthContext],
     reservation_state: Optional[AccountPortfolioReservation],
     venue_capabilities: Optional[ExecutionCapabilities],
+    *,
+    live_entry_economics: bool = False,
 ) -> SubmissionValidationResult:
+    """``live_entry_economics``: the plan's entry band is reference EVIDENCE,
+    and the caller validates current-price economics instead of requiring the
+    price to stay inside it (frozen residual plans). Structural breach and
+    spread still invalidate here."""
     found: List[Tuple[SubmissionValidity, str]] = []
     add = lambda status, code: found.append((status, code))  # noqa: E731
 
@@ -90,7 +96,7 @@ def validate_trade_plan_for_submission(
 
     if ref is not None:
         zone = plan.allowed_entry_zone
-        if not (zone.minimum_price <= ref.price <= zone.maximum_price):
+        if not live_entry_economics and not (zone.minimum_price <= ref.price <= zone.maximum_price):
             add(V.ENTRY_ZONE_VIOLATION, "PRICE_OUTSIDE_ALLOWED_ENTRY_ZONE")
         broken = (ref.price <= plan.structural_invalidation_price if plan.side == "LONG"
                   else ref.price >= plan.structural_invalidation_price)

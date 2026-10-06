@@ -38,8 +38,11 @@ from app.risk.risk_budget import RiskBudgetEngine, RiskBudgetConfig
 from app.risk.account_protection import AccountProtection
 from app.risk.market_analyzer import MarketAnalyzer
 from app.risk.broker_health import BrokerHealthMonitor
-from app.risk.risk_policy import RiskPolicy
-from app.policy.policy_engine import PolicyEngine, PolicyContext, Action, ReasonCode
+from app.policy.policy_engine import PolicyEngine, PolicyContext, Action, ReasonCode, RISK_PROFILES
+from app.policy.policy_engine import RiskLevel as ProfileLevel
+
+#: Plans whose structural geometry production preserves exactly.
+CATI_STRUCTURAL_FAMILIES = frozenset({"RESIDUAL_MOMENTUM_PORTFOLIO_TOP1", "DEMO_CERTIFICATION"})
 
 logger = logging.getLogger(__name__)
 
@@ -78,9 +81,14 @@ class TradingOrchestrator:
         # Validate and clamp user configuration
         self.validated_config, self.config_warnings = self._validate_config()
 
-        # ✅ RESOLVE RISK POLICY
-        self.risk_policy = RiskPolicy.resolve(self.validated_config.risk_level)
-        logger.info(f"Resolved Risk Policy: {self.risk_policy.config.label} (Max Risk: {self.risk_policy.config.max_compound_risk_pct:.1%})")
+        # Risk profile: the CURRENT PolicyEngine profile supplies the
+        # compound-risk limit (stop fraction x ACTUAL leverage). The deprecated
+        # RiskPolicy's fixed-10x stop derivation is not an authority here: the
+        # absolute stop bound is SystemLimits.max_stop_loss_pct.
+        self.risk_profile = RISK_PROFILES[ProfileLevel(str(getattr(self.validated_config.risk_level, "value",
+                                                                   self.validated_config.risk_level)))]
+        logger.info(f"Resolved risk profile: {self.risk_profile.label} "
+                    f"(compound risk {self.risk_profile.max_compound_risk_pct:.1%} at actual leverage)")
         
         # Runtime dependency injection accepts only CATI metadata. Historical
         # strategy objects cannot regain signal authority through this container.
@@ -150,9 +158,9 @@ class TradingOrchestrator:
             max_trades_per_day=self.system_limits.max_trades_per_day,
             min_margin_buffer_pct=0.30,
             
-            # ✅ DYNAMIC LIMITS from Policy
-            max_stop_distance_pct=self.risk_policy.config.max_stop_loss_pct,
-            max_compound_risk_pct=self.risk_policy.config.max_compound_risk_pct,
+            # Absolute system stop bound; compound risk at actual leverage.
+            max_stop_distance_pct=self.system_limits.max_stop_loss_pct,
+            max_compound_risk_pct=self.risk_profile.max_compound_risk_pct,
             
             # ✅ CIRCUIT BREAKER: More forgiving settings
             max_order_failures=3 if self.validated_config.strict_circuit_breakers else 5,
@@ -167,13 +175,12 @@ class TradingOrchestrator:
             self.risk_budget,
             self.protection,
             safety_config,
-            risk_policy=self.risk_policy # ✅ PASS POLICY INSTANCE
         )
         
         # Create policy engine
         self.policy_engine = PolicyEngine(
             budget_engine=self.risk_budget,
-            max_stop_distance_pct=self.risk_policy.config.max_stop_loss_pct,
+            max_stop_distance_pct=self.system_limits.max_stop_loss_pct,
         )
     
     def _create_risk_budget_config(self) -> RiskBudgetConfig:
@@ -206,7 +213,10 @@ class TradingOrchestrator:
         max_slots = min(max_slots, self.validated_config.max_open_positions)
         
         return RiskBudgetConfig(
-            portfolio_risk_pct=min(portfolio_risk, self.validated_config.max_daily_loss_pct),
+            # No component-level daily limit: the account-wide runtime enforces
+            # the resolved bot policy; no hidden default is substituted here.
+            portfolio_risk_pct=(portfolio_risk if self.validated_config.max_daily_loss_pct is None
+                                else min(portfolio_risk, self.validated_config.max_daily_loss_pct)),
             per_trade_risk_pct=max_risk_per_trade,
             max_margin_usage_pct=margin_usage,
             base_slots=base_slots,
@@ -316,8 +326,15 @@ class TradingOrchestrator:
         if not verify_trade_plan_integrity(plan):
             result["reason"] = "TRADE_PLAN_HASH_MISMATCH"
             return rejected(("TRADE_PLAN_HASH_MISMATCH",), RiskRejectionFamily.PREVALIDATION.value)
+        residual = plan.setup_family == "RESIDUAL_MOMENTUM_PORTFOLIO_TOP1"
+        cost_rates = kwargs.pop("entry_cost_rates", None)
+        order_book = kwargs.pop("order_book", None)
+        broker_max_leverage = kwargs.pop("broker_max_leverage", None)
+        # Frozen residual plans: the next-open reference is evidence, and live
+        # validity is judged from current-price economics below.
         validation = validate_trade_plan_for_submission(
-            plan, now_ms, market_reference, broker_health, reservation_state, venue_capabilities)
+            plan, now_ms, market_reference, broker_health, reservation_state, venue_capabilities,
+            live_entry_economics=residual)
         result["details"]["prevalidation"] = {"status": validation.status, "reason_codes": list(validation.reason_codes)}
         if not validation.valid:
             result["reason"] = f"PREVALIDATION_{validation.status}"
@@ -339,13 +356,47 @@ class TradingOrchestrator:
         long_side = plan.side == "LONG"
         inv = float(plan.structural_invalidation_price)
         stop_distance = abs(price - inv) / price
-        if plan.setup_family in {"RESIDUAL_MOMENTUM_PORTFOLIO_TOP1", "DEMO_CERTIFICATION"} and stop_distance > self.risk_policy.config.max_stop_loss_pct:
-            result["reason"] = "STOP_DISTANCE_EXCEEDS_HARD_MAXIMUM"
-            return rejected((result["reason"],), RiskRejectionFamily.SIZING.value)
         target = None
         if plan.target_zones:
             z = plan.target_zones[0]
             target = z.price_high if long_side else z.price_low
+        # Every CATI TradePlan: the stop is never moved, the absolute system
+        # stop bound applies, and leverage is RESOLVED under the user maximum.
+        limits = self.system_limits
+        if residual:
+            from app.trading_intelligence.execution.entry_economics import evaluate_entry_economics
+            if not cost_rates or target is None:
+                result["reason"] = "CATI_ENTRY_COST_RATES_REQUIRED"
+                return rejected((result["reason"],), RiskRejectionFamily.PREVALIDATION.value)
+            economics = evaluate_entry_economics(
+                side=plan.side, price=price, reference=float(plan.entry_reference), stop=inv, target=target,
+                min_reward_risk=self._min_reward_risk(),
+                min_stop_fraction=limits.min_stop_loss_pct, max_stop_fraction=limits.max_stop_loss_pct,
+                fee=cost_rates["fee"], half_spread=cost_rates["half_spread"], slippage=cost_rates["slippage"],
+                funding_buffer=cost_rates.get("funding_per_8h", 0.0) * 6)
+            result["details"]["entry_economics"] = economics.evidence()
+            if not economics.valid:
+                result["reason"] = economics.reason
+                return rejected((economics.reason,), RiskRejectionFamily.PREVALIDATION.value)
+        elif stop_distance > limits.max_stop_loss_pct:
+            result["reason"] = "CATI_STRUCTURAL_STOP_EXCEEDS_SYSTEM_MAX"
+            return rejected((result["reason"],), RiskRejectionFamily.SIZING.value)
+        # User margin is authoritative; the user's leverage is a MAXIMUM.
+        from app.trading_intelligence.execution.leverage import resolve_cati_leverage
+        requested = float(self.validated_config.requested_leverage.get(symbol, 10.0) or 10.0)
+        user_max = float(getattr(self.effective_policy, "max_leverage", 0.0) or requested)
+        leverage_resolution = resolve_cati_leverage(
+            stop_fraction=stop_distance, user_max=user_max,
+            asset_class_max=self.config_validator._get_max_leverage_for_asset(
+                self.config_validator._classify_asset(symbol)),
+            compound_risk_limit=self.risk_profile.max_compound_risk_pct,
+            broker_symbol_max=broker_max_leverage,
+            slippage_fraction=(cost_rates or {}).get("slippage", 0.0))
+        result["details"]["leverage_resolution"] = leverage_resolution.evidence()
+        if not leverage_resolution.ok:
+            result["reason"] = leverage_resolution.reason
+            return rejected((leverage_resolution.reason,), RiskRejectionFamily.SIZING.value)
+        kwargs["resolved_leverage"] = leverage_resolution.leverage
         if atr is None:
             from app.policy.policy_engine import calculate_atr
 
@@ -391,18 +442,50 @@ class TradingOrchestrator:
             result["reason"] = "STOP_GEOMETRY_WIDENED"
             return rejected(("STOP_GEOMETRY_WIDENED",), RiskRejectionFamily.SIZING.value, trade_params=tp)
         tightened = abs(resolved_stop - inv) > 1e-9 * price
-        if plan.setup_family in {"RESIDUAL_MOMENTUM_PORTFOLIO_TOP1", "DEMO_CERTIFICATION"}:
+        if plan.setup_family in CATI_STRUCTURAL_FAMILIES:
             if tightened or target is None or abs(float(tp["take_profit"]) - target) > 1e-9 * price:
                 result["reason"] = "FROZEN_GEOMETRY_CHANGED_BY_RISK"
                 return rejected((result["reason"],), RiskRejectionFamily.SIZING.value, trade_params=tp)
+        if residual and order_book is not None:
+            # MARKET execution must not silently break the trade's economics:
+            # walk the executable side of the book for the risk-sized quantity.
+            from app.trading_intelligence.execution.entry_economics import depth_vwap, evaluate_entry_economics
+            if order_book.get("unavailable"):
+                result["reason"] = "CATI_ORDER_BOOK_UNAVAILABLE"
+                return rejected((result["reason"],), RiskRejectionFamily.PREVALIDATION.value, trade_params=tp)
+            levels = order_book["asks"] if long_side else order_book["bids"]
+            fill = depth_vwap(levels, float(tp["quantity"]))
+            if fill is None:
+                result["reason"] = "CATI_ORDER_BOOK_DEPTH_INSUFFICIENT"
+                return rejected((result["reason"],), RiskRejectionFamily.PREVALIDATION.value, trade_params=tp)
+            depth = evaluate_entry_economics(
+                side=plan.side, price=fill, reference=float(plan.entry_reference), stop=inv, target=target,
+                min_reward_risk=self._min_reward_risk(), min_stop_fraction=self.system_limits.min_stop_loss_pct,
+                max_stop_fraction=self.system_limits.max_stop_loss_pct, fee=cost_rates["fee"],
+                half_spread=cost_rates["half_spread"], slippage=0.0,
+                funding_buffer=cost_rates.get("funding_per_8h", 0.0) * 6)
+            result["details"]["depth_execution"] = {**depth.evidence(), "expected_fill_price": fill,
+                "expected_slippage_bps": abs(fill - price) / price * 10000}
+            if not depth.valid:
+                result["reason"] = "CATI_EXECUTION_ECONOMICS_DEPTH"
+                return rejected((result["reason"], str(depth.reason)), RiskRejectionFamily.PREVALIDATION.value,
+                                trade_params=tp)
         result["risk_decision"] = build_risk_decision(
             plan, approved=True, stage=RiskStage.PRE_EXECUTION.value, reason_codes=("APPROVED_FOR_EXECUTION",),
             decision_time=now_ms, runtime_session_id=runtime_session_id, trade_params=tp, allocation=alloc,
             stop_tightened=tightened,
             risk_budget=(tp.get("sizing_trace") or {}).get("max_risk_capital"),
-            policy_versions=(("risk_policy", str(getattr(getattr(self, "risk_policy", None), "config", None)
-                                               and self.risk_policy.config.label)),))
+            policy_versions=(("risk_profile", str(self.risk_profile.label)),))
         return result
+
+    def _min_reward_risk(self) -> float:
+        """The resolved policy's minimum reward/risk (configured setting when
+        no EffectiveBotPolicy is bound)."""
+        value = getattr(self.effective_policy, "min_risk_reward", None)
+        if value is None:
+            from app.core.config import settings
+            value = settings.MIN_RISK_REWARD
+        return float(value)
 
     def _pre_signal_gates(self, symbol: str, result: Dict[str, Any], kwargs: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         """Stop-loss cooldown and allowed-symbol gates -- shared by the V2 and
@@ -508,7 +591,7 @@ class TradingOrchestrator:
             )
         
         # Step 5: LAYER A - Pre-trade gating
-        leverage = self.validated_config.requested_leverage.get(symbol, 10.0)
+        leverage = kwargs.get("resolved_leverage") or self.validated_config.requested_leverage.get(symbol, 10.0)
         
         # Cap leverage for fallback trades
         if is_fallback_mode:
@@ -586,12 +669,13 @@ class TradingOrchestrator:
         ) * 100.0
 
         stop_distance = max(0.0, float(strategy_output.suggested_stop_distance or 0.0))
+        tp_distance = strategy_output.take_profit_distance or stop_distance * 2.2
         if strategy_output.signal == Signal.SELL:
             policy_stop = current_price * (1.0 + stop_distance)
-            policy_take_profit = current_price * (1.0 - stop_distance * 2.2)
+            policy_take_profit = current_price * (1.0 - tp_distance)
         else:
             policy_stop = current_price * (1.0 - stop_distance)
-            policy_take_profit = current_price * (1.0 + stop_distance * 2.2)
+            policy_take_profit = current_price * (1.0 + tp_distance)
 
         ctx = PolicyContext(
             symbol=symbol,

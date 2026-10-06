@@ -133,7 +133,8 @@ class BotInstanceService:
             updated_at=now,
             started_at=now,  # Auto-start on creation for now? Or wait for explicit start?
             capital_allocation=request.capital_allocation,
-            capital_allocation_type=request.capital_allocation_type
+            capital_allocation_type=request.capital_allocation_type,
+            daily_loss_limit_pct=request.daily_loss_limit_pct,
         )
         
         # For Auto Pilot, config_id and risk_profile_id are None (internal config)
@@ -154,8 +155,9 @@ class BotInstanceService:
                     symbols_json, timeframes_json, allocation_type, allocation_value, 
                     mode, status, created_at, updated_at, started_at, stopped_at,
                     capital_allocation, capital_allocation_type,
-                    last_run_at, last_error, total_trades, active_positions, universe_mode
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    last_run_at, last_error, total_trades, active_positions, universe_mode,
+                    daily_loss_limit_pct
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     instance.id, instance.user_id, instance.broker_account_id, instance.market_type, 
@@ -167,7 +169,7 @@ class BotInstanceService:
                     instance.started_at, instance.stopped_at,
                     instance.capital_allocation, instance.capital_allocation_type,
                     instance.last_run_at, instance.last_error, instance.total_trades, instance.active_positions,
-                    instance.universe_mode,
+                    instance.universe_mode, instance.daily_loss_limit_pct,
                 )
             )
             
@@ -739,6 +741,7 @@ class BotInstanceService:
         forex_config: Optional[dict] = None,
         symbol_universe_mode: str = "auto",
         symbols: Optional[List[str]] = None,
+        daily_loss_limit_pct: Optional[float] = None,
     ) -> List[BotInstance]:
         """
         Deploy the Auto Pilot (Master Ensemble) strategy to selected broker accounts.
@@ -812,6 +815,7 @@ class BotInstanceService:
                     mode=mode,
                     capital_allocation=capital_allocation,
                     capital_allocation_type=capital_allocation_type,
+                    daily_loss_limit_pct=daily_loss_limit_pct,
                 )
                 
                 instance = self.create_bot_instance(req)
@@ -841,6 +845,7 @@ class BotInstanceService:
                     "allocation_value": allocation_value,
                     "capital_allocation": capital_allocation,
                     "capital_allocation_type": capital_allocation_type,
+                    "daily_loss_limit_pct": daily_loss_limit_pct,
                     "broker_accounts": broker_account_ids
                 }
             )
@@ -937,10 +942,14 @@ class BotInstanceService:
         valid_fields = {
             "risk_profile_id", "allocation_type", "allocation_value", 
             "capital_allocation", "capital_allocation_type", "mode", "symbols", "timeframes", "status",
-            "universe_mode",
+            "universe_mode", "daily_loss_limit_pct",
         }
         
         filtered_updates = {k: v for k, v in updates.items() if k in valid_fields}
+        if filtered_updates.get("daily_loss_limit_pct") is not None:
+            from app.risk.system_limits import validate_daily_loss_limit_pct
+            filtered_updates["daily_loss_limit_pct"] = validate_daily_loss_limit_pct(
+                filtered_updates["daily_loss_limit_pct"])
         
         if not filtered_updates:
             return instance # No changes

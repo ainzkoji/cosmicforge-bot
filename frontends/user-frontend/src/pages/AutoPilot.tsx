@@ -14,6 +14,9 @@ export default function AutoPilot() {
     const [allocationType, setAllocationType] = useState<"fixed_amount" | "percent_balance">("fixed_amount");
     const [totalCapitalBudget, setTotalCapitalBudget] = useState<number>(1000);
     const [allocationValue, setAllocationValue] = useState<number>(100);
+    // Daily loss limit as % of day-opening account equity. Empty = inherit the
+    // selected risk profile's default (resolved by the backend policy).
+    const [dailyLossLimitPct, setDailyLossLimitPct] = useState<string>("");
     const [selectedBroker, setSelectedBroker] = useState<string>("");
     const [mode, setMode] = useState<"paper" | "live">("paper");
 
@@ -115,6 +118,11 @@ export default function AutoPilot() {
             alert("Position allocation percentage cannot exceed 100%");
             return;
         }
+        const dailyLoss = dailyLossLimitPct.trim() === "" ? null : parseFloat(dailyLossLimitPct);
+        if (dailyLoss !== null && (isNaN(dailyLoss) || dailyLoss <= 0)) {
+            alert("Daily loss limit must be a positive percentage, or empty to use the risk profile default");
+            return;
+        }
         if (marketType === "forex" && forexAllowlist.length === 0) {
             alert("Please select at least one currency pair for Forex allowlist.");
             return;
@@ -140,7 +148,9 @@ export default function AutoPilot() {
                 execution_mode: mode,
                 symbol_universe_mode: "auto",
                 market_type: marketType,
-                forex_config: marketType === "forex" ? { allowlist: forexAllowlist } : undefined
+                forex_config: marketType === "forex" ? { allowlist: forexAllowlist } : undefined,
+                // Backend stores a fraction of equity; null inherits the risk profile default.
+                daily_loss_limit_pct: dailyLoss === null ? null : dailyLoss / 100
             });
             // Redirect to bots dashboard
             navigate("/dashboard/bots");
@@ -426,6 +436,28 @@ export default function AutoPilot() {
                                 </div>
                             </div>
                         </div>
+                        <div className="mt-4">
+                            <label className="text-sm text-gray-400 mb-2 block">
+                                Daily Loss Limit (% of account equity)
+                            </label>
+                            <div className="relative">
+                                <input
+                                    type="number"
+                                    min="0"
+                                    step="0.1"
+                                    value={dailyLossLimitPct}
+                                    placeholder="Use risk profile default"
+                                    onChange={(e) => setDailyLossLimitPct(e.target.value)}
+                                    className="w-full bg-[#0F1218] border border-white/10 rounded-lg px-4 py-2 text-white focus:border-primary focus:outline-none transition-colors font-mono"
+                                />
+                                <div className="absolute right-4 top-2 text-gray-500 text-sm">%</div>
+                            </div>
+                            <p className="text-xs text-gray-500 mt-1">
+                                {dailyLossLimitPct.trim() === ""
+                                    ? "Inherited from the selected risk profile."
+                                    : "Custom limit for this bot. New entries stop for the day once account losses reach it."}
+                            </p>
+                        </div>
                     </section>
                 </div>
 
@@ -459,6 +491,13 @@ export default function AutoPilot() {
                                 <span className="text-gray-500 text-sm">Allocation</span>
                                 <span className="text-white font-medium">
                                     {allocationType === 'fixed_amount' ? `$${allocationValue}` : `${allocationValue}%`}
+                                </span>
+                            </div>
+
+                            <div className="flex justify-between items-center py-2 border-b border-white/5">
+                                <span className="text-gray-500 text-sm">Daily Loss Limit</span>
+                                <span className="text-white font-medium">
+                                    {dailyLossLimitPct.trim() === "" ? "Risk profile default" : `${dailyLossLimitPct}% (custom)`}
                                 </span>
                             </div>
 

@@ -160,6 +160,10 @@ class EffectiveBotPolicy:
     #: (``symbols``). The dynamic broker list is deliberately NOT in the
     #: policy -- it changes every refresh and must not change the hash.
     universe_mode: str = "ALLOWLIST"
+    #: Daily loss limit as a fraction of day-opening account equity, and where
+    #: it came from (USER_CONFIGURED | RISK_PROFILE_DEFAULT).
+    max_daily_loss_pct: float = 0.0
+    daily_loss_source: str = ""
     policy_version: str = POLICY_VERSION
     policy_hash: str = ""
     resolved_at: str = ""
@@ -270,9 +274,19 @@ def resolve_effective_bot_policy(
         "max_leverage", requested_leverage, asset_ceiling, warnings, clamps, reason="ASSET_CLASS_LEVERAGE_CEILING"
     )
 
-    profile_daily_loss = float(risk_params.get("daily_loss_limit_pct", 0.05)) * capital_budget
-    operator_daily_loss = float(getattr(settings, "DAILY_MAX_LOSS_USDT", profile_daily_loss) or profile_daily_loss)
-    max_daily_loss = min(profile_daily_loss, operator_daily_loss, limits.max_daily_loss_pct * capital_budget)
+    # Daily loss: the user's deployment setting, else the selected risk
+    # profile's default. Validated, never clamped to a product-wide constant.
+    # It is a fraction of day-opening ACCOUNT equity, enforced account-wide.
+    from app.risk.system_limits import validate_daily_loss_limit_pct
+    user_daily = getattr(instance, "daily_loss_limit_pct", None)
+    daily_source = "USER_CONFIGURED" if user_daily is not None else "RISK_PROFILE_DEFAULT"
+    try:
+        max_daily_loss_pct = validate_daily_loss_limit_pct(
+            user_daily if user_daily is not None else risk_params.get("daily_loss_limit_pct"), limits)
+    except ValueError as exc:
+        raise EffectivePolicyError("INVALID_DAILY_LOSS_LIMIT", str(exc)) from exc
+    # Budget-scale view of the same policy for capital-budget consumers.
+    max_daily_loss = max_daily_loss_pct * capital_budget
 
     weekly_requested = float(getattr(settings, "MAX_WEEKLY_DRAWDOWN_PCT", 5.0))
     monthly_requested = float(getattr(settings, "MAX_MONTHLY_DRAWDOWN_PCT", 10.0))
@@ -318,6 +332,7 @@ def resolve_effective_bot_policy(
         risk_level=str(getattr(instance, "risk_level", "balanced") or "balanced").lower(),
         requested_risk_per_trade=requested_risk, risk_per_trade=effective_risk,
         risk_per_trade_ceiling=limits.max_risk_per_trade_ceiling, max_daily_loss=max_daily_loss,
+        max_daily_loss_pct=max_daily_loss_pct, daily_loss_source=daily_source,
         max_weekly_drawdown=max_weekly, max_monthly_drawdown=max_monthly,
         requested_max_daily_trades=requested_trades, max_daily_trades=effective_trades,
         daily_trade_cap_enabled=daily_trade_cap_enabled,

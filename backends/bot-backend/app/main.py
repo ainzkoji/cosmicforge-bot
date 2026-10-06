@@ -2949,7 +2949,7 @@ async def health():
         "calendar_sync_running": bool(calendar_sync_worker.running),
         "event_ingestion_running": bool(getattr(event_ingestion_worker, "_running", False)),
         "adaptive_daily_risk_enabled": bool(settings.ADAPTIVE_DAILY_RISK_ENABLED),
-        "daily_hard_loss_fraction": min(0.025, settings.ADAPTIVE_DAILY_RISK_MAX_DAILY_LOSS_PCT),
+        "daily_loss_limit_source": "PER_BOT_EFFECTIVE_POLICY",
     }
     return {
         "status": "ok",

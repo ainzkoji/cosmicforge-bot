@@ -41,6 +41,12 @@ def identity(kind):
     return f"cati_sim_{kind}_{uuid.uuid4().hex}"
 
 
+
+#: Frozen research simulation semantics: the registered evidence was produced
+#: with a 2.5% daily hard-loss halt. This is a property of the frozen research
+#: record, not of production accounts (whose daily limit is per-bot policy).
+RESEARCH_DAILY_HARD_LOSS_FRACTION = .025
+
 class Book:
     def __init__(self, db):
         self.db = db
@@ -85,7 +91,7 @@ class Book:
                 "persistent_halt": None, "heartbeat_at": None,
                 "market_received_at": None, "market_symbols": 0,
                 "status": "AWAITING_LIVE_MARKET", "error": None,
-                "daily_hard_loss_fraction": min(.025, self.limits.max_daily_loss_pct),
+                "daily_hard_loss_fraction": RESEARCH_DAILY_HARD_LOSS_FRACTION,
                 "risk_per_entry_fraction": min(.0025, self.limits.max_risk_per_trade_ceiling),
                 "execution_reference": "NEXT_NATIVE15M_OPEN_MODEL_FILL",
                 "leverage": 1., "broker_submission_attempts": 0,
@@ -124,7 +130,7 @@ class Book:
                 a["persistent_halt"] = None
 
     def risk_halt(self, a):
-        if a["equity"] <= a["day_start_equity"] * (1 - min(.025, self.limits.max_daily_loss_pct)):
+        if a["equity"] <= a["day_start_equity"] * (1 - RESEARCH_DAILY_HARD_LOSS_FRACTION):
             a["daily_halted"] = True
         if a["equity"] <= a["initial_virtual_capital"] * (1 - self.limits.emergency_drawdown_halt_pct):
             a["persistent_halt"] = "EMERGENCY_DRAWDOWN"
@@ -166,7 +172,7 @@ class Book:
                       sum(self.rates[k] for k in ("fee", "half_spread", "slippage")) +
                       price * self.rates["funding_per_8h"] * 6)
         unit_loss = max(row["risk"], abs(price - row["stop"])) + cost_bound
-        remaining = a["equity"] - a["day_start_equity"] * (1 - min(.025, self.limits.max_daily_loss_pct))
+        remaining = a["equity"] - a["day_start_equity"] * (1 - RESEARCH_DAILY_HARD_LOSS_FRACTION)
         risk_cash = min(a["equity"] * min(.0025, self.limits.max_risk_per_trade_ceiling), remaining)
         # 1x leverage, one position, below symbol, correlated and total ceilings;
         # preserve at least the system's 35% free-margin buffer.
@@ -366,9 +372,9 @@ class Book:
         closed = [p for p in positions if p["status"] == "CLOSED"]
         opened = [p for p in positions if p["status"] == "OPEN"]
         return {**a, "positions": positions, "orders": orders, "fills": fills,
-                "risk": {"daily_cap_fraction": min(.025, self.limits.max_daily_loss_pct),
+                "risk": {"daily_cap_fraction": RESEARCH_DAILY_HARD_LOSS_FRACTION,
                          "daily_loss_cash": max(0., a["day_start_equity"] - a["equity"]),
-                         "daily_budget_cash": a["day_start_equity"] * min(.025, self.limits.max_daily_loss_pct),
+                         "daily_budget_cash": a["day_start_equity"] * RESEARCH_DAILY_HARD_LOSS_FRACTION,
                          "daily_halted": a["daily_halted"], "persistent_halt": a["persistent_halt"],
                          "hard_limits": vars(self.limits), "portfolio_position_limit": 1},
                 "pnl": {"realized_gross": sum(p["realized_gross_pnl"] for p in closed),

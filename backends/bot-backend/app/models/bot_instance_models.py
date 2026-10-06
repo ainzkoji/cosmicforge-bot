@@ -70,6 +70,9 @@ class BotInstance:
     universe_mode: Optional[str] = None
     allocation_type: str = "fixed_amount"  # percent_balance, fixed_amount
     allocation_value: float = 0.0
+    #: User daily loss limit (fraction of day-opening account equity).
+    #: None inherits the risk profile's default in EffectiveBotPolicy.
+    daily_loss_limit_pct: Optional[float] = None
     
     # Lifecycle
     mode: str = "paper" # paper, live
@@ -131,6 +134,7 @@ class BotInstance:
             timeframes=json.loads(d.get("timeframes_json") or "[]"),
             allocation_type=d["allocation_type"],
             allocation_value=d["allocation_value"],
+            daily_loss_limit_pct=d.get("daily_loss_limit_pct"),
             capital_allocation=d.get("capital_allocation"), 
             capital_allocation_type=d.get("capital_allocation_type", "fixed_amount"),
             mode=d["mode"],
@@ -178,6 +182,7 @@ class BotInstance:
             "timeframes_json": json.dumps(self.timeframes),
             "allocation_type": self.allocation_type,
             "allocation_value": self.allocation_value,
+            "daily_loss_limit_pct": self.daily_loss_limit_pct,
             "capital_allocation": self.capital_allocation,
             "capital_allocation_type": self.capital_allocation_type,
             "mode": self.mode,
@@ -236,6 +241,7 @@ class BotInstance:
             "timeframes": self.timeframes,
             "allocation_type": self.allocation_type,
             "allocation_value": self.allocation_value,
+            "daily_loss_limit_pct": self.daily_loss_limit_pct,
             "capital_allocation": self.capital_allocation,
             "capital_allocation_type": self.capital_allocation_type,
             "mode": self.mode,
@@ -285,6 +291,7 @@ class CreateBotInstanceRequest:
     capital_allocation: Optional[float] = None
     capital_allocation_type: str = "fixed_amount"
     universe_mode: Optional[str] = None
+    daily_loss_limit_pct: Optional[float] = None
     
     def validate(self) -> List[str]:
         """Validate the request data."""
@@ -322,6 +329,13 @@ class CreateBotInstanceRequest:
             if self.allocation_value <= 0:
                 errors.append("allocation_value must be positive for fixed_amount")
         
+        if self.daily_loss_limit_pct is not None:
+            from app.risk.system_limits import validate_daily_loss_limit_pct
+            try:
+                validate_daily_loss_limit_pct(self.daily_loss_limit_pct)
+            except ValueError as exc:
+                errors.append(str(exc))
+
         if self.mode not in ["paper", "live"]:
             errors.append("mode must be paper or live")
             

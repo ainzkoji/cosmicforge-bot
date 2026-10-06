@@ -6,7 +6,7 @@ from types import SimpleNamespace
 from unittest.mock import Mock
 
 import pytest
-from _exec import Harness, _entry, _order
+from _exec import Harness, _entry, _order, cati_bot
 from app.core import config
 from app.core.config import Settings
 from app.trading_intelligence.integration import production_execution as production
@@ -66,6 +66,11 @@ def live(tmp_path, monkeypatch):
         return h.boundary(config=CATIExecutionConfig(True, False, ("LIVE",)), preflight=preflight, **kw)
     h.live_boundary = live_boundary
     TradePlanEvidenceStore(h.db).append(h.plan)
+    cati_bot(h.db, h.plan.bot_instance_id, h.plan.broker_account_id, user_id=h.plan.user_id)
+    # Executable depth around the reference: production checks economics at the
+    # book's fill price for the risk-sized quantity before any CREATE.
+    h.client.depth.return_value = {"bids": [["99.99", "50"], ["99.95", "500"]],
+                                   "asks": [["100.01", "50"], ["100.05", "500"]]}
     return h
 
 
@@ -161,11 +166,14 @@ def test_account_risk_includes_other_bots_and_manual_exposure(live):
     client.account.return_value = dict(totalMarginBalance=5000, totalWalletBalance=5000, availableBalance=4900,
                                       totalInitialMargin=100, totalUnrealizedProfit=0)
     client.income_history.return_value = []
+    cati_bot(live.db, "a", "shared"); cati_bot(live.db, "b", "shared")
     out = production.account_risk(live.db, {"id":"shared"}, client,
         [{"symbol":"ETHUSDT", "positionAmt":"1"}], [], [{"id":"a"}, {"id":"b"}], live.now)
     assert out["open_positions"] == 1 and out["bot_instance_ids"] == ["a", "b"]
     assert out["reason"] == "ACCOUNT_WIDE_POSITION_OR_ORDER_ACTIVE"
+    # The bots' resolved policy (balanced profile default here), not a global constant.
     assert out["adaptive_daily_risk"]["hard_daily_cap_usdt"] == 125
+    assert out["daily_loss_policy"]["source"] == "RISK_PROFILE_DEFAULT"
 
 
 def test_daily_hard_cap_latches_across_restart(live):
@@ -174,8 +182,9 @@ def test_daily_hard_cap_latches_across_restart(live):
     client.account.return_value = dict(totalMarginBalance=4875, totalWalletBalance=4875, availableBalance=4875,
                                       totalInitialMargin=0, totalUnrealizedProfit=0)
     client.income_history.return_value = [{"incomeType":"REALIZED_PNL", "income":"-125", "time":live.now}]
+    cati_bot(live.db, "a", "loss")
     risk = production.account_risk(live.db, {"id":"loss"}, client, [], [], [{"id":"a"}], live.now)
-    assert risk["reason"] == "DAILY_HARD_LOSS_CAP_REACHED" and risk["remaining_daily_risk"] == 0
+    assert risk["reason"] == "USER_DAILY_LOSS_LIMIT_REACHED" and risk["remaining_daily_risk"] == 0
     client.income_history.return_value = []
     assert production.account_risk(live.db, {"id":"loss"}, client, [], [], [{"id":"a"}], live.now)["loss_latched"]
 
@@ -263,7 +272,7 @@ def test_broker_fill_reconciles_actual_position(live):
     assert row[0] == pytest.approx(.3) and row[1] == live.plan.broker_account_id and row[2] == "live"
 
 
-def test_residual_stop_is_rejected_instead_of_clamped(live):
+def test_residual_stop_beyond_true_system_maximum_is_rejected_not_clamped(live):
     from app.trading_intelligence.trade_plan.validation import MarketReference
     from app.trading_intelligence.contracts.system_health import BrokerHealthContext
     fields = {k:getattr(live.plan,k) for k in TradePlan.__dataclass_fields__ if k not in TradePlan._NON_ANALYTICAL}
@@ -274,9 +283,11 @@ def test_residual_stop_is_rejected_instead_of_clamped(live):
         broker_health=BrokerHealthContext(plan.broker_account_id, plan.venue, "LIVE", "HEALTHY", live.now, "test"),
         reservation_state=live.reservations.get(plan.portfolio_reservation_id),
         venue_capabilities=live.kw["evaluated"].venue_observation.execution_capabilities,
-        klines=[], current_equity=5000, margin_used=0, margin_available=5000, open_positions=0, atr=1)
+        klines=[], current_equity=5000, margin_used=0, margin_available=5000, open_positions=0, atr=1,
+        entry_cost_rates=production.residual_cost_rates(live.db, live.plan))
     assert not out["risk_decision"].approved
-    assert "STOP_DISTANCE_EXCEEDS_HARD_MAXIMUM" in out["risk_decision"].reason_codes
+    # 18.4% > SystemLimits' 15% absolute maximum (not the retired fixed-10x 2.25%).
+    assert out["risk_decision"].reason_codes == ("CATI_STRUCTURAL_STOP_EXCEEDS_SYSTEM_MAX",)
     live.client.place_order.assert_not_called()
 
 
@@ -316,6 +327,7 @@ def test_orphan_protection_blocks_next_entry(live):
     client.account.return_value = dict(totalMarginBalance=5000, totalWalletBalance=5000, availableBalance=5000,
                                       totalInitialMargin=0, totalUnrealizedProfit=0)
     client.income_history.return_value = []
+    cati_bot(live.db, "a", "orphan")
     out = production.account_risk(live.db, {"id":"orphan"}, client, [],
         [{"symbol":"ADAUSDT", "closePosition":True, "type":"STOP_MARKET"}], [{"id":"a"}], live.now)
     assert out["reason"] == "ACCOUNT_WIDE_ORPHAN_ORDER_ACTIVE"

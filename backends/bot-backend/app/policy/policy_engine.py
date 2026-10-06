@@ -869,12 +869,26 @@ class PolicyEngine:
                         },
                     )
 
-            # ATR account-risk cap: estimated loss at stop vs max equity risk
+            # Estimated loss at stop vs the per-trade risk percentage. That
+            # percentage is a RISK-BASED sizing parameter: for a user's fixed
+            # margin (fixed_amount_strict) it is reported, never a second
+            # position-size authority that rejects the user's own allocation.
+            # Fixed-margin risk is governed by leverage, compound risk and the
+            # account limits instead.
+            _fixed_margin_mode = ctx.trade_amount_mode in ("fixed", "fixed_usdt", "fixed_amount")
+            _fixed_margin_loss_diagnostic = None
             if _ep_d3 > 0 and _sl_d3 > 0 and ctx.equity > 0 and ctx.trade_amount_value > 0:
                 _qty_d3 = (ctx.trade_amount_value * ctx.leverage) / _ep_d3
                 _loss_at_stop = _qty_d3 * abs(_ep_d3 - _sl_d3)
                 _max_loss_allowed = ctx.equity * (ctx.max_risk_per_trade_pct / 100.0)
-                if _loss_at_stop > _max_loss_allowed:
+                if _loss_at_stop > _max_loss_allowed and _fixed_margin_mode:
+                    _fixed_margin_loss_diagnostic = {
+                        "estimated_loss_at_stop": round(_loss_at_stop, 4),
+                        "per_trade_risk_reference": round(_max_loss_allowed, 4),
+                        "max_risk_per_trade_pct": ctx.max_risk_per_trade_pct,
+                        "status": "REPORTED_FIXED_MARGIN_AUTHORITATIVE",
+                    }
+                elif _loss_at_stop > _max_loss_allowed:
                     return PolicyDecision.blocked(
                         ReasonCode.ATR_RISK_CAP_EXCEEDED,
                         f"TRADE_REJECTED_ATR_RISK_CAP_EXCEEDED: estimated loss at stop "
@@ -1082,6 +1096,7 @@ class PolicyEngine:
                 sizing_details["theoretical_risk_usdt"] = round(_theoretical_risk_usdt, 8) if _theoretical_risk_usdt is not None else None
                 sizing_details["theoretical_risk_pct"] = round(_theoretical_risk_pct, 8) if _theoretical_risk_pct is not None else None
                 sizing_details["risk_warning"]       = _risk_warning
+                sizing_details["fixed_margin_loss_diagnostic"] = locals().get("_fixed_margin_loss_diagnostic")
                 _risk_level_raw = ctx.risk_level.value if hasattr(ctx.risk_level, "value") else str(ctx.risk_level)
                 _risk_level_label = {
                     "low": "Conservative",
@@ -1133,8 +1148,12 @@ class PolicyEngine:
             max_compound = profile.max_compound_risk_pct
             
             # Calculate stop distance as percentage
+            # The actual stop when the caller supplies one (CATI structural
+            # stop), else the ATR stop model.
             stop_pct = ctx.stop_loss_pct
-            if ctx.atr > 0 and ctx.entry_price > 0:
+            if ctx.stop_loss_price > 0 and ctx.entry_price > 0:
+                stop_pct = abs(ctx.entry_price - ctx.stop_loss_price) / ctx.entry_price
+            elif ctx.atr > 0 and ctx.entry_price > 0:
                 # ATR-derived stop distance
                 stop_pct = (ctx.atr * self.sl_multiplier) / ctx.entry_price
             

@@ -34,13 +34,17 @@ class DailyRiskReason(str, Enum):
 
 @dataclass(frozen=True)
 class AdaptiveDailyRiskPolicy:
-    max_daily_loss_pct: float = 0.025
+    #: The bot/account's resolved daily loss policy (fraction of day-opening
+    #: equity). Required: the engine adapts WITHIN it and never supplies one.
+    max_daily_loss_pct: float | None = None
     daily_r_budget: float = 1.5
     minimum_history_trades: int = 30
     risk_lookback_trades: int = 100
     risk_lookback_days: int = 45
-    minimum_budget_usdt: float = 6.0
-    maximum_budget_usdt: float = 24.0
+    #: Optional USDT bounds. None: no fixed amount narrows the user's policy;
+    #: without trade history the budget is the policy cap itself.
+    minimum_budget_usdt: float | None = None
+    maximum_budget_usdt: float | None = None
     caution_consumption_pct: float = 0.50
     defensive_consumption_pct: float = 0.80
     performance_factor_min: float = 0.50
@@ -139,14 +143,20 @@ class AdaptiveDailyRiskBudgetEngine:
 
     def evaluate(self, inputs: AdaptiveDailyRiskInputs) -> AdaptiveDailyRiskDecision:
         p = self.policy
+        if p.max_daily_loss_pct is None or not float(p.max_daily_loss_pct) > 0:
+            raise ValueError("DAILY_LOSS_POLICY_REQUIRED")
         hard_cap = max(0.0, float(inputs.day_open_equity) * float(p.max_daily_loss_pct))
         history = self._bounded_positive(inputs.initial_risk_history_usdt, p.risk_lookback_trades)
         data_sufficient = len(history) >= p.minimum_history_trades
         if data_sufficient:
             typical = self._robust_typical_risk(history)
             reason = DailyRiskReason.NORMAL
-        else:
+        elif p.minimum_budget_usdt is not None:
             typical = p.minimum_budget_usdt / max(p.daily_r_budget, 1e-9)
+            reason = DailyRiskReason.DATA_INSUFFICIENT
+        else:
+            # No history to adapt from: the resolved policy cap is the budget.
+            typical = hard_cap / max(p.daily_r_budget, 1e-9)
             reason = DailyRiskReason.DATA_INSUFFICIENT
 
         base_budget = typical * p.daily_r_budget
@@ -154,8 +164,9 @@ class AdaptiveDailyRiskBudgetEngine:
         volatility_factor = self._volatility_factor(inputs.volatility_stress, inputs.market_regime)
         drawdown_factor = self._drawdown_factor(inputs.account_drawdown_pct)
         adaptive_budget = base_budget * performance_factor * volatility_factor * drawdown_factor
-        effective_budget = min(hard_cap, p.maximum_budget_usdt, max(p.minimum_budget_usdt, adaptive_budget))
-        if not data_sufficient:
+        ceiling = hard_cap if p.maximum_budget_usdt is None else min(hard_cap, p.maximum_budget_usdt)
+        effective_budget = min(ceiling, max(p.minimum_budget_usdt or 0.0, adaptive_budget))
+        if not data_sufficient and p.minimum_budget_usdt is not None:
             effective_budget = min(effective_budget, p.minimum_budget_usdt, hard_cap or p.minimum_budget_usdt)
 
         consumed = max(0.0, -float(inputs.realized_pnl_today))

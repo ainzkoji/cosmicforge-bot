@@ -78,8 +78,8 @@ def test_no_score_waits_and_history_cannot_be_overwritten(fresh,monkeypatch):
 def test_streak_reconstruction_is_quiet_and_does_not_increment_twice(fresh,caplog):
     production.initialize(fresh.db)
     fresh.client.income_history.return_value=[{'incomeType':'REALIZED_PNL','income':'-1','time':fresh.now,'tranId':123}]
-    first=production.account_risk(fresh.db,fresh.account,fresh.client,[],[],[],fresh.now)
-    second=production.account_risk(fresh.db,fresh.account,fresh.client,[],[],[],fresh.now)
+    first=production.account_risk(fresh.db,fresh.account,fresh.client,[],[],[{'id':fresh.plan.bot_instance_id}],fresh.now)
+    second=production.account_risk(fresh.db,fresh.account,fresh.client,[],[],[{'id':fresh.plan.bot_instance_id}],fresh.now)
     assert first['consecutive_losses']==second['consecutive_losses']==1
     assert 'CONSECUTIVE_LOSS_RECORDED' not in caplog.text
 
@@ -117,7 +117,7 @@ def test_fees_and_funding_are_visible_and_counted_exactly_once(fresh):
     fresh.client.income_history.return_value=[
         {'incomeType':kind,'income':str(value),'time':fresh.now,'tranId':i}
         for i,(kind,value) in enumerate([('REALIZED_PNL',-1),('COMMISSION',-.1),('FUNDING_FEE',-.2)])]
-    risk=production.account_risk(fresh.db,fresh.account,fresh.client,[],[],[],fresh.now)
+    risk=production.account_risk(fresh.db,fresh.account,fresh.client,[],[],[{'id':fresh.plan.bot_instance_id}],fresh.now)
     assert risk['realized_pnl']==pytest.approx(-1.3)
     assert risk['daily_loss_usage']==pytest.approx(1.3)
     assert risk['fees']==pytest.approx(.1) and risk['funding']==pytest.approx(-.2)
@@ -134,12 +134,12 @@ def test_lagging_income_ledger_cannot_hide_a_realized_wallet_loss(fresh):
         fresh.client.account.return_value=dict(totalWalletBalance=value,totalMarginBalance=value,availableBalance=value,
                                                totalInitialMargin=0,totalUnrealizedProfit=0)
     wallet(426.38)
-    assert production.account_risk(fresh.db,fresh.account,fresh.client,[],[],[],fresh.now)['daily_loss_usage']==0
+    assert production.account_risk(fresh.db,fresh.account,fresh.client,[],[],[{'id':fresh.plan.bot_instance_id}],fresh.now)['daily_loss_usage']==0
     wallet(418.61)
-    risk=production.account_risk(fresh.db,fresh.account,fresh.client,[],[],[],fresh.now)
+    risk=production.account_risk(fresh.db,fresh.account,fresh.client,[],[],[{'id':fresh.plan.bot_instance_id}],fresh.now)
     assert risk['daily_loss_usage']==pytest.approx(7.77) and risk['realized_pnl']==pytest.approx(-7.77)
     assert risk['adaptive_daily_risk']['risk_budget_consumed_usdt']==pytest.approx(7.77)
     assert not risk['loss_latched'] and risk['reason'] is None
     wallet(415.)
-    risk=production.account_risk(fresh.db,fresh.account,fresh.client,[],[],[],fresh.now)
-    assert risk['loss_latched'] and risk['reason']=='DAILY_HARD_LOSS_CAP_REACHED'
+    risk=production.account_risk(fresh.db,fresh.account,fresh.client,[],[],[{'id':fresh.plan.bot_instance_id}],fresh.now)
+    assert risk['loss_latched'] and risk['reason']=='USER_DAILY_LOSS_LIMIT_REACHED'

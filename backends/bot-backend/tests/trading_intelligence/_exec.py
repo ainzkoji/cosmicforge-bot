@@ -175,6 +175,10 @@ class Harness:
         caps = self.kw["evaluated"].venue_observation.execution_capabilities
         # Section 9.14: these tests exercise the boundary on shared collateral with a valid reservation
         kw.setdefault("capital", CapitalReadiness(True, "LOGICAL"))
+        if plan.setup_family == "RESIDUAL_MOMENTUM_PORTFOLIO_TOP1":
+            # As production's prepare_submission: the frozen decision's cost rates.
+            from app.trading_intelligence.integration.production_execution import residual_cost_rates
+            kw.setdefault("entry_cost_rates", residual_cost_rates(self.db, plan))
         return (boundary or self.boundary()).process_trade_plan(
             plan, market_reference=MarketReference(price or plan.entry_reference, now - ref_age, 1.0),
             broker_health=BrokerHealthContext(plan.broker_account_id, plan.venue, plan.environment, health, now, "t"),
@@ -185,8 +189,27 @@ class Harness:
         return self.reservations.get((plan or self.plan).portfolio_reservation_id).status
 
 
-def _hard_cap_context(loss):
-    dec = AdaptiveDailyRiskBudgetEngine().evaluate(AdaptiveDailyRiskInputs(
+def _hard_cap_context(loss, daily_loss_pct=0.025):
+    """Adaptive context under an explicit resolved daily policy (the engine no
+    longer supplies a default)."""
+    from app.risk.adaptive_daily_budget import AdaptiveDailyRiskPolicy
+    dec = AdaptiveDailyRiskBudgetEngine(AdaptiveDailyRiskPolicy(max_daily_loss_pct=daily_loss_pct)).evaluate(AdaptiveDailyRiskInputs(
         bot_instance_id="botA", risk_date=date(2026, 9, 24), day_open_equity=5000.0, current_equity=5000.0 - loss,
         realized_pnl_today=-loss))
     return dec.as_policy_context()
+
+
+def cati_bot(db, bot_id, account_id, *, user_id="u1", daily_loss_limit_pct=None, capital=5000., allocation=120.,
+             allocation_type="fixed_amount"):
+    """A resolvable CATI deployment row -- what Auto Pilot deploy persists --
+    so production resolves the bot's EffectiveBotPolicy (incl. daily loss)."""
+    with db.connect() as c:
+        if not c.execute("SELECT 1 FROM bot_instances WHERE id=?", (bot_id,)).fetchone():
+            c.execute("INSERT INTO bot_instances (id, user_id, broker_account_id, market_type, strategy_id, mode, status,"
+                      " created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?)",
+                      (bot_id, user_id, account_id, "CRYPTO", "cati", "live", "active", "2026-01-01", "2026-01-01"))
+        c.execute("UPDATE bot_instances SET broker_account_id=?, strategy_id='cati', strategy_version='1.0.0',"
+                  " risk_level='balanced', capital_allocation=?, capital_allocation_type='fixed_amount',"
+                  " allocation_type=?, allocation_value=?, symbols_json='[]', universe_mode='BROKER',"
+                  " timeframes_json='[\"15m\"]', daily_loss_limit_pct=? WHERE id=?",
+                  (account_id, capital, allocation_type, allocation, daily_loss_limit_pct, bot_id))

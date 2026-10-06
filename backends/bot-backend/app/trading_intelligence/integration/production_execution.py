@@ -173,6 +173,40 @@ def eligibility(row, now):
     return None
 
 
+def certification_pnl(db, account_id, start, now):
+    """Fill ids and realized PnL net of fees of labelled DEMO_CERTIFICATION
+    fills in [start, now]. Operational certification is account truth, never
+    CATI strategy performance."""
+    with db.connect() as c:
+        if not c.execute("SELECT 1 FROM sqlite_master WHERE name='cati_production_fills'").fetchone():
+            return set(), 0.
+        docs = [json.loads(r[0]) for r in c.execute("SELECT document FROM cati_production_fills WHERE account_id=?", (account_id,))]
+    docs = [d for d in docs if (d.get("_execution") or {}).get("purpose") == "DEMO_CERTIFICATION"]
+    pnl = sum(float(d.get("realizedPnl") or 0) - float(d.get("commission") or 0)
+              for d in docs if start <= int(d.get("time", 0)) <= now)
+    return {str(d.get("id")) for d in docs}, pnl
+
+
+def account_daily_loss_policy(db, account, bots):
+    """The daily loss policy enforced for a broker account: each active bot's
+    resolved EffectiveBotPolicy, the most restrictive one when several bots
+    share the account (losses are aggregated account-wide). None when no
+    active bot resolves a policy -- the caller fails closed."""
+    from app.core.bot_instance_service import BotInstanceService
+    from app.runner.effective_policy import resolve_effective_bot_policy
+    service = BotInstanceService(db=db)
+    resolved = []
+    for bot in bots:
+        instance = service.get_bot_instance(bot["id"])
+        if instance is None or instance.broker_account_id != account["id"]:
+            continue
+        policy = resolve_effective_bot_policy(instance=instance, broker_environment=str(account.get("environment") or ""),
+            risk_params=service.get_risk_profile_preset(instance.risk_level))
+        resolved.append({"pct": policy.max_daily_loss_pct, "source": policy.daily_loss_source,
+                         "bot_instance_id": instance.id})
+    return min(resolved, key=lambda p: p["pct"]) if resolved else None
+
+
 def account_risk(db, account, client, positions, orders, bots, now):
     """Broker-wide risk, including manual and other bots' activity. Unknown
     history fails closed. Loss latch survives a restart and a later recovery.
@@ -190,16 +224,20 @@ def account_risk(db, account, client, positions, orders, bots, now):
     day_start = int(datetime.combine(risk_date, day_time.min, risk_zone).timestamp()*1000)
     # Pagination is mandatory; a full page is never mistaken for complete history.
     history = complete_income(client, day_start, now)
+    # Strategy accounting excludes labelled DEMO_CERTIFICATION fills; the
+    # wallet, equity, opening basis and drawdowns remain broker account truth.
+    cert_ids, cert_pnl = certification_pnl(db, account["id"], day_start, now)
+    strategy = [p for p in history if str(p.get("tradeId") or "") not in cert_ids]
     # Wallet cashflow reconstructs midnight wallet; transfers affect capital,
     # never realized trading PnL. All broker trading losses/fees/funding count.
     trading = _TRADING_INCOME
-    realized = sum(float(p["income"]) for p in history if p["incomeType"] in trading)
-    fees = -sum(float(p['income']) for p in history if p['incomeType'] == 'COMMISSION')
-    funding = sum(float(p['income']) for p in history if p['incomeType'] == 'FUNDING_FEE')
+    realized = sum(float(p["income"]) for p in strategy if p["incomeType"] in trading)
+    fees = -sum(float(p['income']) for p in strategy if p['incomeType'] == 'COMMISSION')
+    funding = sum(float(p['income']) for p in strategy if p['incomeType'] == 'FUNDING_FEE')
     flows = sum(float(p["income"]) for p in history if p["incomeType"] not in trading)
     from app.risk.daily_loss import DailyLossState
     streak = DailyLossState(risk_date)
-    realized_events = sorted((p for p in history if p["incomeType"] == "REALIZED_PNL" and float(p["income"]) != 0),
+    realized_events = sorted((p for p in strategy if p["incomeType"] == "REALIZED_PNL" and float(p["income"]) != 0),
                              key=lambda p: (int(p["time"]), str(p.get("tranId", ""))))
     for event in realized_events:
         streak.record_trade_result(float(event["income"]) > 0, soft_limit=settings.MAX_CONSECUTIVE_LOSSES_SOFT,
@@ -209,18 +247,21 @@ def account_risk(db, account, client, positions, orders, bots, now):
     opening = wallet - sum(float(p["income"]) for p in history)
     if not math.isfinite(opening) or opening <= 0 or not math.isfinite(realized + unrealized):
         raise ValueError("DAILY_RISK_BASIS_UNAVAILABLE")
+    policy = account_daily_loss_policy(db, account, bots)
     day = risk_date.isoformat()
     with db.connect() as c:
         c.execute("BEGIN IMMEDIATE")
         c.execute("INSERT OR IGNORE INTO cati_production_daily_risk VALUES(?,?,?,0)", (account["id"], day, opening))
         state = c.execute("SELECT * FROM cati_production_daily_risk WHERE account_id=? AND day=?", (account["id"], day)).fetchone()
         basis = float(state["opening_wallet"])
-        # The broker income ledger can lag the wallet. Trading PnL never reads
-        # better than the wallet's own change since the day's opening basis.
-        realized = min(realized, wallet - basis - flows)
+        account_realized = wallet - basis - flows
+        # The broker income ledger can lag the wallet. Strategy PnL never reads
+        # better than the wallet's own change since the day's opening basis,
+        # net of capital flows and of labelled certification fills.
+        realized = min(realized, account_realized - cert_pnl)
         loss = max(0., -realized - unrealized)
-        limit = basis * min(.025, settings.ADAPTIVE_DAILY_RISK_MAX_DAILY_LOSS_PCT)
-        latched = bool(state["loss_latched"]) or loss >= limit
+        limit = basis * policy["pct"] if policy else None
+        latched = bool(state["loss_latched"]) or (limit is not None and loss >= limit)
         if latched:
             c.execute("UPDATE cati_production_daily_risk SET loss_latched=1 WHERE account_id=? AND day=?", (account["id"], day))
     if any(not math.isfinite(float(p["positionAmt"])) for p in positions):
@@ -229,22 +270,23 @@ def account_risk(db, account, client, positions, orders, bots, now):
     hedge = any(str(p.get("positionSide", "BOTH")).upper() != "BOTH" for p in positions)
     entry_orders = [o for o in orders if not o.get("reduceOnly") and not o.get("closePosition")]
     from app.risk.adaptive_daily_budget import AdaptiveDailyRiskBudgetEngine, AdaptiveDailyRiskInputs, AdaptiveDailyRiskPolicy
-    # Read the same adaptive policy settings as the existing execution runtime.
+    # Adaptive tightening knobs only; the ceiling is the account's resolved
+    # daily loss policy, never a global USDT or percentage constant.
     mapping = {"daily_r_budget": "R_BUDGET", "minimum_history_trades": "MIN_HISTORY_TRADES",
         "risk_lookback_trades": "LOOKBACK_TRADES", "risk_lookback_days": "LOOKBACK_DAYS",
-        "minimum_budget_usdt": "MIN_BUDGET_USDT", "maximum_budget_usdt": "MAX_BUDGET_USDT",
         "caution_consumption_pct": "CAUTION_PCT", "defensive_consumption_pct": "DEFENSIVE_PCT",
         "performance_factor_min": "PERFORMANCE_FACTOR_MIN", "performance_factor_max": "PERFORMANCE_FACTOR_MAX",
         "volatility_factor_min": "VOLATILITY_FACTOR_MIN", "drawdown_factor_min": "DRAWDOWN_FACTOR_MIN"}
     policy_values = {field: getattr(settings, "ADAPTIVE_DAILY_RISK_"+suffix) for field, suffix in mapping.items()}
     adaptive = AdaptiveDailyRiskBudgetEngine(AdaptiveDailyRiskPolicy(**policy_values,
-        max_daily_loss_pct=min(.025, settings.ADAPTIVE_DAILY_RISK_MAX_DAILY_LOSS_PCT),
+        max_daily_loss_pct=policy["pct"], minimum_budget_usdt=None, maximum_budget_usdt=None,
         timezone_name=settings.ADAPTIVE_DAILY_RISK_TIMEZONE), db=db).evaluate(AdaptiveDailyRiskInputs(
             bot_instance_id=account["id"], risk_date=risk_date, day_open_equity=basis,
-            current_equity=equity, realized_pnl_today=realized, fees_today=fees, funding_today=funding))
+            current_equity=equity, realized_pnl_today=realized, fees_today=fees, funding_today=funding)) if policy else None
     # The frozen portfolio admits only one position. Any existing account
     # exposure, even on another bot/symbol, prevents a new residual entry.
-    reason = "DAILY_HARD_LOSS_CAP_REACHED" if latched else "ACCOUNT_WIDE_POSITION_OR_ORDER_ACTIVE" if active or entry_orders else None
+    reason = ("ACCOUNT_DAILY_LOSS_POLICY_UNAVAILABLE" if policy is None else "USER_DAILY_LOSS_LIMIT_REACHED" if latched
+              else "ACCOUNT_WIDE_POSITION_OR_ORDER_ACTIVE" if active or entry_orders else None)
     if not active and orders and reason is None:
         reason = "ACCOUNT_WIDE_ORPHAN_ORDER_ACTIVE"
     if hedge and reason is None:
@@ -252,11 +294,13 @@ def account_risk(db, account, client, positions, orders, bots, now):
     return {"equity": equity, "wallet": wallet, "free_capital": free, "margin_used": margin,
             "opening_equity": basis, "realized_pnl": realized, "unrealized_pnl": unrealized,
             "fees": fees, "funding": funding,
-            "daily_loss_usage": loss, "remaining_daily_risk": max(0., limit-loss),
-            "daily_hard_loss_fraction": .025, "loss_latched": latched,
+            "account_realized_pnl": account_realized, "certification_pnl": cert_pnl,
+            "daily_loss_usage": loss, "remaining_daily_risk": max(0., limit-loss) if limit is not None else 0.,
+            "daily_loss_limit_fraction": policy["pct"] if policy else None, "daily_loss_policy": policy,
+            "loss_latched": latched,
             "open_positions": len(active), "entry_orders": len(entry_orders),
             "bot_instance_ids": [b["id"] for b in bots], "reason": reason,
-            "adaptive_daily_risk": adaptive.as_policy_context(), "risk_date": day,
+            "adaptive_daily_risk": adaptive.as_policy_context() if adaptive else None, "risk_date": day,
             "consecutive_losses": streak.consecutive_losses,
             "consec_loss_day_paused": streak.consec_loss_day_paused,
             "consec_loss_cooldown_until_ms": streak.consec_loss_cooldown_until_ms,
@@ -374,7 +418,7 @@ def boundary_for(db, account, bot, client):
         symbols = [client._normalize_symbol(s) for s in symbols]
     levels = {"conservative": RiskLevel.LOW, "aggressive": RiskLevel.HIGH}
     limits = UserConfigurableLimits(risk_level=levels.get(policy.risk_level, RiskLevel.MEDIUM),
-        max_daily_loss_pct=min(.025, policy.max_daily_loss/policy.capital_budget), max_open_positions=1,
+        max_daily_loss_pct=policy.max_daily_loss_pct, max_open_positions=1,
         max_trades_per_day=policy.max_daily_trades, allowed_symbols=symbols,
         requested_leverage={s: int(policy.max_leverage) for s in symbols}, paper_mode=False,
         use_fixed_size=policy.position_allocation_type == "fixed_amount",
@@ -589,6 +633,15 @@ def _process_account(db, account, client, snapshot, *, now_ms=None, boundary_fac
     return result
 
 
+def residual_cost_rates(db, plan):
+    """The frozen decision's modeled cost rates, which judge live entry
+    economics for its plan. None when the decision is unavailable."""
+    with db.connect() as c:
+        row = c.execute('SELECT modeled_costs_json FROM cati_residual_decisions WHERE decision_id=?',
+                        (plan.source_candidate_id,)).fetchone()
+    return json.loads(row[0])['rates'] if row else None
+
+
 def prepare_submission(db, account, bot, client, boundary, plan, instrument, risk, *, now_ms=None, atr=None):
     """Common production preparation for natural entries and labelled DEMO certification."""
     from app.trading_intelligence.execution.boundary import AccountState
@@ -617,17 +670,29 @@ def prepare_submission(db, account, bot, client, boundary, plan, instrument, ris
     # Read the executable price last, after slower metadata/history work.
     price = float(client.last_price(instrument.venue_symbol))
     observed = int(time.time()*1000) if now_ms is None else now_ms
-    if atr is None and plan.mode != 'DEMO_CERTIFICATION':
+    rates = book = None
+    if plan.mode != 'DEMO_CERTIFICATION':
         with db.connect() as c:
-            row = c.execute('SELECT snapshot_json FROM cati_residual_decisions WHERE decision_id=?',(plan.source_candidate_id,)).fetchone()
-        atr = json.loads(row[0])['candidate']['atr14'] if row else None
+            row = c.execute('SELECT snapshot_json,modeled_costs_json FROM cati_residual_decisions WHERE decision_id=?',
+                            (plan.source_candidate_id,)).fetchone()
+        if row:
+            atr = json.loads(row[0])['candidate']['atr14'] if atr is None else atr
+        rates = residual_cost_rates(db, plan)
+        # Executable depth for the pre-submit slippage/economics check. An
+        # unreadable book is passed as unavailable: hard risk fails closed.
+        try:
+            book = client.depth(instrument.venue_symbol, limit=100)
+        except Exception:
+            book = None
+        if not (isinstance(book, dict) and isinstance(book.get('bids'), list) and isinstance(book.get('asks'), list)):
+            book = {'unavailable': True}
     return dict(market_reference=MarketReference(price,observed),
         broker_health=BrokerHealthContext(account['id'],plan.venue,plan.environment,'HEALTHY',now,'BROKER_SYNC'),
         venue_capabilities=caps, account=AccountState(risk['equity'],risk['margin_used'],risk['free_capital'],risk['open_positions']),
         klines=klines, atr=atr, now_ms=observed, capital=CapitalReadiness(True,'LOGICAL'),
         user_kyc_approved=kyc.allowed, live_readiness_approved=readiness.allowed,
         kyc_status=kyc.state,live_readiness_status=readiness.state,execution_mode='broker',market_type='CRYPTO',
-        controls_evidence=controls, **controls)
+        entry_cost_rates=rates, order_book=book, controls_evidence=controls, **controls)
 
 
 def reconcile_executions(db, boundary, client, now):

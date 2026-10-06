@@ -151,25 +151,28 @@ def test_stale_catalog_refresh_precedes_certification_plan(broker):
     assert refreshed==[True] and state['create_count']==1
 
 
-def test_small_account_certification_stop_stays_inside_unchanged_hard_risk(broker):
-    # Live account geometry: ~426 USDT equity, fixed 120 USDT margin. One ATR
-    # (1.0 at price 100) would breach the 1%-of-equity loss cap, so the stop
-    # must come from the window hard risk admits, never from a relaxed limit.
+def test_small_account_keeps_fixed_margin_and_resolves_leverage(broker):
+    # Live account geometry: ~426 USDT equity, fixed 120 USDT margin. The old
+    # 1%-of-equity cap was a second sizing authority over the user's fixed
+    # margin; now the margin is kept and leverage is resolved under the maximum.
     h,state=broker
     h.client.account.return_value=dict(totalWalletBalance=426.38,totalMarginBalance=426.38,availableBalance=426.38,
                                        totalInitialMargin=0,totalUnrealizedProfit=0)
     orch=h.boundary_for().orchestrator
-    lev=float(orch.validated_config.requested_leverage['ADAUSDT'])
-    cap=426.38*.01/(120*lev)*100
-    assert cap<1.
+    user_max=float(orch.validated_config.requested_leverage['ADAUSDT'])
     with pytest.raises(ValueError,match='CERTIFICATION_RISK_WINDOW_UNAVAILABLE'):
-        cert.risk_bounded_distance(orch,'ADAUSDT',100.,1.,426.38*.004)
+        cert.risk_bounded_distance(orch,'ADAUSDT',100.,1.,floor_multiplier=.9)
     report=cert.run(h.db,h.account['id'],'cert-small-account',action='hold')
     assert report['status']=='PROTECTED',report
     from app.trading_intelligence.trade_plan.evidence_store import TradePlanEvidenceStore
-    distance=TradePlanEvidenceStore(h.db).load_plan(h.account['id'],report['trade_plan_id']).initial_risk_distance
-    assert .5<=distance<=cap and distance==pytest.approx((.5+cap)/2)
+    plan=TradePlanEvidenceStore(h.db).load_plan(h.account['id'],report['trade_plan_id'])
+    assert plan.initial_risk_distance==pytest.approx(.75)   # midpoint of [0.5 ATR, 1 ATR]; never moved
     assert state['create_count']==1 and len(state['legs'])==2
+    risk=[r['payload'] for r in h.boundary_for().risk_store.for_plan(h.account['id'],plan.trade_plan_id)
+          if r['payload']['status']=='APPROVED'][-1]
+    # Hard risk sized the user's margin exactly: 120 x resolved leverage <= the user's maximum.
+    assert 1 <= risk['resolved_leverage'] <= user_max
+    assert risk['resolved_notional']/risk['resolved_leverage']==pytest.approx(120.)
 
 
 def test_rounded_broker_avg_price_still_verifies_protection_without_new_legs(broker):

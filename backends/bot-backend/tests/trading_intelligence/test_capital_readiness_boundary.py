@@ -92,7 +92,9 @@ def test_ready_capital_never_bypasses_the_hard_daily_cap(h):
 
 
 def test_internal_transfer_does_not_change_the_daily_risk_budget():
-    eng = AdaptiveDailyRiskBudgetEngine()
+    from app.risk.adaptive_daily_budget import AdaptiveDailyRiskPolicy
+    # A resolved 2.5% daily policy (the engine no longer supplies a default).
+    eng = AdaptiveDailyRiskBudgetEngine(AdaptiveDailyRiskPolicy(max_daily_loss_pct=0.025))
     base = dict(bot_instance_id="b", risk_date=date(2026, 9, 26), day_open_equity=5000.0, realized_pnl_today=-40.0)
     before = eng.evaluate(AdaptiveDailyRiskInputs(current_equity=4960.0, **base))
     # 2,000 USDT moved INTO the trading wallet intraday: equity rises, the frozen day-open cap does not

@@ -12,6 +12,8 @@ interface EditBotForm {
     allocation_value: number;
     capital_allocation: number;
     capital_allocation_type: string;
+    // Daily loss limit as % of account equity; empty = inherit the risk profile default.
+    daily_loss_limit_pct: string;
 }
 
 export default function EditBot() {
@@ -25,7 +27,14 @@ export default function EditBot() {
         enabled: !!id
     });
 
+    const { data: dailyLossPolicy } = useQuery({
+        queryKey: ['bot-daily-loss-policy', id],
+        queryFn: () => api.getBotDailyLossPolicy(id!),
+        enabled: !!id
+    });
+
     const { register, handleSubmit, setValue, watch, formState: { errors } } = useForm<EditBotForm>();
+    const dailyLossInput = watch('daily_loss_limit_pct');
 
     // Watch allocation type to update helper text or validation label
     const allocationType = watch('allocation_type');
@@ -43,20 +52,23 @@ export default function EditBot() {
             setValue('allocation_value', bot.allocation_value || 100);
             setValue('capital_allocation', bot.capital_allocation || 1000);
             setValue('capital_allocation_type', bot.capital_allocation_type || 'fixed_amount');
+            setValue('daily_loss_limit_pct', bot.daily_loss_limit_pct != null ? String(+(bot.daily_loss_limit_pct * 100).toFixed(4)) : '');
         }
     }, [bot, setValue]);
 
     const mutation = useMutation({
+        // Only persisted, editable bot configuration is sent.
         mutationFn: (data: EditBotForm) => api.updateBotInstance(id!, {
-            name: data.name,
             allocation_type: data.allocation_type,
             allocation_value: data.allocation_value,
             capital_allocation: data.capital_allocation,
             capital_allocation_type: data.capital_allocation_type,
-            risk_profile_id: undefined // We are not updating risk profile explicitly via ID for now
+            // Backend stores a fraction; null removes the custom override.
+            daily_loss_limit_pct: data.daily_loss_limit_pct?.trim() ? parseFloat(data.daily_loss_limit_pct) / 100 : null
         }),
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ['bot', id] });
+            queryClient.invalidateQueries({ queryKey: ['bot-daily-loss-policy', id] });
             navigate(`/dashboard/bots/${id}`);
         }
     });
@@ -202,6 +214,44 @@ export default function EditBot() {
                         </div>
                     </div>
                 </div>
+
+                {/* Daily Loss Limit */}
+                <div className="bg-[#111122] border border-white/5 rounded-xl p-6 space-y-3">
+                    <h2 className="text-lg font-semibold text-white">Daily Loss Limit</h2>
+                    <div className="relative">
+                        <input
+                            type="number"
+                            step="0.1"
+                            placeholder="Use risk profile default"
+                            {...register('daily_loss_limit_pct', {
+                                validate: (value) => !value?.trim() || parseFloat(value) > 0 || "Must be a positive percentage, or empty for the profile default"
+                            })}
+                            className="w-full bg-black/20 border border-white/10 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-purple-500/50"
+                        />
+                        <span className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-500 text-sm">%</span>
+                    </div>
+                    {errors.daily_loss_limit_pct && <span className="text-red-500 text-xs">{errors.daily_loss_limit_pct.message}</span>}
+                    <p className="text-xs text-gray-500">
+                        {dailyLossInput?.trim()
+                            ? `Custom limit: ${dailyLossInput}% of day-opening account equity.`
+                            : dailyLossPolicy
+                                ? `Inherited risk profile default: ${+(dailyLossPolicy.risk_profile_default_pct * 100).toFixed(4)}% of day-opening account equity.`
+                                : 'Inherited from the risk profile.'}
+                    </p>
+                    {dailyLossInput?.trim() && (
+                        <button
+                            type="button"
+                            onClick={() => setValue('daily_loss_limit_pct', '')}
+                            className="text-xs text-purple-400 hover:text-purple-300"
+                        >
+                            Remove custom limit (use risk profile default)
+                        </button>
+                    )}
+                </div>
+
+                {mutation.isError && (
+                    <div className="text-red-500 text-sm">{(mutation.error as Error).message}</div>
+                )}
 
                 <div className="flex justify-end gap-3 pt-4">
                     <button

@@ -87,7 +87,7 @@ def sync_account(db, account, *, factory=build_client_from_auth, execute=False):
               "orders": orders, "discovery": discovery, "reconciliation": reconciliation,
               "reconciliation_status": "SYNCED" if len(bots) == 1 else "ACCOUNT_EXECUTION_OWNER_AMBIGUOUS" if bots else "ACCOUNT_OWNER_MAPPING_REQUIRED",
               "credential": "READY",
-              "risk": {"daily_hard_loss_fraction": min(.025, settings.ADAPTIVE_DAILY_RISK_MAX_DAILY_LOSS_PCT),
+              "risk": {"daily_loss_limit_source": "PER_BOT_EFFECTIVE_POLICY",
                        "entry_permission": "BLOCKED", "reason": gate["reason"]
                        if not gate["enabled"] else "ACCOUNT_RISK_PENDING"},
               "observed_at": now}
@@ -196,7 +196,7 @@ def status(db, *, user_id=None):
             "live_order_submission_enabled": settings.LIVE_ORDER_SUBMISSION_ENABLED,
             "cati_mode": "LIVE", "trading": "ACTIVE",
             "execution_permission": "ACCOUNT_SCOPED",
-            "daily_hard_loss_fraction": min(.025, settings.ADAPTIVE_DAILY_RISK_MAX_DAILY_LOSS_PCT)}
+            "daily_loss_limit_source": "PER_BOT_EFFECTIVE_POLICY"}
 
 
 def health_summary(db):

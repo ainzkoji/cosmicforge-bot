@@ -84,12 +84,15 @@ def test_secondary_registry_and_scalar_orchestrator_cannot_generate_intents():
     assert not result["details"]["execution_attempted"]
 
 
-def test_hard_daily_cap_cannot_be_relaxed_by_custom_system_limits():
+def test_user_daily_limit_is_validated_never_clamped_to_a_global_ceiling():
+    import pytest
     from app.risk.system_limits import SystemLimits, UserConfigurableLimits, ConfigValidator
-    requested = UserConfigurableLimits(max_daily_loss_pct=0.10)
-    for ceiling in (0.025, 0.10, 0.01):
-        validated, _ = ConfigValidator(SystemLimits(max_daily_loss_pct=ceiling)).validate_and_clamp(requested)
-        assert validated.max_daily_loss_pct == min(0.025, ceiling)
+    for requested in (0.01, 0.025, 0.10):
+        validated, _ = ConfigValidator(SystemLimits()).validate_and_clamp(UserConfigurableLimits(max_daily_loss_pct=requested))
+        assert validated.max_daily_loss_pct == requested
+    assert ConfigValidator(SystemLimits()).validate_and_clamp(UserConfigurableLimits())[0].max_daily_loss_pct is None
+    with pytest.raises(ValueError, match="INVALID_DAILY_LOSS_LIMIT"):   # at the emergency drawdown halt
+        ConfigValidator(SystemLimits()).validate_and_clamp(UserConfigurableLimits(max_daily_loss_pct=0.25))
 
 
 def test_observation_reason_is_canonical_and_never_approved_or_filled():

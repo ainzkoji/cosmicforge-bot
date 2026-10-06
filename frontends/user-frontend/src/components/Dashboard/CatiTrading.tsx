@@ -19,7 +19,7 @@ type State = {
   status: string; strategy: string; configuration: Record<string, string | boolean>;
   accounts: Account[]; execution_permission: string; broker_execution_scope: string;
   demo_order_submission_enabled: boolean; live_order_submission_enabled: boolean;
-  daily_hard_loss_fraction: number;
+  daily_loss_limit_source: string;
 };
 const display = (value: unknown) => value == null ? '—' : typeof value === 'object' ? JSON.stringify(value) : String(value);
 
@@ -38,7 +38,7 @@ export function CatiTrading() {
     {query.isError && <p role="alert" className="mt-3 text-red-300">Production state unavailable: {query.error.message}</p>}
     {state && <>
       <p className="mt-2 text-sm text-slate-300">{state.status} · {state.strategy} · Execution scope {state.broker_execution_scope}</p>
-      <p className="mt-2">Permanent daily hard-loss ceiling: {(state.daily_hard_loss_fraction * 100).toFixed(1)}%</p>
+      <p className="mt-2">Daily loss limit: per-bot policy (user setting or risk profile default) · {state.daily_loss_limit_source}</p>
       {state.accounts.length === 0 && <p className="mt-4 text-amber-300">Connect a DEMO or LIVE broker account to receive balances, positions, and orders.</p>}
       {state.accounts.map(account => <div key={account.account_id} className="mt-5 border-t border-slate-700 pt-4">
         <h3 className="font-semibold">{account.broker} · {account.environment} account {account.account_id} · {account.status}</h3>
@@ -50,7 +50,7 @@ export function CatiTrading() {
           {account.execution.block_reason_before_order_gate && <p>Account/risk result: {account.execution.block_reason_before_order_gate}</p>}
           <p>Kill switch {account.execution.kill_switch == null ? 'Unavailable' : account.execution.kill_switch ? 'Active' : 'Inactive'}</p>
           <p>Latest decision {display(account.execution.latest_cati_decision?.decision_id)} · Eligibility {account.execution.eligibility?.eligible ? 'Accepted' : account.execution.eligibility?.reason || 'Unavailable'}</p>
-          {account.execution.risk && <dl>{['equity', 'realized_pnl', 'unrealized_pnl', 'daily_loss_usage', 'remaining_daily_risk'].map(key =>
+          {account.execution.risk && <dl>{['equity', 'realized_pnl', 'unrealized_pnl', 'daily_loss_usage', 'daily_loss_limit_fraction', 'remaining_daily_risk'].map(key =>
             <div key={key} className="flex gap-3"><dt>{key.split('_').join(' ')}</dt><dd>{display(account.execution?.risk?.[key])}</dd></div>)}</dl>}
           <details className="mt-2"><summary>Broker order and fill history</summary>
             <pre className="max-h-64 overflow-auto">{display(account.execution.execution_history || [])}</pre>

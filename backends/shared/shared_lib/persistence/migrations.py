@@ -2738,6 +2738,12 @@ def migrate(db_path: str | DB = None):
     from shared_lib.persistence.universe_schema import ensure_universe_schema
     ensure_universe_schema(db)
 
+    # 48c2) Per-bot user daily loss limit (fraction of day-opening account
+    # equity). NULL keeps the bot on its risk profile's default; no row is
+    # rewritten, so existing deployments resolve exactly as before.
+    with db.connect() as _conn:
+        _add_column_if_missing(_conn, "bot_instances", "daily_loss_limit_pct", "REAL")
+
     # 48d) CATI persistent schema: account-scoped SHADOW portfolio reservations.
     # Additive and idempotent; CATI runtime code no longer creates it lazily.
     from shared_lib.persistence.cati_schema import ensure_cati_schema

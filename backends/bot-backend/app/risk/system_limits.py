@@ -55,8 +55,13 @@ class SystemLimits:
     max_open_positions: int = 20  # Max 20 simultaneous positions (increased from 6)
     min_open_positions: int = 0
     
-    # Daily / Weekly limits
-    max_daily_loss_pct: float = 0.025   # Permanent 2.5% daily hard-loss ceiling
+    # Daily loss is NOT a system constant: each bot resolves its own limit
+    # (user setting, else its risk profile's default) in EffectiveBotPolicy.
+    # These bound only what a user may enter; nothing is silently clamped.
+    min_daily_loss_limit_pct: float = 0.001  # 0.1% of day-opening account equity
+    # A daily limit at or above the emergency drawdown halt is meaningless.
+
+    # Weekly / emergency limits (account protection, separate from daily policy)
     max_weekly_drawdown_pct: float = 0.15 # 15% allocated capital hard stop
     max_consecutive_losses: int = 8     # Stop after 8 consecutive losses
     max_trades_per_day: int = 200        # Emergency runaway economic-entry guard per bot
@@ -86,8 +91,10 @@ class UserConfigurableLimits:
     use_fixed_size: bool = False  # False = percentage-based, True = fixed USDT
     fixed_size_usdt: Optional[float] = None  # If using fixed size
     
-    # Daily limits (will be clamped to system max)
-    max_daily_loss_pct: float = 0.025  # User may request a tighter daily limit
+    # Daily loss limit (fraction of day-opening account equity) resolved from
+    # the bot's EffectiveBotPolicy. None: this component enforces no daily cap
+    # of its own; the account-wide runtime enforces the resolved policy.
+    max_daily_loss_pct: Optional[float] = None
     max_trades_per_day: Optional[int] = None  # None = no normal Auto Pilot daily trade-count cap
     
     # Position limits (will be clamped)
@@ -114,6 +121,24 @@ class UserConfigurableLimits:
             self.requested_leverage = {}
         if self.allowed_symbols is None:
             self.allowed_symbols = []
+
+
+def validate_daily_loss_limit_pct(value, limits: "SystemLimits | None" = None) -> float:
+    """Validate a user/profile daily loss limit (fraction of day-opening equity).
+
+    Raises ValueError for a value outside [min_daily_loss_limit_pct,
+    emergency_drawdown_halt_pct): invalid input is refused, never rewritten.
+    """
+    limits = limits or SystemLimits()
+    try:
+        pct = float(value)
+    except (TypeError, ValueError):
+        raise ValueError("INVALID_DAILY_LOSS_LIMIT: daily_loss_limit_pct must be a number")
+    if not limits.min_daily_loss_limit_pct <= pct < limits.emergency_drawdown_halt_pct:
+        raise ValueError(
+            f"INVALID_DAILY_LOSS_LIMIT: daily_loss_limit_pct={pct} must be >= {limits.min_daily_loss_limit_pct} "
+            f"and below the emergency drawdown halt {limits.emergency_drawdown_halt_pct}")
+    return pct
 
 
 class ConfigValidator:
@@ -150,17 +175,11 @@ class ConfigValidator:
             strict_circuit_breakers=user_config.strict_circuit_breakers
         )
         
-        # 1. Permanent ceiling also applies to injected/custom SystemLimits.
-        daily_ceiling = min(0.025, self.limits.max_daily_loss_pct)
-        if user_config.max_daily_loss_pct > daily_ceiling:
-            warnings.append(
-                f"Daily loss limit clamped from {user_config.max_daily_loss_pct:.1%} "
-                f"to system maximum {daily_ceiling:.1%}"
-            )
-            clamped.max_daily_loss_pct = daily_ceiling
-        else:
-            clamped.max_daily_loss_pct = user_config.max_daily_loss_pct
-        
+        # 1. Daily loss: the user's resolved policy is authoritative. It is
+        # validated (rejected when invalid), never clamped to a global ceiling.
+        if user_config.max_daily_loss_pct is not None:
+            clamped.max_daily_loss_pct = validate_daily_loss_limit_pct(user_config.max_daily_loss_pct, self.limits)
+
         # 2. Clamp optional normal trades-per-day cap. None means Auto Pilot is
         # governed by risk/slots/execution quality, not a fixed trade count.
         if user_config.max_trades_per_day is None:

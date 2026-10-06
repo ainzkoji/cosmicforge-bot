@@ -31,7 +31,7 @@ def production(**changes):
     ("BYBIT_BASE_URL", "https://api-testnet.bybit.com"), ("BINGX_ENV", "demo"),
     ("ML_ENABLED", True), ("LEGACY_V2_ENABLED", True), ("FALLBACK_ENGINE_ENABLED", True),
     ("PAPER_TRADING_MODE", True), ("TRADINGVIEW_TESTNET_ONLY", True),
-    ("STRATEGY_NAME", "master_ensemble"), ("ADAPTIVE_DAILY_RISK_MAX_DAILY_LOSS_PCT", .026),
+    ("STRATEGY_NAME", "master_ensemble"),
     ("ADAPTIVE_DAILY_RISK_ENABLED", False), ("RISK_ENGINE_ENABLED", False),
 ])
 def test_contradictory_production_startup_fails(key, value):
@@ -196,4 +196,6 @@ def test_read_sync_persists_broker_snapshot_without_orders(monkeypatch, db):
     with db.connect() as conn:
         document = json.loads(conn.execute("SELECT document FROM cati_production_state").fetchone()[0])
     assert document["environment"] == "LIVE" and document["balance"]["equity"] == 2000
-    assert document["risk"]["daily_hard_loss_fraction"] == .025
+    # No global daily percentage: each bot's resolved policy is the authority.
+    assert document["risk"]["daily_loss_limit_source"] == "PER_BOT_EFFECTIVE_POLICY"
+    assert "daily_hard_loss_fraction" not in document["risk"]

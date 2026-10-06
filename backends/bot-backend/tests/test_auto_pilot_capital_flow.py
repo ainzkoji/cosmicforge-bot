@@ -271,9 +271,11 @@ def test_limits_resolve_to_a_single_effective_value():
 
 
 def test_daily_loss_limit_is_derived_from_the_configured_capital():
-    limits = SystemLimits()
+    # The resolved daily policy (risk-profile default here), applied to the
+    # configured capital -- no product-wide percentage clamps it.
     policy = policy_for(make_instance())
-    assert 0 < policy.max_daily_loss <= limits.max_daily_loss_pct * TOTAL_CAPITAL
+    assert policy.daily_loss_source == "RISK_PROFILE_DEFAULT"
+    assert policy.max_daily_loss == pytest.approx(policy.max_daily_loss_pct * TOTAL_CAPITAL) and policy.max_daily_loss > 0
 
 
 def test_a_larger_capital_budget_scales_the_daily_loss_limit():

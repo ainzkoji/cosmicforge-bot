@@ -324,21 +324,36 @@ class TestATRFixedSizingProtection:
             "STOP_BELOW_ATR_NOISE_FLOOR", "MISSING_ATR_FOR_FIXED_SIZING"
         )
 
-    def test_estimated_loss_above_risk_cap_rejected(self):
+    def test_fixed_margin_loss_above_per_trade_pct_is_reported_not_resized(self):
+        """The per-trade percentage is a risk-based sizing parameter. For a
+        user's fixed margin it is reported, never a second size authority."""
         from app.policy.policy_engine import PolicyEngine, ReasonCode
         engine = PolicyEngine()
         # fixed_amount=50, leverage=3 → qty=50*3/50000=0.003
         # stop_distance=5000 → loss=0.003*5000=15 > 1% of 100 equity=1.0
         ctx = _ctx(
             trade_amount_mode="fixed", trade_amount_value=50.0, leverage=3.0,
-            entry_price=50000.0, stop_loss_price=45000.0,  # huge stop
+            entry_price=50000.0, stop_loss_price=45000.0,
             atr=500.0, min_stop_atr_multiplier=0.5,
-            equity=100.0,  # tiny equity
-            max_risk_per_trade_pct=1.0,  # 1% of 100 = $1 max loss
+            equity=100.0,
+            max_risk_per_trade_pct=1.0,
         )
         d = engine.evaluate(ctx)
-        assert not d.allowed
-        assert d.reason_code == ReasonCode.ATR_RISK_CAP_EXCEEDED
+        assert d.allowed and d.reason_code == ReasonCode.OK
+        assert d.details["final_margin_usdt"] == 50.0           # the user's margin, unresized
+        diagnostic = d.details["fixed_margin_loss_diagnostic"]
+        assert diagnostic["estimated_loss_at_stop"] == 15.0
+        assert diagnostic["status"] == "REPORTED_FIXED_MARGIN_AUTHORITATIVE"
+
+    def test_risk_based_mode_still_rejects_loss_above_per_trade_cap(self):
+        """Risk-based sizing keeps the per-trade cap as its sizing authority."""
+        from app.policy.policy_engine import PolicyEngine, PolicyContext
+        ctx = _ctx(trade_amount_mode="fixed", trade_amount_value=50.0, leverage=3.0,
+                   entry_price=50000.0, stop_loss_price=45000.0, atr=500.0, equity=100.0)
+        assert PolicyEngine().evaluate(ctx).details.get("sizing_method") == "fixed_amount_strict"
+        risk = _ctx(trade_amount_mode="atr_risk", trade_amount_value=0.0, leverage=3.0,
+                    entry_price=50000.0, stop_loss_price=45000.0, atr=500.0, equity=100.0)
+        assert PolicyEngine().evaluate(risk).details.get("sizing_method") != "fixed_amount_strict"
 
     def test_atr_check_applies_to_atr_risk_mode(self):
         """F-5 fix: ATR noise-floor check must also apply to ATR_RISK mode (not just fixed).

@@ -47,6 +47,9 @@ class DeployAutoPilotRequest(BaseModel):
     symbols: Optional[List[str]] = Field(default=None)
     market_type: Optional[Literal["crypto", "forex"]] = Field(default="crypto")
     forex_config: Optional[Dict[str, Any]] = Field(default=None)
+    # Daily loss limit as a fraction of day-opening account equity (0.03 = 3%).
+    # Omitted: the selected risk profile's default applies.
+    daily_loss_limit_pct: Optional[float] = Field(default=None)
 
     # Legacy Fields (Stale Frontend Support)
     risk_level: Optional[Literal["conservative", "balanced", "aggressive"]] = None
@@ -79,6 +82,13 @@ class DeployAutoPilotRequest(BaseModel):
                 }
         
         return values
+
+    @validator("daily_loss_limit_pct")
+    def validate_daily_loss_limit(cls, v):
+        if v is None:
+            return v
+        from app.risk.system_limits import validate_daily_loss_limit_pct
+        return validate_daily_loss_limit_pct(v)
 
     @validator("forex_config")
     def validate_forex_config(cls, v, values):
@@ -199,6 +209,7 @@ def deploy_auto_pilot(
             forex_config=request.forex_config,
             symbol_universe_mode=request.symbol_universe_mode,
             symbols=request.symbols,
+            daily_loss_limit_pct=request.daily_loss_limit_pct,
         )
         
         # Generate Risk Warning based on selection

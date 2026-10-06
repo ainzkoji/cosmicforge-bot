@@ -154,8 +154,8 @@ def test_reservation_lost_rejected(h):
 
 
 # ============================== RISK ==============================
-def test_hard_daily_cap_rejection_at_2_5_percent(h):
-    ctx = _hard_cap_context(125.0)  # 2.5% of 5000
+def test_hard_daily_cap_rejection_at_configured_daily_policy(h):
+    ctx = _hard_cap_context(125.0)  # a resolved 2.5% policy on 5000 equity
     assert ctx["hard_daily_cap_usdt"] == pytest.approx(125.0) and ctx["daily_risk_state"] == "HARD_STOP"
     res = h.run(adaptive_daily_risk=ctx)
     assert res.status == B.RISK_REJECTED and res.risk_decision.rejection_family == F.DAILY_LOSS.value

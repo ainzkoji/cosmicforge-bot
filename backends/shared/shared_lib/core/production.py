@@ -69,9 +69,6 @@ class ProductionSettings(BaseSettings):
                 errors.append(f"{key} must be false in production")
         if getattr(self, "ADAPTIVE_DAILY_RISK_ENABLED", True) is not True:
             errors.append("ADAPTIVE_DAILY_RISK_ENABLED must remain true")
-        cap = getattr(self, "ADAPTIVE_DAILY_RISK_MAX_DAILY_LOSS_PCT", .025)
-        if not 0 < cap <= .025:
-            errors.append("daily hard loss cap cannot exceed 2.5%")
         if errors:
             raise ValueError("PRODUCTION_PROFILE_CONFLICT: " + "; ".join(errors))
         return self
@@ -91,7 +88,7 @@ class ProductionSettings(BaseSettings):
                 "LEGACY V2/FALLBACK": "DISABLED" if not self.LEGACY_V2_ENABLED and not self.FALLBACK_ENGINE_ENABLED else "ENABLED",
                 "LIVE_ORDER_SUBMISSION_ENABLED": self.LIVE_ORDER_SUBMISSION_ENABLED,
                 "DEMO_ORDER_SUBMISSION_ENABLED": self.DEMO_ORDER_SUBMISSION_ENABLED,
-                "STRATEGY": FROZEN_STRATEGY, "DAILY_HARD_LOSS_CAP": "2.5% maximum"}
+                "STRATEGY": FROZEN_STRATEGY, "DAILY_LOSS_LIMIT": "PER BOT EFFECTIVE POLICY"}
 
 
 def production_enabled() -> bool:

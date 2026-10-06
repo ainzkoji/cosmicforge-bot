@@ -54,6 +54,10 @@ class ReplayPolicy:
     daily_r_budget: float | None = None
     hard_daily_equity_cap_pct: float | None = None
     fixed_daily_loss_usdt: float | None = None
+    # The calibrated replay candidate's own USDT bounds. Explicit here: the
+    # production engine no longer carries them as hidden defaults.
+    minimum_budget_usdt: float | None = 6.0
+    maximum_budget_usdt: float | None = 24.0
 
 
 @dataclass
@@ -302,6 +306,8 @@ def replay_policy(
             AdaptiveDailyRiskPolicy(
                 max_daily_loss_pct=float(policy.hard_daily_equity_cap_pct or DEFAULT_CANDIDATE_CAP),
                 daily_r_budget=float(policy.daily_r_budget or DEFAULT_CANDIDATE_R),
+                minimum_budget_usdt=policy.minimum_budget_usdt,
+                maximum_budget_usdt=policy.maximum_budget_usdt,
             )
         )
     else:

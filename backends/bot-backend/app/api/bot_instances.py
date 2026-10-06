@@ -103,7 +103,10 @@ def get_engine_status(
         "library_configuration": library.to_dict(),
         "capabilities": cati_status(service.db),
         "auto_capital_routing_independent": True,
-        "hard_daily_loss_cap_pct": 2.5,
+        # The bot's resolved daily loss policy, not a product-wide constant.
+        "daily_loss_limit_pct": (user_daily if (user_daily := getattr(instance, "daily_loss_limit_pct", None)) is not None
+                                 else BotInstanceService.get_risk_profile_preset(getattr(instance, "risk_level", "balanced"))["daily_loss_limit_pct"]),
+        "daily_loss_source": "USER_CONFIGURED" if user_daily is not None else "RISK_PROFILE_DEFAULT",
     })
     return payload
 
@@ -155,6 +158,13 @@ def get_effective_policy(
         runner_policy_hash = None
 
     payload["runner_policy_hash"] = runner_policy_hash
+    # Daily loss: the resolved value, where it came from, and the risk profile
+    # default it falls back to when the user's custom override is removed.
+    payload["daily_loss_policy"] = {
+        "effective_pct": policy.max_daily_loss_pct, "source": policy.daily_loss_source,
+        "user_override_pct": instance.daily_loss_limit_pct,
+        "risk_profile_default_pct": service.get_risk_profile_preset(instance.risk_level)["daily_loss_limit_pct"],
+    }
     payload["policy_stale"] = bool(
         runner_policy_hash is not None and runner_policy_hash != policy.policy_hash
     )
@@ -299,6 +309,47 @@ def get_decision_diagnostics(
         "closes": fill_counts.get("CLOSE", 0),
         "executor_errors": errors,
     }
+
+
+#: Configuration a user may edit on an existing bot. Lifecycle (status) and
+#: execution mode have their own gated endpoints.
+_EDITABLE_FIELDS = {"allocation_type", "allocation_value", "capital_allocation", "capital_allocation_type",
+                    "symbols", "timeframes", "universe_mode", "daily_loss_limit_pct"}
+
+
+@router.patch("/bot-instances/{instance_id}", response_model=BotInstance)
+def update_bot_instance(
+    instance_id: str,
+    payload: dict,
+    user: dict = Depends(get_current_active_user),
+    service: BotInstanceService = Depends(get_bot_instance_service),
+    _perm: str = Depends(require_permission("bot:control"))
+):
+    """Edit a bot's configuration. ``daily_loss_limit_pct`` is a fraction of
+    day-opening account equity; null returns the bot to its risk profile's
+    default. The edited bot must still resolve to a valid EffectiveBotPolicy."""
+    instance = service.get_bot_instance(instance_id)
+    if not instance:
+        raise HTTPException(status_code=404, detail="Bot instance not found")
+    if instance.user_id != user["id"]:
+        raise HTTPException(status_code=403, detail="Not authorized")
+    unknown = sorted(set(payload) - _EDITABLE_FIELDS)
+    if unknown:
+        raise HTTPException(status_code=422, detail=f"Fields not editable here: {unknown}")
+    from dataclasses import replace
+    from app.runner.effective_policy import EffectivePolicyError, resolve_effective_bot_policy
+    try:
+        if payload.get("daily_loss_limit_pct") is not None:
+            from app.risk.system_limits import validate_daily_loss_limit_pct
+            validate_daily_loss_limit_pct(payload["daily_loss_limit_pct"])
+        # Validate the complete resulting policy before persisting anything.
+        resolve_effective_bot_policy(instance=replace(instance, **payload), broker_environment="unknown",
+                                     risk_params=service.get_risk_profile_preset(instance.risk_level))
+        return service.update_bot_instance(instance_id, payload)
+    except EffectivePolicyError as exc:
+        raise HTTPException(status_code=422, detail={"reason": exc.reason_code, "message": str(exc)})
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
 
 
 @router.post("/bot-instances/{instance_id}/start", response_model=BotInstance)

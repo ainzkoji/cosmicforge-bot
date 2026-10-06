@@ -655,13 +655,12 @@ class PaperRunner:
         self.budget_engine = get_risk_budget_engine(bot_id=bot_id)
         self.daily_budget_engine = AdaptiveDailyRiskBudgetEngine(
             AdaptiveDailyRiskPolicy(
-                max_daily_loss_pct=min(0.025, float(getattr(settings, "ADAPTIVE_DAILY_RISK_MAX_DAILY_LOSS_PCT", 0.025))),
+                # The bot's resolved daily loss policy; never a product-wide constant.
+                max_daily_loss_pct=getattr(self.effective_policy, "max_daily_loss_pct", None) or None,
                 daily_r_budget=float(getattr(settings, "ADAPTIVE_DAILY_RISK_R_BUDGET", 1.5)),
                 minimum_history_trades=int(getattr(settings, "ADAPTIVE_DAILY_RISK_MIN_HISTORY_TRADES", 30)),
                 risk_lookback_trades=int(getattr(settings, "ADAPTIVE_DAILY_RISK_LOOKBACK_TRADES", 100)),
                 risk_lookback_days=int(getattr(settings, "ADAPTIVE_DAILY_RISK_LOOKBACK_DAYS", 45)),
-                minimum_budget_usdt=float(getattr(settings, "ADAPTIVE_DAILY_RISK_MIN_BUDGET_USDT", 6.0)),
-                maximum_budget_usdt=float(getattr(settings, "ADAPTIVE_DAILY_RISK_MAX_BUDGET_USDT", 24.0)),
                 caution_consumption_pct=float(getattr(settings, "ADAPTIVE_DAILY_RISK_CAUTION_PCT", 0.50)),
                 defensive_consumption_pct=float(getattr(settings, "ADAPTIVE_DAILY_RISK_DEFENSIVE_PCT", 0.80)),
                 performance_factor_min=float(getattr(settings, "ADAPTIVE_DAILY_RISK_PERFORMANCE_FACTOR_MIN", 0.50)),
@@ -2359,6 +2358,10 @@ class PaperRunner:
         regime: str | None = None,
     ) -> dict:
         if not bool(getattr(settings, "ADAPTIVE_DAILY_RISK_ENABLED", True)):
+            return {}
+        if self.daily_budget_engine.policy.max_daily_loss_pct is None:
+            # No resolved bot policy (unmanaged legacy runner): the legacy
+            # daily-loss gate applies instead of an invented adaptive cap.
             return {}
         legacy_breached = (
             float(getattr(self, "daily_max_loss", 0.0) or 0.0) > 0

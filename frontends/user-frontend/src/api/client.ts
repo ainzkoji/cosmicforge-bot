@@ -586,6 +586,8 @@ export interface BotInstance {
     timeframes: string[];
     allocation_type: string;
     allocation_value: number;
+    /** User daily loss limit (fraction of equity); null = risk profile default. */
+    daily_loss_limit_pct?: number | null;
     mode: "paper" | "live";
     status: "active" | "paused" | "stopped" | "error";
     created_at: string;
@@ -627,6 +629,8 @@ export interface UpdateBotInstanceRequest {
     allocation_value?: number;
     capital_allocation?: number;
     capital_allocation_type?: string;
+    /** Fraction of equity; null removes the custom override (inherit profile default). */
+    daily_loss_limit_pct?: number | null;
     mode?: "paper" | "live";
     symbols?: string[];
     timeframes?: string[];
@@ -648,6 +652,17 @@ export interface DeployAutoPilotRequest {
     forex_config?: {
         allowlist: string[];
     };
+    /** Fraction of day-opening account equity (0.03 = 3%); null/omitted inherits the risk profile default. */
+    daily_loss_limit_pct?: number | null;
+}
+
+/** FastAPI errors carry `detail` as a string, an object or a validation list. */
+function errorDetail(detail: unknown, fallback: string): string {
+    if (!detail) return fallback;
+    if (typeof detail === 'string') return detail;
+    if (Array.isArray(detail)) return detail.map((d: any) => d?.msg ?? JSON.stringify(d)).join('; ');
+    const d = detail as Record<string, unknown>;
+    return String(d.message ?? d.reason ?? JSON.stringify(detail));
 }
 
 function normalizeAnalyticsTrade(raw: Record<string, any>): AnalyticsTrade {
@@ -1784,7 +1799,7 @@ export const api = {
 
         if (!response.ok) {
             const error = await response.json().catch(() => ({ detail: 'Failed to deploy Auto Pilot' }));
-            throw new Error(error.detail || 'Failed to deploy Auto Pilot');
+            throw new Error(errorDetail(error.detail, 'Failed to deploy Auto Pilot'));
         }
 
         return response.json();
@@ -1833,6 +1848,20 @@ export const api = {
         return response.json();
     },
 
+    getBotDailyLossPolicy: async (instanceId: string): Promise<{
+        effective_pct: number; source: "USER_CONFIGURED" | "RISK_PROFILE_DEFAULT";
+        user_override_pct: number | null; risk_profile_default_pct: number;
+    }> => {
+        const response = await fetch(`${API_BASE}/api/v1/bot-instances/${instanceId}/effective-policy`, {
+            headers: { 'Authorization': `Bearer ${localStorage.getItem('access_token')}` }
+        });
+        if (!response.ok) {
+            const error = await response.json().catch(() => ({ detail: 'Effective policy unavailable' }));
+            throw new Error(errorDetail(error.detail, 'Effective policy unavailable'));
+        }
+        return (await response.json()).daily_loss_policy;
+    },
+
     updateBotInstance: async (instanceId: string, payload: UpdateBotInstanceRequest): Promise<BotInstance> => {
         const response = await fetch(`${API_BASE}/api/v1/bot-instances/${instanceId}`, {
             method: 'PATCH',
@@ -1845,7 +1874,7 @@ export const api = {
 
         if (!response.ok) {
             const error = await response.json().catch(() => ({ detail: 'Failed to update bot instance' }));
-            throw new Error(error.detail || 'Failed to update bot instance');
+            throw new Error(errorDetail(error.detail, 'Failed to update bot instance'));
         }
 
         return response.json();

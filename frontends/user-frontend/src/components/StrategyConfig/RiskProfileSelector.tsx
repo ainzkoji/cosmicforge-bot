@@ -17,11 +17,13 @@ interface RiskProfileSelectorProps {
 
 export const RiskProfileSelector: React.FC<RiskProfileSelectorProps> = ({ value, onChange, templates }) => {
 
-    // System Safety Limits (Hardcoded from bot-backend/app/risk/risk_policy.py)
+    // Profile compound-risk limits (bot-backend PolicyEngine RISK_PROFILES):
+    // stop distance x ACTUAL leverage. The absolute stop bound is the system's
+    // 15% maximum; leverage is lowered under your maximum to fit wider stops.
     const SAFETY_LIMITS: Record<string, { max_sl: string; max_risk: string }> = {
-        conservative: { max_sl: "1.5%", max_risk: "15%" },
-        balanced: { max_sl: "2.25%", max_risk: "22.5%" },
-        aggressive: { max_sl: "3.0%", max_risk: "30%" }
+        conservative: { max_sl: "15% (system)", max_risk: "15%" },
+        balanced: { max_sl: "15% (system)", max_risk: "22.5%" },
+        aggressive: { max_sl: "15% (system)", max_risk: "30%" }
     };
 
     return (
@@ -77,7 +79,7 @@ export const RiskProfileSelector: React.FC<RiskProfileSelectorProps> = ({ value,
                                             <span className="font-mono">{safety.max_sl}</span>
                                         </div>
                                         <div className="flex justify-between text-xs text-gray-500">
-                                            <span>Max Compound Risk</span>
+                                            <span>Max Stop × Leverage</span>
                                             <span className="font-mono">{safety.max_risk}</span>
                                         </div>
                                     </>

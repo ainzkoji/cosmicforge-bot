@@ -166,6 +166,23 @@ async def get_bot_instance(
     return await proxy_request(request, f"/api/v1/bot-instances/{instance_id}")
 
 
+@router.get("/bot-instances/{instance_id}/effective-policy")
+async def get_effective_policy(request: Request, instance_id: str,
+                               user: dict = Depends(get_current_active_user)):
+    """Proxy: the bot's resolved EffectiveBotPolicy (incl. daily loss provenance); downstream checks ownership."""
+    return await proxy_request(request, f"/api/v1/bot-instances/{instance_id}/effective-policy")
+
+
+@router.patch("/bot-instances/{instance_id}")
+async def update_bot_instance(
+    request: Request,
+    instance_id: str,
+    user: dict = Depends(get_current_active_user)
+):
+    """Proxy: Edit a bot's configuration (incl. daily_loss_limit_pct); downstream checks ownership."""
+    return await proxy_request(request, f"/api/v1/bot-instances/{instance_id}")
+
+
 @router.get("/bot-instances/{instance_id}/engine-status")
 async def get_engine_status(request: Request, instance_id: str,
                             user: dict = Depends(get_current_active_user)):

@@ -56,22 +56,17 @@ def build_plan(account,bot,instrument,reservation_id,run_id,price,now,*,distance
         versions=(('execution_purpose',PURPOSE),),mode=PURPOSE,plan_created_at=now)
 
 
-def risk_bounded_distance(orchestrator, symbol, price, atr, equity, floor_multiplier=None):
+def risk_bounded_distance(orchestrator, symbol, price, atr, equity=None, floor_multiplier=None):
     """Certification stop distance from measured ATR, inside the window the
     unchanged hard-risk path admits: at least the ATR noise floor, at most one
-    ATR, the profile's maximum stop and the per-trade loss cap of the account's
-    own sizing. Never widens a limit; an empty window refuses certification."""
+    ATR and the system's absolute maximum stop. The user's fixed margin is
+    kept; hard risk resolves a legal leverage for this stop exactly as for a
+    natural entry. An empty window refuses certification."""
     from app.policy.policy_engine import PolicyContext
-    defaults = PolicyContext.__dataclass_fields__
     if floor_multiplier is None:
-        floor_multiplier = defaults['min_stop_atr_multiplier'].default
+        floor_multiplier = PolicyContext.__dataclass_fields__['min_stop_atr_multiplier'].default
     floor = float(floor_multiplier) * atr
-    ceiling = min(atr, price * orchestrator.risk_policy.config.max_stop_loss_pct)
-    cfg = orchestrator.validated_config
-    if cfg.use_fixed_size and cfg.fixed_size_usdt:
-        notional = cfg.fixed_size_usdt * max(1., float(cfg.requested_leverage.get(symbol, 10.)))
-        max_loss = equity * cfg.capital_allocation_pct * defaults['max_risk_per_trade_pct'].default / 100.
-        ceiling = min(ceiling, max_loss / notional * price)
+    ceiling = min(atr, price * orchestrator.system_limits.max_stop_loss_pct)
     if not ceiling >= floor * 1.2:
         raise ValueError('CERTIFICATION_RISK_WINDOW_UNAVAILABLE')
     # The midpoint tolerates price drift between plan build and hard risk.

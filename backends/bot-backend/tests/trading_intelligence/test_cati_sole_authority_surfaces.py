@@ -81,7 +81,9 @@ def test_m0_status_keeps_cati_runtime_selected_and_entry_blocked(tmp_path):
     assert status["cati_entry_authority"] == "BLOCKED"
     assert status["observe_mode"] is False
     assert status["historical_strategy_id"] == "master_ensemble"
-    assert status["hard_daily_loss_cap_pct"] == 2.5
+    # The bot's resolved daily policy and its provenance, not a global constant.
+    assert "hard_daily_loss_cap_pct" not in status
+    assert status["daily_loss_source"] == "RISK_PROFILE_DEFAULT" and status["daily_loss_limit_pct"] > 0
     assert status["auto_capital_routing_independent"] is True
 
 
