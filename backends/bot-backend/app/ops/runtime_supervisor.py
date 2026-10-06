@@ -28,8 +28,10 @@ reported as warnings and the runtime resumes by itself when the venue returns.
 
 With systemd (``Type=notify`` + ``WatchdogSec``) the same thread reports
 READY once the lease is held and the production task runs, and sends the
-keep-alive only while healthy -- so a process frozen too hard to exit by itself
-is killed and restarted from outside as well.
+keep-alive after every examination it completes. The two mechanisms divide the
+work: a fault the supervisor can SEE ends with its own exit, after the patience
+that fault deserves; a process frozen so hard that the supervisor cannot run at
+all stops sending keep-alives and is killed and restarted from outside.
 """
 from __future__ import annotations
 
@@ -262,6 +264,20 @@ def tracker_state(db: Any) -> dict[str, Any] | None:
             "last_decision_age": None if row[2] is None else round((now_ms - row[2]) / 1000, 1)}
 
 
+_observer_db: Any = None
+
+
+def _database() -> Any:
+    """One handle for every examination: constructing ``DB`` re-runs its schema
+    bootstrap, which has no place on a path taken every few seconds."""
+    global _observer_db
+    if _observer_db is None:
+        from shared_lib.persistence.db import DB
+
+        _observer_db = DB()
+    return _observer_db
+
+
 def observe_runtime(started_monotonic: float) -> dict[str, Any]:
     """Read the live runtime. Each source that cannot be read is named, not guessed."""
     import app.main as main_module
@@ -285,11 +301,9 @@ def observe_runtime(started_monotonic: float) -> dict[str, Any]:
     except Exception as exc:
         obs["errors"].append(f"cycle:{type(exc).__name__}")
     try:
-        from shared_lib.persistence.db import DB
-
         from app.ops.runtime_ownership import current_owner, holder_is_alive
 
-        db = DB()
+        db = _database()
         owner = current_owner(db, db.path)
         obs["lease"] = {
             "held": owner is not None,
@@ -356,6 +370,11 @@ class RuntimeSupervisor:
                 self.limits.slow_confirmations if fault in SLOW_FAULTS else self.limits.confirmations))
             if due:
                 self._fail(Assessment(FAILING, due, verdict.warnings))
+                return verdict
+            # Still examining, so still alive: the service manager's watchdog
+            # must not cut short the patience a slow fault is being given.
+            self.notify(f"STATUS={FAILING} {','.join(verdict.faults)}")
+            self.notify("WATCHDOG=1")
             return verdict
 
         self._failing, self._streaks = 0, {}
@@ -471,7 +490,7 @@ def start() -> RuntimeSupervisor | None:
 
 
 def reset_for_tests() -> None:
-    global _supervisor
+    global _supervisor, _observer_db
     if _supervisor is not None:
         _supervisor.stop()
-    _supervisor = None
+    _supervisor, _observer_db = None, None

@@ -240,9 +240,12 @@ def test_a_persistent_fault_stops_entries_and_exits_nonzero_for_the_service_mana
     assert "READY=1" in sent and sent[-1] == "WATCHDOG=1"
     sent.clear()
     sup.tick(), sup.tick()
-    assert exits == [] and "WATCHDOG=1" not in sent      # no keep-alive while failing
+    # Still examining: alive for the service manager, and saying what is wrong.
+    assert exits == [] and sent[-2:] == ["STATUS=FAILING RUNNER_LOOP_EXITED", "WATCHDOG=1"]
+    sent.clear()
     sup.tick()
     assert exits == [EXIT_CODE] and EXIT_CODE != 0
+    assert "WATCHDOG=1" not in sent                      # no keep-alive from a runtime that is leaving
     assert stops == ["SUPERVISOR_RUNNER_LOOP_EXITED"]
     assert sup.fatal == ("RUNNER_LOOP_EXITED",)
 
@@ -438,3 +441,159 @@ def test_commit_durability_is_configurable_and_never_off(tmp_path, monkeypatch, 
         assert conn.execute("PRAGMA synchronous").fetchone()[0] == expected     # 1 NORMAL, 2 FULL
         assert conn.execute("PRAGMA journal_mode").fetchone()[0] == "wal"
         assert conn.execute("PRAGMA busy_timeout").fetchone()[0] == 10000
+
+
+# ── Venue outages, rate limits and timeouts ──────────────────────────────────
+
+
+class Reply:
+    def __init__(self, status=200, body=None, headers=None):
+        self.status_code, self._body, self.headers = status, body if body is not None else {}, headers or {}
+        self.content, self.text = b"{}", str(body)
+
+    def json(self):
+        return self._body
+
+    def raise_for_status(self):
+        if self.status_code >= 400:
+            import requests
+
+            raise requests.HTTPError(f"{self.status_code}")
+
+
+class Wire:
+    """A transport that plays back a script of replies and failures."""
+
+    def __init__(self, *script):
+        self.script, self.calls = list(script), []
+
+    def _next(self, method, url):
+        self.calls.append(method)
+        step = self.script.pop(0) if len(self.script) > 1 else self.script[0]
+        if isinstance(step, Exception):
+            raise step
+        return step
+
+    def request(self, method, url, **kw):
+        return self._next(method, url)
+
+    def get(self, url, **kw):
+        return self._next("GET", url)
+
+    def post(self, url, **kw):
+        return self._next("POST", url)
+
+
+def binance(wire, monkeypatch):
+    from app.exchange.binance import client as module
+
+    monkeypatch.setattr(module.time, "sleep", lambda seconds: None)
+    venue = module.BinanceFuturesClient.__new__(module.BinanceFuturesClient)
+    venue.api_key, venue.api_secret, venue.base_url = "k", "s", "https://demo-fapi.binance.com"
+    venue.recv_window, venue._time_offset_ms, venue.last_used_weight_1m = 5000, 0, None
+    venue.session = wire
+    return venue
+
+
+def test_reads_ride_out_transient_venue_failures_with_bounded_retries(monkeypatch):
+    import requests
+
+    wire = Wire(requests.ConnectionError("dns"), Reply(502), Reply(429, headers={"Retry-After": "1"}),
+                requests.Timeout("slow"), Reply(200, {"price": "1.0"}))
+    assert binance(wire, monkeypatch)._request("GET", "/fapi/v1/ticker/price") == {"price": "1.0"}
+    assert wire.calls == ["GET"] * 5
+    # An outage that outlasts the retries is an error for THIS cycle, raised
+    # without the signed URL, and the attempts are bounded.
+    down = Wire(requests.ConnectionError("no route to host"))
+    with pytest.raises(RuntimeError, match="Binance request failed after retries"):
+        binance(down, monkeypatch)._request("GET", "/fapi/v1/ticker/price")
+    assert len(down.calls) == 7
+
+
+@pytest.mark.parametrize("failure", ["timeout", "http_503", "http_429"])
+def test_an_order_is_never_resent_after_an_ambiguous_failure(monkeypatch, failure):
+    import requests
+
+    step = requests.Timeout("no answer") if failure == "timeout" else Reply(int(failure[-3:]), {"code": -1})
+    for send in (lambda v: v._request("POST", "/fapi/v1/order", params={"symbol": "ADAUSDT", "reduceOnly": "true"}),
+                 lambda v: v._signed_request("POST", "/fapi/v1/order", {"symbol": "ADAUSDT", "reduceOnly": "true"})):
+        wire = Wire(step)
+        with pytest.raises(Exception):
+            send(binance(wire, monkeypatch))
+        assert wire.calls == ["POST"]            # exactly one attempt reached the wire
+
+
+def test_an_unreachable_broker_fails_the_account_closed_and_the_next_cycle_recovers(production_loop, monkeypatch, db):
+    import requests
+
+    account = {"id": "acct", "user_id": "u", "broker_id": "binance", "environment": "DEMO", "status": "connected"}
+    outcomes = iter([requests.ConnectionError("venue unreachable"), "ok"])
+
+    def sync_account(_db, acct, **kw):
+        outcome = next(outcomes)
+        if isinstance(outcome, Exception):
+            raise outcome
+        production_loop.save(_db, acct["id"], acct["user_id"], int(time.time() * 1000),
+                             {"status": "SYNCED", "execution": {"execution_permission": "WAITING_SIGNAL"}})
+
+    monkeypatch.setattr(production_loop, "owner_current", lambda _db: True)
+    monkeypatch.setattr(production_loop, "execution_accounts", lambda _db: [account])
+    monkeypatch.setattr(production_loop, "sync_account", sync_account)
+
+    def state():
+        with db.connect() as conn:
+            import json
+
+            return json.loads(conn.execute("SELECT document FROM cati_production_state").fetchone()[0])
+
+    production_loop.sync(db)                     # the outage: recorded, not raised
+    assert state()["status"] == "READ_FAILED" and state()["execution_permission"] == "BLOCKED_ACCOUNT"
+    assert state()["reason"] == "ConnectionError"
+    production_loop.sync(db)                     # the venue is back: nothing to restart
+    assert state()["status"] == "SYNCED"
+
+
+# ── The observation itself, against a real database ──────────────────────────
+
+
+def test_the_observation_reads_the_real_lease_scheduler_and_disk(monkeypatch):
+    import asyncio
+
+    import app.main as main_module
+
+    supervisor_module.reset_for_tests()
+    runtime_shutdown.reset_for_tests()
+    session_db = DB()
+    lease = RuntimeOwnership(session_db, database_path=session_db.path, database_role="test",
+                             runtime_session_id="rts_observed")
+    assert lease.acquire().acquired
+    loop = asyncio.new_event_loop()
+    try:
+        pending = loop.create_future()                 # a task that is still running
+        multi = type("Multi", (), {"owns_runtime": True, "ownership_reason": "ACQUIRED", "_ownership": lease})()
+        monkeypatch.setattr(main_module, "runner_service",
+                            type("Service", (), {"task": pending, "multi_runner": multi})(), raising=False)
+        monkeypatch.setattr(main_module.app.state, "cati_production_task", pending, raising=False)
+        obs = supervisor_module.observe_runtime(time.monotonic() - 30)
+        assert obs["errors"] == [] and obs["owns_runtime"] and obs["runner_task_alive"]
+        assert obs["production_task_alive"] and not obs["stopping"]
+        assert obs["lease"]["held"] and obs["lease"]["ours"] and obs["lease"]["heartbeat_age"] < 30
+        assert obs["lease"]["runtime_session_id"] == "rts_observed"
+        assert obs["database"]["size_bytes"] > 0 and obs["database"]["disk_free_bytes"] > 0
+        assert assess(obs, LIMITS).state == HEALTHY
+        # The scheduler dies behind the web server: the same observation says so.
+        pending.cancel()
+        dead = supervisor_module.observe_runtime(time.monotonic() - 30)
+        assert assess(dead, LIMITS).faults == ("RUNNER_LOOP_EXITED",)
+        # Someone else takes the lease.
+        with session_db.connect() as conn:
+            conn.execute("UPDATE runtime_ownership SET pid=? WHERE runtime_owner_id=?", (DEAD_PID, lease.runtime_owner_id))
+        monkeypatch.setattr(main_module, "runner_service",
+                            type("Service", (), {"task": loop.create_future(), "multi_runner": multi})(), raising=False)
+        monkeypatch.setattr(main_module.app.state, "cati_production_task", loop.create_future(), raising=False)
+        assert "RUNTIME_OWNERSHIP_LOST" in assess(supervisor_module.observe_runtime(time.monotonic() - 30), LIMITS).faults
+    finally:
+        with session_db.connect() as conn:
+            conn.execute("DELETE FROM runtime_ownership WHERE runtime_owner_id=?", (lease.runtime_owner_id,))
+        loop.close()
+        supervisor_module.reset_for_tests()

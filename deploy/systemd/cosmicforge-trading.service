@@ -43,8 +43,9 @@ Restart=always
 RestartSec=10
 TimeoutStartSec=300
 
-# The supervisor sends a keep-alive every 15 s while the scheduler is healthy.
-# A process frozen too hard to exit by itself is killed and restarted.
+# The supervisor sends a keep-alive every 15 s for as long as it is able to
+# examine the runtime; faults it can see end with its own exit (status 70). A
+# process frozen too hard for even that is killed and restarted from here.
 WatchdogSec=180
 
 # systemctl stop -> SIGTERM -> uvicorn shutdown -> the runtime stops new

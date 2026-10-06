@@ -122,7 +122,9 @@ backends\venv\Scripts\python.exe scripts\backup_trading_db.py --output-dir C:\co
 ```
 
 The script prints the backup's file name and SHA-256 and writes them to
-`<name>.json`. **Do not start the workstation runtime again after this.**
+`<name>.json`. For the current 8.4 GB database it takes about ten minutes and
+produces a 1.4 GB file. **Do not start the workstation runtime again after
+this.**
 
 Never copy `cosmicforge.db` itself while anything has it open: the committed
 data still in `cosmicforge.db-wal` would be left behind. The backup script is
@@ -453,21 +455,29 @@ uvicorn keeps listening on `127.0.0.1:9000`. Port 9000 is never opened.
 
 ## 8. Acceptance tests on the server
 
-Run these once after the first start, with no position open. Each ends with
-`vps_health_check.py` reporting `VERDICT HEALTHY`.
+Run these once after the first start, with no position open and outside a
+decision window (:00 to :15). Each ends with `vps_health_check.py` reporting
+`VERDICT HEALTHY` and exactly one unreleased lease. A, B and C were run on the
+development machine before this guide was written; the systemd-specific parts
+(boot start, `Restart=`, the watchdog) can only be exercised on the server.
 
 ```bash
-HC="python3 /opt/cosmicforge/cosmicforge-bot/scripts/vps_health_check.py"
-LEASE="sudo -u cosmicforge sqlite3 -readonly /var/lib/cosmicforge/cosmicforge.db \
-  \"SELECT pid, runtime_session_id, heartbeat_at, released_at FROM runtime_ownership WHERE database_path LIKE '/var/lib/%';\""
+hc()    { python3 /opt/cosmicforge/cosmicforge-bot/scripts/vps_health_check.py; }
+lease() { sudo -u cosmicforge sqlite3 -readonly /var/lib/cosmicforge/cosmicforge.db \
+            "SELECT pid, runtime_session_id, heartbeat_at, released_at FROM runtime_ownership WHERE released_at IS NULL;"; }
 
 # A. Graceful restart: the old session closes, one new lease owner.
-sudo systemctl restart cosmicforge-trading && sleep 45 && $HC && eval "$LEASE"
-journalctl -u cosmicforge-trading --since "2 min ago" | grep RUNTIME_SHUTDOWN     # clean=True lease_released=True
+sudo systemctl restart cosmicforge-trading && sleep 45 && hc && lease
+journalctl -u cosmicforge-trading --since "2 min ago" | grep -E 'RUNTIME_SHUTDOWN|RUNTIME_OWNERSHIP'
+#   [RUNTIME_OWNERSHIP] released pid=... reason=APPLICATION_SHUTDOWN
+#   [RUNTIME_SHUTDOWN] clean=True ... production_cycle_drained=True lease_released=True session_closed=True
+#   [RUNTIME_OWNERSHIP] acquired pid=... took_over=NO
 
 # B. Crash: no clean shutdown at all.
-sudo systemctl kill -s SIGKILL cosmicforge-trading && sleep 60 && $HC && eval "$LEASE"
-journalctl -u cosmicforge-trading --since "2 min ago" | grep -E 'taking over lease|READY'
+sudo systemctl kill -s SIGKILL cosmicforge-trading && sleep 60 && hc && lease
+journalctl -u cosmicforge-trading --since "2 min ago" | grep -E 'RUNTIME_OWNERSHIP|RUNTIME_SUPERVISOR'
+#   [RUNTIME_OWNERSHIP] acquired pid=... took_over=HOLDER_PID_GONE
+#   [RUNTIME_SUPERVISOR] READY ...
 
 # C. A second process must refuse before doing anything.
 cd /opt/cosmicforge/cosmicforge-bot/backends/bot-backend
@@ -475,8 +485,8 @@ sudo -u cosmicforge ../venv/bin/python -m uvicorn app.main:app --host 127.0.0.1 
 
 # D. Reboot.
 sudo reboot
-#   ...log in again...
-systemctl is-active cosmicforge-trading && $HC
+#   ...log in again, define hc and lease again...
+systemctl is-active cosmicforge-trading && hc && lease
 
 # E. No duplicate orders were created by any of the above: this must print nothing.
 sudo -u cosmicforge sqlite3 -readonly /var/lib/cosmicforge/cosmicforge.db \
