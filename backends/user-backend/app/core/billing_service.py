@@ -1,11 +1,22 @@
+import os
+import sqlite3
 import uuid
-import json
 import logging
 from abc import ABC, abstractmethod
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timezone
 from typing import List, Dict, Any, Optional
+from urllib.parse import urlparse
 
 from shared_lib.persistence.db import DB
+from shared_lib.billing import entitlements as plan_entitlements
+from shared_lib.billing import webhooks as billing_webhooks
+from shared_lib.billing.plans import (
+    FREE_PLAN_ID,
+    PLAN_PRICE_ENV,
+    interval_for,
+    is_paid_plan,
+    limits_for,
+)
 from app.schemas.billing import Plan, PlanFeature
 from app.core.config import settings
 
@@ -17,12 +28,125 @@ try:
 except ImportError:
     stripe = None
 
+#: Days of access kept after a failed renewal payment before the downgrade.
+GRACE_PERIOD_DAYS = plan_entitlements.GRACE_PERIOD_DAYS
+
+# Frontend routes the provider redirects back to (see user-frontend App.tsx).
+CHECKOUT_SUCCESS_PATH = "/payment/success"
+CHECKOUT_CANCEL_PATH = "/dashboard/subscription"
+
+
+class BillingError(ValueError):
+    """The request cannot be served as asked (HTTP 400)."""
+
+
+class BillingConflict(BillingError):
+    """The request conflicts with the user's current subscription (HTTP 409)."""
+
+
+class BillingNotConfigured(RuntimeError):
+    """Billing cannot run with the current configuration (HTTP 503)."""
+
+
+class BillingProviderError(RuntimeError):
+    """The payment provider rejected or failed a call (HTTP 502)."""
+
+
 def utc_now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+def _db() -> DB:
+    return DB()
+
+
+def _cfg(name: str) -> str:
+    """A billing setting: the loaded Settings first, then the process environment."""
+    value = getattr(settings, name, None)
+    if value is None or value == "":
+        value = os.environ.get(name, "")
+    return str(value or "").strip()
+
+
+def _flag(name: str) -> bool:
+    return _cfg(name).lower() in ("1", "true", "yes", "on")
+
+
+def is_production() -> bool:
+    # Anything that is not explicitly TEST/DEVELOPMENT is production (fail closed).
+    return bool(getattr(settings, "production", True))
+
+
+def _stripe_key_mode(secret_key: str) -> str:
+    return "test" if "_test_" in secret_key else "live"
+
+
+def _test_mode_allowed() -> bool:
+    """Stripe test mode (test keys, test-card events) may only grant plans outside
+    production, unless the operator explicitly opts in for a pre-launch dry run."""
+    return (not is_production()) or _flag("BILLING_ALLOW_STRIPE_TEST_MODE")
+
+
+def stripe_price_ids() -> Dict[str, str]:
+    """Server-side price configuration: plan id -> Stripe Price ID (from env)."""
+    prices: Dict[str, str] = {}
+    for plan_id, env_name in PLAN_PRICE_ENV.items():
+        price_id = _cfg(env_name)
+        if price_id:
+            prices[plan_id] = price_id
+    return prices
+
+
+def price_to_plan_map() -> Dict[str, str]:
+    """Stripe Price ID -> plan id. A price configured for two plans maps to neither."""
+    mapping: Dict[str, str] = {}
+    ambiguous = set()
+    for plan_id, price_id in stripe_price_ids().items():
+        if price_id in mapping:
+            ambiguous.add(price_id)
+        mapping[price_id] = plan_id
+    for price_id in ambiguous:
+        log.error("Stripe price %s is configured for more than one plan; ignoring it", price_id)
+        mapping.pop(price_id, None)
+    return mapping
+
+
+def _price_id_for(plan_id: str) -> str:
+    price_id = stripe_price_ids().get(plan_id)
+    if not price_id or price_id not in price_to_plan_map():
+        raise BillingNotConfigured(f"{PLAN_PRICE_ENV.get(plan_id, plan_id)} is not configured")
+    return price_id
+
+
+def _frontend_base_url() -> str:
+    base = _cfg("PUBLIC_APP_URL") or _cfg("FRONTEND_URL")
+    if not base:
+        if is_production():
+            raise BillingNotConfigured("FRONTEND_URL is not configured")
+        base = "http://localhost:5173"
+    base = base.rstrip("/")
+    parsed = urlparse(base)
+    if parsed.scheme not in ("http", "https") or not parsed.netloc:
+        raise BillingNotConfigured("FRONTEND_URL is not a valid http(s) URL")
+    return base
+
+
+def checkout_urls() -> Dict[str, str]:
+    """Redirect targets, built only from server configuration (never from the client)."""
+    base = _frontend_base_url()
+    return {
+        "success_url": f"{base}{CHECKOUT_SUCCESS_PATH}?session_id={{CHECKOUT_SESSION_ID}}",
+        "cancel_url": f"{base}{CHECKOUT_CANCEL_PATH}?checkout=cancelled",
+    }
 
 # ============================================================================
 # 1. Plan Catalog
 # ============================================================================
+# Machine limits live in shared_lib.billing.plans (one table for both backends)
+# and match the advertised features below:
+#   free  : 1 bot,  1 broker,  no live trading
+#   pro   : 5 bots, 3 brokers, live trading
+#   whale : unlimited bots / brokers, live trading
 
 PLANS = [
     Plan(
@@ -37,7 +161,7 @@ PLANS = [
             PlanFeature(name="Live Trading", included=False),
             PlanFeature(name="Backtesting", included=True, limit="Basic"),
         ],
-        limits={"max_bots": 5, "max_brokers": 5, "live_trading": False, "api_access": False},
+        limits=limits_for("plan_free"),
         entitlements={
             "max_bots": "1", 
             "max_accounts": "1", 
@@ -63,7 +187,7 @@ PLANS = [
             PlanFeature(name="Advanced Backtesting", included=True),
             PlanFeature(name="Priority Support", included=True),
         ],
-        limits={"max_bots": 5, "max_brokers": 3, "live_trading": True, "api_access": True},
+        limits=limits_for("plan_pro"),
         entitlements={
             "max_bots": "5", 
             "max_accounts": "3", 
@@ -89,7 +213,7 @@ PLANS = [
             PlanFeature(name="Institutional API", included=True),
             PlanFeature(name="Dedicated Account Manager", included=True),
         ],
-        limits={"max_bots": 999, "max_brokers": 99, "live_trading": True, "api_access": True},
+        limits=limits_for("plan_whale"),
         entitlements={
             "max_bots": "unlimited", 
             "max_accounts": "unlimited", 
@@ -116,7 +240,7 @@ PLANS = [
             PlanFeature(name="Advanced Backtesting", included=True),
             PlanFeature(name="Priority Support", included=True),
         ],
-        limits={"max_bots": 5, "max_brokers": 3, "live_trading": True, "api_access": True},
+        limits=limits_for("plan_pro_yearly"),
         entitlements={
             "max_bots": "5", 
             "max_accounts": "3", 
@@ -142,7 +266,7 @@ PLANS = [
             PlanFeature(name="Institutional API", included=True),
             PlanFeature(name="Dedicated Account Manager", included=True),
         ],
-        limits={"max_bots": 999, "max_brokers": 99, "live_trading": True, "api_access": True},
+        limits=limits_for("plan_whale_yearly"),
         entitlements={
             "max_bots": "unlimited", 
             "max_accounts": "unlimited", 
@@ -171,104 +295,273 @@ def get_plan_by_id(plan_id: str) -> Optional[Plan]:
 # ============================================================================
 
 class PaymentProvider(ABC):
+    name = "abstract"
+    mode = "test"
+
     @abstractmethod
-    def create_checkout_session(self, plan_id: str, user_id: str, success_url: str, cancel_url: str) -> Dict[str, Any]:
+    def create_checkout_session(
+        self,
+        *,
+        plan_id: str,
+        user_id: str,
+        price_id: Optional[str],
+        success_url: str,
+        cancel_url: str,
+        customer_id: Optional[str] = None,
+    ) -> Dict[str, Any]:
         pass
 
     @abstractmethod
     def cancel_subscription(self, provider_sub_id: str) -> bool:
         pass
-        
+
     @abstractmethod
-    def get_subscription_status(self, provider_sub_id: str) -> str:
+    def resume_subscription(self, provider_sub_id: str) -> bool:
         pass
 
+    @abstractmethod
+    def change_plan(self, provider_sub_id: str, price_id: str, plan_id: str) -> bool:
+        pass
+
+
 class MockPaymentProvider(PaymentProvider):
-    def create_checkout_session(self, plan_id: str, user_id: str, success_url: str, cancel_url: str) -> Dict[str, Any]:
+    """Local development only. It never grants a plan: the returned URL simply
+    lands on the frontend's payment page, where the (unpaid) session stays
+    pending. Refuses to exist in production."""
+
+    name = "mock"
+
+    def __init__(self):
+        if is_production():
+            raise BillingNotConfigured("the mock payment provider is not available in production")
+
+    def create_checkout_session(
+        self,
+        *,
+        plan_id: str,
+        user_id: str,
+        price_id: Optional[str],
+        success_url: str,
+        cancel_url: str,
+        customer_id: Optional[str] = None,
+    ) -> Dict[str, Any]:
         session_id = f"cs_mock_{uuid.uuid4().hex}"
-        # Mock URL wraps the success url with params
-        mock_url = f"{success_url}?session_id={session_id}&mock_payment=true&plan_id={plan_id}"
+        mock_url = success_url.replace("{CHECKOUT_SESSION_ID}", session_id) + "&mock_payment=true"
         return {"id": session_id, "url": mock_url}
 
     def cancel_subscription(self, provider_sub_id: str) -> bool:
         return True
-        
-    def get_subscription_status(self, provider_sub_id: str) -> str:
-        return "active"
+
+    def resume_subscription(self, provider_sub_id: str) -> bool:
+        return True
+
+    def change_plan(self, provider_sub_id: str, price_id: str, plan_id: str) -> bool:
+        return False
+
 
 class StripePaymentProvider(PaymentProvider):
+    name = "stripe"
+
     def __init__(self, secret_key: str):
         if not stripe:
-            raise ImportError("Stripe library not installed.")
+            raise BillingNotConfigured("the stripe library is not installed")
         stripe.api_key = secret_key
+        self.mode = _stripe_key_mode(secret_key)
 
-    def create_checkout_session(self, plan_id: str, user_id: str, success_url: str, cancel_url: str) -> Dict[str, Any]:
-        plan = get_plan_by_id(plan_id)
-        if not plan:
-            raise ValueError("Invalid Plan")
-            
-        # Create or find customer (simplified: just create session with client_reference_id)
-        # In real app, we map user_id -> stripe_customer_id
-        
-        # We need a price ID. For this implementation, we assume we create prices on the fly or map them.
-        # To keep it simple without seeding Stripe, we use 'price_data' with product data.
-        
-        session = stripe.checkout.Session.create(
-            payment_method_types=['card'],
-            line_items=[{
-                'price_data': {
-                    'currency': plan.currency,
-                    'product_data': {
-                        'name': plan.name,
-                    },
-                    'unit_amount': int(plan.price * 100), # cents
-                    'recurring': {'interval': plan.interval},
-                },
-                'quantity': 1,
-            }],
-            mode='subscription',
-            success_url=success_url + "?session_id={CHECKOUT_SESSION_ID}",
+    def create_customer(self, user_id: str, email: Optional[str]) -> str:
+        params: Dict[str, Any] = {"metadata": {"user_id": user_id}}
+        if email:
+            params["email"] = email
+        customer = stripe.Customer.create(**params)
+        return customer.id
+
+    def create_checkout_session(
+        self,
+        *,
+        plan_id: str,
+        user_id: str,
+        price_id: Optional[str],
+        success_url: str,
+        cancel_url: str,
+        customer_id: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        if not price_id:
+            raise BillingNotConfigured(f"no Stripe price configured for {plan_id}")
+        # The webhook maps the paid session back to this user and plan through
+        # these server-set references; nothing here comes from the browser.
+        metadata = {
+            "user_id": str(user_id),
+            "plan_id": plan_id,
+            "interval": interval_for(plan_id) or "month",
+        }
+        params: Dict[str, Any] = dict(
+            mode="subscription",
+            payment_method_types=["card"],
+            line_items=[{"price": price_id, "quantity": 1}],
+            success_url=success_url,
             cancel_url=cancel_url,
-            client_reference_id=user_id,
-            metadata={"plan_id": plan_id}
+            client_reference_id=str(user_id),
+            metadata=metadata,
+            subscription_data={"metadata": metadata},
         )
+        if customer_id:
+            params["customer"] = customer_id
+        session = stripe.checkout.Session.create(**params)
         return {"id": session.id, "url": session.url}
 
     def cancel_subscription(self, provider_sub_id: str) -> bool:
         try:
-            stripe.Subscription.modify(
-                provider_sub_id,
-                cancel_at_period_end=True
-            )
+            stripe.Subscription.modify(provider_sub_id, cancel_at_period_end=True)
             return True
         except Exception as e:
             log.error(f"Stripe cancel failed: {e}")
             return False
 
-    def get_subscription_status(self, provider_sub_id: str) -> str:
+    def resume_subscription(self, provider_sub_id: str) -> bool:
         try:
-            sub = stripe.Subscription.retrieve(provider_sub_id)
-            return sub.status
-        except Exception:
-            return "unknown"
+            stripe.Subscription.modify(provider_sub_id, cancel_at_period_end=False)
+            return True
+        except Exception as e:
+            log.error(f"Stripe resume failed: {e}")
+            return False
+
+    def change_plan(self, provider_sub_id: str, price_id: str, plan_id: str) -> bool:
+        """Move the existing subscription to another price (no second subscription).
+
+        An upgrade is invoiced and charged immediately (``always_invoice``):
+        with ``create_prorations`` the difference would only be billed on the
+        next invoice, so upgrading and then cancelling would give the higher
+        plan for the rest of the period without ever paying for it. A
+        downgrade keeps the deferred proration (a credit on the next invoice).
+        Which of the two it is comes from the price Stripe currently has on the
+        subscription; when that cannot be mapped to a plan it is charged now.
+        """
+        try:
+            items = stripe.SubscriptionItem.list(subscription=provider_sub_id, limit=1)
+            item = items.data[0]
+            item_id = item.id
+            current_price_id = getattr(getattr(item, "price", None), "id", None)
+            current_plan_id = price_to_plan_map().get(current_price_id or "")
+            upgrade = current_plan_id is None or is_plan_upgrade(current_plan_id, plan_id)
+            stripe.Subscription.modify(
+                provider_sub_id,
+                items=[{"id": item_id, "price": price_id}],
+                proration_behavior="always_invoice" if upgrade else "create_prorations",
+                cancel_at_period_end=False,
+                metadata={"plan_id": plan_id, "interval": interval_for(plan_id) or "month"},
+            )
+            return True
+        except Exception as e:
+            log.error(f"Stripe plan change failed: {e}")
+            return False
+
 
 def get_provider() -> PaymentProvider:
-    if settings.STRIPE_SECRET_KEY and stripe:
-        return StripePaymentProvider(settings.STRIPE_SECRET_KEY)
+    """The configured payment provider.
+
+    Stripe whenever ``STRIPE_SECRET_KEY`` is set. Without it (or without the SDK)
+    production gets :class:`BillingNotConfigured` -- never the mock; the mock is
+    returned only outside production.
+    """
+    secret_key = _cfg("STRIPE_SECRET_KEY")
+    if secret_key:
+        if stripe is None:
+            raise BillingNotConfigured("STRIPE_SECRET_KEY is set but the stripe library is not installed")
+        if _stripe_key_mode(secret_key) == "test" and not _test_mode_allowed():
+            raise BillingNotConfigured("a Stripe test-mode key is configured in production")
+        return StripePaymentProvider(secret_key)
+    if is_production():
+        raise BillingNotConfigured("STRIPE_SECRET_KEY is not configured")
     return MockPaymentProvider()
 
 # ============================================================================
 # 3. Billing Service
 # ============================================================================
 
-def create_checkout_session(user_id: str, plan_id: str, success_url: str = None, cancel_url: str = None) -> Dict[str, Any]:
-    # 1. Validate Plan
+def _has_provider_subscription(state: Dict[str, Any]) -> bool:
+    """The user currently holds a live Stripe subscription."""
+    return bool(
+        state.get("is_paid")
+        and state.get("provider") == "stripe"
+        and state.get("provider_sub_id")
+    )
+
+
+def has_provider_subscription(user_id: str) -> bool:
+    return _has_provider_subscription(plan_entitlements.get_effective_plan(_db(), user_id))
+
+
+def _is_missing_customer_error(exc: Exception) -> bool:
+    return getattr(exc, "param", None) == "customer" or "no such customer" in str(exc).lower()
+
+
+def _stored_customer_id(db: DB, user_id: str, mode: str) -> Optional[str]:
+    with db.connect() as conn:
+        row = conn.execute(
+            "SELECT provider_customer_id FROM billing_customers "
+            "WHERE user_id = ? AND mode = ? AND provider = 'stripe'",
+            (user_id, mode),
+        ).fetchone()
+    return row[0] if row else None
+
+
+def _ensure_customer(db: DB, provider: "StripePaymentProvider", user_id: str, email: Optional[str]) -> str:
+    """Reuse the user's stored Stripe customer, creating and storing one if needed.
+
+    Stored before the redirect, so every later event for that customer can be
+    mapped to the user whatever order the events arrive in.
+    """
+    customer_id = _stored_customer_id(db, user_id, provider.mode)
+    if customer_id:
+        return customer_id
+    customer_id = provider.create_customer(user_id, email)
+    now = utc_now_iso()
+    with db.connect() as conn:
+        conn.execute(
+            """
+            INSERT INTO billing_customers (user_id, mode, provider, provider_customer_id, created_at, updated_at)
+            VALUES (?, ?, 'stripe', ?, ?, ?)
+            ON CONFLICT(user_id, mode) DO UPDATE SET
+                provider_customer_id = excluded.provider_customer_id,
+                updated_at = excluded.updated_at
+            """,
+            (user_id, provider.mode, customer_id, now, now),
+        )
+    return customer_id
+
+
+def _forget_customer(db: DB, user_id: str, mode: str) -> None:
+    with db.connect() as conn:
+        conn.execute(
+            "DELETE FROM billing_customers WHERE user_id = ? AND mode = ? AND provider = 'stripe'",
+            (user_id, mode),
+        )
+
+
+def create_checkout_session(user_id: str, plan_id: str, email: Optional[str] = None) -> Dict[str, Any]:
+    """Start a subscription checkout. Grants nothing: activation is webhook-only."""
+    user_id = str(user_id)
+
+    # 1. Validate Plan (server-side catalog; the price comes from server config)
     plan = get_plan_by_id(plan_id)
     if not plan:
-        raise ValueError("Invalid Plan ID")
+        raise BillingError("Invalid Plan ID")
+    if not is_paid_plan(plan_id):
+        raise BillingError("The free plan does not need a checkout.")
 
-    # 2. Track Intent
-    db = DB()
+    # 2. Provider and redirect targets (raises BillingNotConfigured)
+    provider = get_provider()
+    urls = checkout_urls()
+    price_id = _price_id_for(plan_id) if provider.name == "stripe" else None
+
+    # 3. One subscription per user: an existing one is changed, not duplicated.
+    db = _db()
+    if _has_provider_subscription(plan_entitlements.get_effective_plan(db, user_id)):
+        raise BillingConflict(
+            "You already have an active subscription. Change or cancel it from the subscription page."
+        )
+
+    # 4. Track Intent
     intent_id = f"pi_{uuid.uuid4().hex[:12]}"
     with db.connect() as conn:
         conn.execute(
@@ -276,17 +569,37 @@ def create_checkout_session(user_id: str, plan_id: str, success_url: str = None,
             (intent_id, user_id, plan_id, None, utc_now_iso())
         )
 
-    # 3. Create Session
-    provider = get_provider()
-    # Defaults
-    if not success_url:
-        success_url = "http://localhost:5173/billing/success"
-    if not cancel_url:
-        cancel_url = "http://localhost:5173/billing"
-        
-    result = provider.create_checkout_session(plan_id, user_id, success_url, cancel_url)
-    
-    # Update intent with session ID
+    # 5. Create Session
+    def _create(customer_id: Optional[str]) -> Dict[str, Any]:
+        return provider.create_checkout_session(
+            plan_id=plan_id,
+            user_id=user_id,
+            price_id=price_id,
+            success_url=urls["success_url"],
+            cancel_url=urls["cancel_url"],
+            customer_id=customer_id,
+        )
+
+    try:
+        if provider.name == "stripe":
+            try:
+                result = _create(_ensure_customer(db, provider, user_id, email))
+            except Exception as exc:
+                if not _is_missing_customer_error(exc):
+                    raise
+                # Stored customer no longer exists in this Stripe account.
+                log.warning("stored Stripe customer for user %s is gone; creating a new one", user_id)
+                _forget_customer(db, user_id, provider.mode)
+                result = _create(_ensure_customer(db, provider, user_id, email))
+        else:
+            result = _create(None)
+    except BillingNotConfigured:
+        raise
+    except Exception as exc:
+        log.exception("checkout session creation failed for user %s plan %s", user_id, plan_id)
+        raise BillingProviderError("The payment provider could not start the checkout.") from exc
+
+    # Update intent with session ID (the webhook cross-checks the session against it)
     with db.connect() as conn:
         conn.execute(
             "UPDATE pricing_intents SET session_id = ? WHERE id = ?", 
@@ -295,145 +608,182 @@ def create_checkout_session(user_id: str, plan_id: str, success_url: str = None,
     
     return result
 
-def handle_webhook_event(event_type: str, payload: Dict[str, Any], provider: str = "stripe") -> None:
+
+def handle_stripe_webhook(payload: bytes, signature_header: Optional[str]) -> Dict[str, str]:
+    """Verify and apply one Stripe webhook delivery.
+
+    Raises ``WebhookNotConfiguredError`` / ``WebhookSignatureError`` /
+    ``WebhookPayloadError`` (see shared_lib.billing.webhooks). The signature is
+    checked over the raw body before anything is parsed; with no
+    ``STRIPE_WEBHOOK_SECRET`` every delivery is rejected, in every environment.
     """
-    Generic webhook handler.
-    """
-    db = DB()
-    event_id = payload.get("id", f"evt_{uuid.uuid4().hex}")
-    
-    # Audit Log
+    billing_webhooks.verify_stripe_signature(payload, signature_header, _cfg("STRIPE_WEBHOOK_SECRET"))
+    event = billing_webhooks.parse_event(payload)
+    return billing_webhooks.process_stripe_event(
+        _db(),
+        event,
+        price_to_plan=price_to_plan_map(),
+        require_livemode=not _test_mode_allowed(),
+    )
+
+
+def _set_cancel_flag(db: DB, user_id: str, value: int) -> None:
     with db.connect() as conn:
         conn.execute(
-            """
-            INSERT INTO billing_events (event_id, event_type, provider, payload_json, processed_at, created_at)
-            VALUES (?, ?, ?, ?, ?, ?)
-            """,
-            (event_id, event_type, provider, json.dumps(payload), None, utc_now_iso())
+            "UPDATE subscriptions SET cancel_at_period_end = ?, updated_at = ? WHERE user_id = ? AND plan_id != ?",
+            (value, utc_now_iso(), user_id, FREE_PLAN_ID)
         )
-        
-    # Process specific events
-    if event_type == "checkout.session.completed":
-        data = payload.get("data", {}).get("object", {}) if provider == "stripe" else payload.get("data", {})
-        
-        user_id = data.get("client_reference_id") 
-        # Fallback for mock
-        if not user_id and provider == "mock":
-             user_id = data.get("client_reference_id")
 
-        # For stripe, we might need to fetch line items or check metadata to know the plan
-        # We stored plan_id in metadata
-        metadata = data.get("metadata", {})
-        plan_id = metadata.get("plan_id")
-        
-        sub_id = data.get("subscription") # Stripe subscription ID
-        
-        if user_id and plan_id:
-            handle_checkout_success(user_id, plan_id, sub_id)
 
-    # In real world: handle invoice.payment_succeeded to renew expiry date
-    # handle customer.subscription.deleted to set status=canceled
+def _stripe_provider_for(state: Dict[str, Any]) -> Optional["StripePaymentProvider"]:
+    """Stripe provider when the subscription lives in Stripe, else None."""
+    if not _has_provider_subscription(state):
+        return None
+    provider = get_provider()
+    if provider.name != "stripe":
+        raise BillingNotConfigured("this subscription is managed by Stripe, which is not configured")
+    return provider
 
-def handle_checkout_success(user_id: str, plan_id: str, provider_sub_id: str) -> None:
-    db = DB()
-    now = utc_now_iso()
-    
-    # Calculate period end (approx 30 days if we don't have exact from provider)
-    # In real stripe we'd use current_period_end from the subscription object
-    end_date = (datetime.now(timezone.utc) + timedelta(days=30)).isoformat()
-
-    with db.connect() as conn:
-        # Upsert subscription
-        conn.execute(
-            """
-            INSERT INTO subscriptions (user_id, plan_id, status, provider_sub_id, current_period_end, created_at, updated_at)
-            VALUES (?, ?, 'active', ?, ?, ?, ?)
-            ON CONFLICT(user_id) DO UPDATE SET
-            plan_id = excluded.plan_id,
-            status = 'active',
-            provider_sub_id = excluded.provider_sub_id,
-            current_period_end = excluded.current_period_end,
-            updated_at = excluded.updated_at
-            """,
-            (user_id, plan_id, provider_sub_id or "sub_mock", end_date, now, now)
-        )
-        
-        # Create Invoice Record
-        plan = get_plan_by_id(plan_id)
-        if plan:
-            conn.execute(
-                """
-                INSERT INTO invoices (id, user_id, amount, currency, status, created_at)
-                VALUES (?, ?, ?, ?, 'paid', ?)
-                """,
-                (f"in_{uuid.uuid4().hex[:10]}", user_id, plan.price, plan.currency, now)
-            )
 
 def cancel_subscription(user_id: str) -> bool:
-    db = DB()
-    with db.connect() as conn:
-        row = conn.execute("SELECT * FROM subscriptions WHERE user_id = ?", (user_id,)).fetchone()
-        if not row:
-            return False
-        
-        sub_data = dict(row)
-        provider_sub_id = sub_data.get("provider_sub_id")
-        
-        # Call provider
-        provider = get_provider()
-        if provider_sub_id:
-            success = provider.cancel_subscription(provider_sub_id)
-            if not success:
-                log.warning(f"Provider failed to cancel sub {provider_sub_id}")
-                # We might mark it as separate state or just set cancel_at_period_end anyway
-        
-        # Update DB: set cancel_at_period_end = 1
-        conn.execute(
-            "UPDATE subscriptions SET cancel_at_period_end = 1, updated_at = ? WHERE user_id = ?",
-            (utc_now_iso(), user_id)
-        )
-        return True
+    """Cancel at period end. Returns False when there is no paid subscription.
 
-def get_user_subscription(user_id: str) -> Dict[str, Any]:
-    db = DB()
+    For a Stripe subscription the cancellation is set in Stripe first; Stripe
+    then ends it at the period end and ``customer.subscription.deleted``
+    downgrades the user. Local-only rows expire through the period-end check.
+    """
+    user_id = str(user_id)
+    db = _db()
+    state = plan_entitlements.get_effective_plan(db, user_id)
+    if not state["is_paid"]:
+        return False
+
+    provider = _stripe_provider_for(state)
+    if provider is not None and not provider.cancel_subscription(state["provider_sub_id"]):
+        raise BillingProviderError("The payment provider could not cancel the subscription.")
+
+    _set_cancel_flag(db, user_id, 1)
+    return True
+
+
+def resume_subscription(user_id: str) -> bool:
+    """Undo a pending cancel-at-period-end."""
+    user_id = str(user_id)
+    db = _db()
+    state = plan_entitlements.get_effective_plan(db, user_id)
+    if not state["is_paid"] or not state["cancel_at_period_end"]:
+        return False
+
+    provider = _stripe_provider_for(state)
+    if provider is not None and not provider.resume_subscription(state["provider_sub_id"]):
+        raise BillingProviderError("The payment provider could not resume the subscription.")
+
+    _set_cancel_flag(db, user_id, 0)
+    return True
+
+
+def _plan_rank(plan_id: Optional[str]) -> tuple:
+    """Orders plans by what they grant (free < pro < whale; yearly == monthly)."""
+    limits = limits_for(plan_id)
+    return (
+        int(limits.get("max_bots", 0) or 0),
+        int(limits.get("max_brokers", 0) or 0),
+        bool(limits.get("live_trading", False)),
+        bool(limits.get("api_access", False)),
+    )
+
+
+def is_plan_upgrade(current_plan_id: Optional[str], new_plan_id: str) -> bool:
+    return _plan_rank(new_plan_id) > _plan_rank(current_plan_id)
+
+
+def change_plan(user_id: str, plan_id: str) -> bool:
+    """Move the user's existing Stripe subscription to ``plan_id``.
+
+    Only asks Stripe to change the price; the plan itself changes when the
+    signed ``customer.subscription.updated`` webhook arrives.
+    """
+    user_id = str(user_id)
+    if not get_plan_by_id(plan_id) or not is_paid_plan(plan_id):
+        raise BillingError("Invalid Plan ID")
+    state = plan_entitlements.get_effective_plan(_db(), user_id)
+    provider = _stripe_provider_for(state)
+    if provider is None:
+        raise BillingError("No active subscription to change.")
+    if state["plan_id"] == plan_id and not state["cancel_at_period_end"]:
+        raise BillingConflict("You are already on this plan.")
+    price_id = _price_id_for(plan_id)
+    if not provider.change_plan(state["provider_sub_id"], price_id, plan_id):
+        raise BillingProviderError("The payment provider could not change the plan.")
+    return True
+
+
+def _usage(db: DB, user_id: str) -> Dict[str, int]:
+    usage = {"bots": 0, "brokers": 0}
+    try:
+        with db.connect() as conn:
+            usage["bots"] = plan_entitlements.count_user_bots(conn, user_id)
+            usage["brokers"] = plan_entitlements.count_user_brokers(conn, user_id)
+    except sqlite3.Error as exc:
+        # Usage is informational here; enforcement uses check_entitlement.
+        log.warning("could not read plan usage for user %s: %s", user_id, exc)
+    return usage
+
+
+def get_user_subscription(user_id: str, *, persist: bool = False) -> Dict[str, Any]:
+    """Current plan, status, limits and usage, read from the database.
+
+    A subscription whose period (plus grace) has run out is reported as the
+    free plan -- see shared_lib.billing.entitlements. Read-only by default, so
+    it is safe to call while the request holds an open write transaction (token
+    creation at login does). Only ``persist=True`` (the billing status
+    endpoint) also stores that downgrade, and never waits long for the write
+    lock to do so.
+    """
+    user_id = str(user_id)
+    db = _db()
+    state = plan_entitlements.get_effective_plan(db, user_id, persist=persist)
+    plan = get_plan_by_id(state["plan_id"]) or get_plan_by_id(FREE_PLAN_ID)
+
+    return {
+        "plan": plan.dict(),
+        "status": state["status"],  # the free plan is always "active"
+        "current_period_end": state["current_period_end"],
+        "cancel_at_period_end": bool(state["cancel_at_period_end"]),
+        "grace_period_end": state["grace_period_end"],
+        "entitlements": dict(state["limits"]),
+        "usage": _usage(db, user_id),
+    }
+
+
+def get_checkout_status(user_id: str, session_id: str) -> Optional[Dict[str, Any]]:
+    """Whether ``session_id`` (a checkout this user started) has been activated.
+
+    Read-only: it reports what the webhook has already recorded and never
+    grants anything itself. ``None`` when the session is not this user's.
+    """
+    user_id = str(user_id)
+    db = _db()
     with db.connect() as conn:
-        row = conn.execute("SELECT * FROM subscriptions WHERE user_id = ?", (user_id,)).fetchone()
-        
-        if not row:
-            # Default to FREE plan if no sub found
-            free_plan = get_plan_by_id("plan_free")
-            return {
-                "plan": free_plan.dict(),
-                "status": "active", # Free is always active
-                "entitlements": free_plan.limits,
-                "cancel_at_period_end": False
-            }
-            
-        data = dict(row)
-        plan = get_plan_by_id(data["plan_id"])
-        
-        # Compute entitlements
-        entitlements = plan.limits.copy() if plan else {}
-        
-        # Status checks
-        status = data["status"]
-        end_str = data["current_period_end"]
-        if end_str:
-            end_dt = datetime.fromisoformat(end_str)
-            if end_dt < datetime.now(timezone.utc) and status == "active":
-                # Technically 'past_due' if payment failed, or just expired?
-                pass 
-                
-        return {
-            "plan": plan.dict() if plan else None,
-            "status": status,
-            "current_period_end": data["current_period_end"],
-            "cancel_at_period_end": bool(data["cancel_at_period_end"]),
-            "entitlements": entitlements
-        }
+        intent = conn.execute(
+            "SELECT plan_id FROM pricing_intents WHERE session_id = ? AND user_id = ?",
+            (session_id, user_id),
+        ).fetchone()
+    if not intent:
+        return None
+
+    state = plan_entitlements.get_effective_plan(db, user_id)
+    activated = bool(state["is_paid"]) and state.get("checkout_session_id") == session_id
+    return {
+        "session_id": session_id,
+        "status": "active" if activated else "pending",
+        "plan_id": intent[0],
+        "current_plan_id": state["plan_id"],
+    }
+
 
 def list_invoices(user_id: str) -> List[Dict[str, Any]]:
-    db = DB()
+    db = _db()
     with db.connect() as conn:
         rows = conn.execute(
             "SELECT * FROM invoices WHERE user_id = ? ORDER BY created_at DESC", 
@@ -446,8 +796,9 @@ def list_invoices(user_id: str) -> List[Dict[str, Any]]:
             d = dict(r)
             results.append({
                 "id": d["id"],
-                "amount": d["amount"],
-                "currency": d["currency"],
+                "amount": d["amount"] if d["amount"] is not None else 0.0,
+                "amount_cents": d.get("amount_cents"),
+                "currency": d["currency"] or "USD",
                 "status": d["status"],
                 "date": d["created_at"],
                 "pdf_url": d.get("hosted_invoice_url") # or None
@@ -460,47 +811,23 @@ def list_invoices(user_id: str) -> List[Dict[str, Any]]:
 
 def check_entitlement(user_id: str, action: str) -> bool:
     """
-    Checks if user is allowed to perform action.
+    Checks if user is allowed to perform action, from the database.
     actions: 'create_bot', 'live_trading', 'add_broker', 'api_access'
     """
-    sub = get_user_subscription(user_id)
-    limits = sub.get("entitlements", {})
-    status = sub.get("status")
-    
-    # 1. Base status check
-    # If using free plan, status is 'active'.
-    if status not in ["active", "trialing"]:
-        # If canceled but period not ended, it might still be active in DB 'status'.
-        # If explicitly 'past_due' or 'unpaid', block.
-        return False
-        
-    # 2. Boolean flags
-    if action == "live_trading":
-        return limits.get("live_trading", False)
-        
-    if action == "api_access":
-        return limits.get("api_access", False)
-        
-    # 3. Numeric limits
-    db = DB()
+    user_id = str(user_id)
+    db = _db()
+
     if action == "create_bot":
-        max_bots = limits.get("max_bots", 0)
-        # Check current count
-        # We don't have a 'bots' table in the DB schema shown in step 23? 
-        # Wait, 'runs' table exists, but 'bots' might be implied by 'strategies' or similar. 
-        # The schema in db.py has 'runs', 'broker_accounts'. 
-        # Let's check 'broker_accounts' for 'add_broker'.
-        # For 'create_bot', if we don't have a table, we pass True for now or check 'runs' count? 
-        # Assuming 'strategies' or similar is tracked. For now, pass True.
-        return True 
+        return plan_entitlements.can_create_bot(db, user_id)
+
+    if action == "live_trading":
+        return plan_entitlements.can_trade_live(db, user_id)
 
     if action == "add_broker":
-        max_brokers = limits.get("max_brokers", 0)
-        with db.connect() as conn:
-            count = conn.execute(
-                "SELECT COUNT(*) FROM broker_accounts WHERE user_id = ? AND status != 'disabled'", 
-                (user_id,)
-            ).fetchone()[0]
-        return count < max_brokers
+        return plan_entitlements.can_add_broker(db, user_id)
+
+    if action == "api_access":
+        limits = plan_entitlements.get_effective_plan(db, user_id)["limits"]
+        return bool(limits.get("api_access", False))
 
     return False

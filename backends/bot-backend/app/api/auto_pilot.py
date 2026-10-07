@@ -160,25 +160,16 @@ def deploy_auto_pilot(
             },
         )
 
-    # 2. Check Entitlements (Max Bots)
-    entitlements = user.get("entitlements", {})
-    max_bots = entitlements.get("max_bots")
-    
-    if max_bots and str(max_bots).lower() != "unlimited":
-        try:
-            limit = int(max_bots)
-            # Count active/paused bots
-            current_bots = service.get_user_bot_instances(user["id"])
-            count = len(current_bots)
-            requested = len(request.broker_account_ids)
-            
-            if count + requested > limit:
-                raise HTTPException(
-                    status_code=403, 
-                    detail=f"Plan limit reached. You have {count} bots, limit is {limit}. Upgrade your plan."
-                )
-        except ValueError:
-             pass
+    # 2. Check Entitlements (live trading, max bots) from the database.
+    # The JWT's "entitlements" claim is a snapshot from login and goes stale on
+    # a downgrade, so the plan is read from the shared subscriptions table.
+    # Refusals are 403 with a machine-readable detail (see app.core.plan_gate).
+    from app.core.plan_gate import require_bot_slots, require_live_trading
+
+    if request.execution_mode == "live":
+        require_live_trading(service.db, user["id"], "deploy live bots")
+
+    require_bot_slots(service.db, user["id"], requested=len(request.broker_account_ids))
 
     try:
         # Map Frontend Request to Internal Service Parameters
@@ -323,13 +314,40 @@ def resume_auto_pilot(
     all_bots = service.get_user_bot_instances(user["id"])
     ap_bots = [b for b in all_bots if b.strategy_id == "cati" and b.status == "paused"]
     
+    # Plan gate: a LIVE bot is only resumed while the plan includes live
+    # trading (read from the database now, not from the token). Paper/demo bots
+    # are never subject to it; the plan is only looked up if a live bot exists.
+    from app.core.plan_gate import is_live_mode, live_trading_allowed, live_trading_denied_detail
+
+    live_allowed: Optional[bool] = None
     resumed = []
+    blocked = []
     for bot in ap_bots:
+        if is_live_mode(getattr(bot, "mode", None)):
+            if live_allowed is None:
+                live_allowed = live_trading_allowed(service.db, user["id"])
+            if not live_allowed:
+                blocked.append(bot.id)
+                continue
         try:
             service.start_bot_instance(bot.id)
             resumed.append(bot.id)
         except Exception as e:
             logger.error(f"Failed to resume {bot.id}: {e}")
-            
+
+    if blocked:
+        detail = live_trading_denied_detail(service.db, user["id"], "resume live bots")
+        detail["blocked_ids"] = blocked
+        if not resumed:
+            raise HTTPException(status_code=403, detail=detail)
+        # Paper bots were resumed; say exactly which live bots were not and why.
+        return {
+            "message": f"Resumed {len(resumed)} instances; {len(blocked)} live instances were not resumed: "
+                       + detail["message"],
+            "ids": resumed,
+            "blocked_ids": blocked,
+            "blocked": detail,
+        }
+
     return {"message": f"Resumed {len(resumed)} instances", "ids": resumed}
 

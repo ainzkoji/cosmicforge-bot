@@ -597,6 +597,11 @@ def migrate(db_path: str | DB = None):
         """)
         _add_column_if_missing(conn, "pricing_intents", "session_id", "TEXT")
 
+        # 15b) Billing provider state: Stripe ids on subscriptions, integer
+        # invoice amounts, billing_customers, idempotent billing_events.
+        from shared_lib.billing.schema import ensure_billing_schema
+        ensure_billing_schema(conn)
+
         # 16) Onboarding Wizard (Page 6)
         conn.execute("""
             CREATE TABLE IF NOT EXISTS onboarding_profiles (
