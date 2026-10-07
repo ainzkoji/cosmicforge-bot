@@ -3,16 +3,19 @@ Forex Instruments API
 
 Provides dynamic forex instrument listings from broker APIs or fallback configuration.
 """
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from typing import List, Optional, Dict, Any, Literal
 import logging
 from datetime import datetime, timedelta
 
+from app.core.auth import get_current_user_id
 from app.core.config import settings
 from app.symbols.universe import parse_symbols
 
-router = APIRouter()
+# Authentication is declared on the router so a route added later cannot be
+# public by omission.
+router = APIRouter(dependencies=[Depends(get_current_user_id)])
 logger = logging.getLogger(__name__)
 
 # Simple in-memory cache with TTL
@@ -217,7 +220,8 @@ async def get_forex_instruments(
     broker_id: str = Query(default="oanda", description="Broker ID"),
     broker_account_id: Optional[str] = Query(default=None, description="Broker account ID for live fetch"),
     environment: str = Query(default="practice", description="practice or live"),
-    broker_credentials_map: Optional[Dict[str, Any]] = None  # Injected by user-backend proxy
+    broker_credentials_map: Optional[Dict[str, Any]] = None,  # Injected by user-backend proxy
+    user_id: str = Depends(get_current_user_id),
 ):
     """
     Get forex instruments list.
@@ -226,11 +230,16 @@ async def get_forex_instruments(
     1. If broker_account_id + credentials provided: fetch from broker API (cached 1h)
     2. Else: return fallback from settings.FOREX_SYMBOLS
     
+    Requires an authenticated user: the route accepts broker credentials and
+    makes outbound broker calls with them.
+
     Returns:
         ForexInstrumentsResponse with instruments list and source indicator
     """
-    # Build cache key
-    cache_key = f"{broker_id}:{broker_account_id or 'default'}:{environment}"
+    # Build cache key. A listing fetched for a broker account is cached for the
+    # caller only, so naming someone else's account id never returns their entry.
+    account_scope = f"{user_id}:{broker_account_id}" if broker_account_id else "default"
+    cache_key = f"{broker_id}:{account_scope}:{environment}"
     
     # Check cache first
     cached = get_cached_instruments(cache_key)

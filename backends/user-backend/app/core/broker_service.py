@@ -1,5 +1,7 @@
+import contextvars
 import uuid
 import json
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from typing import List, Optional, Dict, Any
 
@@ -385,7 +387,8 @@ def validate_broker_account(user_id: str, account_id: str) -> Dict[str, Any]:
     # 3. Test live connection
     credentials = {**auth.extra, "api_key": auth.api_key, "api_secret": auth.api_secret, "base_url": auth.base_url}
     environment = auth.environment.value
-    validation_result = _test_broker_connection(broker_id, credentials, environment)
+    with validation_caller(user_id=user_id):
+        validation_result = _test_broker_connection(broker_id, credentials, environment)
 
     # 4. Permission evidence + decision (withdraw-capable keys never trade)
     permission = None
@@ -623,6 +626,125 @@ def _evaluate_key_permissions(broker_id: str, environment: str, credentials: Dic
     return {"evidence": ev.to_dict(), "decision": decision.value, "message": message}
 
 
+# Who a broker validation is being run for. ``_test_broker_connection`` keeps its
+# (broker_id, credentials, environment) signature; the entry points that know
+# the caller set this around the call so the MT bridge test -- which runs in the
+# bot-backend and requires an authenticated user there -- can be authorised.
+_VALIDATION_CALLER: contextvars.ContextVar[Optional[Dict[str, Optional[str]]]] = contextvars.ContextVar(
+    "broker_validation_caller", default=None)
+
+BRIDGE_VALIDATION_UNAUTHENTICATED = "BRIDGE_VALIDATION_UNAUTHENTICATED"
+#: The token minted for a bridge test only has to start one request.
+_BRIDGE_TEST_TOKEN_TTL_SECONDS = 60
+
+
+@contextmanager
+def validation_caller(user_id: Optional[str] = None, authorization: Optional[str] = None):
+    """Declare the user a broker validation runs for (and their own
+    ``Authorization`` header when the request has one)."""
+    token = _VALIDATION_CALLER.set({
+        "user_id": str(user_id) if user_id else None,
+        "authorization": authorization or None,
+    })
+    try:
+        yield
+    finally:
+        _VALIDATION_CALLER.reset(token)
+
+
+def _bot_backend_authorization() -> Optional[str]:
+    """``Authorization`` for a bot-backend call made on the current caller's
+    behalf: their own header when available, otherwise a short-lived access
+    token for that same user. None when no caller is known."""
+    caller = _VALIDATION_CALLER.get()
+    if not caller:
+        return None
+    if caller.get("authorization"):
+        return caller["authorization"]
+    if caller.get("user_id"):
+        from datetime import timedelta
+        from app.core.security import create_access_token
+        return "Bearer " + create_access_token(
+            caller["user_id"], role="user", expires_delta=timedelta(seconds=_BRIDGE_TEST_TOKEN_TTL_SECONDS))
+    return None
+
+
+def _test_mt_bridge_connection(broker_id: str, credentials: Dict[str, Any], environment: str) -> Dict[str, Any]:
+    """MT4/MT5 bridge test, run by the bot-backend
+    (``POST /api/v1/brokers/test-connection``).
+
+    Request  ``{"broker_id", "environment": "paper"|"live", "credentials": {...}}``
+    Response ``{"ok": bool, "error": str|None, "details": dict|None}``
+
+    Never reports success for a test that did not run and succeed.
+    """
+    import httpx
+    from os import getenv
+
+    bridge_url = credentials.get("bridge_url")
+    bridge_token = credentials.get("bridge_token")
+    if not bridge_url or not bridge_token:
+        return {"success": False, "error": "Missing required credentials: bridge_url and bridge_token"}
+
+    authorization = _bot_backend_authorization()
+    if not authorization:
+        return {
+            "success": False,
+            "reason_code": BRIDGE_VALIDATION_UNAUTHENTICATED,
+            "error": (f"{BRIDGE_VALIDATION_UNAUTHENTICATED}: the MT bridge test needs an authenticated user "
+                      "and none was supplied, so the bridge was NOT contacted."),
+        }
+
+    from shared_lib.broker.environment import BrokerEnvironment, normalize_environment
+    try:
+        live = normalize_environment(environment) == BrokerEnvironment.LIVE
+    except ValueError as exc:
+        return {"success": False, "error": f"Validation error: {exc}"}
+
+    bridge_credentials = {"bridge_url": bridge_url, "bridge_token": bridge_token}
+    if credentials.get("tls_mode"):
+        bridge_credentials["tls_mode"] = credentials["tls_mode"]
+
+    bot_backend_url = getenv("BOT_BACKEND_URL", "http://127.0.0.1:9000").rstrip("/")
+    try:
+        with httpx.Client(timeout=15.0, trust_env=False) as client:
+            response = client.post(
+                f"{bot_backend_url}/api/v1/brokers/test-connection",
+                json={
+                    "broker_id": broker_id,
+                    "environment": "live" if live else "paper",
+                    "credentials": bridge_credentials,
+                },
+                headers={"Authorization": authorization},
+            )
+    except Exception as e:
+        # Exception type only: the message can quote the request.
+        return {"success": False, "error": f"Failed to reach the bot service for the MT bridge test: {type(e).__name__}"}
+
+    if response.status_code != 200:
+        # Never echo the raw body: a validation error quotes the submitted
+        # input, which contains the bridge token.
+        detail = None
+        try:
+            detail = response.json().get("detail")
+        except Exception:
+            pass
+        reason = detail[:200] if isinstance(detail, str) else "request rejected"
+        return {"success": False,
+                "error": f"Bridge connection failed: bot service answered HTTP {response.status_code} ({reason})"}
+
+    try:
+        result = response.json()
+    except Exception:
+        result = None
+    if not isinstance(result, dict) or not isinstance(result.get("ok"), bool):
+        return {"success": False, "error": "Bridge connection failed: unexpected answer from the bot service"}
+    if not result["ok"]:
+        return {"success": False, "error": str(result.get("error") or "Bridge connection failed")}
+    details = result.get("details") if isinstance(result.get("details"), dict) else {}
+    return {"success": True, "details": details}
+
+
 def _test_broker_connection(broker_id: str, credentials: Dict[str, Any], environment: str) -> Dict[str, Any]:
     """Test connection to a specific broker using their API"""
     try:
@@ -698,35 +820,8 @@ def _test_broker_connection(broker_id: str, credentials: Dict[str, Any], environ
             return validator.test_connection()
         
         elif broker_id in ("mt4", "mt5"):
-            # MT Bridge validation - proxy to bot-backend
-            import httpx
-            from os import getenv
-            
-            bot_backend_url = getenv("BOT_BACKEND_URL", "http://localhost:8000")
-            
-            try:
-                with httpx.Client(timeout=15.0) as client:
-                    response = client.post(
-                        f"{bot_backend_url}/api/v1/brokers/test-connection",
-                        json={
-                            "broker_id": broker_id,
-                            "bridge_url": credentials.get("bridge_url"),
-                            "bridge_token": credentials.get("bridge_token")
-                        }
-                    )
-                    
-                    if response.status_code == 200:
-                        return response.json()
-                    else:
-                        return {
-                            "success": False,
-                            "error": f"Bridge connection failed: {response.text[:200]}"
-                        }
-            except Exception as e:
-                return {
-                    "success": False,
-                    "error": f"Failed to connect to MT bridge: {str(e)}"
-                }
+            # MT Bridge validation runs in the bot-backend (authenticated).
+            return _test_mt_bridge_connection(broker_id, credentials, environment)
         
         else:
             return {"success": False, "error": f"Unknown broker: {broker_id}"}
@@ -1211,7 +1306,8 @@ def validate_and_activate_credential_v2(
             return {"success": False, "error": "Decryption failed", "version": version}
 
         # Live exchange validation
-        validation = _test_broker_connection(broker_id, decrypted, environment)
+        with validation_caller(user_id=user_id):
+            validation = _test_broker_connection(broker_id, decrypted, environment)
         permission = None
         if validation["success"]:
             permission = _evaluate_key_permissions(broker_id, environment, decrypted, account_id, user_id, version)

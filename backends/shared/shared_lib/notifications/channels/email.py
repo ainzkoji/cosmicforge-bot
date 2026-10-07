@@ -6,6 +6,9 @@ import os
 
 logger = logging.getLogger(__name__)
 
+# Without a timeout an unresponsive SMTP server blocks the sending thread forever.
+SMTP_TIMEOUT_SECONDS = 15
+
 class EmailChannel:
     @staticmethod
     def send(recipient: str, subject: str, body_html: str, body_text: str = None) -> bool:
@@ -16,8 +19,11 @@ class EmailChannel:
         smtp_host = os.getenv("SMTP_HOST")
         smtp_port = os.getenv("SMTP_PORT", "587")
         smtp_user = os.getenv("SMTP_USER")
-        smtp_pass = os.getenv("SMTP_PASS")
-        sender_email = os.getenv("SMTP_FROM", "noreply@cosmicforge.bot")
+        # Settings / .env.example use SMTP_PASSWORD and SMTP_FROM_EMAIL; the
+        # original names SMTP_PASS and SMTP_FROM keep working. When both are
+        # set, the new name wins. An empty value counts as not set.
+        smtp_pass = os.getenv("SMTP_PASSWORD") or os.getenv("SMTP_PASS")
+        sender_email = os.getenv("SMTP_FROM_EMAIL") or os.getenv("SMTP_FROM") or "noreply@cosmicforge.bot"
         
         if not smtp_host or not smtp_user:
             logger.warning("EmailChannel: SMTP not configured. Skipping send.")
@@ -36,7 +42,7 @@ class EmailChannel:
             msg.attach(part1)
             msg.attach(part2)
 
-            with smtplib.SMTP(smtp_host, int(smtp_port)) as server:
+            with smtplib.SMTP(smtp_host, int(smtp_port), timeout=SMTP_TIMEOUT_SECONDS) as server:
                 server.starttls()
                 server.login(smtp_user, smtp_pass)
                 server.sendmail(sender_email, recipient, msg.as_string())

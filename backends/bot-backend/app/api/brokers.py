@@ -4,11 +4,56 @@ from typing import Dict, Any, Optional, List, Literal
 import logging
 import uuid
 from datetime import datetime
+from app.core.auth import get_current_user_id
+from app.core.config import settings
 from app.exchange.ibkr.adapter import IBKRAdapter
 from app.exchange.ibkr.errors import IBKRConnectionError, IBKRAuthError
+from shared_lib.core.security.url_guard import (
+    OutboundPolicy,
+    UnsafeDestinationError,
+    ValidatedDestination,
+    validate_outbound_host_port,
+    validate_outbound_url,
+)
 
-router = APIRouter()
+# Every route in this router requires an authenticated user. The dependency is
+# declared on the router so a route added later cannot be public by omission.
+router = APIRouter(dependencies=[Depends(get_current_user_id)])
 logger = logging.getLogger(__name__)
+
+
+# --- Outbound destination policy (SSRF guard) ---
+# These routes connect to addresses the caller supplies (IBKR gateway URL,
+# TWS/IB Gateway host:port, MT4/MT5 bridge URL). Every such address goes
+# through shared_lib.core.security.url_guard first.
+
+def guard_gateway_url(url: Any) -> ValidatedDestination:
+    """Validate a caller-supplied gateway / bridge URL. Raises UnsafeDestinationError."""
+    return validate_outbound_url(url, policy=OutboundPolicy.from_settings(settings))
+
+
+def guard_gateway_host_port(host: Any, port: Any) -> ValidatedDestination:
+    """Validate a caller-supplied TWS / IB Gateway host:port. Raises UnsafeDestinationError."""
+    return validate_outbound_host_port(host, port, policy=OutboundPolicy.from_settings(settings))
+
+
+def gateway_verify_tls(legacy_default: bool) -> bool:
+    """Whether to verify TLS for a caller-supplied gateway / bridge URL.
+
+    BROKER_GATEWAY_VERIFY_TLS: "true" always verifies; "false" keeps the legacy
+    behaviour (``legacy_default``); "auto" verifies in production and keeps the
+    legacy behaviour elsewhere (local self-signed gateways in development).
+    """
+    mode = str(getattr(settings, "BROKER_GATEWAY_VERIFY_TLS", "auto") or "auto").strip().lower()
+    if mode in ("true", "1", "yes", "on"):
+        return True
+    if mode in ("false", "0", "no", "off"):
+        return legacy_default
+    return True if settings.production else legacy_default
+
+
+def _destination_error(exc: UnsafeDestinationError) -> str:
+    return f"Destination not allowed ({exc.reason})"
 
 # --- Models ---
 
@@ -77,9 +122,30 @@ class TestConnectionResponse(BaseModel):
     details: Optional[Dict[str, Any]] = None
 
 # --- In-Memory Store (Mock for MVP) ---
-# In a real app, this would be a DB table
-_ACCOUNTS_DB: Dict[str, BrokerAccount] = {}
-_CREDENTIALS_DB: Dict[str, Dict[str, Any]] = {}
+# In a real app, this would be a DB table.
+# Scoped by owner: user_id -> account_id -> record. A caller can only ever
+# reach the inner dict for their own user id, so one user can never list,
+# validate, modify or delete another user's draft account or credentials.
+_ACCOUNTS_DB: Dict[str, Dict[str, BrokerAccount]] = {}
+_CREDENTIALS_DB: Dict[str, Dict[str, Dict[str, Any]]] = {}
+# Bound the per-user draft store so an authenticated caller cannot grow it forever.
+_MAX_ACCOUNTS_PER_USER = 50
+
+
+def _user_accounts(user_id: str) -> Dict[str, BrokerAccount]:
+    return _ACCOUNTS_DB.setdefault(str(user_id), {})
+
+
+def _user_credentials(user_id: str) -> Dict[str, Dict[str, Any]]:
+    return _CREDENTIALS_DB.setdefault(str(user_id), {})
+
+
+def _owned_account(user_id: str, account_id: str) -> BrokerAccount:
+    """The caller's own draft account, or 404 (never another user's)."""
+    account = _ACCOUNTS_DB.get(str(user_id), {}).get(account_id)
+    if account is None:
+        raise HTTPException(status_code=404, detail="Account not found")
+    return account
 
 # --- Catalog Definition ---
 
@@ -194,11 +260,14 @@ async def get_broker_catalog():
     return BrokerCatalogResponse(brokers=_get_catalog_data())
 
 @router.get("/accounts", response_model=BrokerAccountsResponse)
-async def get_broker_accounts():
-    return BrokerAccountsResponse(accounts=list(_ACCOUNTS_DB.values()))
+async def get_broker_accounts(user_id: str = Depends(get_current_user_id)):
+    return BrokerAccountsResponse(accounts=list(_ACCOUNTS_DB.get(str(user_id), {}).values()))
 
 @router.post("/connect", response_model=ConnectResponse)
-async def start_connection(request: ConnectRequest):
+async def start_connection(request: ConnectRequest, user_id: str = Depends(get_current_user_id)):
+    accounts = _user_accounts(user_id)
+    if len(accounts) >= _MAX_ACCOUNTS_PER_USER:
+        raise HTTPException(status_code=409, detail="Too many pending broker connections; delete one first")
     account_id = str(uuid.uuid4())
     account = BrokerAccount(
         id=account_id,
@@ -208,37 +277,37 @@ async def start_connection(request: ConnectRequest):
         label=request.label or f"{request.broker_id.upper()} Account",
         created_at=datetime.utcnow().isoformat()
     )
-    _ACCOUNTS_DB[account_id] = account
+    accounts[account_id] = account
     return ConnectResponse(account_id=account_id, status="draft")
 
 @router.post("/{account_id}/credentials")
-async def submit_credentials(account_id: str, request: CredentialsRequest):
-    if account_id not in _ACCOUNTS_DB:
-        raise HTTPException(status_code=404, detail="Account not found")
+async def submit_credentials(
+    account_id: str,
+    request: CredentialsRequest,
+    user_id: str = Depends(get_current_user_id),
+):
+    account = _owned_account(user_id, account_id)
     
     # In a real app, encrypt this!
     credentials = request.credentials.copy()
-    _CREDENTIALS_DB[account_id] = credentials
+    _user_credentials(user_id)[account_id] = credentials
     
     # Update account status
-    _ACCOUNTS_DB[account_id].status = "validating"
-    _ACCOUNTS_DB[account_id].environment = credentials.get("environment", "paper")
+    account.status = "validating"
+    account.environment = credentials.get("environment", "paper")
     
     # Mask key for display
     if "api_key" in credentials:
-        _ACCOUNTS_DB[account_id].masked_key = f"***{credentials['api_key'][-4:]}"
+        account.masked_key = f"***{credentials['api_key'][-4:]}"
     elif "account_id" in credentials:
-        _ACCOUNTS_DB[account_id].masked_key = f"{credentials['account_id']}"
+        account.masked_key = f"{credentials['account_id']}"
     
     return {"success": True, "status": "validating"}
 
 @router.post("/{account_id}/validate", response_model=ValidateResponse)
-async def validate_connection(account_id: str):
-    if account_id not in _ACCOUNTS_DB:
-        raise HTTPException(status_code=404, detail="Account not found")
-    
-    account = _ACCOUNTS_DB[account_id]
-    credentials = _CREDENTIALS_DB.get(account_id)
+async def validate_connection(account_id: str, user_id: str = Depends(get_current_user_id)):
+    account = _owned_account(user_id, account_id)
+    credentials = _user_credentials(user_id).get(account_id)
     
     if not credentials:
         return ValidateResponse(success=False, error="No credentials provided")
@@ -247,7 +316,13 @@ async def validate_connection(account_id: str):
         if account.broker_id == "ibkr":
             # Reuse test logic
             gateway_url = credentials.get("gateway_url", "https://localhost:5000/v1/api")
-            verify_ssl = False
+            # Caller-supplied destination: refuse anything the outbound policy
+            # does not allow BEFORE the server connects to it.
+            guard_gateway_url(gateway_url)
+            # A local IBKR Client Portal gateway serves a self-signed
+            # certificate, hence the legacy default of no verification.
+            # Production verifies unless BROKER_GATEWAY_VERIFY_TLS=false.
+            verify_ssl = gateway_verify_tls(False)
             
             # Extract IBKR specific credentials from the flattened map if needed
             # For now adapter only needs gateway_url and account_id
@@ -261,8 +336,7 @@ async def validate_connection(account_id: str):
             if adapter._account_id:
                 account.masked_key = adapter._account_id
                 # Update credentials with discovered ID so it persists for future usage
-                if _CREDENTIALS_DB.get(account_id) is not None:
-                    _CREDENTIALS_DB[account_id]["account_id"] = adapter._account_id
+                credentials["account_id"] = adapter._account_id
 
         elif account.broker_id == "oanda":
              # TODO: Implement OANDA validation
@@ -276,6 +350,11 @@ async def validate_connection(account_id: str):
         account.last_validated_at = datetime.utcnow().isoformat()
         return ValidateResponse(success=True)
         
+    except UnsafeDestinationError as e:
+        account.status = "error"
+        account.last_error_message = _destination_error(e)
+        logger.warning(f"Validation refused for {account_id}: gateway destination not allowed ({e.reason})")
+        return ValidateResponse(success=False, error=_destination_error(e))
     except Exception as e:
         account.status = "error"
         account.last_error_message = str(e)
@@ -283,21 +362,23 @@ async def validate_connection(account_id: str):
         return ValidateResponse(success=False, error=str(e))
 
 @router.post("/{account_id}/disconnect")
-async def disconnect_account(account_id: str):
-    if account_id in _ACCOUNTS_DB:
-        _ACCOUNTS_DB[account_id].status = "disconnected"
+async def disconnect_account(account_id: str, user_id: str = Depends(get_current_user_id)):
+    account = _ACCOUNTS_DB.get(str(user_id), {}).get(account_id)
+    if account is not None:
+        account.status = "disconnected"
     return {"success": True}
 
 @router.delete("/{account_id}")
-async def delete_account(account_id: str):
-    if account_id in _ACCOUNTS_DB:
-        del _ACCOUNTS_DB[account_id]
-    if account_id in _CREDENTIALS_DB:
-        del _CREDENTIALS_DB[account_id]
+async def delete_account(account_id: str, user_id: str = Depends(get_current_user_id)):
+    _ACCOUNTS_DB.get(str(user_id), {}).pop(account_id, None)
+    _CREDENTIALS_DB.get(str(user_id), {}).pop(account_id, None)
     return {"success": True}
 
 @router.post("/test-connection", response_model=TestConnectionResponse)
-async def test_broker_connection(request: TestConnectionRequest = Body(...)):
+async def test_broker_connection(
+    request: TestConnectionRequest = Body(...),
+    user_id: str = Depends(get_current_user_id),
+):
     """
     Test connection to a broker without saving credentials.
     Supports: IBKR (bridge mode), MT4, MT5.
@@ -346,6 +427,14 @@ async def _test_ibkr_connection(request: TestConnectionRequest) -> TestConnectio
         host = request.credentials.get("host", "127.0.0.1")
         port = int(request.credentials.get("port", 4001))
         client_id = int(request.credentials.get("client_id", 1))
+
+        # Caller-supplied host:port. Validate it, then connect to the IP that
+        # was validated so the hostname is not resolved a second time.
+        try:
+            destination = guard_gateway_host_port(host, port)
+        except UnsafeDestinationError as e:
+            logger.warning(f"IBKR test connection refused: destination not allowed ({e.reason})")
+            return TestConnectionResponse(ok=False, error=_destination_error(e))
         
         logger.info(f"Testing IBKR connection to {bridge_type} at {host}:{port} (client_id={client_id})")
         
@@ -358,7 +447,9 @@ async def _test_ibkr_connection(request: TestConnectionRequest) -> TestConnectio
         connection_id = f"test_{uuid.uuid4().hex[:8]}"
         
         # Get or create session (this will attempt connect)
-        session = await session_manager.get_session(connection_id, host=host, port=port)
+        session = await session_manager.get_session(
+            connection_id, host=destination.connect_host, port=destination.port
+        )
         
         # Create client
         client = IBKRClient(session)
@@ -424,17 +515,38 @@ async def _test_mt_bridge_connection(request: TestConnectionRequest) -> TestConn
                 error="Missing required credentials: bridge_url and bridge_token"
             )
         
-        logger.info(f"Testing {request.broker_id.upper()} bridge connection to {bridge_url} (tls_mode={tls_mode})")
+        # Caller-supplied URL: refuse it before the server sends the bearer
+        # token (or anything else) to a destination the policy does not allow.
+        try:
+            destination = guard_gateway_url(bridge_url)
+        except UnsafeDestinationError as e:
+            logger.warning(
+                f"{request.broker_id.upper()} bridge test refused: destination not allowed ({e.reason})"
+            )
+            return TestConnectionResponse(ok=False, error=_destination_error(e))
+
+        # Host only: the full URL is caller input and is not written to logs.
+        logger.info(
+            f"Testing {request.broker_id.upper()} bridge connection to "
+            f"{destination.scheme}://{destination.host}:{destination.port} (tls_mode={tls_mode})"
+        )
         
         from app.exchange.mt_bridge.client import MTBridgeClient
         
-        # Create bridge client
+        # Create bridge client. "insecure" (caller-selected, for self-signed
+        # bridges) is honoured outside production only, unless
+        # BROKER_GATEWAY_VERIFY_TLS=false.
         client = MTBridgeClient(
             base_url=bridge_url,
             api_token=bridge_token,
             timeout=10,
-            verify_ssl=(tls_mode != "insecure")
+            verify_ssl=gateway_verify_tls(tls_mode != "insecure")
         )
+        # Only bridge_url was validated: never follow a redirect to an address
+        # the guard did not see (requests raises TooManyRedirects instead).
+        _http_session = getattr(client, "_session", None)
+        if _http_session is not None:
+            _http_session.max_redirects = 0
         
         # Test health endpoint
         health = client.get_health()
@@ -469,7 +581,7 @@ async def _test_mt_bridge_connection(request: TestConnectionRequest) -> TestConn
 # -----------------------------------------------
 
 @router.post("/ibkr/connect/start")
-async def start_ibkr_link_flow(request: Request = None):
+async def start_ibkr_link_flow(request: Request = None, user_id: str = Depends(get_current_user_id)):
     """
     Called by User-Backend to initiate IBKR connection.
     In this MVP, assuming local gateway, we immediately attempt discovery 
@@ -492,6 +604,14 @@ async def start_ibkr_link_flow(request: Request = None):
             except:
                 pass
 
+        # host/port may be caller-supplied: validate, then connect to the
+        # validated IP (no second DNS lookup).
+        try:
+            destination = guard_gateway_host_port(host, port)
+        except UnsafeDestinationError as e:
+            logger.warning(f"IBKR Link Flow refused: destination not allowed ({e.reason})")
+            return {"status": "error", "message": _destination_error(e)}
+
         logger.info(f"Starting IBKR Link Flow: {host}:{port}")
 
         # Attempt discovery using direct session manager (since Adapter is being refactored)
@@ -502,7 +622,9 @@ async def start_ibkr_link_flow(request: Request = None):
         connection_id = f"link_{uuid.uuid4().hex[:8]}"
         
         # Connect
-        session = await session_manager.get_session(connection_id, host=host, port=port, client_id=client_id)
+        session = await session_manager.get_session(
+            connection_id, host=destination.connect_host, port=destination.port, client_id=client_id
+        )
         
         # Get Accounts
         client = IBKRClient(session)

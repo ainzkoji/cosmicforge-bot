@@ -75,6 +75,11 @@ def _parse_timestamp(value: Any) -> datetime | None:
         return None
 
 
+def _webhook_requires_signature(webhook: dict[str, Any]) -> bool:
+    """True when the webhook is configured with an HMAC secret (relay-signed)."""
+    return bool(str(webhook.get("secret_hash") or "").strip())
+
+
 def _side_for_action(action: str) -> str:
     return "LONG" if action == "BUY" else "SHORT"
 
@@ -213,8 +218,26 @@ async def receive_tradingview_webhook(token_or_id: str, request: Request) -> Tra
             mode=webhook.get("mode"),
         )
 
+    # HMAC is an extra layer for relays that can send headers; TradingView
+    # itself cannot, so a plain token-authenticated alert carries no signature.
+    # It is therefore optional -- EXCEPT for a webhook configured with an HMAC
+    # secret (tradingview_webhooks.secret_hash is set): that webhook is
+    # relay-signed, and a request without the header must not be able to skip
+    # the check simply by omitting it.
     signature = request.headers.get("X-CF-TV-Signature")
     signature_valid = None
+    if _webhook_requires_signature(webhook) and not signature:
+        return _reject(
+            db,
+            status=STATUS_INVALID_SIGNATURE,
+            reason="SIGNATURE_REQUIRED",
+            payload=payload,
+            webhook_id=webhook_id,
+            bot_id=bot_id,
+            source_ip=source_ip,
+            signature_valid=False,
+            mode=webhook.get("mode"),
+        )
     if signature:
         timestamp_h = request.headers.get("X-CF-TV-Timestamp", "")
         nonce_h = request.headers.get("X-CF-TV-Nonce", "")

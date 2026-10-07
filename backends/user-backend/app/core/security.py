@@ -9,7 +9,9 @@ Enhanced Security Module
 from datetime import datetime, timedelta, timezone
 from typing import Union, Any, Optional
 import hashlib
+import hmac
 import secrets
+import time
 import uuid
 
 from jose import jwt, JWTError
@@ -24,12 +26,41 @@ from app.core.config import settings
 pwd_context = CryptContext(schemes=["bcrypt", "argon2"], deprecated="auto")
 
 
+# bcrypt only reads the first 72 bytes of its input. Rather than silently
+# truncating (two different long passwords would then be interchangeable),
+# anything longer is rejected at hashing time and never matches at login.
+MAX_PASSWORD_BYTES = 72
+
+_DUMMY_PASSWORD_HASH: Optional[str] = None
+
+
+def password_too_long(password: str) -> bool:
+    return len((password or "").encode("utf-8")) > MAX_PASSWORD_BYTES
+
+
 def get_password_hash(password: str) -> str:
+    if password_too_long(password):
+        raise ValueError(f"Password must be at most {MAX_PASSWORD_BYTES} bytes")
     return pwd_context.hash(password)
 
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
-    return pwd_context.verify(plain_password, hashed_password)
+    if not plain_password or not hashed_password or password_too_long(plain_password):
+        return False
+    try:
+        return bool(pwd_context.verify(plain_password, hashed_password))
+    except (ValueError, TypeError):
+        # Unrecognised / deliberately unusable stored hash: never a match.
+        return False
+
+
+def dummy_verify_password(plain_password: str) -> None:
+    """Spend the same hashing work as a real check when no account exists,
+    so response time does not reveal whether an email is registered."""
+    global _DUMMY_PASSWORD_HASH
+    if _DUMMY_PASSWORD_HASH is None:
+        _DUMMY_PASSWORD_HASH = pwd_context.hash(secrets.token_urlsafe(24))
+    verify_password(plain_password or "x", _DUMMY_PASSWORD_HASH)
 
 
 # --- JWT Tokens ---
@@ -227,6 +258,78 @@ def decrypt_credential(encrypted: str) -> str:
     return f.decrypt(encrypted.encode()).decode()
 
 
+# --- TOTP (2FA) secrets ---
+# Stored encrypted with CREDENTIAL_KEY. The prefix tells an encrypted value
+# apart from a legacy plaintext base32 secret, which stays readable.
+_TOTP_SECRET_PREFIX = "enc:v1:"
+
+
+def encrypt_totp_secret(secret: str) -> str:
+    return _TOTP_SECRET_PREFIX + encrypt_credential(secret)
+
+
+def decrypt_totp_secret(stored: Optional[str]) -> str:
+    if not stored:
+        return ""
+    if stored.startswith(_TOTP_SECRET_PREFIX):
+        return decrypt_credential(stored[len(_TOTP_SECRET_PREFIX):])
+    return stored
+
+
+# One 30s step of clock drift is tolerated either way.
+TOTP_VALID_WINDOW = 1
+
+
+def _totp_time() -> float:
+    return time.time()
+
+
+def match_totp_counter(
+    stored_secret: Optional[str],
+    code: Optional[str],
+    last_counter: Optional[int] = None,
+) -> Optional[int]:
+    """The time-step counter a 6-digit authenticator code is valid for, or None.
+
+    A code stays mathematically valid for the whole drift window (~90 s), so a
+    code that was observed once could be replayed. Callers therefore store the
+    counter of the last code they accepted and pass it as ``last_counter``:
+    only a code for a LATER time step is accepted (RFC 6238, section 5.2).
+    """
+    code = (code or "").replace(" ", "")
+    if len(code) != 6 or not (code.isascii() and code.isdigit()):
+        return None
+    try:
+        secret = decrypt_totp_secret(stored_secret)
+        if not secret:
+            return None
+        import pyotp
+        totp = pyotp.TOTP(secret)
+        current = int(_totp_time()) // int(totp.interval)
+        matched: Optional[int] = None
+        for counter in range(current - TOTP_VALID_WINDOW, current + TOTP_VALID_WINDOW + 1):
+            # No early exit: every step of the window is compared in constant time.
+            if hmac.compare_digest(str(totp.generate_otp(counter)), code):
+                matched = counter
+    except Exception:
+        logger.error("TOTP verification failed: stored secret could not be read")
+        return None
+    if matched is None:
+        return None
+    if last_counter is not None and matched <= int(last_counter):
+        return None  # this code (or a newer one) was already used
+    return matched
+
+
+def verify_totp_code(stored_secret: Optional[str], code: Optional[str]) -> bool:
+    """Check a 6-digit authenticator code against a stored (encrypted or legacy) secret.
+
+    Stateless: it cannot detect a replayed code. Anything that authenticates a
+    user must use :func:`match_totp_counter` with the stored last counter.
+    """
+    return match_totp_counter(stored_secret, code) is not None
+
+
 # --- OTP Generation ---
 def generate_otp(length: int = 6) -> str:
     """Generate a random numeric OTP code."""
@@ -240,7 +343,7 @@ def hash_otp(code: str) -> str:
 
 def verify_otp(plain_code: str, hashed_code: str) -> bool:
     """Verify OTP code against hash."""
-    return hash_otp(plain_code) == hashed_code
+    return hmac.compare_digest(hash_otp(plain_code or ""), hashed_code or "")
 
 
 # --- Token Hashing ---

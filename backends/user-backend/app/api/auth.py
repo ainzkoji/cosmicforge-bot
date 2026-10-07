@@ -5,40 +5,71 @@ Enhanced Authentication API
 - Session management (create, refresh, revoke)
 - Password reset flow
 """
-from fastapi import APIRouter, Depends, HTTPException, status, Request
+from fastapi import APIRouter, Depends, Form, HTTPException, status, Request
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 import pyotp
 from app.schemas.auth import (
     UserCreate, UserResponse, Token, RefreshTokenReq, 
-    BrokerLinkReq, BrokerResponse, UserStatus,
+    BrokerResponse, UserStatus,
     VerifyEmailRequest, ResendVerificationRequest,
     ForgotPasswordRequest, ResetPasswordRequest,
     SessionResponse, SessionListResponse
 )
 from app.schemas.security import TwoFASetupResponse, TwoFAVerifyRequest, SessionRevokeRequest
 from app.core.security import (
-    get_password_hash, verify_password, 
+    get_password_hash, verify_password, dummy_verify_password,
     create_access_token, create_refresh_token, 
-    encrypt_credential, decode_token,
-    generate_otp, hash_otp, verify_otp, hash_token
+    decode_token,
+    generate_otp, hash_otp, verify_otp, hash_token,
+    encrypt_totp_secret, match_totp_counter,
 )
+from app.core.config import settings
 from shared_lib.persistence.db import DB, utc_now_iso
+import logging
+import os
+import sqlite3
+import threading
 import uuid
 from typing import List, Optional
 from datetime import datetime, timedelta, timezone
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login")
 
 
 # --- Constants ---
-MAX_LOGIN_ATTEMPTS = 5
+MAX_LOGIN_ATTEMPTS = 5            # failed attempts per (account, client IP) pair per window
+# Ceiling per account across ALL client IPs. Higher than the per-pair limit so
+# that one address guessing at an account cannot lock its owner out from
+# another address, while a distributed guesser is still stopped.
+MAX_LOGIN_ATTEMPTS_PER_ACCOUNT = 20
+MAX_LOGIN_ATTEMPTS_PER_IP = 20    # failed attempts per client IP per window, across accounts
+# login_attempts.email prefix of failures that a completed password reset has
+# cleared for the account (they keep counting against the client IP).
+CLEARED_ATTEMPT_PREFIX = "cleared:"
 LOGIN_WINDOW_MINUTES = 15
-MAX_VERIFY_ATTEMPTS = 5
+MAX_VERIFY_ATTEMPTS = 5           # wrong guesses allowed per email-verification code
+MAX_RESET_ATTEMPTS = 3            # wrong guesses allowed per password-reset code
+CODE_WINDOW_MINUTES = 15
+MAX_CODES_PER_EMAIL = 3           # codes issued per address per window
+MAX_CODES_PER_EMAIL_PER_DAY = 10  # ...and per 24h, which bounds total guesses at a 6-digit code
+MAX_CODES_PER_IP = 10             # codes requested per client IP per window
 OTP_EXPIRE_MINUTES = 15
 RESET_EXPIRE_MINUTES = 60
 RESEND_COOLDOWN_SECONDS = 90  # Cooldown between resend requests
 FORGOT_COOLDOWN_SECONDS = 90   # Cooldown between forgot password requests
+
+LOGIN_FAILED_DETAIL = "Incorrect email or password"
+CODE_FAILED_DETAIL = "Invalid or expired code. Request a new code."
+TOO_MANY_CODES_DETAIL = "Too many codes requested. Try again later."
+VERIFICATION_CODE_EVENT = "verification_code_requested"
+RESET_CODE_EVENT = "password_reset_requested"
+# Stored in users.hashed_password when two sign-ups for the same unverified
+# address disagree on the password. It is not a valid hash, so nothing matches
+# it; the owner sets a password through the reset flow after verifying.
+UNUSABLE_PASSWORD = "!registration-conflict"
 
 
 def normalize_email(email: str) -> str:
@@ -91,54 +122,333 @@ def get_current_active_user(token: str = Depends(oauth2_scheme)) -> dict:
         return dict(row)
 
 
-def _check_rate_limit(conn, email: str) -> None:
-    """Check login rate limiting. Raises if exceeded."""
-    cutoff = (datetime.now(timezone.utc) - timedelta(minutes=LOGIN_WINDOW_MINUTES)).isoformat()
+_LOOPBACK_IPS = {"127.0.0.1", "::1", "localhost"}
+
+
+def _client_ip(request: Optional[Request]) -> str:
+    client = getattr(request, "client", None)
+    return (getattr(client, "host", None) or "unknown") if client else "unknown"
+
+
+def _ip_limitable(ip: Optional[str]) -> bool:
+    # A loopback/unknown address means the reverse proxy did not pass the
+    # client address on; limiting on it would lock every user out together.
+    return bool(ip) and ip != "unknown" and ip not in _LOOPBACK_IPS
+
+
+def _row_value(row, key: str, default=None):
+    """Column value from a sqlite3.Row/dict, tolerating a column that an older database lacks."""
+    try:
+        return row[key]
+    except (KeyError, IndexError):
+        return default
+
+
+def _window_cutoff(minutes: int) -> str:
+    return (datetime.now(timezone.utc) - timedelta(minutes=minutes)).isoformat()
+
+
+def _check_rate_limit(conn, email: str, ip: Optional[str] = None, account_limit: Optional[int] = None) -> None:
+    """Check login rate limiting. Raises 429 if exceeded.
+
+    Three counters of recent FAILED attempts:
+
+    * per (account, client IP) pair -- ``MAX_LOGIN_ATTEMPTS``. Someone guessing
+      at an account locks only their own address out of it, not the owner.
+      (When the proxy passes no client address every caller shares one
+      "address", and this is the old per-account limit.)
+    * per account across all addresses -- ``account_limit`` (default
+      ``MAX_LOGIN_ATTEMPTS_PER_ACCOUNT``), bounding a distributed guesser.
+    * per client IP across all accounts -- ``MAX_LOGIN_ATTEMPTS_PER_IP``.
+    """
+    cutoff = _window_cutoff(LOGIN_WINDOW_MINUTES)
+    if account_limit is None:
+        account_limit = MAX_LOGIN_ATTEMPTS_PER_ACCOUNT
+    rows = conn.execute(
+        "SELECT COUNT(*) as cnt FROM login_attempts "
+        "WHERE email = ? AND ip IS ? AND attempted_at > ? AND success = 0",
+        (email, ip, cutoff)
+    ).fetchone()
+    if rows and rows["cnt"] >= MAX_LOGIN_ATTEMPTS:
+        raise HTTPException(status_code=429, detail="Too many login attempts. Try again later.")
     rows = conn.execute(
         "SELECT COUNT(*) as cnt FROM login_attempts WHERE email = ? AND attempted_at > ? AND success = 0",
         (email, cutoff)
     ).fetchone()
-    if rows and rows["cnt"] >= MAX_LOGIN_ATTEMPTS:
+    if rows and rows["cnt"] >= account_limit:
         raise HTTPException(status_code=429, detail="Too many login attempts. Try again later.")
+    if _ip_limitable(ip):
+        rows = conn.execute(
+            "SELECT COUNT(*) as cnt FROM login_attempts WHERE ip = ? AND attempted_at > ? AND success = 0",
+            (ip, cutoff)
+        ).fetchone()
+        if rows and rows["cnt"] >= MAX_LOGIN_ATTEMPTS_PER_IP:
+            raise HTTPException(status_code=429, detail="Too many login attempts. Try again later.")
 
 
-def _record_login_attempt(conn, email: str, ip: str, success: bool) -> None:
-    """Record a login attempt for rate limiting."""
+def begin_login_attempt(conn, key: str, ip: Optional[str], account_limit: Optional[int] = None) -> str:
+    """Rate-limit check plus a durable record of this attempt, as one atomic step.
+
+    DB.connect() commits only when its block exits cleanly, so an attempt that
+    is written and then followed by ``raise HTTPException`` is rolled back and
+    never counted. The attempt is therefore stored as a FAILURE and committed
+    here, before any credential is looked at; a caller that goes on to
+    authenticate flips it with mark_login_attempt_success(). The immediate
+    transaction also stops parallel requests from all passing the check.
+
+    ``key`` is the normalised email (other limiters namespace it, e.g. "admin:").
+    ``account_limit`` overrides the per-account ceiling across all client IPs.
+    Must be called before anything else is written on ``conn``.
+    """
+    attempt_id = str(uuid.uuid4())
+    conn.execute("BEGIN IMMEDIATE")
+    try:
+        _check_rate_limit(conn, key, ip, account_limit)
+        conn.execute(
+            "INSERT INTO login_attempts (id, email, ip, success, attempted_at) VALUES (?, ?, ?, 0, ?)",
+            (attempt_id, key, ip, utc_now_iso())
+        )
+        conn.commit()
+    except BaseException:
+        conn.rollback()
+        raise
+    return attempt_id
+
+
+def mark_login_attempt_success(conn, attempt_id: str) -> None:
+    # Only this attempt: failures recorded from other addresses are NOT cleared
+    # by a successful login (the per-account ceiling keeps counting them).
+    conn.execute("UPDATE login_attempts SET success = 1 WHERE id = ?", (attempt_id,))
+
+
+def clear_login_failures(conn, email: str) -> None:
+    """Forget an account's failed logins once its owner proved control of the
+    mailbox (completed password reset), so the owner is not kept locked out by
+    someone else's guesses. The rows stay, re-keyed, and keep counting against
+    the client IP that produced them."""
     conn.execute(
-        "INSERT INTO login_attempts (id, email, ip, success, attempted_at) VALUES (?, ?, ?, ?, ?)",
-        (str(uuid.uuid4()), email, ip, 1 if success else 0, utc_now_iso())
+        "UPDATE login_attempts SET email = ? WHERE email = ? AND success = 0",
+        (CLEARED_ATTEMPT_PREFIX + email, email)
     )
+
+
+def _ensure_totp_counter_column(conn) -> None:
+    """Add ``users.totp_last_counter`` if absent (idempotent, safe under concurrency)."""
+    cols = {row[1] for row in conn.execute("PRAGMA table_info(users)").fetchall()}
+    if not cols or "totp_last_counter" in cols:
+        return
+    try:
+        conn.execute("ALTER TABLE users ADD COLUMN totp_last_counter INTEGER")
+    except sqlite3.OperationalError as exc:
+        if "duplicate column name" not in str(exc).lower():
+            raise
+
+
+def consume_totp_code(conn, user_id: str, stored_secret: Optional[str], code: Optional[str]) -> bool:
+    """Accept an authenticator code at most once.
+
+    The time step of the last accepted code is stored per user; a code for
+    that step or an earlier one is refused, so a captured code cannot be
+    replayed during the ~90 s it would otherwise stay valid. The guarded
+    UPDATE makes two simultaneous uses of one code resolve to a single winner,
+    and it is committed at once so the code is spent whatever happens next.
+    Call it only while nothing else is pending on ``conn``.
+    """
+    _ensure_totp_counter_column(conn)
+    row = conn.execute("SELECT totp_last_counter FROM users WHERE id = ?", (user_id,)).fetchone()
+    if not row:
+        return False
+    counter = match_totp_counter(stored_secret, code, row["totp_last_counter"])
+    if counter is None:
+        return False
+    spent = conn.execute(
+        "UPDATE users SET totp_last_counter = ? "
+        "WHERE id = ? AND (totp_last_counter IS NULL OR totp_last_counter < ?)",
+        (counter, user_id, counter)
+    )
+    conn.commit()
+    return spent.rowcount == 1
+
+
+def _count_audit_events(conn, where: str, params: tuple) -> int:
+    row = conn.execute(f"SELECT COUNT(*) as cnt FROM auth_audit_log WHERE {where}", params).fetchone()
+    return int(row["cnt"]) if row else 0
+
+
+def _reserve_code_request(conn, event_type: str, email: str, ip: Optional[str]) -> bool:
+    """Count a request for an emailed code against the per-address and per-IP limits.
+
+    Returns False when a limit is reached. The request is counted (and
+    committed) whether or not the address belongs to an account, so the limit
+    behaves identically for registered and unregistered emails.
+    Must be called before anything else is written on ``conn``.
+    """
+    cutoff = _window_cutoff(CODE_WINDOW_MINUTES)
+    conn.execute("BEGIN IMMEDIATE")
+    try:
+        allowed = (
+            _count_audit_events(conn, "event_type = ? AND email = ? AND created_at > ?",
+                                (event_type, email, cutoff)) < MAX_CODES_PER_EMAIL
+            and _count_audit_events(conn, "event_type = ? AND email = ? AND created_at > ?",
+                                    (event_type, email, _window_cutoff(24 * 60))) < MAX_CODES_PER_EMAIL_PER_DAY
+        )
+        if allowed and _ip_limitable(ip):
+            allowed = _count_audit_events(
+                conn, "event_type IN (?, ?) AND ip = ? AND created_at > ?",
+                (VERIFICATION_CODE_EVENT, RESET_CODE_EVENT, ip, cutoff)) < MAX_CODES_PER_IP
+        if allowed:
+            audit_event(conn, event_type, email=email, ip=ip)
+        conn.commit()
+    except BaseException:
+        conn.rollback()
+        raise
+    return allowed
+
+
+def _issue_code(conn, table: str, user_id: str, expire_minutes: int) -> str:
+    """Create a fresh one-time code; every older unused code stops working."""
+    assert table in ("email_verifications", "password_resets")
+    now = utc_now_iso()
+    conn.execute(f"UPDATE {table} SET used_at = ? WHERE user_id = ? AND used_at IS NULL", (now, user_id))
+    otp = generate_otp()
+    expires = (datetime.now(timezone.utc) + timedelta(minutes=expire_minutes)).isoformat()
+    conn.execute(
+        f"INSERT INTO {table} (id, user_id, code_hash, expires_at, attempts, created_at) VALUES (?, ?, ?, ?, 0, ?)",
+        (str(uuid.uuid4()), user_id, hash_otp(otp), expires, now)
+    )
+    return otp
+
+
+def _consume_code_attempt(conn, table: str, user_id: Optional[str], max_attempts: int):
+    """Spend one guess on the user's current code and return its row, or None.
+
+    The guess is counted and committed BEFORE the code is compared, so a wrong
+    answer followed by ``raise`` can no longer be rolled back, and the guarded
+    UPDATE cannot be raced past ``max_attempts``.
+    """
+    assert table in ("email_verifications", "password_resets")
+    if not user_id:
+        return None
+    row = conn.execute(
+        f"SELECT * FROM {table} WHERE user_id = ? AND used_at IS NULL ORDER BY created_at DESC LIMIT 1",
+        (user_id,)
+    ).fetchone()
+    if not row:
+        return None
+    expires = datetime.fromisoformat(row["expires_at"].replace('Z', '+00:00'))
+    if datetime.now(timezone.utc) > expires:
+        return None
+    counted = conn.execute(
+        f"UPDATE {table} SET attempts = attempts + 1 WHERE id = ? AND used_at IS NULL AND attempts < ?",
+        (row["id"], max_attempts)
+    )
+    conn.commit()
+    return row if counted.rowcount == 1 else None
+
+
+# --- One-time code delivery ---
+_CODE_EMAILS = {
+    "verification": ("Your CosmicForge verification code", "verify your email address", OTP_EXPIRE_MINUTES),
+    "password reset": ("Your CosmicForge password reset code", "reset your password", RESET_EXPIRE_MINUTES),
+}
+
+
+def _smtp_configured() -> bool:
+    return bool((settings.SMTP_HOST or os.getenv("SMTP_HOST")) and (settings.SMTP_USER or os.getenv("SMTP_USER")))
+
+
+def _export_smtp_settings() -> None:
+    # EmailChannel reads SMTP_* from the process environment. Pass on values
+    # that only reached settings (.env), including this service's
+    # SMTP_PASSWORD / SMTP_FROM_EMAIL spellings.
+    for env_name, value in (
+        ("SMTP_HOST", settings.SMTP_HOST), ("SMTP_PORT", str(settings.SMTP_PORT or "")),
+        ("SMTP_USER", settings.SMTP_USER), ("SMTP_PASS", settings.SMTP_PASSWORD),
+        ("SMTP_FROM", settings.SMTP_FROM_EMAIL),
+    ):
+        if value and not os.environ.get(env_name):
+            os.environ[env_name] = value
+
+
+def _run_in_background(fn) -> None:
+    threading.Thread(target=fn, name="auth-email", daemon=True).start()
+
+
+def _deliver_code(email: str, purpose: str, code: str) -> None:
+    """Email a one-time code. Never raises, never blocks the request, and never
+    logs the code outside local development."""
+    subject, action, minutes = _CODE_EMAILS[purpose]
+    if not _smtp_configured():
+        if settings.production:
+            logger.error(
+                "[AUTH] SMTP is not configured: a %s code was NOT delivered. "
+                "Set SMTP_HOST, SMTP_USER and SMTP_PASSWORD.", purpose)
+        else:
+            # Local development convenience only.
+            logger.info("[AUTH] SMTP not configured (non-production): %s code for %s is %s", purpose, email, code)
+        return
+
+    text = (f"Your code to {action} is {code}. It expires in {minutes} minutes. "
+            "If you did not request it, you can ignore this email.")
+    html = (f"<p>Your code to {action} is:</p><p style=\"font-size:24px;letter-spacing:4px\"><b>{code}</b></p>"
+            f"<p>It expires in {minutes} minutes. If you did not request it, you can ignore this email.</p>")
+
+    def _send() -> None:
+        try:
+            _export_smtp_settings()
+            from shared_lib.notifications.channels.email import EmailChannel
+            if not EmailChannel.send(email, subject, html, text):
+                logger.error("[AUTH] %s email could not be sent", purpose)
+        except Exception as exc:
+            logger.error("[AUTH] %s email failed: %s", purpose, type(exc).__name__)
+
+    try:
+        _run_in_background(_send)
+    except Exception as exc:
+        logger.error("[AUTH] %s email could not be queued: %s", purpose, type(exc).__name__)
 
 
 # --- Registration ---
 @router.post("/register", response_model=UserResponse)
 def register(user: UserCreate, request: Request):
     email = normalize_email(user.email)
-    ip = request.client.host if request else "unknown"
+    ip = _client_ip(request)
+    hashed = get_password_hash(user.password)
     db = DB()
     with db.connect() as conn:
-        # Check exists
-        existing = conn.execute("SELECT id, status, is_verified FROM users WHERE email = ?", (email,)).fetchone()
-        
+        # Every registration emails a code, so it shares the code limits.
+        if not _reserve_code_request(conn, VERIFICATION_CODE_EVENT, email, ip):
+            raise HTTPException(status_code=429, detail=TOO_MANY_CODES_DETAIL)
+
+        existing = conn.execute(
+            "SELECT id, status, hashed_password, created_at FROM users WHERE email = ?", (email,)
+        ).fetchone()
+
         uid = str(uuid.uuid4())
-        hashed = get_password_hash(user.password)
         now = utc_now_iso()
+        created_at = now
 
         if existing:
-            if existing["status"] == "pending_verification" or not existing["is_verified"]:
-                # User exists but not verified. Treated as a retry/reset.
-                uid = existing["id"] # Reuse ID
-                print(f"[AUTH] Reseting unverified user {email}")
-                
-                # Update password and timestamp
-                conn.execute(
-                    "UPDATE users SET hashed_password = ?, updated_at = ? WHERE id = ?",
-                    (hashed, now, uid)
-                )
-                # Skip INSERT
-            else:
-                # Active/Verified user
+            if existing["status"] != "pending_verification":
+                # Active/Verified (or suspended/deleted) user
                 raise HTTPException(status_code=400, detail="Registration failed")
+
+            # Unverified account: a repeat sign-up only re-sends the code. It
+            # never replaces the stored credentials -- anyone can submit a
+            # sign-up for someone else's address, and whichever password is
+            # stored becomes live the moment the real owner enters the code.
+            uid = existing["id"]
+            created_at = existing["created_at"]
+            if not verify_password(user.password, existing["hashed_password"]):
+                # Two sign-ups disagree on the password and neither has proven
+                # ownership of the mailbox: trust neither. The owner verifies
+                # the address and then sets a password via "forgot password".
+                if existing["hashed_password"] != UNUSABLE_PASSWORD:
+                    conn.execute(
+                        "UPDATE users SET hashed_password = ?, updated_at = ? WHERE id = ?",
+                        (UNUSABLE_PASSWORD, now, uid)
+                    )
+                audit_event(conn, "registration_conflict", user_id=uid, email=email, ip=ip)
         else:
             # Create new user
             conn.execute("""
@@ -153,149 +463,128 @@ def register(user: UserCreate, request: Request):
                 )
             )
 
-        # Update marketing session with converted user ID
-        if user.marketing_session_id:
-            conn.execute(
-                "UPDATE marketing_sessions SET converted_user_id = ? WHERE id = ?",
-                (uid, user.marketing_session_id)
-            )
+            # Update marketing session with converted user ID
+            if user.marketing_session_id:
+                try:
+                    conn.execute(
+                        "UPDATE marketing_sessions SET converted_user_id = ? WHERE id = ?",
+                        (uid, user.marketing_session_id)
+                    )
+                except Exception as exc:
+                    # Attribution is best-effort; it must not fail a sign-up.
+                    logger.warning("[AUTH] marketing session attribution skipped: %s", type(exc).__name__)
 
-        # Create pricing intent if plan selected but no session (direct signup)
-        if user.selected_plan_id and not user.marketing_session_id:
-            # We treat this as a direct conversion
-            pass # simplified for now
-        
-        # Generate verification OTP
-        otp = generate_otp()
-        otp_hash = hash_otp(otp)
-        expires = (datetime.now(timezone.utc) + timedelta(minutes=OTP_EXPIRE_MINUTES)).isoformat()
-        
-        conn.execute("""
-            INSERT INTO email_verifications (id, user_id, code_hash, expires_at, attempts, created_at)
-            VALUES (?, ?, ?, ?, 0, ?)""",
-            (str(uuid.uuid4()), uid, otp_hash, expires, now)
-        )
-        
-        # Audit events
-        audit_event(conn, "user_registered", user_id=uid, email=email, ip=ip)
+            audit_event(conn, "user_registered", user_id=uid, email=email, ip=ip)
+
+        otp = _issue_code(conn, "email_verifications", uid, OTP_EXPIRE_MINUTES)
         audit_event(conn, "verification_sent", user_id=uid, email=email, ip=ip)
-        
-        # In production: send email. For now, log to console.
-        print(f"[AUTH] Verification code for {email}: {otp}")
-        
+        _deliver_code(email, "verification", otp)
+
         return {
             "id": uid, 
             "email": email, 
             "status": "pending_verification",
             "role": "user",
             "is_verified": False, 
-            "created_at": now
+            "created_at": created_at
         }
 
 
 # --- Email Verification ---
 @router.post("/verify-email")
 def verify_email(req: VerifyEmailRequest):
+    email = normalize_email(req.email)
     db = DB()
     with db.connect() as conn:
-        user = conn.execute("SELECT id, status FROM users WHERE email = ?", (req.email,)).fetchone()
-        if not user:
-            raise HTTPException(status_code=400, detail="Verification failed")
-        
-        if user["status"] == "active":
+        user = conn.execute("SELECT id, status, hashed_password FROM users WHERE email = ?", (email,)).fetchone()
+
+        if user and user["status"] == "active":
             return {"message": "Email already verified"}
-        
-        # Get latest verification code
-        verification = conn.execute("""
-            SELECT * FROM email_verifications 
-            WHERE user_id = ? AND used_at IS NULL 
-            ORDER BY created_at DESC LIMIT 1""", 
-            (user["id"],)
-        ).fetchone()
-        
-        if not verification:
-            raise HTTPException(status_code=400, detail="No pending verification")
-        
-        # Check attempts
-        if verification["attempts"] >= MAX_VERIFY_ATTEMPTS:
-            raise HTTPException(status_code=400, detail="Too many attempts. Request new code.")
-        
-        # Check expiry
-        expires = datetime.fromisoformat(verification["expires_at"].replace('Z', '+00:00'))
-        if datetime.now(timezone.utc) > expires:
-            raise HTTPException(status_code=400, detail="Code expired. Request new code.")
-        
-        # Increment attempts
-        conn.execute(
-            "UPDATE email_verifications SET attempts = attempts + 1 WHERE id = ?",
-            (verification["id"],)
-        )
-        
-        # Verify code
-        if not verify_otp(req.code, verification["code_hash"]):
-            raise HTTPException(status_code=400, detail="Invalid code")
-        
+
+        # Only an account that is waiting for verification can be activated
+        # here (never a suspended or deleted one).
+        pending_id = user["id"] if user and user["status"] == "pending_verification" else None
+        verification = _consume_code_attempt(conn, "email_verifications", pending_id, MAX_VERIFY_ATTEMPTS)
+
+        if not verification or not verify_otp(req.code, verification["code_hash"]):
+            raise HTTPException(status_code=400, detail=CODE_FAILED_DETAIL)
+
         # Mark as used and activate user
         now = utc_now_iso()
         conn.execute("UPDATE email_verifications SET used_at = ? WHERE id = ?", (now, verification["id"]))
         conn.execute("UPDATE users SET status = 'active', is_verified = 1 WHERE id = ?", (user["id"],))
-        
+        audit_event(conn, "email_verified", user_id=user["id"], email=email)
+
+        if user["hashed_password"] == UNUSABLE_PASSWORD:
+            return {
+                "message": "Email verified successfully. Set your password with 'Forgot password' before signing in.",
+                "password_reset_required": True,
+            }
         return {"message": "Email verified successfully"}
 
 
 @router.post("/resend-verification")
-def resend_verification(req: ResendVerificationRequest):
+def resend_verification(req: ResendVerificationRequest, request: Request = None):
+    email = normalize_email(req.email)
+    ip = _client_ip(request)
     db = DB()
     with db.connect() as conn:
-        user = conn.execute("SELECT id, status FROM users WHERE email = ?", (req.email,)).fetchone()
-        
+        if not _reserve_code_request(conn, VERIFICATION_CODE_EVENT, email, ip):
+            raise HTTPException(status_code=429, detail=TOO_MANY_CODES_DETAIL)
+
+        user = conn.execute("SELECT id, status FROM users WHERE email = ?", (email,)).fetchone()
+
         # Same message regardless to prevent enumeration
         if not user or user["status"] != "pending_verification":
             return {"message": "If your email is registered and pending, a new code will be sent."}
-        
-        # Generate new OTP
-        otp = generate_otp()
-        otp_hash = hash_otp(otp)
-        now = utc_now_iso()
-        expires = (datetime.now(timezone.utc) + timedelta(minutes=OTP_EXPIRE_MINUTES)).isoformat()
-        
-        conn.execute("""
-            INSERT INTO email_verifications (id, user_id, code_hash, expires_at, attempts, created_at)
-            VALUES (?, ?, ?, ?, 0, ?)""",
-            (str(uuid.uuid4()), user["id"], otp_hash, expires, now)
-        )
-        
-        print(f"[AUTH] New verification code for {req.email}: {otp}")
-        
+
+        otp = _issue_code(conn, "email_verifications", user["id"], OTP_EXPIRE_MINUTES)
+        audit_event(conn, "verification_sent", user_id=user["id"], email=email, ip=ip)
+        _deliver_code(email, "verification", otp)
+
         return {"message": "If your email is registered and pending, a new code will be sent."}
 
 
 # --- Login ---
 @router.post("/login", response_model=Token)
-def login(form_data: OAuth2PasswordRequestForm = Depends(), request: Request = None):
+def login(
+    form_data: OAuth2PasswordRequestForm = Depends(),
+    request: Request = None,
+    totp_code: Optional[str] = Form(None),
+):
     db = DB()
-    ip = request.client.host if request else "unknown"
+    ip = _client_ip(request)
     
     with db.connect() as conn:
         # Normalize email
         email = normalize_email(form_data.username)
         
-        # Rate limiting
-        _check_rate_limit(conn, email)
+        # Rate limiting: raises 429, otherwise records this attempt as a
+        # (committed) failure until it is proven otherwise below.
+        attempt_id = begin_login_attempt(conn, email, ip)
         
         row = conn.execute("SELECT * FROM users WHERE email = ?", (email,)).fetchone()
         
+        # One answer for "no such account" and "wrong password", and the same
+        # hashing work either way, so neither wording nor timing reveals
+        # whether an email is registered.
         if not row:
-             _record_login_attempt(conn, form_data.username, ip, False)
-             raise HTTPException(status_code=400, detail="Incorrect email")
-             
-        if not verify_password(form_data.password, row["hashed_password"]):
-            _record_login_attempt(conn, form_data.username, ip, False)
-            raise HTTPException(status_code=400, detail="Incorrect password")
+            dummy_verify_password(form_data.password)
+            password_ok = False
+        else:
+            password_ok = verify_password(form_data.password, row["hashed_password"])
+
+        if not password_ok:
+            audit_event(conn, "login_failed", user_id=row["id"] if row else None, email=email, ip=ip)
+            conn.commit()
+            raise HTTPException(status_code=400, detail=LOGIN_FAILED_DETAIL)
         
         if row["status"] == "pending_verification":
-            # Resend OTP logic (copied/refactored usually, but inline here for simplicity)
-            # Check if recent code exists
+            # The password was right, so this is not a guessing attempt.
+            mark_login_attempt_success(conn, attempt_id)
+            conn.commit()
+            # Send a fresh code unless one went out in the last minute or the
+            # address has reached its code limit.
             recent = conn.execute(
                 "SELECT created_at FROM email_verifications WHERE user_id = ? ORDER BY created_at DESC LIMIT 1", 
                 (row["id"],)
@@ -303,39 +592,52 @@ def login(form_data: OAuth2PasswordRequestForm = Depends(), request: Request = N
             
             should_send = True
             if recent:
-                last_time = datetime.fromisoformat(recent["created_at"])
+                last_time = datetime.fromisoformat(recent["created_at"].replace('Z', '+00:00'))
                 if datetime.now(timezone.utc) - last_time < timedelta(minutes=1):
                     should_send = False # Rate limit OTP generation
             
-            if should_send:
-                otp = generate_otp()
-                otp_hash = hash_otp(otp)
-                expires = (datetime.now(timezone.utc) + timedelta(minutes=OTP_EXPIRE_MINUTES)).isoformat()
-                now = utc_now_iso()
-                conn.execute(
-                    "INSERT INTO email_verifications (id, user_id, code_hash, expires_at, attempts, created_at) VALUES (?, ?, ?, ?, 0, ?)",
-                    (str(uuid.uuid4()), row["id"], otp_hash, expires, now)
-                )
-                # Audit
+            if should_send and _reserve_code_request(conn, VERIFICATION_CODE_EVENT, email, ip):
+                otp = _issue_code(conn, "email_verifications", row["id"], OTP_EXPIRE_MINUTES)
                 audit_event(conn, "verification_sent_login", user_id=row["id"], email=email, ip=ip)
-                print(f"[AUTH] Login Verification code for {email}: {otp}")
+                # Commit before raising: the 403 below would otherwise roll the new code back.
+                conn.commit()
+                _deliver_code(email, "verification", otp)
             
             raise HTTPException(status_code=403, detail="User not verified")
             
-        elif row["status"] in ["suspended", "deleted"]:
-             raise HTTPException(status_code=403, detail="Account suspended or deleted")
-        if row["status"] == "deleted":
-            raise HTTPException(status_code=400, detail="Invalid credentials")
+        elif row["status"] != "active":
+            mark_login_attempt_success(conn, attempt_id)
+            conn.commit()
+            raise HTTPException(status_code=403, detail="Account suspended or deleted")
         
         uid = row["id"]
         role = row["role"] or "user"
+
+        # Second factor: required whenever the account has 2FA switched on.
+        if _row_value(row, "is_2fa_enabled"):
+            if not (totp_code or "").strip():
+                # No second factor was guessed, so this does not count as a failure.
+                mark_login_attempt_success(conn, attempt_id)
+                conn.commit()
+                raise HTTPException(
+                    status_code=401,
+                    detail={"code": "TOTP_REQUIRED", "message": "Two-factor authentication code required"},
+                )
+            if not consume_totp_code(conn, uid, _row_value(row, "totp_secret"), totp_code):
+                # Wrong, or already used (replay). Stays recorded as a failed
+                # attempt (rate-limited like a wrong password).
+                audit_event(conn, "login_failed_2fa", user_id=uid, email=email, ip=ip)
+                conn.commit()
+                raise HTTPException(
+                    status_code=401,
+                    detail={"code": "TOTP_INVALID", "message": "Invalid two-factor authentication code"},
+                )
         
         # Record successful login
-        _record_login_attempt(conn, form_data.username, ip, True)
+        mark_login_attempt_success(conn, attempt_id)
         conn.execute("UPDATE users SET last_login_at = ? WHERE id = ?", (utc_now_iso(), uid))
         
-        # Create tokens
-        access_token = create_access_token(uid, role=role)
+        # Refresh token (no database access) and its session row.
         refresh_token = create_refresh_token(uid)
         
         # Store session
@@ -350,8 +652,12 @@ def login(form_data: OAuth2PasswordRequestForm = Depends(), request: Request = N
             VALUES (?, ?, ?, ?, ?, ?, ?)""",
             (session_id, uid, rt_hash, device[:255], ip, now, expires)
         )
-        
-        return {"access_token": access_token, "refresh_token": refresh_token, "token_type": "bearer"}
+
+    # The access token is minted only AFTER the transaction above has been
+    # committed and its connection closed: building it reads the user's
+    # entitlements on a connection of its own, and SQLite has a single writer.
+    access_token = create_access_token(uid, role=role)
+    return {"access_token": access_token, "refresh_token": refresh_token, "token_type": "bearer"}
 
 
 # --- Token Refresh with Rotation ---
@@ -379,11 +685,13 @@ def refresh(req: RefreshTokenReq, request: Request = None):
         if session["revoked_at"] is not None:
             # Token reuse detected! This is a security incident.
             # Revoke ALL sessions for this user as a precaution.
-            print(f"[SECURITY] Refresh token reuse detected for user {uid}! Revoking all sessions.")
+            logger.warning("[SECURITY] Refresh token reuse detected for user %s. Revoking all sessions.", uid)
             conn.execute(
                 "UPDATE auth_sessions SET revoked_at = ? WHERE user_id = ?",
                 (utc_now_iso(), uid)
             )
+            # Commit before raising, or the revocation is rolled back with the 401.
+            conn.commit()
             raise HTTPException(status_code=401, detail="Security alert: session invalidated")
         
         # Check expiry
@@ -398,8 +706,8 @@ def refresh(req: RefreshTokenReq, request: Request = None):
         
         role = user["role"] or "user"
         
-        # Create new tokens
-        new_access = create_access_token(uid, role=role)
+        # New refresh token (no database access); the access token is minted
+        # after this transaction has committed (see login).
         new_refresh = create_refresh_token(uid)
         new_hash = hash_token(new_refresh)
         now = utc_now_iso()
@@ -417,8 +725,9 @@ def refresh(req: RefreshTokenReq, request: Request = None):
             VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
             (str(uuid.uuid4()), uid, new_hash, device[:255], ip, now, new_expires, session["id"])
         )
-        
-        return {"access_token": new_access, "refresh_token": new_refresh, "token_type": "bearer"}
+
+    new_access = create_access_token(uid, role=role)
+    return {"access_token": new_access, "refresh_token": new_refresh, "token_type": "bearer"}
 
 
 # --- Logout ---
@@ -472,28 +781,24 @@ def revoke_session(session_id: str, user_id: str = Depends(get_current_user_id))
 
 # --- Password Reset ---
 @router.post("/forgot-password")
-def forgot_password(req: ForgotPasswordRequest):
+def forgot_password(req: ForgotPasswordRequest, request: Request = None):
     """Request password reset code"""
+    email = normalize_email(req.email)
+    ip = _client_ip(request)
     db = DB()
     with db.connect() as conn:
-        user = conn.execute("SELECT id FROM users WHERE email = ? AND status = 'active'", (req.email,)).fetchone()
+        if not _reserve_code_request(conn, RESET_CODE_EVENT, email, ip):
+            raise HTTPException(status_code=429, detail=TOO_MANY_CODES_DETAIL)
+
+        user = conn.execute("SELECT id FROM users WHERE email = ? AND status = 'active'", (email,)).fetchone()
         
         # Same message regardless to prevent enumeration
         if not user:
             return {"message": "If your email is registered, a reset code will be sent."}
         
-        otp = generate_otp()
-        otp_hash = hash_otp(otp)
-        now = utc_now_iso()
-        expires = (datetime.now(timezone.utc) + timedelta(minutes=RESET_EXPIRE_MINUTES)).isoformat()
-        
-        conn.execute("""
-            INSERT INTO password_resets (id, user_id, code_hash, expires_at, attempts, created_at)
-            VALUES (?, ?, ?, ?, 0, ?)""",
-            (str(uuid.uuid4()), user["id"], otp_hash, expires, now)
-        )
-        
-        print(f"[AUTH] Password reset code for {req.email}: {otp}")
+        # Issuing a code invalidates any earlier unused one.
+        otp = _issue_code(conn, "password_resets", user["id"], RESET_EXPIRE_MINUTES)
+        _deliver_code(email, "password reset", otp)
         
         return {"message": "If your email is registered, a reset code will be sent."}
 
@@ -501,34 +806,16 @@ def forgot_password(req: ForgotPasswordRequest):
 @router.post("/reset-password")
 def reset_password(req: ResetPasswordRequest):
     """Reset password with code"""
+    email = normalize_email(req.email)
     db = DB()
     with db.connect() as conn:
-        user = conn.execute("SELECT id FROM users WHERE email = ?", (req.email,)).fetchone()
-        if not user:
-            raise HTTPException(status_code=400, detail="Reset failed")
-        
-        # Get latest reset code
-        reset = conn.execute("""
-            SELECT * FROM password_resets 
-            WHERE user_id = ? AND used_at IS NULL 
-            ORDER BY created_at DESC LIMIT 1""",
-            (user["id"],)
-        ).fetchone()
-        
-        if not reset:
-            raise HTTPException(status_code=400, detail="No pending reset")
-        
-        if reset["attempts"] >= 3:
-            raise HTTPException(status_code=400, detail="Too many attempts. Request new code.")
-        
-        expires = datetime.fromisoformat(reset["expires_at"].replace('Z', '+00:00'))
-        if datetime.now(timezone.utc) > expires:
-            raise HTTPException(status_code=400, detail="Code expired")
-        
-        conn.execute("UPDATE password_resets SET attempts = attempts + 1 WHERE id = ?", (reset["id"],))
-        
-        if not verify_otp(req.code, reset["code_hash"]):
-            raise HTTPException(status_code=400, detail="Invalid code")
+        user = conn.execute("SELECT id FROM users WHERE email = ? AND status = 'active'", (email,)).fetchone()
+
+        # Unknown address, no pending code, expired, out of attempts or wrong
+        # code all get the same answer.
+        reset = _consume_code_attempt(conn, "password_resets", user["id"] if user else None, MAX_RESET_ATTEMPTS)
+        if not reset or not verify_otp(req.code, reset["code_hash"]):
+            raise HTTPException(status_code=400, detail=CODE_FAILED_DETAIL)
         
         # Update password and mark reset as used
         new_hash = get_password_hash(req.new_password)
@@ -539,6 +826,10 @@ def reset_password(req: ResetPasswordRequest):
         
         # Revoke all sessions
         conn.execute("UPDATE auth_sessions SET revoked_at = ? WHERE user_id = ?", (now, user["id"]))
+        # The owner proved control of the mailbox: failed logins recorded
+        # against the account (possibly someone else's guesses) no longer lock it.
+        clear_login_failures(conn, email)
+        audit_event(conn, "password_reset_completed", user_id=user["id"], email=email)
         
         return {"message": "Password reset successfully. Please login."}
 
@@ -552,30 +843,9 @@ def list_brokers(user: dict = Depends(get_current_active_user)):
         return [dict(r) for r in rows]
 
 
-@router.post("/user/brokers", response_model=BrokerResponse)
-def link_broker(req: BrokerLinkReq, user: dict = Depends(get_current_active_user)):
-    db = DB()
-    with db.connect() as conn:
-        account_id = str(uuid.uuid4())
-        now = utc_now_iso()
-        
-        conn.execute("""
-            INSERT INTO broker_accounts (id, user_id, exchange, name, is_active, created_at) 
-            VALUES (?, ?, ?, ?, ?, ?)""",
-            (account_id, user["id"], req.exchange, req.name, True, now)
-        )
-        
-        key_enc = encrypt_credential(req.api_key)
-        secret_enc = encrypt_credential(req.api_secret)
-        pass_enc = encrypt_credential(req.passphrase) if req.passphrase else None
-        
-        conn.execute("""
-            INSERT INTO broker_credentials (account_id, api_key_enc, api_secret_enc, passphrase_enc, updated_at) 
-            VALUES (?, ?, ?, ?, ?)""",
-            (account_id, key_enc, secret_enc, pass_enc, now)
-        )
-        
-        return {"id": account_id, "exchange": req.exchange, "name": req.name, "is_active": True, "created_at": now}
+# The legacy POST /user/brokers (per-field encryption with CREDENTIAL_KEY into
+# columns that no longer exist) was removed: no client calls it. Broker
+# accounts are linked through app.api.brokers / broker_service.
 
 
 # --- User Profile ---
@@ -608,6 +878,7 @@ def get_me(user: dict = Depends(get_current_active_user)):
         "permissions": permissions,
         "entitlements": entitlements,
         "is_verified": user.get("is_verified", False),
+        "is_2fa_enabled": bool(user.get("is_2fa_enabled")),
         "created_at": user["created_at"],
         "last_login_at": user.get("last_login_at")
     }
@@ -625,7 +896,7 @@ def update_me(
             conn.execute("UPDATE users SET name = ? WHERE id = ?", (name.strip(), user["id"]))
         
         # Return updated user
-        updated = conn.execute("SELECT * FROM users WHERE id = ?", (user["id"],)).fetchone()
+        updated = dict(conn.execute("SELECT * FROM users WHERE id = ?", (user["id"],)).fetchone())
         return {
             "id": updated["id"],
             "email": updated["email"],
@@ -656,92 +927,109 @@ def logout_all(user_id: str = Depends(get_current_user_id)):
 
 
 
+TWO_FA_INVALID_DETAIL = "Invalid code"
+
+
+def _two_fa_attempt_key(user_id: str) -> str:
+    # Authenticator-code guesses share the login_attempts table, under their own key.
+    return f"2fa:{user_id}"
+
+
 @router.post("/2fa/setup", response_model=TwoFASetupResponse)
-def setup_2fa(current_user: UserResponse = Depends(get_current_active_user)):
+def setup_2fa(current_user: dict = Depends(get_current_active_user)):
+    # Replacing the secret of an account that already has 2FA on would let a
+    # stolen access token swap the second factor without knowing a code.
+    if current_user.get("is_2fa_enabled"):
+        raise HTTPException(status_code=400, detail="2FA is already enabled. Disable it first.")
+
     # Generate secret
     secret = pyotp.random_base32()
     
-    # Save secret to user (but don't enable yet until verified)
+    # Save secret (encrypted) to user (but don't enable yet until verified)
     db = DB()
     with db.connect() as conn:
+        # A new secret starts a new code sequence: forget the last accepted step.
+        _ensure_totp_counter_column(conn)
         conn.execute(
-            "UPDATE users SET totp_secret = ? WHERE id = ?",
-            (secret, current_user.id)
+            "UPDATE users SET totp_secret = ?, totp_last_counter = NULL WHERE id = ?",
+            (encrypt_totp_secret(secret), current_user["id"])
         )
         
     # Generate URI for QR code
     uri = pyotp.totp.TOTP(secret).provisioning_uri(
-        name=current_user.email,
+        name=current_user["email"],
         issuer_name="CosmicForge Stratos"
     )
     
     return {"items": secret, "uri": uri}
 
 @router.post("/2fa/verify")
-def verify_2fa_setup(req: TwoFAVerifyRequest, current_user: UserResponse = Depends(get_current_active_user)):
+def verify_2fa_setup(req: TwoFAVerifyRequest, request: Request = None,
+                     current_user: dict = Depends(get_current_active_user)):
+    user_id = current_user["id"]
     db = DB()
     with db.connect() as conn:
-        user = conn.execute("SELECT totp_secret FROM users WHERE id = ?", (current_user.id,)).fetchone()
+        # Only the authenticated account holder can spend these attempts, so the
+        # strict limit applies across all addresses (no lockout-by-stranger here).
+        attempt_id = begin_login_attempt(
+            conn, _two_fa_attempt_key(user_id), _client_ip(request), account_limit=MAX_LOGIN_ATTEMPTS)
+
+        user = conn.execute("SELECT totp_secret, is_2fa_enabled FROM users WHERE id = ?", (user_id,)).fetchone()
         if not user or not user["totp_secret"]:
+            mark_login_attempt_success(conn, attempt_id)
+            conn.commit()
             raise HTTPException(status_code=400, detail="2FA setup not initiated")
             
-        totp = pyotp.TOTP(user["totp_secret"])
-        if not totp.verify(req.code):
-            raise HTTPException(status_code=400, detail="Invalid code")
+        if not consume_totp_code(conn, user_id, user["totp_secret"], req.code):
+            raise HTTPException(status_code=400, detail=TWO_FA_INVALID_DETAIL)
             
         # Enable 2FA
-        conn.execute("UPDATE users SET is_2fa_enabled = 1 WHERE id = ?", (current_user.id,))
-        audit_event(conn, "2fa_enabled", user_id=current_user.id, email=current_user.email)
+        mark_login_attempt_success(conn, attempt_id)
+        conn.execute("UPDATE users SET is_2fa_enabled = 1 WHERE id = ?", (user_id,))
+        audit_event(conn, "2fa_enabled", user_id=user_id, email=current_user["email"])
         
     return {"message": "2FA enabled successfully"}
 
 @router.post("/2fa/disable")
-def disable_2fa(req: TwoFAVerifyRequest, current_user: UserResponse = Depends(get_current_active_user)):
+def disable_2fa(req: TwoFAVerifyRequest, request: Request = None,
+                current_user: dict = Depends(get_current_active_user)):
+    user_id = current_user["id"]
     db = DB()
     with db.connect() as conn:
-        user = conn.execute("SELECT totp_secret, is_2fa_enabled FROM users WHERE id = ?", (current_user.id,)).fetchone()
+        # Only the authenticated account holder can spend these attempts, so the
+        # strict limit applies across all addresses (no lockout-by-stranger here).
+        attempt_id = begin_login_attempt(
+            conn, _two_fa_attempt_key(user_id), _client_ip(request), account_limit=MAX_LOGIN_ATTEMPTS)
+
+        user = conn.execute("SELECT totp_secret, is_2fa_enabled FROM users WHERE id = ?", (user_id,)).fetchone()
         if not user or not user["is_2fa_enabled"]:
+            mark_login_attempt_success(conn, attempt_id)
+            conn.commit()
             raise HTTPException(status_code=400, detail="2FA not enabled")
             
-        totp = pyotp.TOTP(user["totp_secret"])
-        if not totp.verify(req.code):
-            raise HTTPException(status_code=400, detail="Invalid code")
+        if not consume_totp_code(conn, user_id, user["totp_secret"], req.code):
+            raise HTTPException(status_code=400, detail=TWO_FA_INVALID_DETAIL)
             
         # Disable 2FA and clear secret
-        conn.execute("UPDATE users SET is_2fa_enabled = 0, totp_secret = NULL WHERE id = ?", (current_user.id,))
-        audit_event(conn, "2fa_disabled", user_id=current_user.id, email=current_user.email)
+        mark_login_attempt_success(conn, attempt_id)
+        conn.execute(
+            "UPDATE users SET is_2fa_enabled = 0, totp_secret = NULL, totp_last_counter = NULL WHERE id = ?",
+            (user_id,))
+        audit_event(conn, "2fa_disabled", user_id=user_id, email=current_user["email"])
         
     return {"message": "2FA disabled successfully"}
 
 # --- Session Management ---
-
-@router.get("/sessions", response_model=SessionListResponse)
-def get_sessions(current_user: UserResponse = Depends(get_current_active_user)):
-    db = DB()
-    with db.connect() as conn:
-        # Get active sessions (not expired, not revoked)
-        # Note: auth_sessions table usage
-        sessions = conn.execute("""
-            SELECT id, device, ip, created_at, expires_at, 
-            CASE WHEN revoked_at IS NOT NULL THEN 1 ELSE 0 END as is_revoked 
-            FROM auth_sessions 
-            WHERE user_id = ? AND expires_at > ? AND revoked_at IS NULL
-            ORDER BY created_at DESC
-        """, (current_user.id, utc_now_iso())).fetchall()
-        
-        # Map to response schema
-        return {
-            "sessions": [dict(s) for s in sessions]
-        }
+# GET /sessions is served by list_sessions above.
 
 @router.post("/sessions/revoke")
-def revoke_session(req: SessionRevokeRequest, current_user: UserResponse = Depends(get_current_active_user)):
+def revoke_session_by_id(req: SessionRevokeRequest, current_user: dict = Depends(get_current_active_user)):
     db = DB()
     with db.connect() as conn:
         conn.execute(
             "UPDATE auth_sessions SET revoked_at = ? WHERE id = ? AND user_id = ?",
-            (utc_now_iso(), req.session_id, current_user.id)
+            (utc_now_iso(), req.session_id, current_user["id"])
         )
-        audit_event(conn, "session_revoked", user_id=current_user.id, details={"session_id": req.session_id})
+        audit_event(conn, "session_revoked", user_id=current_user["id"], details={"session_id": req.session_id})
         
     return {"message": "Session revoked"}

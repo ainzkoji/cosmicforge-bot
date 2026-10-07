@@ -13,6 +13,48 @@ from pydantic_settings import SettingsConfigDict
 
 log = logging.getLogger("cosmicforge.config")
 
+# --- Production secret validation ---
+# Built-in defaults and the placeholders shipped in the .env.example files are
+# public: anyone can forge a session with them. A production process refuses
+# to start with one. Non-production (APP_ENV=TEST / DEVELOPMENT) is unaffected.
+MIN_SECRET_LENGTH = 32
+_SECRET_PLACEHOLDER_MARKERS = (
+    "changeme", "change_me", "change-me", "replace_me", "replace-me",
+    "placeholder", "example", "default-",
+)
+_SECRET_PLACEHOLDER_PREFIXES = ("your-", "your_", "<")
+_SECRET_HOWTO = 'python -c "import secrets; print(secrets.token_urlsafe(48))"'
+# Secrets this service signs or encrypts with.
+REQUIRED_PRODUCTION_SECRETS = ("SECRET_KEY", "CREDENTIAL_KEY")
+
+
+def weak_secret_reason(value):
+    """Why ``value`` is unacceptable as a production secret, or None if it is fine."""
+    text = str(value or "").strip()
+    if not text:
+        return "is not set"
+    lowered = text.lower()
+    if lowered.startswith(_SECRET_PLACEHOLDER_PREFIXES) or any(
+            marker in lowered for marker in _SECRET_PLACEHOLDER_MARKERS):
+        return "is a known default/placeholder value"
+    if len(text) < MIN_SECRET_LENGTH:
+        return f"is shorter than {MIN_SECRET_LENGTH} characters"
+    if len(set(text)) < 8:
+        return "is not random (too few distinct characters)"
+    return None
+
+
+def _secret_errors(production: bool, secrets_by_name: dict) -> list:
+    if not production:
+        return []
+    errors = []
+    for name, value in secrets_by_name.items():
+        reason = weak_secret_reason(value)
+        if reason:
+            errors.append(f"{name} {reason}. Generate one with: {_SECRET_HOWTO}")
+    return errors
+
+
 
 def _parse_list(v: Any) -> List[str]:
     """
@@ -204,6 +246,28 @@ class Settings(ProductionSettings):
     # --- Billing / Stripe ---
     STRIPE_SECRET_KEY: str = ""
     STRIPE_WEBHOOK_SECRET: str = ""
+    # Declared so the full billing configuration is visible in one place.
+    # billing_service._cfg() reads Settings first and falls back to the process
+    # environment, so these behave exactly as they did undeclared; empty = unset.
+    STRIPE_PRICE_PRO_MONTHLY: str = ""
+    STRIPE_PRICE_PRO_YEARLY: str = ""
+    STRIPE_PRICE_WHALE_MONTHLY: str = ""
+    STRIPE_PRICE_WHALE_YEARLY: str = ""
+    PUBLIC_APP_URL: str = ""               # only if the public site URL differs from FRONTEND_URL
+    # Kept as text ("1"/"true"/"yes"/"on" enable it): billing_service parses it.
+    BILLING_ALLOW_STRIPE_TEST_MODE: str = ""
+    # NOTE: FRONTEND_URL is deliberately NOT declared here. main.py builds the
+    # CORS origin list with getattr(settings, "FRONTEND_URL", <localhost>), so
+    # declaring it would change which origins are allowed. Billing reads it
+    # from the process environment (the .env file is loaded there at startup).
+
+    # --- KYC (documentation of the variables; the KYC modules read them from
+    # the process environment at call time, never from this object) ---
+    KYC_ENCRYPTION_KEY: str = ""           # required in production (app.core.kyc_encryption)
+    KYC_URL_SECRET: str = ""               # required in production (app.core.kyc_storage)
+
+    # --- Telegram webhook (app.api.notifications reads env first, then this) ---
+    TELEGRAM_WEBHOOK_SECRET: str = ""
 
     # --- Symbols / universe ---
     TRADE_SYMBOLS: List[str] = Field(default_factory=list)
@@ -353,6 +417,22 @@ class Settings(ProductionSettings):
         # Keep runner max symbols aligned with existing MAX_SYMBOLS
         self.RUN_MAX_SYMBOLS = int(self.MAX_SYMBOLS)
 
+
+    def production_secret_errors(self) -> list:
+        return _secret_errors(
+            self.production, {name: getattr(self, name, "") for name in REQUIRED_PRODUCTION_SECRETS})
+
+    def assert_production_secrets(self) -> None:
+        """Refuse to run a production process on default, placeholder or short secrets."""
+        errors = self.production_secret_errors()
+        if errors:
+            raise ValueError(
+                "INSECURE_PRODUCTION_SECRETS: refusing to start with APP_ENV=PRODUCTION:\n"
+                + "\n".join(f"- {e}" for e in errors)
+                + "\nAll CosmicForge services must be given the SAME SECRET_KEY "
+                  "(they verify each other's tokens)."
+            )
+
     def validate_runtime(self) -> List[str]:
         """
         Fail-fast validation. Returns warnings (non-fatal).
@@ -360,6 +440,8 @@ class Settings(ProductionSettings):
         """
         errors: List[str] = []
         warnings: List[str] = []
+
+        errors.extend(self.production_secret_errors())
 
         if self.EXECUTION_MODE not in {"paper", "live"}:
             errors.append("EXECUTION_MODE must be 'paper' or 'live'.")
@@ -481,3 +563,6 @@ class Settings(ProductionSettings):
 # Pydantic v2 + postponed annotations safety
 Settings.model_rebuild()
 settings = Settings()
+# Import-time, so no entry point (API, scripts, workers) can run a production
+# process on the built-in SECRET_KEY / CREDENTIAL_KEY defaults.
+settings.assert_production_secrets()

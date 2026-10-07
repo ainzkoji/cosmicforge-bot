@@ -4,6 +4,7 @@ import base64
 import hashlib
 import hmac
 import json
+import re
 import secrets
 import uuid
 from dataclasses import dataclass
@@ -57,6 +58,47 @@ def _load(raw: Any, default: Any) -> Any:
         return json.loads(str(raw))
     except Exception:
         return default
+
+
+# The webhook token travels inside the alert body (TradingView cannot send
+# custom headers). It authenticates the webhook, so it must never be written
+# to the alerts table: tokens are stored only as PBKDF2 hashes.
+PAYLOAD_REDACTED = "[REDACTED]"
+_PAYLOAD_SECRET_KEY_MARKERS = (
+    "token", "secret", "passphrase", "password", "passwd", "apikey", "api_key",
+    "api-key", "signature", "authorization", "credential", "private_key",
+)
+# A raw webhook token (see generate_webhook_token) pasted into any other field.
+_RAW_WEBHOOK_TOKEN = re.compile(r"cf_tv_[A-Za-z0-9_\-]{16,}")
+
+
+def _is_secret_payload_key(key: Any) -> bool:
+    name = str(key).strip().lower()
+    return any(marker in name for marker in _PAYLOAD_SECRET_KEY_MARKERS)
+
+
+def redact_webhook_payload(value: Any) -> Any:
+    """Copy of a webhook payload that is safe to persist.
+
+    Values under credential-like keys (``token``, ``secret``, ``passphrase``,
+    ``password``, ``api_key``, ``signature`` ... at any depth) are replaced by
+    a fixed marker; the key is kept so the alert's shape stays auditable. A
+    raw webhook token appearing in any other string is masked as well.
+    """
+    if isinstance(value, dict):
+        return {
+            key: (
+                PAYLOAD_REDACTED
+                if _is_secret_payload_key(key) and item not in (None, "")
+                else redact_webhook_payload(item)
+            )
+            for key, item in value.items()
+        }
+    if isinstance(value, (list, tuple)):
+        return [redact_webhook_payload(item) for item in value]
+    if isinstance(value, str):
+        return _RAW_WEBHOOK_TOKEN.sub(PAYLOAD_REDACTED, value)
+    return value
 
 
 def ensure_tradingview_schema(db: DB | None = None) -> None:
@@ -493,7 +535,8 @@ def insert_alert(
                 timeframe,
                 strategy_name,
                 price,
-                _dump(payload),
+                # Never persist the webhook token or other credentials.
+                _dump(redact_webhook_payload(payload)),
                 received_at,
                 alert_timestamp,
                 status,

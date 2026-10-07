@@ -1,10 +1,12 @@
+import hmac
+import logging
 import secrets
 import string
 import uuid
 from datetime import datetime, timezone, timedelta
 from typing import Optional, List, Dict, Any
-from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
+from fastapi import APIRouter, Depends, Header, HTTPException
+from pydantic import BaseModel, Field
 
 from app.api.auth import get_current_active_user
 from shared_lib.persistence.db import DB, utc_now_iso
@@ -14,6 +16,7 @@ import json
 
 router = APIRouter()
 db = DB()
+logger = logging.getLogger(__name__)
 
 # ============================================================================
 # Pydantic Models
@@ -38,7 +41,7 @@ class NotificationEndpoint(BaseModel):
     verified_at: Optional[str] = None
 
 class PushTokenRequest(BaseModel):
-    token: str
+    token: str = Field(..., min_length=16, max_length=4096)
 
 # ============================================================================
 # Preferences
@@ -209,13 +212,64 @@ def telegram_link_start(user: dict = Depends(get_current_active_user)):
         deep_link=f"https://t.me/{bot_username}?start={code}"
     )
 
+def _config_value(name: str) -> str:
+    """Environment variable, falling back to the app settings object."""
+    value = os.getenv(name)
+    if value:
+        return value.strip()
+    try:
+        from app.core.config import settings
+        return str(getattr(settings, name, "") or "").strip()
+    except Exception:
+        return ""
+
+
+def _is_production() -> bool:
+    try:
+        from shared_lib.core.security.broker_security import is_production
+        return bool(is_production())
+    except Exception:
+        # If the environment cannot be determined, behave as production.
+        return True
+
+
+def _verify_telegram_webhook_secret(provided: Optional[str]) -> None:
+    """Authenticate a Telegram webhook call.
+
+    Telegram echoes the ``secret_token`` given to ``setWebhook`` in the
+    ``X-Telegram-Bot-Api-Secret-Token`` header of every update. Without it,
+    anyone who can reach this URL can forge updates (and link their own chat
+    to another user's account by guessing a link code).
+
+    * ``TELEGRAM_WEBHOOK_SECRET`` configured: the header must match.
+    * Not configured, production: rejected (fail closed).
+    * Not configured, non-production: accepted, for local development.
+    """
+    expected = _config_value("TELEGRAM_WEBHOOK_SECRET")
+    if not expected:
+        if _is_production():
+            logger.error(
+                "Telegram webhook rejected: TELEGRAM_WEBHOOK_SECRET is not configured "
+                "(register the webhook with setWebhook secret_token=<the same value>)"
+            )
+            raise HTTPException(status_code=503, detail="Telegram webhook is not configured")
+        return
+    if not provided or not hmac.compare_digest(provided.encode("utf-8"), expected.encode("utf-8")):
+        raise HTTPException(status_code=403, detail="Invalid webhook secret")
+
+
 @router.post("/telegram/webhook")
-async def telegram_webhook(update: Dict[str, Any]):
+async def telegram_webhook(
+    update: Dict[str, Any],
+    x_telegram_bot_api_secret_token: Optional[str] = Header(None),
+):
     """Handle Telegram bot updates (webhook)."""
+    _verify_telegram_webhook_secret(x_telegram_bot_api_secret_token)
+
     # Extract message
-    message = update.get("message", {})
-    chat_id = message.get("chat", {}).get("id")
-    text = message.get("text", "")
+    message = update.get("message") or {}
+    chat_id = (message.get("chat") or {}).get("id")
+    text = message.get("text") or ""
     
     if not chat_id or not text.startswith("/start"):
         return {"ok": True}
@@ -283,36 +337,44 @@ def _send_telegram_message(chat_id, text):
 # ============================================================================
 
 class FCMTokenRequest(BaseModel):
-    """Request model for registering FCM token."""
-    userId: str
-    fcmToken: str
+    """Request model for registering FCM token.
+
+    The owner of the token is ALWAYS the authenticated caller. ``userId`` is
+    accepted only so older clients keep working; its value is ignored.
+    """
+    userId: Optional[str] = None  # ignored (legacy clients)
+    fcmToken: str = Field(..., min_length=16, max_length=4096)
     deviceId: Optional[str] = None  # Optional device identifier
     deviceName: Optional[str] = None  # e.g., "iPhone 13", "Android Pixel"
 
 class TestNotificationRequest(BaseModel):
     """Request model for sending test notification."""
-    userId: str
-    title: str
-    body: str
+    userId: Optional[str] = None  # ignored: a test notification only goes to the caller
+    title: str = Field(..., max_length=200)
+    body: str = Field(..., max_length=1000)
     data: Optional[Dict[str, str]] = None
 
 
-@router.post("/token")
-def register_fcm_token(req: FCMTokenRequest):
-    """
-    Register or update FCM token for a user.
-    Supports multiple devices per user.
-    
-    Body: { "userId": "...", "fcmToken": "...", "deviceId": "...", "deviceName": "..." }
-    """
-    user_id = req.userId
+def _register_fcm_token_for_user(user_id: str, req: FCMTokenRequest) -> dict:
     fcm_token = req.fcmToken
     device_id = req.deviceId or fcm_token[:16]  # Use token prefix as device ID if not provided
-    device_name = req.deviceName or "Unknown Device"
     
     now = utc_now_iso()
     
     with db.connect() as conn:
+        # A device token identifies one browser/device. If it is currently
+        # attached to a different account (e.g. another user logged in on this
+        # device before), it moves to the authenticated caller -- it is never
+        # left delivering this device's notifications for someone else, and a
+        # caller can never attach a token to an account that is not theirs.
+        # Possessing a token is how a device registers itself, so "whoever
+        # presents the token owns it" is inherent; the previous owner's row is
+        # removed here (replaced, never duplicated) before the caller's is written.
+        conn.execute(
+            "DELETE FROM notification_endpoints WHERE channel = 'push' AND recipient = ? AND user_id != ?",
+            (fcm_token, user_id)
+        )
+
         # Check if this exact token already exists for this user
         # Note: Schema uses composite PRIMARY KEY (user_id, channel), not id
         existing = conn.execute(
@@ -340,11 +402,15 @@ def register_fcm_token(req: FCMTokenRequest):
                 "deviceId": device_id
             }
         else:
-            # Insert new token
-            # Note: Will replace any existing push endpoint for this user (PRIMARY KEY constraint)
+            # Insert new token, replacing only the CALLER'S OWN previous push
+            # endpoint (PRIMARY KEY is (user_id, channel)).
+            conn.execute(
+                "DELETE FROM notification_endpoints WHERE user_id = ? AND channel = 'push'",
+                (user_id,)
+            )
             conn.execute(
                 """
-                INSERT OR REPLACE INTO notification_endpoints 
+                INSERT INTO notification_endpoints 
                 (user_id, channel, recipient, status, verified_at, created_at)
                 VALUES (?, 'push', ?, 'active', ?, ?)
                 """,
@@ -359,29 +425,42 @@ def register_fcm_token(req: FCMTokenRequest):
             }
 
 
+@router.post("/token")
+def register_fcm_token(
+    req: FCMTokenRequest,
+    user: dict = Depends(get_current_active_user)
+):
+    """
+    Register or update the FCM token of the authenticated user.
+
+    Requires login. The token is always registered to the caller; any
+    ``userId`` in the body is ignored.
+    
+    Body: { "fcmToken": "...", "deviceId": "...", "deviceName": "..." }
+    """
+    return _register_fcm_token_for_user(user["id"], req)
+
+
 @router.post("/test")
 def send_test_notification(
     req: TestNotificationRequest,
     user: dict = Depends(get_current_active_user)
 ):
     """
-    Send a test push notification (admin/debug endpoint).
+    Send a test push notification to the caller's own devices.
     
-    Body: { "userId": "...", "title": "...", "body": "...", "data": {...} }
+    Body: { "title": "...", "body": "...", "data": {...} }
     
-    Note: In production, add admin role check here.
+    The target is always the authenticated user: any ``userId`` in the body
+    is ignored, so this cannot be used to push arbitrary text to other users.
     """
-    # TODO: Add admin role check
-    # if not user.get("is_admin"):
-    #     raise HTTPException(status_code=403, detail="Admin access required")
-    
-    target_user_id = req.userId
+    target_user_id = user["id"]
     
     # Get all active push tokens for the user
     with db.connect() as conn:
         tokens = conn.execute(
             """
-            SELECT recipient as token, metadata_json 
+            SELECT recipient as token
             FROM notification_endpoints
             WHERE user_id = ? AND channel = 'push' AND status = 'active'
             """,
@@ -391,7 +470,7 @@ def send_test_notification(
     if not tokens:
         raise HTTPException(
             status_code=404,
-            detail=f"No active push tokens found for user {target_user_id}"
+            detail="No active push tokens found for your account"
         )
     
     # Send to all tokens
@@ -420,9 +499,10 @@ def send_test_notification(
         }
         
     except Exception as e:
+        logger.error("Failed to send test notification: %s", type(e).__name__)
         raise HTTPException(
             status_code=500,
-            detail=f"Failed to send test notification: {str(e)}"
+            detail="Failed to send test notification"
         )
 
 
@@ -526,9 +606,6 @@ def register_push_token(
     user: dict = Depends(get_current_active_user)
 ):
     """Legacy endpoint - use POST /notifications/token instead."""
-    fcm_req = FCMTokenRequest(
-        userId=user["id"],
-        fcmToken=req.token
-    )
-    return register_fcm_token(fcm_req)
+    fcm_req = FCMTokenRequest(fcmToken=req.token)
+    return _register_fcm_token_for_user(user["id"], fcm_req)
 

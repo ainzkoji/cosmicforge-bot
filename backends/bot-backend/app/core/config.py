@@ -4,6 +4,48 @@ from pydantic import Field
 from typing import Optional
 
 
+# --- Production secret validation ---
+# Built-in defaults and the placeholders shipped in the .env.example files are
+# public: anyone can forge a session with them. A production process refuses
+# to start with one. Non-production (APP_ENV=TEST / DEVELOPMENT) is unaffected.
+MIN_SECRET_LENGTH = 32
+_SECRET_PLACEHOLDER_MARKERS = (
+    "changeme", "change_me", "change-me", "replace_me", "replace-me",
+    "placeholder", "example", "default-",
+)
+_SECRET_PLACEHOLDER_PREFIXES = ("your-", "your_", "<")
+_SECRET_HOWTO = 'python -c "import secrets; print(secrets.token_urlsafe(48))"'
+# Secrets this service signs or encrypts with.
+REQUIRED_PRODUCTION_SECRETS = ("SECRET_KEY",)
+
+
+def weak_secret_reason(value):
+    """Why ``value`` is unacceptable as a production secret, or None if it is fine."""
+    text = str(value or "").strip()
+    if not text:
+        return "is not set"
+    lowered = text.lower()
+    if lowered.startswith(_SECRET_PLACEHOLDER_PREFIXES) or any(
+            marker in lowered for marker in _SECRET_PLACEHOLDER_MARKERS):
+        return "is a known default/placeholder value"
+    if len(text) < MIN_SECRET_LENGTH:
+        return f"is shorter than {MIN_SECRET_LENGTH} characters"
+    if len(set(text)) < 8:
+        return "is not random (too few distinct characters)"
+    return None
+
+
+def _secret_errors(production: bool, secrets_by_name: dict) -> list:
+    if not production:
+        return []
+    errors = []
+    for name, value in secrets_by_name.items():
+        reason = weak_secret_reason(value)
+        if reason:
+            errors.append(f"{name} {reason}. Generate one with: {_SECRET_HOWTO}")
+    return errors
+
+
 class Settings(ProductionSettings):
     # Binance API
     BINANCE_API_KEY: str = ""
@@ -29,7 +71,9 @@ class Settings(ProductionSettings):
     BINGX_BASE_URL: str = "https://open-api.bingx.com"
     BINGX_TIMEOUT_SECONDS: int = 10
     
-    # Engine Authentication
+    # Legacy setting, NOT ENFORCED: no bot-backend route checks this key. Every
+    # route authenticates the caller's JWT (signed with SECRET_KEY), which the
+    # user-backend forwards. Kept only so existing .env files still load.
     ENGINE_API_KEY: str = "default-engine-key"
 
     # --- Security / Auth (Added for Monolith) ---
@@ -619,6 +663,24 @@ class Settings(ProductionSettings):
     TRADINGVIEW_ALLOW_PAPER_LIVE_MODE: bool = False
     PAPER_TRADING_MODE: bool = False
 
+    # ── API surface hardening ────────────────────────────────────────────────
+    # Caller-supplied broker gateway / bridge addresses (IBKR host:port, IBKR
+    # gateway URL, MT4/MT5 bridge URL) are validated by
+    # shared_lib.core.security.url_guard before the server connects to them.
+    # In production, loopback and private addresses are refused unless listed
+    # here: comma-separated ``host`` or ``host:port`` (e.g. "127.0.0.1:4001").
+    # Link-local / cloud-metadata addresses can never be allow-listed.
+    BROKER_GATEWAY_ALLOWED_HOSTS: str = ""
+    # TLS verification for caller-supplied gateway / bridge URLs:
+    #   "auto"  (default) verify in production; legacy behaviour elsewhere
+    #           (self-signed local IBKR gateway unverified, MT bridge honours
+    #           the caller's tls_mode).
+    #   "true"  always verify.   "false"  legacy behaviour in every environment.
+    BROKER_GATEWAY_VERIFY_TLS: str = "auto"
+    # /docs, /redoc and /openapi.json are served outside production. In
+    # production they are disabled unless this is explicitly enabled.
+    API_DOCS_ENABLED: bool = False
+
     # Database
     DATABASE_URL: str = "sqlite:///../shared/shared_lib/persistence/cosmicforge.db"
     # Phase 11 §21: the database's ROLE is configured, never guessed from its
@@ -639,9 +701,29 @@ class Settings(ProductionSettings):
         case_sensitive = True
         extra = "ignore"  # Prevent startup crash when extra vars exist in .env
     
+
+    def production_secret_errors(self) -> list:
+        return _secret_errors(
+            self.production, {name: getattr(self, name, "") for name in REQUIRED_PRODUCTION_SECRETS})
+
+    def assert_production_secrets(self) -> None:
+        """Refuse to run a production process on default, placeholder or short secrets."""
+        errors = self.production_secret_errors()
+        if errors:
+            raise ValueError(
+                "INSECURE_PRODUCTION_SECRETS: refusing to start with APP_ENV=PRODUCTION:\n"
+                + "\n".join(f"- {e}" for e in errors)
+                + "\nAll CosmicForge services must be given the SAME SECRET_KEY "
+                  "(they verify each other's tokens)."
+            )
+
     def validate_runtime(self):
         """Validate configuration at runtime"""
         warnings = []
+
+        # Fatal in production (raises); CREDENTIAL_KEY is not checked because
+        # nothing in this service encrypts with it.
+        self.assert_production_secrets()
 
         if not self.BINANCE_API_KEY:
             warnings.append("BINANCE_API_KEY is not set")
@@ -812,3 +894,6 @@ def detect_legacy_threshold_keys(
 
 
 settings = Settings()
+# Import-time, so the engine, its scripts and its workers all refuse to run a
+# production process that would accept tokens signed with the default SECRET_KEY.
+settings.assert_production_secrets()

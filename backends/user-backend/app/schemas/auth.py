@@ -1,7 +1,23 @@
-from pydantic import BaseModel, EmailStr, Field, model_validator
+from pydantic import BaseModel, EmailStr, Field, field_validator, model_validator
 from typing import Optional, List
 from datetime import datetime
 from enum import Enum
+
+
+# --- Password policy ---
+PASSWORD_MIN_LENGTH = 8
+# bcrypt hashes at most 72 bytes; longer input is rejected instead of being
+# silently truncated (see app.core.security.MAX_PASSWORD_BYTES).
+PASSWORD_MAX_BYTES = 72
+
+
+def _check_password_bytes(value: str) -> str:
+    if len(value.encode("utf-8")) > PASSWORD_MAX_BYTES:
+        raise ValueError(
+            f"Password is too long: at most {PASSWORD_MAX_BYTES} bytes "
+            "(accented characters and emoji count as more than one)"
+        )
+    return value
 
 
 # --- Enums ---
@@ -38,7 +54,7 @@ class RefreshTokenReq(BaseModel):
 # --- User Schemas ---
 class UserCreate(BaseModel):
     email: EmailStr
-    password: str = Field(..., min_length=8, max_length=20)
+    password: str = Field(..., min_length=PASSWORD_MIN_LENGTH, max_length=PASSWORD_MAX_BYTES)
     locale: Optional[str] = "en"
     country: Optional[str] = None
     timezone: Optional[str] = None
@@ -47,7 +63,12 @@ class UserCreate(BaseModel):
     marketing_session_id: Optional[str] = None
     selected_plan_id: Optional[str] = None
     confirmed_password: Optional[str] = None
-    
+
+    @field_validator("password")
+    @classmethod
+    def check_password_bytes(cls, v: str) -> str:
+        return _check_password_bytes(v)
+
     @model_validator(mode='after')
     def check_passwords_match(self) -> 'UserCreate':
         if self.confirmed_password is not None and self.password != self.confirmed_password:
@@ -95,7 +116,12 @@ class ForgotPasswordRequest(BaseModel):
 class ResetPasswordRequest(BaseModel):
     email: EmailStr
     code: str = Field(..., min_length=6, max_length=6)
-    new_password: str = Field(..., min_length=8, max_length=20)
+    new_password: str = Field(..., min_length=PASSWORD_MIN_LENGTH, max_length=PASSWORD_MAX_BYTES)
+
+    @field_validator("new_password")
+    @classmethod
+    def check_password_bytes(cls, v: str) -> str:
+        return _check_password_bytes(v)
 
 
 # --- Session Management ---

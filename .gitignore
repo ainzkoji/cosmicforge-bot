@@ -41,6 +41,11 @@ data/*.db
 **/data/*.db-shm
 **/*.db-journal
 
+# KYC identity documents uploaded by users (never commit). Default location is
+# backends/user-backend/data/kyc_uploads (KYC_UPLOAD_DIR overrides it).
+data/kyc_uploads/
+**/data/kyc_uploads/
+
 # Logs and transient command output.
 *.log
 logs/

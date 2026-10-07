@@ -5,6 +5,7 @@ import uuid
 
 from app.core.security import (
     verify_password,
+    dummy_verify_password,
     create_admin_access_token,
     create_admin_refresh_token,
     decode_admin_token,
@@ -29,17 +30,38 @@ class AdminMeResponse(BaseModel):
     is_superuser: int
 
 from app.core.deps import get_current_admin
+# Same durable, atomic attempt tracking as the user login (shared login_attempts table).
+from app.api.auth import begin_login_attempt, mark_login_attempt_success
+
+
+def _admin_attempt_key(email: str) -> str:
+    # Namespaced so admin and user counters for the same address stay separate.
+    return f"admin:{(email or '').lower().strip()}"
+
 
 @router.post("/login", response_model=AdminAuthResponse)
 def admin_login(request: Request, form_data: OAuth2PasswordRequestForm = Depends()):
     db = DB()
+    ip = request.client.host if request.client else "unknown"
     with db.connect() as conn:
+        # Raises 429 when this account or client IP has too many recent
+        # failures; otherwise the attempt is committed as a failure up front,
+        # so the 400 below cannot roll it back.
+        attempt_id = begin_login_attempt(conn, _admin_attempt_key(form_data.username), ip)
+
         admin_row = conn.execute("SELECT * FROM admins WHERE email = ?", (form_data.username,)).fetchone()
-        
+        if not admin_row:
+            # Equal work whether or not the admin exists.
+            dummy_verify_password(form_data.password)
+
         if not admin_row or not verify_password(form_data.password, admin_row["hashed_password"]):
             raise HTTPException(status_code=400, detail="Incorrect email or password")
-            
+
+        mark_login_attempt_success(conn, attempt_id)
+
         if admin_row["is_active"] != 1:
+            # Commit first: the password was right, so this is not a counted failure.
+            conn.commit()
             raise HTTPException(status_code=403, detail="Admin account is inactive")
 
         # Update last login

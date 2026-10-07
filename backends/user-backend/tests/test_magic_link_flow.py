@@ -18,7 +18,13 @@ def _isolated_db(tmp_path, monkeypatch):
 
     path = tmp_path / "magic_link.db"
     monkeypatch.setenv("DATABASE_URL", f"sqlite:///{path.as_posix()}")
-    runner = Path(__file__).resolve().parents[1] / "migrations" / "run_migration.py"
+    # A test profile, explicitly: the settings default for ENVIRONMENT_NAME is
+    # "production", which would demand production secrets (BROKER_SECRET_KEY)
+    # and DNS-resolve the bridge URL.
+    monkeypatch.setenv("APP_ENV", "TEST")
+    monkeypatch.setenv("ENVIRONMENT_NAME", "test")
+    monkeypatch.setenv("DATABASE_ROLE", "test")
+    runner =Path(__file__).resolve().parents[1] / "migrations" / "run_migration.py"
     spec = importlib.util.spec_from_file_location("run_migration", runner)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
@@ -77,10 +83,16 @@ def test_magic_link_flow(tmp_path, monkeypatch):
         print(f"  - Pairing Code: {claimed_session['pairing_code']}")
     else:
         print("✗ Failed to claim token!")
-        return False
+        raise AssertionError("magic link flow step failed (see output above)")
     
     print()
     
+    # The pairing code is only honoured once it has been released to a
+    # connector through the claim step, which binds the session to the
+    # connector's device secret (see mt_pairing_service.claim_pairing_session).
+    claim = mt_pairing_service.claim_pairing_session(session['session_id'], "test-device-secret-0123456789abcdef")
+    assert claim['pairing_code'] == claimed_session['pairing_code']
+
     print("Step 4: Connector completes pairing")
     print("-" * 60)
     
@@ -101,7 +113,7 @@ def test_magic_link_flow(tmp_path, monkeypatch):
         print(f"  - Account ID: {account_id}")
     except Exception as e:
         print(f"✗ Pairing failed: {e}")
-        return False
+        raise AssertionError("magic link flow step failed (see output above)")
     
     print()
     
@@ -121,7 +133,7 @@ def test_magic_link_flow(tmp_path, monkeypatch):
         print(f"  - Platform: {status.get('account', {}).get('platform')}")
     else:
         print(f"✗ Unexpected status: {status['status']}")
-        return False
+        raise AssertionError("magic link flow step failed (see output above)")
     
     print()
     print("=" * 60)
@@ -132,13 +144,20 @@ def test_magic_link_flow(tmp_path, monkeypatch):
     with db.connect() as conn:
         conn.execute("DELETE FROM mt_pairing_sessions WHERE user_id = ?", (test_user,))
         conn.execute("DELETE FROM broker_accounts WHERE user_id = ?", (test_user,))
-    
-    return True
+
 
 if __name__ == "__main__":
     try:
-        success = test_magic_link_flow()
-        sys.exit(0 if success else 1)
+        import tempfile
+        from pathlib import Path
+        import pytest
+        with tempfile.TemporaryDirectory() as _tmp:
+            _mp = pytest.MonkeyPatch()
+            try:
+                test_magic_link_flow(Path(_tmp), _mp)
+            finally:
+                _mp.undo()
+        sys.exit(0)
     except Exception as e:
         print(f"\n❌ CRITICAL FAILURE: {e}")
         import traceback

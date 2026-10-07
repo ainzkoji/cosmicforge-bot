@@ -57,7 +57,15 @@ async def get_bot_inventory(
     request: Request,
     user: dict = Depends(get_current_active_user)
 ):
-    """Proxy: Get all bot instances in the system (admin diagnostic)."""
+    """Proxy: Get all bot instances in the system (admin diagnostic).
+
+    Admin-only: the inventory spans every user's bots. Checked here against
+    the user's stored role, and again by bot-backend against the ``role``
+    claim of the forwarded access token. A regular user lists their own bots
+    through ``GET /bot-instances``.
+    """
+    if str(user.get("role") or "user") != "admin":
+        raise HTTPException(status_code=403, detail="Admin access required")
     return await proxy_request(request, "/api/v1/bot-instances/inventory")
 
 

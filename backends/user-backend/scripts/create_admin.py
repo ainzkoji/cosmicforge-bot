@@ -1,144 +1,152 @@
 """
-Create Admin User Script
+Create an admin account (admins table), or reset an existing admin's password.
 
-Grant admin role to a specific user by email.
-Usage: python scripts/create_admin.py --email user@example.com
+USAGE (run from backends/user-backend)
+    python scripts/create_admin.py admin@your-domain.example
+    python scripts/create_admin.py admin@your-domain.example --name "Ops Admin"
+    python scripts/create_admin.py admin@your-domain.example --reset-password
+
+The password is NEVER taken from the command line (it would end up in shell
+history and the process list) and is never printed or logged. It is read from:
+  1. the ADMIN_PASSWORD environment variable, if set (for automation), or
+  2. an interactive hidden prompt (asked twice).
+
+It must be at least 12 characters and at most 72 bytes (the bcrypt limit).
+The database is the one the backend itself uses (DATABASE_URL / .env).
 """
-import sys
-import sqlite3
-import uuid
-from pathlib import Path
-from datetime import datetime
+from __future__ import annotations
+
 import argparse
+import getpass
+import os
+import sys
+import uuid
+from datetime import datetime, timezone
+from pathlib import Path
 
-# Add parent directory to path for imports
-sys.path.insert(0, str(Path(__file__).parent.parent))
+MIN_PASSWORD_LENGTH = 12
+MAX_PASSWORD_BYTES = 72
+PASSWORD_ENV = "ADMIN_PASSWORD"
 
-DB_PATH = Path("data/bot.db")
+_HERE = Path(__file__).resolve().parent
+_USER_BACKEND = _HERE.parent
+_SHARED = _USER_BACKEND.parent / "shared"
 
-def utc_now_iso():
-    return datetime.utcnow().isoformat() + "Z"
+for _p in (str(_USER_BACKEND), str(_SHARED)):
+    if _p not in sys.path:
+        sys.path.insert(0, _p)
 
-def grant_admin_role(email: str):
-    """Grant admin role to user by email"""
-    if not DB_PATH.exists():
-        print(f"❌ Database not found at {DB_PATH}")
-        print("   Run migrations first: python migrate_admin_system.py")
-        return False
-    
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    cursor = conn.cursor()
-    
-    try:
-        # Find user by email
-        user = cursor.execute(
-            "SELECT id, email, status FROM users WHERE email = ?",
-            (email,)
-        ).fetchone()
-        
-        if not user:
-            print(f"❌ User not found with email: {email}")
-            print("   Make sure the user has registered first.")
-            return False
-        
-        user_id = user["id"]
-        user_email = user["email"]
-        user_status = user["status"]
-        
-        print(f"✅ Found user: {user_email} (ID: {user_id}, Status: {user_status})")
-        
-        # Check if already admin
-        existing = cursor.execute(
-            "SELECT * FROM admin_roles WHERE user_id = ? AND revoked_at IS NULL",
-            (user_id,)
-        ).fetchone()
-        
-        if existing:
-            print(f"⚠️  User already has admin role (granted at {existing['granted_at']})")
-            return True
-        
-        # Grant admin role
-        role_id = str(uuid.uuid4())
-        cursor.execute("""
-            INSERT INTO admin_roles (id, user_id, role, granted_by, granted_at)
-            VALUES (?, ?, 'admin', NULL, ?)
-        """, (role_id, user_id, utc_now_iso()))
-        
-        # Log audit event
-        audit_id = str(uuid.uuid4())
-        cursor.execute("""
-            INSERT INTO auth_audit_log (id, event_type, user_id, email, details, created_at)
-            VALUES (?, 'admin_role_granted', ?, ?, ?, ?)
-        """, (audit_id, user_id, user_email, "Admin role granted via script", utc_now_iso()))
-        
-        conn.commit()
-        
-        print(f"✅ Admin role granted successfully!")
-        print(f"   User: {user_email}")
-        print(f"   Role ID: {role_id}")
-        print(f"   The user can now access admin endpoints at /api/admin/*")
-        
-        return True
-        
-    except Exception as e:
-        conn.rollback()
-        print(f"❌ Error: {e}")
-        return False
-    finally:
-        conn.close()
 
-def list_admins():
-    """List all current admin users"""
-    if not DB_PATH.exists():
-        print(f"❌ Database not found at {DB_PATH}")
-        return
-    
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    cursor = conn.cursor()
-    
-    try:
-        admins = cursor.execute("""
-            SELECT u.id, u.email, u.status, ar.granted_at, ar.revoked_at
-            FROM admin_roles ar
-            JOIN users u ON ar.user_id = u.id
-            WHERE ar.revoked_at IS NULL
-            ORDER BY ar.granted_at DESC
-        """).fetchall()
-        
-        if not admins:
-            print("No admin users found.")
-            return
-        
-        print(f"\n{'='*60}")
-        print(f"Current Admin Users ({len(admins)})")
-        print(f"{'='*60}")
-        for admin in admins:
-            print(f"Email: {admin['email']}")
-            print(f"  User ID: {admin['id']}")
-            print(f"  Status: {admin['status']}")
-            print(f"  Granted: {admin['granted_at']}")
-            print()
-        
-    except Exception as e:
-        print(f"❌ Error: {e}")
-    finally:
-        conn.close()
+def password_problem(password: str) -> str | None:
+    """Why the password is not acceptable, or None when it is."""
+    if len(password) < MIN_PASSWORD_LENGTH:
+        return f"Password must be at least {MIN_PASSWORD_LENGTH} characters."
+    if len(password.encode("utf-8")) > MAX_PASSWORD_BYTES:
+        return f"Password must be at most {MAX_PASSWORD_BYTES} bytes."
+    return None
 
-def main():
-    parser = argparse.ArgumentParser(description="Manage admin users")
-    parser.add_argument("--email", help="Email of user to grant admin role")
-    parser.add_argument("--list", action="store_true", help="List all admin users")
-    
-    args = parser.parse_args()
-    
-    if args.list:
-        list_admins()
-    elif args.email:
-        grant_admin_role(args.email)
+
+def read_password() -> str:
+    """Password from ADMIN_PASSWORD or a hidden prompt. Exits on an invalid one."""
+    from_env = os.environ.get(PASSWORD_ENV)
+    if from_env:
+        password = from_env
     else:
-        parser.print_help()
+        if not sys.stdin.isatty():
+            sys.exit(f"[ERROR] No terminal for a password prompt. Set {PASSWORD_ENV} instead.")
+        password = getpass.getpass("Admin password (hidden): ")
+        if password != getpass.getpass("Repeat password: "):
+            sys.exit("[ERROR] Passwords do not match.")
+    problem = password_problem(password)
+    if problem:
+        sys.exit(f"[ERROR] {problem}")
+    return password
+
+
+def _load_env() -> None:
+    try:
+        from dotenv import load_dotenv
+    except ImportError:
+        return
+    env_file = _USER_BACKEND / ".env"
+    if env_file.exists():
+        load_dotenv(dotenv_path=env_file, override=False)
+
+
+def _now() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+def upsert_admin(conn, email: str, hashed_password: str, name: str, reset_password: bool) -> str:
+    """Create the admin, or (only with reset_password) replace its password.
+
+    Returns "created", "password_reset" or "exists".
+    """
+    existing = conn.execute("SELECT id FROM admins WHERE email = ?", (email,)).fetchone()
+    now = _now()
+    if not existing:
+        conn.execute(
+            """
+            INSERT INTO admins
+                (id, email, hashed_password, full_name, role,
+                 is_active, is_superuser, created_at, updated_at)
+            VALUES (?, ?, ?, ?, 'admin', 1, 1, ?, ?)
+            """,
+            (str(uuid.uuid4()), email, hashed_password, name, now, now),
+        )
+        return "created"
+    if not reset_password:
+        return "exists"
+    conn.execute(
+        "UPDATE admins SET hashed_password = ?, is_active = 1, updated_at = ? WHERE email = ?",
+        (hashed_password, now, email),
+    )
+    # A new password ends every session opened with the old one.
+    conn.execute(
+        "UPDATE admin_sessions SET revoked_at = ? WHERE admin_id = ? AND revoked_at IS NULL",
+        (now, existing["id"]),
+    )
+    return "password_reset"
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(
+        description="Create an admin account or reset an admin password. "
+                    f"The password comes from {PASSWORD_ENV} or a hidden prompt, never from an argument.")
+    parser.add_argument("email", help="Admin email address")
+    parser.add_argument("--name", default="Admin", help="Display name (used only when creating)")
+    parser.add_argument("--reset-password", action="store_true",
+                        help="Allow replacing the password of an admin that already exists")
+    args = parser.parse_args(argv)
+
+    email = args.email.strip().lower()
+    if "@" not in email or email.startswith("@") or email.endswith("@"):
+        print("[ERROR] That does not look like an email address.")
+        return 2
+
+    password = read_password()
+
+    _load_env()
+    from app.core.security import get_password_hash
+    from shared_lib.persistence.db import DB
+
+    hashed = get_password_hash(password)
+    del password
+
+    db = DB()
+    with db.connect() as conn:
+        outcome = upsert_admin(conn, email, hashed, args.name, args.reset_password)
+
+    if outcome == "created":
+        print(f"[OK] Admin created: {email}")
+    elif outcome == "password_reset":
+        print(f"[OK] Password replaced and existing sessions revoked for: {email}")
+    else:
+        print(f"[INFO] Admin already exists: {email}. Nothing changed "
+              "(re-run with --reset-password to replace the password).")
+        return 1
+    return 0
+
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

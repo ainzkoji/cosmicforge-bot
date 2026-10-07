@@ -2,11 +2,17 @@
 MT Bridge Pairing Service
 Handles pairing code generation, session management, and bridge credential storage.
 """
+import hashlib
+import hmac
+import ipaddress
+import secrets
+import socket
+import sqlite3
 import uuid
-import random
 import string
 from datetime import datetime, timedelta, timezone
-from typing import Optional, Dict, Any
+from typing import Callable, Iterable, Optional, Dict, Any
+from urllib.parse import urlsplit
 
 from shared_lib.persistence.db import DB
 from shared_lib.core.security.broker_security import encrypt_credentials, decrypt_credentials
@@ -30,7 +36,9 @@ def generate_pairing_code() -> str:
     # Exclude confusing characters
     chars = chars.replace('O', '').replace('0', '').replace('I', '').replace('1', '')
     
-    code = ''.join(random.choice(chars) for _ in range(8))
+    # The pairing code is a credential: it must come from the OS CSPRNG, never
+    # from the predictable ``random`` module.
+    code = ''.join(secrets.choice(chars) for _ in range(8))
     # Format as XXXX-YYYY
     return f"{code[:4]}-{code[4:]}"
 
@@ -39,14 +47,172 @@ def generate_connector_link_token() -> str:
     Generate a secure one-time connector link token.
     32 characters (128 bits of entropy) for security.
     """
-    import secrets
     return secrets.token_urlsafe(32)
+
+# ============================================================================
+# Connector device binding
+# ============================================================================
+
+DEVICE_SECRET_MIN_LENGTH = 16
+DEVICE_SECRET_MAX_LENGTH = 256
+
+
+def _hash_device_secret(device_secret: str) -> str:
+    return hashlib.sha256(("mt-connector-device:" + device_secret).encode("utf-8")).hexdigest()
+
+
+def _ensure_claim_columns(conn) -> None:
+    """Add the device-binding columns to ``mt_pairing_sessions`` if absent (idempotent)."""
+    cols = {row[1] for row in conn.execute("PRAGMA table_info(mt_pairing_sessions)").fetchall()}
+    if not cols:
+        return  # table does not exist; the caller's query will report that
+    for column in ("device_secret_hash", "connector_claimed_at"):
+        if column in cols:
+            continue
+        try:
+            conn.execute(f"ALTER TABLE mt_pairing_sessions ADD COLUMN {column} TEXT")
+        except sqlite3.OperationalError as exc:
+            # Another request added it between the check above and the ALTER.
+            if "duplicate column name" not in str(exc).lower():
+                raise
+
+
+# ============================================================================
+# Bridge URL validation
+# ============================================================================
+
+# Cloud metadata endpoints that are not inside the link-local range.
+_METADATA_ADDRESSES = frozenset({
+    ipaddress.ip_address("100.100.100.200"),   # Alibaba Cloud
+    ipaddress.ip_address("192.0.0.192"),       # Oracle Cloud
+    ipaddress.ip_address("fd00:ec2::254"),     # AWS IMDS over IPv6
+})
+_METADATA_HOSTNAMES = frozenset({
+    "metadata", "metadata.google.internal", "metadata.goog", "instance-data",
+    "instance-data.ec2.internal",
+})
+_INTERNAL_HOST_SUFFIXES = (".localhost", ".local", ".internal", ".intranet", ".lan", ".home.arpa")
+
+
+def _is_production() -> bool:
+    try:
+        from shared_lib.core.security.broker_security import is_production
+        return bool(is_production())
+    except Exception:
+        # If the environment cannot be determined, behave as production.
+        return True
+
+
+def _unmap(ip):
+    mapped = getattr(ip, "ipv4_mapped", None)
+    return mapped if mapped is not None else ip
+
+
+def _is_link_local_or_metadata(ip) -> bool:
+    ip = _unmap(ip)
+    return ip.is_link_local or ip in _METADATA_ADDRESSES
+
+
+def _is_non_public(ip) -> bool:
+    ip = _unmap(ip)
+    return (
+        ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_multicast
+        or ip.is_reserved or ip.is_unspecified or ip in _METADATA_ADDRESSES
+        or not ip.is_global
+    )
+
+
+def _default_resolver(host: str, port: int) -> Iterable[str]:
+    infos = socket.getaddrinfo(host, port, proto=socket.IPPROTO_TCP)
+    return [info[4][0] for info in infos]
+
+
+def validate_bridge_url(
+    bridge_url: str,
+    *,
+    production: Optional[bool] = None,
+    resolver: Optional[Callable[[str, int], Iterable[str]]] = None,
+) -> str:
+    """Validate a connector-supplied bridge URL before it is attached to an account.
+
+    The platform later makes authenticated requests to this URL, so it must
+    never point at the platform's own network.
+
+    * All environments: well-formed http(s) URL, no embedded credentials, no
+      link-local / cloud-metadata address or hostname.
+    * Production: HTTPS only, and no loopback / private / reserved address --
+      neither as a literal nor as what the hostname currently resolves to.
+
+    Returns the normalized URL. Raises ``ValueError`` with a user-safe message.
+    """
+    if production is None:
+        production = _is_production()
+
+    if not isinstance(bridge_url, str):
+        raise ValueError("bridge_url is invalid")
+    url = bridge_url.strip()
+    if not url or len(url) > 2048 or any(ch.isspace() or ord(ch) < 32 for ch in url):
+        raise ValueError("bridge_url is invalid")
+
+    try:
+        parts = urlsplit(url)
+        host = parts.hostname
+        port = parts.port
+    except ValueError:
+        raise ValueError("bridge_url is invalid")
+
+    scheme = (parts.scheme or "").lower()
+    if scheme not in ("https", "http"):
+        raise ValueError("bridge_url must use HTTPS")
+    if production and scheme != "https":
+        raise ValueError("bridge_url must use HTTPS")
+    if not host:
+        raise ValueError("bridge_url is invalid")
+    if parts.username is not None or parts.password is not None:
+        raise ValueError("bridge_url must not contain credentials")
+    if parts.fragment:
+        raise ValueError("bridge_url must not contain a fragment")
+
+    host = host.rstrip(".").lower()
+    if not host:
+        raise ValueError("bridge_url is invalid")
+
+    try:
+        literal = ipaddress.ip_address(host)
+    except ValueError:
+        literal = None
+
+    if literal is not None:
+        if _is_link_local_or_metadata(literal):
+            raise ValueError("bridge_url must not point to a link-local or metadata address")
+        if production and _is_non_public(literal):
+            raise ValueError("bridge_url must be a public address")
+    else:
+        if host in _METADATA_HOSTNAMES:
+            raise ValueError("bridge_url must not point to a link-local or metadata address")
+        if production:
+            if host == "localhost" or host.endswith(_INTERNAL_HOST_SUFFIXES) or "." not in host:
+                raise ValueError("bridge_url must be a public address")
+            try:
+                addresses = list((resolver or _default_resolver)(host, port or 443))
+            except Exception:
+                raise ValueError("bridge_url host could not be resolved")
+            if not addresses:
+                raise ValueError("bridge_url host could not be resolved")
+            for address in addresses:
+                try:
+                    resolved = ipaddress.ip_address(str(address).split("%", 1)[0])
+                except ValueError:
+                    raise ValueError("bridge_url host could not be resolved")
+                if _is_non_public(resolved):
+                    raise ValueError("bridge_url must be a public address")
+
+    return url
+
 
 # ============================================================================
 # Session Management
 # ============================================================================
-
-import hashlib
 
 def create_pairing_session(user_id: str, broker_id: str, environment: str = "live") -> Dict[str, Any]:
     """
@@ -207,9 +373,28 @@ def get_session_by_connector_token(token: str) -> Optional[Dict[str, Any]]:
 def claim_pairing_session(session_id: str, device_secret: str) -> Dict[str, Any]:
     """
     Claim pairing code for a session.
+
+    The connector generates ``device_secret`` itself and presents it here.
+    The first valid claim binds the session to that secret (only its hash is
+    stored); every later claim must present the same secret, compared in
+    constant time. The pairing code is therefore released to exactly one
+    connector instance, and ``complete_pairing`` refuses codes that were never
+    released through a claim.
     """
+    if not isinstance(session_id, str) or not session_id or len(session_id) > 128:
+        raise ValueError("Invalid session ID")
+    if (
+        not isinstance(device_secret, str)
+        or not (DEVICE_SECRET_MIN_LENGTH <= len(device_secret) <= DEVICE_SECRET_MAX_LENGTH)
+    ):
+        raise ValueError("Invalid device secret")
+
+    presented_hash = _hash_device_secret(device_secret)
+    expired = False
+
     db = DB()
     with db.connect() as conn:
+        _ensure_claim_columns(conn)
         row = conn.execute("SELECT * FROM mt_pairing_sessions WHERE id = ?", (session_id,)).fetchone()
         if not row:
             raise ValueError("Invalid session ID")
@@ -220,14 +405,38 @@ def claim_pairing_session(session_id: str, device_secret: str) -> Dict[str, Any]
             
         expires_at = datetime.fromisoformat(session["expires_at"])
         if utc_now() > expires_at:
-            conn.execute("UPDATE mt_pairing_sessions SET status = 'expired' WHERE id = ?", (session_id,))
-            raise ValueError("Session expired")
-            
-        return {
-            "pairing_code": session["pairing_code"],
-            "broker_id": session["broker_id"],
-            "environment": session.get("environment", "live")
-        }
+            conn.execute(
+                "UPDATE mt_pairing_sessions SET status = 'expired', updated_at = ? WHERE id = ?",
+                (utc_now_iso(), session_id)
+            )
+            expired = True
+        else:
+            stored_hash = session.get("device_secret_hash")
+            if stored_hash:
+                if not hmac.compare_digest(str(stored_hash), presented_hash):
+                    raise ValueError("Session already claimed by another connector")
+            else:
+                # First claim: bind atomically (a concurrent claim cannot also win).
+                cur = conn.execute(
+                    """
+                    UPDATE mt_pairing_sessions
+                    SET device_secret_hash = ?, connector_claimed_at = ?, updated_at = ?
+                    WHERE id = ? AND status = 'pending' AND device_secret_hash IS NULL
+                    """,
+                    (presented_hash, utc_now_iso(), utc_now_iso(), session_id)
+                )
+                if cur.rowcount != 1:
+                    raise ValueError("Session already claimed by another connector")
+
+    # Raised after the transaction so the 'expired' status is committed.
+    if expired:
+        raise ValueError("Session expired")
+
+    return {
+        "pairing_code": session["pairing_code"],
+        "broker_id": session["broker_id"],
+        "environment": session.get("environment", "live")
+    }
 
 def finish_pairing(session_id: str, user_id: str) -> str:
     """
@@ -244,6 +453,10 @@ def finish_pairing(session_id: str, user_id: str) -> str:
              # If already completed, maybe return the existing account_id if we tracked it?
              # For now, strict check.
              raise ValueError("Connector not yet linked. Please complete the installation step." if session["status"] == "pending" else f"Session is {session['status']}")
+
+        # Defence in depth: the stored bridge URL is validated again before it
+        # becomes a broker account the platform will connect to.
+        validate_bridge_url(session.get("bridge_url") or "")
 
         # Retrieve stored details
         mt_platform = session["account_platform"]
@@ -316,9 +529,17 @@ def complete_pairing(
     Raises:
         ValueError: If pairing code invalid, expired, or already used
     """
+    if not isinstance(pairing_code, str) or not pairing_code or len(pairing_code) > 32:
+        raise ValueError("Invalid pairing code")
+
+    # Never attach an unvalidated, caller-supplied URL to an account.
+    bridge_url = validate_bridge_url(bridge_url)
+
     db = DB()
+    expired = False
     
     with db.connect() as conn:
+        _ensure_claim_columns(conn)
         # Get session
         session_row = conn.execute(
             "SELECT * FROM mt_pairing_sessions WHERE pairing_code = ?",
@@ -340,8 +561,18 @@ def complete_pairing(
                 "UPDATE mt_pairing_sessions SET status = 'expired', updated_at = ? WHERE id = ?",
                 (utc_now_iso(), session["id"])
             )
-            raise ValueError("Pairing code has expired")
-        
+            expired = True
+
+    # Raised after the transaction so the 'expired' status is committed.
+    if expired:
+        raise ValueError("Pairing code has expired")
+
+    with db.connect() as conn:
+        # Proof of possession: the code must have been released to a connector
+        # through /connector/claim (which binds the session to that device).
+        if not session.get("device_secret_hash"):
+            raise ValueError("Invalid pairing code")
+
         # Validate broker_id matches
         if session["broker_id"] != mt_platform:
             raise ValueError(f"Platform mismatch: expected {session['broker_id']}, got {mt_platform}")
@@ -357,7 +588,9 @@ def complete_pairing(
         
         # Update pairing session to PAIRED (connected)
         # We do NOT create the broker account yet. That happens in finish_pairing.
-        conn.execute(
+        # Single use: the transition pending -> paired happens at most once,
+        # even if two requests race with the same code.
+        cur = conn.execute(
             """
             UPDATE mt_pairing_sessions 
             SET status = 'paired',
@@ -371,7 +604,7 @@ def complete_pairing(
                 encrypted_bridge_token = ?,
                 tls_mode = ?,
                 updated_at = ?
-            WHERE id = ?
+            WHERE id = ? AND status = 'pending'
             """,
             (
                 account_login, server, account_currency, account_type, mt_platform, 
@@ -379,6 +612,8 @@ def complete_pairing(
                 utc_now_iso(), session["id"]
             )
         )
+        if cur.rowcount != 1:
+            raise ValueError("Pairing code already used")
         
         return session["id"] # Return session ID or strict None, but caller (mt_pairing.py) might not use it anymore since we changed endpoint return type? 
         # Wait, complete_pairing endpoint in mt_pairing check return.

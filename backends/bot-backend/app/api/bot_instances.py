@@ -8,8 +8,9 @@ from typing import List, Optional
 import json
 import logging
 
-from app.core.auth import get_current_active_user, require_permission
+from app.core.auth import get_current_active_user, require_admin, require_permission
 from app.core.bot_instance_service import get_bot_instance_service, BotInstanceService
+from app.core.plan_gate import is_live_mode, require_live_trading
 from app.models.bot_instance_models import BotInstance
 from shared_lib.persistence.db import DB
 
@@ -32,9 +33,13 @@ def get_user_bot_instances(
 def get_bot_inventory(
     user: dict = Depends(get_current_active_user),
     service: BotInstanceService = Depends(get_bot_instance_service),
-    _perm: str = Depends(require_permission("bot:read"))
+    _admin: str = Depends(require_admin),
 ):
-    """Get all bot instances in the system including archived and deleted (admin diagnostic)."""
+    """Get all bot instances in the system including archived and deleted.
+
+    Admin-only: this returns EVERY user's bots. A regular user lists their own
+    bots through ``GET /bot-instances``.
+    """
     return service.get_all_bot_instances()
 
 
@@ -333,6 +338,10 @@ def update_bot_instance(
         raise HTTPException(status_code=404, detail="Bot instance not found")
     if instance.user_id != user["id"]:
         raise HTTPException(status_code=403, detail="Not authorized")
+    # Plan gate first: switching a bot to live needs the live_trading
+    # entitlement, whatever else this endpoint decides about the field.
+    if isinstance(payload, dict) and is_live_mode(payload.get("mode")):
+        require_live_trading(service.db, user["id"], "switch a bot to live trading")
     unknown = sorted(set(payload) - _EDITABLE_FIELDS)
     if unknown:
         raise HTTPException(status_code=422, detail=f"Fields not editable here: {unknown}")
@@ -365,7 +374,13 @@ def start_bot_instance(
         raise HTTPException(status_code=404, detail="Bot instance not found")
     if instance.user_id != user["id"]:
         raise HTTPException(status_code=403, detail="Not authorized")
-    
+
+    # Plan gate: starting/resuming a LIVE bot needs the live_trading entitlement
+    # as it stands now (the plan may have been downgraded since the bot was
+    # created). Paper/demo bots are never subject to it.
+    if is_live_mode(instance.mode):
+        require_live_trading(service.db, user["id"], "start live bots")
+
     try:
         return service.start_bot_instance(instance_id)
     except ValueError as e:

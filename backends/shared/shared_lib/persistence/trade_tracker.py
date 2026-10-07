@@ -72,6 +72,21 @@ class Trade:
     # Status
     status: TradeStatus = TradeStatus.OPEN
 
+    # Ownership (optional; carried on every emitted event so per-user
+    # consumers such as the SSE stream can route it). Not persisted.
+    bot_instance_id: Optional[str] = None
+    user_id: Optional[str] = None
+    broker_account_id: Optional[str] = None
+
+    def owner_fields(self) -> Dict[str, str]:
+        """Owner identifiers known for this trade (only the ones that are set)."""
+        fields = {
+            "bot_instance_id": self.bot_instance_id,
+            "user_id": self.user_id,
+            "broker_account_id": self.broker_account_id,
+        }
+        return {key: str(value) for key, value in fields.items() if value not in (None, "")}
+
 
 class TradeTracker:
     """
@@ -142,9 +157,18 @@ class TradeTracker:
         entry_qty: float,
         entry_confidence: float,
         initial_stop: Optional[float] = None,
+        *,
+        bot_instance_id: Optional[str] = None,
+        user_id: Optional[str] = None,
+        broker_account_id: Optional[str] = None,
     ) -> str:
         """
         Open a new trade. Returns trade_id.
+
+        ``bot_instance_id`` / ``user_id`` / ``broker_account_id`` identify the
+        owner. They are added to the payload of every event emitted for this
+        trade (open, TP1, add, close). Real-time delivery is per user and
+        fails closed: an event without any of them reaches admins only.
         """
         trade_id = generate_trade_id()
         run_id = get_current_run_id() or "unknown"
@@ -163,6 +187,9 @@ class TradeTracker:
             entry_confidence=entry_confidence,
             initial_stop=initial_stop,
             status=TradeStatus.OPEN,
+            bot_instance_id=bot_instance_id,
+            user_id=user_id,
+            broker_account_id=broker_account_id,
         )
         
         self._active_trades[symbol] = trade
@@ -175,6 +202,7 @@ class TradeTracker:
             "strategy": strategy,
             "entry_price": entry_price,
             "qty": entry_qty,
+            **trade.owner_fields(),
         }, trade_id=trade_id, symbol=symbol, strategy=strategy, mode=mode)
         
         return trade_id
@@ -194,6 +222,7 @@ class TradeTracker:
         emit_info(EventType.TP1_HIT, {
             "trade_id": trade.trade_id,
             "fill_price": fill_price,
+            **trade.owner_fields(),
         }, trade_id=trade.trade_id, symbol=symbol)
     
     def record_add(self, symbol: str, add_price: float, add_qty: float):
@@ -210,6 +239,7 @@ class TradeTracker:
             "add_price": add_price,
             "add_qty": add_qty,
             "add_count": trade.add_count,
+            **trade.owner_fields(),
         }, trade_id=trade.trade_id, symbol=symbol)
     
     def close_trade(
@@ -249,6 +279,7 @@ class TradeTracker:
             "realized_pnl": realized_pnl,
             "r_multiple": trade.r_multiple,
             "duration_minutes": (trade.exit_time - trade.entry_time).total_seconds() / 60,
+            **trade.owner_fields(),
         }, trade_id=trade.trade_id, symbol=symbol)
         
         return trade

@@ -1010,24 +1010,254 @@ async def get_bot_live_status(_admin: dict = Depends(require_admin)):
 # Compliance
 # =====================
 
+# KYC review works on ``kyc_cases`` -- the table the user-facing KYC flow
+# writes. (The legacy ``kyc_submissions`` table is written by nothing.)
+# A submitted case is NEVER approved automatically: these endpoints are the
+# only way a case becomes ``approved``.
+from fastapi import Body, Response  # noqa: E402  (KYC review endpoints)
+from app.core.kyc_encryption import decrypt_pii, KYCConfigError  # noqa: E402
+from app.core import kyc_storage  # noqa: E402
+
+_KYC_PENDING_STATUSES = ("submitted", "under_review")
+_KYC_ALL_STATUSES = (
+    "not_started", "in_progress", "submitted", "under_review",
+    "approved", "rejected", "needs_resubmission", "expired",
+)
+
+
+class KYCDecisionBody(BaseModel):
+    reason: Optional[str] = None
+    reason_codes: Optional[List[str]] = None
+
+
+def _kyc_safe_decrypt(value):
+    try:
+        return decrypt_pii(value)
+    except KYCConfigError:
+        raise HTTPException(status_code=503, detail="KYC encryption is not configured on this server")
+
+
+def _kyc_admin_file_response(file_ref: Optional[str], owner_user_id: str) -> Response:
+    """Decrypt and return a stored KYC file, only if it lies in the owner's storage area."""
+    if not file_ref or not kyc_storage.file_ref_belongs_to(file_ref, owner_user_id):
+        raise HTTPException(status_code=404, detail="File not found")
+    try:
+        stored = kyc_storage.read_stored_file(file_ref)
+    except KYCConfigError:
+        raise HTTPException(status_code=503, detail="KYC encryption is not configured on this server")
+    if stored is None:
+        raise HTTPException(status_code=404, detail="File not found")
+    content, content_type = stored
+    return Response(
+        content=content,
+        media_type=content_type,
+        headers={
+            "Cache-Control": "no-store, private",
+            "X-Content-Type-Options": "nosniff",
+            "Content-Disposition": "inline",
+        },
+    )
+
+
+def _kyc_log_admin_access(conn, admin: dict, user_id: str, case_id: str, event_type: str, data: Optional[dict] = None) -> None:
+    from app.api.kyc import log_kyc_event
+    log_kyc_event(
+        user_id, event_type, case_id, event_data=data,
+        actor_id=admin.get("id"), actor_type="admin", conn=conn,
+    )
+
+
 @router.get("/compliance/kyc-pending")
-async def get_pending_kyc(_admin: dict = Depends(require_admin)):
-    """Get pending KYC submissions"""
+async def get_pending_kyc(
+    status: Optional[str] = Query(None, description="Case status filter. Default: cases awaiting review. 'all' for every case."),
+    _admin: dict = Depends(require_admin)
+):
+    """Get KYC cases awaiting review (the review queue)"""
+    if status in (None, "", "pending"):
+        statuses = _KYC_PENDING_STATUSES
+    elif status == "all":
+        statuses = _KYC_ALL_STATUSES
+    elif status in _KYC_ALL_STATUSES:
+        statuses = (status,)
+    else:
+        raise HTTPException(status_code=400, detail="Invalid status filter")
+
+    placeholders = ",".join("?" for _ in statuses)
     db = DB()
     with db.connect() as conn:
-        rows = conn.execute("""
-            SELECT k.id, k.user_id, u.email as user_email, k.document_type,
-                   k.risk_level, k.status, k.submitted_at
-            FROM kyc_submissions k
-            JOIN users u ON k.user_id = u.id
-            WHERE k.status = 'pending'
-            ORDER BY k.submitted_at DESC
-        """).fetchall()
-    
+        rows = conn.execute(f"""
+            SELECT c.id, c.user_id, u.email as email, u.email as user_email,
+                   (SELECT d.doc_type FROM kyc_documents d
+                     WHERE d.kyc_case_id = c.id AND d.front_file_ref IS NOT NULL
+                     ORDER BY d.uploaded_at DESC LIMIT 1) as document_type,
+                   p.full_legal_name_encrypted,
+                   c.status, c.submitted_at, c.created_at, c.updated_at
+            FROM kyc_cases c
+            LEFT JOIN users u ON c.user_id = u.id
+            LEFT JOIN kyc_profiles p ON p.kyc_case_id = c.id
+            WHERE c.status IN ({placeholders})
+            ORDER BY c.submitted_at DESC
+        """, statuses).fetchall()
+
+    submissions = []
+    for row in rows:
+        item = dict(row)
+        item["full_name"] = _kyc_safe_decrypt(item.pop("full_legal_name_encrypted", None))
+        # No automated risk scoring exists; never invent one.
+        item["risk_level"] = None
+        submissions.append(item)
+
     return {
-        "submissions": [dict(row) for row in rows],
-        "count": len(rows)
+        "submissions": submissions,
+        "count": len(submissions)
     }
+
+
+@router.get("/compliance/kyc/{case_id}")
+async def get_kyc_case_detail(case_id: str, _admin: dict = Depends(require_admin)):
+    """Full KYC case for review: applicant details, documents, selfie and review history"""
+    from app.api.kyc import case_evidence_problems
+
+    db = DB()
+    with db.connect() as conn:
+        case = conn.execute("SELECT * FROM kyc_cases WHERE id = ?", (case_id,)).fetchone()
+        if not case:
+            raise HTTPException(status_code=404, detail="KYC case not found")
+        case = dict(case)
+        user_id = case["user_id"]
+
+        user = conn.execute("SELECT id, email, status, created_at FROM users WHERE id = ?", (user_id,)).fetchone()
+        profile = conn.execute("SELECT * FROM kyc_profiles WHERE kyc_case_id = ?", (case_id,)).fetchone()
+        docs = conn.execute(
+            "SELECT * FROM kyc_documents WHERE kyc_case_id = ? ORDER BY created_at", (case_id,)
+        ).fetchall()
+        selfie = conn.execute("SELECT * FROM kyc_selfie_checks WHERE kyc_case_id = ?", (case_id,)).fetchone()
+        reviews = conn.execute(
+            "SELECT * FROM kyc_reviews WHERE kyc_case_id = ? ORDER BY created_at DESC", (case_id,)
+        ).fetchall()
+        problems = case_evidence_problems(conn, case)
+
+        _kyc_log_admin_access(conn, _admin, user_id, case_id, "kyc_case_viewed")
+
+    base = f"/api/admin/compliance/kyc/{case_id}"
+
+    profile_view = None
+    if profile:
+        profile = dict(profile)
+        profile_view = {
+            "full_legal_name": _kyc_safe_decrypt(profile.get("full_legal_name_encrypted")),
+            "date_of_birth": _kyc_safe_decrypt(profile.get("date_of_birth_encrypted")),
+            "nationality": profile.get("nationality"),
+            "country_of_residence": profile.get("country_of_residence"),
+            "address_line1": _kyc_safe_decrypt(profile.get("address_line1_encrypted")),
+            "address_city": _kyc_safe_decrypt(profile.get("address_city_encrypted")),
+            "address_state": profile.get("address_state"),
+            "address_postal_code": _kyc_safe_decrypt(profile.get("address_postal_code_encrypted")),
+            "phone": _kyc_safe_decrypt(profile.get("phone_encrypted")),
+        }
+
+    documents = []
+    for d in docs:
+        d = dict(d)
+        has_front = bool(d.get("front_file_ref")) and kyc_storage.file_exists(d["front_file_ref"])
+        has_back = bool(d.get("back_file_ref")) and kyc_storage.file_exists(d["back_file_ref"])
+        documents.append({
+            "id": d["id"],
+            "doc_type": d.get("doc_type"),
+            "issuing_country": d.get("issuing_country"),
+            "status": d.get("status"),
+            "uploaded_at": d.get("uploaded_at"),
+            "has_front": has_front,
+            "has_back": has_back,
+            "front_url": f"{base}/documents/{d['id']}/front" if has_front else None,
+            "back_url": f"{base}/documents/{d['id']}/back" if has_back else None,
+        })
+
+    selfie_view = None
+    if selfie:
+        selfie = dict(selfie)
+        has_selfie = bool(selfie.get("selfie_file_ref")) and kyc_storage.file_exists(selfie["selfie_file_ref"])
+        selfie_view = {
+            "id": selfie["id"],
+            "status": selfie.get("status"),
+            "completed_at": selfie.get("completed_at"),
+            "has_file": has_selfie,
+            "url": f"{base}/selfie" if has_selfie else None,
+        }
+
+    review_views = []
+    for r in reviews:
+        r = dict(r)
+        review_views.append({
+            "id": r["id"],
+            "reviewer_id": r.get("reviewer_id"),
+            "reviewer_type": r.get("reviewer_type"),
+            "decision": r.get("decision"),
+            "reason_codes": json.loads(r["reason_codes"]) if r.get("reason_codes") else [],
+            "reason": _kyc_safe_decrypt(r.get("notes_encrypted")),
+            "created_at": r.get("created_at"),
+        })
+
+    return {
+        "id": case["id"],
+        "user_id": user_id,
+        "email": user["email"] if user else None,
+        "status": case["status"],
+        "submitted_at": case.get("submitted_at"),
+        "approved_at": case.get("approved_at"),
+        "rejected_at": case.get("rejected_at"),
+        "rejection_reason": case.get("rejection_reason"),
+        "created_at": case.get("created_at"),
+        "updated_at": case.get("updated_at"),
+        "profile": profile_view,
+        "documents": documents,
+        "selfie": selfie_view,
+        "reviews": review_views,
+        "awaiting_review": case["status"] in _KYC_PENDING_STATUSES,
+        "evidence_problems": problems,
+        "can_approve": case["status"] in _KYC_PENDING_STATUSES and not problems,
+    }
+
+
+@router.get("/compliance/kyc/{case_id}/documents/{doc_id}/{side}")
+async def get_kyc_case_document(
+    case_id: str,
+    doc_id: str,
+    side: str,
+    _admin: dict = Depends(require_admin)
+):
+    """Download an identity document image of a KYC case (decrypted, for review)"""
+    if side not in ("front", "back"):
+        raise HTTPException(status_code=404, detail="File not found")
+    db = DB()
+    with db.connect() as conn:
+        doc = conn.execute(
+            "SELECT * FROM kyc_documents WHERE id = ? AND kyc_case_id = ?", (doc_id, case_id)
+        ).fetchone()
+        if not doc:
+            raise HTTPException(status_code=404, detail="File not found")
+        doc = dict(doc)
+        _kyc_log_admin_access(
+            conn, _admin, doc["user_id"], case_id, "kyc_document_viewed",
+            {"doc_id": doc_id, "side": side},
+        )
+    return _kyc_admin_file_response(doc.get(f"{side}_file_ref"), doc["user_id"])
+
+
+@router.get("/compliance/kyc/{case_id}/selfie")
+async def get_kyc_case_selfie(case_id: str, _admin: dict = Depends(require_admin)):
+    """Download the selfie of a KYC case (decrypted, for review)"""
+    db = DB()
+    with db.connect() as conn:
+        selfie = conn.execute(
+            "SELECT * FROM kyc_selfie_checks WHERE kyc_case_id = ?", (case_id,)
+        ).fetchone()
+        if not selfie:
+            raise HTTPException(status_code=404, detail="File not found")
+        selfie = dict(selfie)
+        _kyc_log_admin_access(conn, _admin, selfie["user_id"], case_id, "kyc_selfie_viewed")
+    return _kyc_admin_file_response(selfie.get("selfie_file_ref"), selfie["user_id"])
+
 
 @router.get("/compliance/aml-flags")
 async def get_aml_flags(_admin: dict = Depends(require_admin)):
@@ -1035,17 +1265,20 @@ async def get_aml_flags(_admin: dict = Depends(require_admin)):
     db = DB()
     with db.connect() as conn:
         rows = conn.execute("""
-            SELECT a.id, a.user_id, u.email as user_email, a.alert_type,
-                   a.severity, a.description, a.status, a.created_at
+            SELECT a.id, a.user_id, u.email as user_email, u.email as email, a.alert_type,
+                   a.severity, a.description, a.description as details, a.status, a.created_at
             FROM aml_alerts a
             JOIN users u ON a.user_id = u.id
             WHERE a.status = 'open'
             ORDER BY a.created_at DESC
         """).fetchall()
-    
+
+    alerts = [dict(row) for row in rows]
     return {
-        "alerts": [dict(row) for row in rows],
-        "count": len(rows)
+        "alerts": alerts,
+        # The admin UI reads ``flags``; keep both keys.
+        "flags": alerts,
+        "count": len(alerts)
     }
 
 # =====================
@@ -1185,67 +1418,78 @@ async def approve_kyc_submission(
     submission_id: str,
     _admin: dict = Depends(require_admin)
 ):
-    """Approve a KYC submission"""
+    """Approve a KYC case (``submission_id`` is the ``kyc_cases.id``)"""
+    _kyc_admin_decide(submission_id, "approved", _admin)
+    return {"message": "KYC submission approved", "case_id": submission_id, "status": "approved"}
+
+
+def _kyc_admin_decide(
+    case_id: str,
+    decision: str,
+    admin: dict,
+    reason: Optional[str] = None,
+    reason_codes: Optional[List[str]] = None,
+) -> dict:
+    """Apply a review decision to a ``kyc_cases`` row.
+
+    The shared helper enforces the rules (case must be awaiting review, a
+    reason is mandatory unless approving, evidence must be on file to approve)
+    and writes kyc_reviews, kyc_audit_log and auth_audit_log.
+    """
+    from app.api.kyc import apply_review_decision
+
     db = DB()
-    with db.connect() as conn:
-        # Update submission status
-        conn.execute("""
-            UPDATE kyc_submissions
-            SET status = 'approved', reviewed_by = ?, reviewed_at = ?
-            WHERE id = ?
-        """, (_admin["id"], utc_now_iso(), submission_id))
-        
-        # Get submission details for logging
-        submission = conn.execute(
-            "SELECT user_id FROM kyc_submissions WHERE id = ?",
-            (submission_id,)
-        ).fetchone()
-        
-        if not submission:
-            raise HTTPException(status_code=404, detail="Submission not found")
-        
-        # Log audit event
-        conn.execute("""
-            INSERT INTO auth_audit_log (id, event_type, user_id, details, created_at)
-            VALUES (?, 'kyc_approved', ?, ?, ?)
-        """, (str(uuid.uuid4()), submission["user_id"], 
-              f"KYC approved by admin {_admin['email']}", utc_now_iso()))
-    
-    return {"message": "KYC submission approved"}
+    try:
+        with db.connect() as conn:
+            return apply_review_decision(
+                conn,
+                case_id,
+                decision,
+                reviewer_id=admin["id"],
+                reviewer_email=admin.get("email"),
+                reason=reason,
+                reason_codes=reason_codes,
+            )
+    except KYCConfigError:
+        raise HTTPException(status_code=503, detail="KYC encryption is not configured on this server")
+
 
 @router.post("/compliance/kyc/{submission_id}/reject")
 async def reject_kyc_submission(
     submission_id: str,
-    reason: str,
+    reason: Optional[str] = Query(None),
+    payload: Optional[KYCDecisionBody] = Body(None),
     _admin: dict = Depends(require_admin)
 ):
-    """Reject a KYC submission"""
-    db = DB()
-    with db.connect() as conn:
-        # Update submission status
-        conn.execute("""
-            UPDATE kyc_submissions
-            SET status = 'rejected', reviewed_by = ?, reviewed_at = ?
-            WHERE id = ?
-        """, (_admin["id"], utc_now_iso(), submission_id))
-        
-        # Get submission details
-        submission = conn.execute(
-            "SELECT user_id FROM kyc_submissions WHERE id = ?",
-            (submission_id,)
-        ).fetchone()
-        
-        if not submission:
-            raise HTTPException(status_code=404, detail="Submission not found")
-        
-        # Log audit event
-        conn.execute("""
-            INSERT INTO auth_audit_log (id, event_type, user_id, details, created_at)
-            VALUES (?, 'kyc_rejected', ?, ?, ?)
-        """, (str(uuid.uuid4()), submission["user_id"], 
-              f"KYC rejected by admin {_admin['email']}. Reason: {reason}", utc_now_iso()))
-    
-    return {"message": "KYC submission rejected"}
+    """Reject a KYC case. The reason is required (JSON body ``{"reason": ...}`` or ``?reason=``)."""
+    body_reason = payload.reason if payload else None
+    _kyc_admin_decide(
+        submission_id, "rejected", _admin,
+        reason=body_reason or reason,
+        reason_codes=payload.reason_codes if payload else None,
+    )
+    return {"message": "KYC submission rejected", "case_id": submission_id, "status": "rejected"}
+
+
+@router.post("/compliance/kyc/{submission_id}/request-resubmission")
+async def request_kyc_resubmission(
+    submission_id: str,
+    reason: Optional[str] = Query(None),
+    payload: Optional[KYCDecisionBody] = Body(None),
+    _admin: dict = Depends(require_admin)
+):
+    """Send a KYC case back to the user for corrections. The reason is required."""
+    body_reason = payload.reason if payload else None
+    _kyc_admin_decide(
+        submission_id, "needs_resubmission", _admin,
+        reason=body_reason or reason,
+        reason_codes=payload.reason_codes if payload else None,
+    )
+    return {
+        "message": "KYC resubmission requested",
+        "case_id": submission_id,
+        "status": "needs_resubmission",
+    }
 
 # =====================
 # System Settings

@@ -4,36 +4,117 @@ Handles field-level encryption for PII data
 """
 import os
 import base64
-from typing import Optional
-from cryptography.fernet import Fernet
+import logging
+from typing import Dict, List, Optional
+from cryptography.fernet import Fernet, InvalidToken
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 
-# In production, this should come from environment variable
-# For dev, we generate a consistent key from a secret
-_KYC_ENCRYPTION_SECRET = os.getenv("KYC_ENCRYPTION_KEY", "cosmicforge-kyc-dev-secret-key-2024")
+logger = logging.getLogger(__name__)
 
-def _get_fernet_key() -> bytes:
+ENV_KEY = "KYC_ENCRYPTION_KEY"
+
+# Development-only fallback. It is public (it is in the repository), so it is
+# refused in production -- see ``_configured_secret``.
+_DEV_DEFAULT_SECRET = "cosmicforge-kyc-dev-secret-key-2024"
+
+# Values that are documentation placeholders, never real keys.
+_PLACEHOLDER_SECRETS = frozenset({
+    _DEV_DEFAULT_SECRET,
+    "your-kyc-encryption-key-32-chars-min",
+    "CHANGE_ME_BEFORE_PRODUCTION",
+    "changeme",
+})
+
+# Key-derivation salts. The PII salt is the one every existing ciphertext was
+# produced with: changing it would make stored PII unreadable, so it stays.
+# (With a mandatory high-entropy key the salt is domain separation, not the
+# secret.) Document files use their own salt so the two keys are independent.
+_PII_SALT = b"cosmicforge_kyc_salt"
+_FILE_SALT = b"cosmicforge_kyc_file_v1"
+_KDF_ITERATIONS = 100000
+
+# Every Fernet token starts with the version byte 0x80, i.e. "gAAAA" in base64.
+FERNET_TOKEN_PREFIX = b"gAAAA"
+
+
+class KYCConfigError(RuntimeError):
+    """KYC secrets are missing or unsafe for the current environment."""
+
+
+def _is_production() -> bool:
+    try:
+        from shared_lib.core.security.broker_security import is_production
+        return bool(is_production())
+    except Exception:
+        # If the environment cannot be determined, behave as production.
+        return True
+
+
+def _configured_secret() -> str:
+    """The active KYC encryption secret.
+
+    Production: ``KYC_ENCRYPTION_KEY`` is mandatory and must not be a
+    placeholder/default. Elsewhere the historical development default is kept
+    so local data stays readable.
+    """
+    secret = (os.getenv(ENV_KEY) or "").strip()
+    if _is_production():
+        if not secret or secret in _PLACEHOLDER_SECRETS:
+            raise KYCConfigError(
+                f"{ENV_KEY} is required in production and must not be a default/placeholder value. "
+                "Set a long random value (e.g. `openssl rand -hex 32`) and keep it stable: "
+                "it decrypts stored KYC personal data and identity documents."
+            )
+        if len(secret) < 32:
+            logger.warning("%s is shorter than 32 characters; use a longer random value", ENV_KEY)
+        return secret
+    return secret or _DEV_DEFAULT_SECRET
+
+
+def assert_kyc_encryption_configured() -> None:
+    """Startup/request check. Raises ``KYCConfigError`` in production without a real key."""
+    _configured_secret()
+
+
+def _derive_key(secret: str, salt: bytes) -> bytes:
     """Derive a Fernet key from the secret"""
-    # Use PBKDF2 to derive a proper key from our secret
-    salt = b"cosmicforge_kyc_salt"  # In production, use a proper random salt stored securely
     kdf = PBKDF2HMAC(
         algorithm=hashes.SHA256(),
         length=32,
         salt=salt,
-        iterations=100000,
+        iterations=_KDF_ITERATIONS,
     )
-    key = base64.urlsafe_b64encode(kdf.derive(_KYC_ENCRYPTION_SECRET.encode()))
-    return key
+    return base64.urlsafe_b64encode(kdf.derive(secret.encode()))
 
-# Singleton Fernet instance
-_fernet: Optional[Fernet] = None
+
+# Derived-key cache (PBKDF2 is deliberately slow), keyed by (secret, salt).
+_fernet_cache: Dict[tuple, Fernet] = {}
+
+
+def _fernet_for(secret: str, salt: bytes) -> Fernet:
+    cache_key = (secret, salt)
+    fernet = _fernet_cache.get(cache_key)
+    if fernet is None:
+        fernet = Fernet(_derive_key(secret, salt))
+        _fernet_cache[cache_key] = fernet
+    return fernet
+
 
 def _get_fernet() -> Fernet:
-    global _fernet
-    if _fernet is None:
-        _fernet = Fernet(_get_fernet_key())
-    return _fernet
+    """Fernet used to encrypt PII (current key, historical derivation)."""
+    return _fernet_for(_configured_secret(), _PII_SALT)
+
+
+def _decrypt_fernets(salt: bytes) -> List[Fernet]:
+    """Keys to try when reading: the current key first, then the historical
+    development default, so data written before a real key was configured
+    remains readable. New data is never written with the fallback key."""
+    primary = _configured_secret()
+    fernets = [_fernet_for(primary, salt)]
+    if primary != _DEV_DEFAULT_SECRET:
+        fernets.append(_fernet_for(_DEV_DEFAULT_SECRET, salt))
+    return fernets
 
 
 def encrypt_pii(value: Optional[str]) -> Optional[str]:
@@ -57,15 +138,53 @@ def decrypt_pii(encrypted_value: Optional[str]) -> Optional[str]:
     if encrypted_value is None or encrypted_value == "":
         return None
     
+    # A missing production key is a configuration error, not "no data".
+    fernets = _decrypt_fernets(_PII_SALT)
     try:
-        fernet = _get_fernet()
         encrypted_bytes = base64.urlsafe_b64decode(encrypted_value.encode("utf-8"))
-        decrypted = fernet.decrypt(encrypted_bytes)
-        return decrypted.decode("utf-8")
     except Exception as e:
-        # Log error but don't expose details
-        print(f"[KYC Encryption] Decryption failed: {type(e).__name__}")
+        logger.warning("[KYC Encryption] Decryption failed: %s", type(e).__name__)
         return None
+    for fernet in fernets:
+        try:
+            return fernet.decrypt(encrypted_bytes).decode("utf-8")
+        except Exception:
+            continue
+    # Log error but don't expose details
+    logger.warning("[KYC Encryption] Decryption failed: no configured key matches")
+    return None
+
+
+# ----------------------------------------------------------------------------
+# Document (file) encryption at rest
+# ----------------------------------------------------------------------------
+
+def is_encrypted_blob(blob: bytes) -> bool:
+    """True when the bytes look like a Fernet token (vs. a legacy plaintext file)."""
+    return bytes(blob[:len(FERNET_TOKEN_PREFIX)]) == FERNET_TOKEN_PREFIX
+
+
+def encrypt_file_bytes(content: bytes) -> bytes:
+    """Encrypt a document for storage on disk. Returns a Fernet token."""
+    return _fernet_for(_configured_secret(), _FILE_SALT).encrypt(content)
+
+
+def decrypt_file_bytes(blob: bytes) -> bytes:
+    """Decrypt a stored document.
+
+    Files written before encryption at rest was introduced are plaintext
+    (JPEG/PNG/PDF never start with the Fernet prefix) and are returned as-is.
+    """
+    if not is_encrypted_blob(blob):
+        return blob
+    for fernet in _decrypt_fernets(_FILE_SALT):
+        try:
+            return fernet.decrypt(blob)
+        except InvalidToken:
+            continue
+    raise KYCConfigError(
+        f"Stored KYC document cannot be decrypted with the configured {ENV_KEY}"
+    )
 
 
 def hash_document_number(doc_number: str) -> str:

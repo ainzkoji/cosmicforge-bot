@@ -10,6 +10,49 @@ from typing import Any
 from pydantic_settings import SettingsConfigDict
 
 
+# --- Production secret validation ---
+# Built-in defaults and the placeholders shipped in the .env.example files are
+# public: anyone can forge a session with them. A production process refuses
+# to start with one. Non-production (APP_ENV=TEST / DEVELOPMENT) is unaffected.
+MIN_SECRET_LENGTH = 32
+_SECRET_PLACEHOLDER_MARKERS = (
+    "changeme", "change_me", "change-me", "replace_me", "replace-me",
+    "placeholder", "example", "default-",
+)
+_SECRET_PLACEHOLDER_PREFIXES = ("your-", "your_", "<")
+_SECRET_HOWTO = 'python -c "import secrets; print(secrets.token_urlsafe(48))"'
+# Secrets this service signs or encrypts with.
+REQUIRED_PRODUCTION_SECRETS = ("SECRET_KEY",)
+
+
+def weak_secret_reason(value):
+    """Why ``value`` is unacceptable as a production secret, or None if it is fine."""
+    text = str(value or "").strip()
+    if not text:
+        return "is not set"
+    lowered = text.lower()
+    if lowered.startswith(_SECRET_PLACEHOLDER_PREFIXES) or any(
+            marker in lowered for marker in _SECRET_PLACEHOLDER_MARKERS):
+        return "is a known default/placeholder value"
+    if len(text) < MIN_SECRET_LENGTH:
+        return f"is shorter than {MIN_SECRET_LENGTH} characters"
+    if len(set(text)) < 8:
+        return "is not random (too few distinct characters)"
+    return None
+
+
+def _secret_errors(production: bool, secrets_by_name: dict) -> list:
+    if not production:
+        return []
+    errors = []
+    for name, value in secrets_by_name.items():
+        reason = weak_secret_reason(value)
+        if reason:
+            errors.append(f"{name} {reason}. Generate one with: {_SECRET_HOWTO}")
+    return errors
+
+
+
 def _parse_origins(value: Any) -> list[str]:
     if value is None:
         return []
@@ -62,6 +105,21 @@ class Settings(ProductionSettings):
     def cors_origins(self) -> list[str]:
         return _parse_origins(self.ADMIN_CORS_ORIGINS)
 
+    def production_secret_errors(self) -> list:
+        return _secret_errors(
+            self.production, {name: getattr(self, name, "") for name in REQUIRED_PRODUCTION_SECRETS})
+
+    def assert_production_secrets(self) -> None:
+        """Refuse to run a production process on default, placeholder or short secrets."""
+        errors = self.production_secret_errors()
+        if errors:
+            raise ValueError(
+                "INSECURE_PRODUCTION_SECRETS: refusing to start with APP_ENV=PRODUCTION:\n"
+                + "\n".join(f"- {e}" for e in errors)
+                + "\nAll CosmicForge services must be given the SAME SECRET_KEY "
+                  "(they verify each other's tokens)."
+            )
+
 
 @lru_cache
 def get_settings() -> Settings:
@@ -69,3 +127,6 @@ def get_settings() -> Settings:
 
 
 settings = get_settings()
+# Import-time: a production admin API never verifies tokens with the built-in
+# default SECRET_KEY.
+settings.assert_production_secrets()

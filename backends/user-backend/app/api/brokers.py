@@ -253,7 +253,10 @@ async def test_connection_endpoint(
 
     # For others, use internal simple validation
     # Note: sensitive error messages might be returned, frontend should handle display gracefully
-    result = _test_broker_connection(req.broker_id, req.credentials, req.environment)
+    # The MT bridge test runs in the bot-backend, which requires the caller's token.
+    from app.core.broker_service import validation_caller
+    with validation_caller(user_id=user_id, authorization=request.headers.get("authorization")):
+        result = _test_broker_connection(req.broker_id, req.credentials, req.environment)
     return result
 
 # -----------------------------------------------

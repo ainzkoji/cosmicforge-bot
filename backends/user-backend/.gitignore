@@ -50,6 +50,8 @@ logs/
 # Local databases / data
 # --------------------
 data/*.db
+# KYC identity documents uploaded by users (default KYC_UPLOAD_DIR)
+data/kyc_uploads/
 *.sqlite
 *.sqlite3
 *.db
