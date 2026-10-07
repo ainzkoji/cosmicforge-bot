@@ -19,6 +19,32 @@ from app.exchange.mt_bridge.errors import (
 
 logger = logging.getLogger(__name__)
 
+
+def _redact_for_log(text: Any, *secrets: Any, limit: int = 200) -> str:
+    """A remote response body made safe for the server log: truncated, known secrets removed."""
+    out = str(text or "")[:limit]
+    for secret in secrets:
+        if secret:
+            out = out.replace(str(secret), "[REDACTED]")
+    return out
+
+
+def harden_bridge_client(client: Any, destination_guard: Any = None) -> None:
+    """Harden a bridge client whose URL came from a user (request or stored account).
+
+    * Redirects are never followed: only the bridge URL itself was validated,
+      and a redirect could point at an address the outbound guard never saw
+      (requests raises TooManyRedirects instead).
+    * ``destination_guard`` -- a callable that raises ``UnsafeDestinationError``
+      -- is run by ``MTBridgeClient._request`` immediately before every request.
+    """
+    http_session = getattr(client, "_session", None)
+    if http_session is not None:
+        http_session.max_redirects = 0
+    if destination_guard is not None:
+        client.destination_guard = destination_guard
+
+
 class MTBridgeClient:
     """
     HTTP client for MetaTrader Bridge API (v1).
@@ -60,7 +86,21 @@ class MTBridgeClient:
         from shared_lib.core.production import require_broker_mutation_permission
         require_broker_mutation_permission(method, endpoint)
         url = f"{self.base_url}{endpoint}"
-        
+
+        # Optional hook installed by harden_bridge_client(): re-validate the
+        # destination (fresh DNS lookup + outbound policy) immediately before
+        # every request, so a name that has been re-pointed at an internal
+        # address since the URL was validated is refused here.
+        guard = getattr(self, "destination_guard", None)
+        if guard is not None:
+            try:
+                guard()
+            except ValueError as exc:  # UnsafeDestinationError
+                raise MTBridgeConnectionError(
+                    f"Bridge destination refused by the outbound policy ({getattr(exc, 'reason', 'UNSAFE_DESTINATION')})",
+                    failure_kind="DESTINATION_NOT_ALLOWED",
+                ) from None
+
         try:
             resp = self._session.request(
                 method=method,
@@ -69,35 +109,46 @@ class MTBridgeClient:
                 verify=self.verify_ssl,
                 **kwargs
             )
-            
+
             # Parse JSON
             try:
                 data = resp.json()
             except ValueError:
-                raise MTBridgeError(
-                    f"Invalid JSON response from bridge: {resp.text[:200]}"
+                # The body is whatever the remote host chose to send: it goes
+                # to the server log (truncated, token removed), never into the
+                # exception message, which API routes may show to a caller.
+                logger.warning(
+                    "MT bridge answered HTTP %s with a non-JSON body: %r",
+                    resp.status_code, _redact_for_log(resp.text, self.api_token),
                 )
-            
+                raise MTBridgeError(
+                    f"Invalid JSON response from bridge (HTTP {resp.status_code})",
+                    status_code=resp.status_code,
+                    failure_kind="INVALID_RESPONSE",
+                )
+
             # Check for errors
             if resp.status_code != 200:
                 error_msg = data.get('error', 'Unknown error')
                 error_code = data.get('error_code', 'UNKNOWN')
                 details = data.get('details', {})
-                
+
                 raise MTBridgeError(
                     f"Bridge API error: {error_msg}",
                     error_code=error_code,
-                    details=details
+                    details=details,
+                    status_code=resp.status_code,
+                    failure_kind="HTTP_ERROR",
                 )
-            
+
             return data
-            
+
         except requests.exceptions.Timeout:
-            raise MTBridgeError(f"Bridge request timeout after {self.timeout}s")
+            raise MTBridgeError(f"Bridge request timeout after {self.timeout}s", failure_kind="TIMEOUT")
         except requests.exceptions.ConnectionError as e:
-            raise MTBridgeError(f"Cannot connect to bridge at {self.base_url}: {e}")
+            raise MTBridgeError(f"Cannot connect to bridge at {self.base_url}: {e}", failure_kind="UNREACHABLE")
         except requests.exceptions.RequestException as e:
-            raise MTBridgeError(f"Bridge request failed: {e}")
+            raise MTBridgeError(f"Bridge request failed: {e}", failure_kind="REQUEST_FAILED")
     
     # ==========================================
     # BRIDGE API ENDPOINTS (v1)

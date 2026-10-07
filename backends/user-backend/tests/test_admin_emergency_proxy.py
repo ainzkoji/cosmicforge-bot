@@ -53,6 +53,10 @@ class FakeUpstream:
 def _client(monkeypatch, upstream: FakeUpstream, *, admin: bool = True) -> TestClient:
     monkeypatch.setattr(proxy_utils, "_proxy_client", upstream)
     monkeypatch.setattr(proxy_utils, "BOT_BACKEND_BASE_URL", "http://bot.test")
+    # Durable audit rows are captured here instead of being written to a database.
+    upstream.audit = []
+    monkeypatch.setattr(admin_emergency, "_write_audit",
+                        lambda admin, action, details: upstream.audit.append((admin["id"], action, details)))
     app = FastAPI()
     app.include_router(admin_emergency.router, prefix="/api")
     if admin:
@@ -78,6 +82,7 @@ def test_non_admin_is_rejected_and_nothing_is_forwarded(monkeypatch, method, pat
     assert unauthenticated.status_code == 401
     assert normal_user.status_code == 401
     assert upstream.calls == []
+    assert upstream.audit == []
 
 
 def test_status_is_forwarded_with_a_token_the_bot_backend_accepts(monkeypatch):
@@ -104,6 +109,64 @@ def test_status_is_forwarded_with_a_token_the_bot_backend_accepts(monkeypatch):
     assert claims is not None
     assert claims["type"] == "access" and claims["role"] == "admin" and claims["sub"] == ADMIN["id"]
     assert decode_admin_token(token) is None
+    # The marker the bot-backend emergency router requires (require_admin_emergency):
+    # exactly this ``act`` claim on a token issued for one call (<= 120 s there).
+    assert claims["act"] == admin_emergency.EMERGENCY_ACTOR_CLAIM == "admin-emergency"
+    assert 0 < claims["exp"] - claims["iat"] <= 120
+    assert admin_emergency.SERVICE_TOKEN_TTL_SECONDS <= 120
+    # A successful status read is polled every few seconds: log line only, no audit row.
+    assert upstream.audit == []
+
+
+def test_ordinary_access_tokens_never_carry_the_emergency_marker():
+    """What an end-user account gets at login -- even one with role=admin -- is not the emergency token."""
+    for role in ("user", "admin"):
+        claims = decode_token(create_access_token("some-user", role=role))
+        assert claims is not None and "act" not in claims
+
+
+def test_every_mutating_call_is_audited_with_admin_action_and_outcome(monkeypatch):
+    upstream = FakeUpstream(200, {"kill_switch": {"enabled": True}})
+    client = _client(monkeypatch, upstream)
+    client.post("/api/admin/emergency/kill-switch", json={"enabled": True, "reason": "incident drill"})
+
+    upstream.status_code, upstream.body = 502, {"ok": False, "detail": "1 of 1 in-scope close(s) failed", "results": []}
+    client.post("/api/admin/emergency/flatten", json=FLATTEN)
+
+    upstream.status_code, upstream.body = 409, {"detail": "engine not running", "reason": "ENGINE_NOT_RUNNING"}
+    client.post("/api/admin/emergency/flatten", json={**FLATTEN, "scope": "account", "account_id": "acct-1"})
+
+    # A transport failure is audited too, with the status the operator was given.
+    upstream.raises = httpx.ReadTimeout("slow")
+    client.post("/api/admin/emergency/flatten", json=FLATTEN)
+    # ... and so is a status read that did not succeed.
+    client.get("/api/admin/emergency/status")
+
+    assert [(admin_id, action, details["outcome_status"], details["outcome_reason"])
+            for admin_id, action, details in upstream.audit] == [
+        (ADMIN["id"], "kill_switch", 200, None),
+        (ADMIN["id"], "flatten", 502, None),
+        (ADMIN["id"], "flatten", 409, "ENGINE_NOT_RUNNING"),
+        (ADMIN["id"], "flatten", 504, "UPSTREAM_TIMEOUT"),
+        (ADMIN["id"], "status", 504, "UPSTREAM_TIMEOUT"),
+    ]
+    first, _second, third = (details for _id, _action, details in upstream.audit[:3])
+    assert first["admin_id"] == ADMIN["id"] and first["action"] == "kill_switch"
+    assert first["request"] == {"enabled": True, "reason": "incident drill"}
+    assert third["request"] == {"scope": "account", "account_id": "acct-1", "reason": "incident drill"}
+    assert "confirm" not in third["request"]
+
+
+def test_a_failing_audit_store_never_changes_the_answer(monkeypatch):
+    upstream = FakeUpstream(200, {"kill_switch": {"enabled": True}})
+    client = _client(monkeypatch, upstream)
+
+    def broken(admin, action, details):
+        raise RuntimeError("database is locked")
+
+    monkeypatch.setattr(admin_emergency, "_write_audit", broken)
+    response = client.post("/api/admin/emergency/kill-switch", json={"enabled": True, "reason": "incident drill"})
+    assert response.status_code == 200 and response.json() == {"kill_switch": {"enabled": True}}
 
 
 def test_kill_switch_body_is_forwarded_unchanged(monkeypatch):
@@ -176,6 +239,44 @@ def test_unreachable_bot_backend_is_a_502(monkeypatch):
 
     assert response.status_code == 502
     assert response.json()["reason"] == "UPSTREAM_UNREACHABLE"
+
+
+@pytest.mark.parametrize("error", [
+    httpx.ConnectError("connection refused"),
+    httpx.ConnectTimeout("connect timed out"),      # a timeout, but the request never left
+    httpx.PoolTimeout("no connection available"),
+])
+def test_request_that_was_never_sent_is_reported_as_nothing_done(monkeypatch, error):
+    upstream = FakeUpstream(raises=error)
+    client = _client(monkeypatch, upstream)
+
+    response = client.post("/api/admin/emergency/flatten", json=FLATTEN)
+
+    assert response.status_code == 502
+    payload = response.json()
+    assert payload["reason"] == "UPSTREAM_UNREACHABLE"
+    assert "unreachable" in payload["detail"] and "nothing was done" in payload["detail"]
+    assert "UNKNOWN" not in payload["detail"] and "ok" not in payload
+
+
+@pytest.mark.parametrize("error,reason", [
+    (httpx.ReadTimeout("slow"), "UPSTREAM_TIMEOUT"),
+    (httpx.WriteTimeout("slow write"), "UPSTREAM_TIMEOUT"),
+    (httpx.ReadError("connection reset by peer"), "UPSTREAM_OUTCOME_UNKNOWN"),
+    (httpx.RemoteProtocolError("server disconnected without sending a response"), "UPSTREAM_OUTCOME_UNKNOWN"),
+])
+def test_failure_after_sending_is_an_unknown_outcome_never_nothing_done(monkeypatch, error, reason):
+    """Once the request may have reached the engine, 'not confirmed' must not read as 'not done'."""
+    upstream = FakeUpstream(raises=error)
+    client = _client(monkeypatch, upstream)
+
+    response = client.post("/api/admin/emergency/flatten", json=FLATTEN)
+
+    assert response.status_code == 504
+    payload = response.json()
+    assert payload["reason"] == reason
+    assert "UNKNOWN" in payload["detail"] and "check positions" in payload["detail"]
+    assert "nothing was done" not in payload["detail"] and "ok" not in payload
 
 
 def test_upstream_401_does_not_log_the_admin_out(monkeypatch):

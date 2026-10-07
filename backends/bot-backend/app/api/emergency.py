@@ -1,5 +1,10 @@
 """Operator emergency controls for the production engine (admin only).
 
+Authorisation: ``app.core.auth.require_admin_emergency`` -- the one-call
+service token minted by the user-backend admin emergency proxy
+(``act=admin-emergency``, lifetime <= 120 s). A plain ``role=admin`` access
+token is refused with 403.
+
     GET  /api/v1/admin/emergency/status
     POST /api/v1/admin/emergency/kill-switch   {"enabled": bool, "reason": str}
     POST /api/v1/admin/emergency/flatten       {"scope": "all"|"account", "account_id": str|null,
@@ -50,7 +55,11 @@ from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
-from app.core.auth import require_admin
+# Not the generic ``require_admin``: any access token with role=admin passes
+# that, including an end-user account whose users.role is 'admin'. These
+# routes accept only the dedicated short-lived service token the user-backend
+# admin emergency proxy mints for a verified ``admins``-table operator.
+from app.core.auth import require_admin_emergency
 from shared_lib.persistence.db import DB
 
 logger = logging.getLogger(__name__)
@@ -174,12 +183,12 @@ def _set_kill_switch(db: Any, enabled: bool, reason: str, admin_id: str) -> None
 
 
 @router.get("/status")
-def emergency_status(admin_id: str = Depends(require_admin), db: DB = Depends(get_db)):
+def emergency_status(admin_id: str = Depends(require_admin_emergency), db: DB = Depends(get_db)):
     return _status(db)
 
 
 @router.post("/kill-switch")
-def set_kill_switch(body: KillSwitchRequest, admin_id: str = Depends(require_admin), db: DB = Depends(get_db)):
+def set_kill_switch(body: KillSwitchRequest, admin_id: str = Depends(require_admin_emergency), db: DB = Depends(get_db)):
     reason = body.reason.strip()
     if len(reason) < 3:
         return _error(400, "REASON_REQUIRED", "A reason of at least 3 characters is required.")
@@ -194,7 +203,7 @@ def set_kill_switch(body: KillSwitchRequest, admin_id: str = Depends(require_adm
 
 
 @router.post("/flatten")
-def emergency_flatten(body: FlattenRequest, admin_id: str = Depends(require_admin), db: DB = Depends(get_db)):
+def emergency_flatten(body: FlattenRequest, admin_id: str = Depends(require_admin_emergency), db: DB = Depends(get_db)):
     if body.confirm != CONFIRMATION:
         return _error(400, "CONFIRMATION_REQUIRED", 'confirm must be exactly "FLATTEN".')
     if body.scope not in ("all", "account") or (body.scope == "account" and not body.account_id):

@@ -670,6 +670,8 @@ class Settings(ProductionSettings):
     # In production, loopback and private addresses are refused unless listed
     # here: comma-separated ``host`` or ``host:port`` (e.g. "127.0.0.1:4001").
     # Link-local / cloud-metadata addresses can never be allow-listed.
+    # The allow-list applies to callers with the admin role only: ordinary
+    # users can reach public addresses only (app.api.brokers.outbound_policy).
     BROKER_GATEWAY_ALLOWED_HOSTS: str = ""
     # TLS verification for caller-supplied gateway / bridge URLs:
     #   "auto"  (default) verify in production; legacy behaviour elsewhere

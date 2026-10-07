@@ -21,6 +21,12 @@ logger = logging.getLogger(__name__)
 # Simple in-memory cache with TTL
 _instruments_cache: Dict[str, tuple[datetime, Any]] = {}
 CACHE_TTL_SECONDS = 3600  # 1 hour
+# The cache key contains caller-chosen values (broker_id, environment,
+# broker_account_id), so the cache is bounded: expired entries are swept on
+# every write, the oldest entries are evicted beyond CACHE_MAX_ENTRIES, and an
+# oversized key is never stored.
+CACHE_MAX_ENTRIES = 512
+CACHE_MAX_KEY_LENGTH = 256
 
 
 class ForexInstrument(BaseModel):
@@ -83,23 +89,41 @@ def get_fallback_instruments() -> List[ForexInstrument]:
 
 def get_cached_instruments(cache_key: str) -> Optional[ForexInstrumentsResponse]:
     """Get instruments from cache if not expired."""
-    if cache_key in _instruments_cache:
-        cached_time, cached_data = _instruments_cache[cache_key]
+    entry = _instruments_cache.get(cache_key)
+    if entry is not None:
+        cached_time, cached_data = entry
         age = (datetime.utcnow() - cached_time).total_seconds()
-        
+
         if age < CACHE_TTL_SECONDS:
             logger.info(f"Cache HIT for {cache_key} (age: {int(age)}s)")
             cached_data.cached = True
             return cached_data
         else:
             logger.info(f"Cache EXPIRED for {cache_key} (age: {int(age)}s)")
-            del _instruments_cache[cache_key]
-    
+            _instruments_cache.pop(cache_key, None)
+
     return None
+
+
+def _prune_instruments_cache(now: Optional[datetime] = None) -> None:
+    """Sweep expired entries, then evict the oldest until there is room for one more."""
+    now = now or datetime.utcnow()
+    for key, (cached_time, _data) in list(_instruments_cache.items()):
+        if (now - cached_time).total_seconds() >= CACHE_TTL_SECONDS:
+            _instruments_cache.pop(key, None)
+    overflow = len(_instruments_cache) - (CACHE_MAX_ENTRIES - 1)
+    if overflow > 0:
+        oldest_first = sorted(list(_instruments_cache.items()), key=lambda item: item[1][0])
+        for key, _entry in oldest_first[:overflow]:
+            _instruments_cache.pop(key, None)
 
 
 def set_cached_instruments(cache_key: str, response: ForexInstrumentsResponse):
     """Store instruments in cache."""
+    if len(cache_key) > CACHE_MAX_KEY_LENGTH:
+        return  # caller-chosen and absurdly long: serve it, do not remember it
+    if cache_key not in _instruments_cache:
+        _prune_instruments_cache()
     _instruments_cache[cache_key] = (datetime.utcnow(), response)
     logger.info(f"Cache SET for {cache_key}")
 
@@ -215,8 +239,11 @@ def fetch_ibkr_instruments(
 
 
 
+# A plain ``def`` on purpose: the broker fetches below are synchronous HTTP, so
+# FastAPI runs this handler in its threadpool instead of on the event loop the
+# trading runtime shares.
 @router.get("/instruments", response_model=ForexInstrumentsResponse)
-async def get_forex_instruments(
+def get_forex_instruments(
     broker_id: str = Query(default="oanda", description="Broker ID"),
     broker_account_id: Optional[str] = Query(default=None, description="Broker account ID for live fetch"),
     environment: str = Query(default="practice", description="practice or live"),

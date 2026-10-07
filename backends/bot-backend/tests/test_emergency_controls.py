@@ -19,7 +19,12 @@ from fastapi.testclient import TestClient
 
 from app.api import emergency
 from app.core import config
-from app.core.auth import require_admin
+from app.core.auth import (
+    EMERGENCY_ACTOR_CLAIM,
+    EMERGENCY_TOKEN_MAX_LIFETIME_SECONDS,
+    require_admin,
+    require_admin_emergency,
+)
 from app.core.config import Settings
 from app.ops import runtime_shutdown
 from app.trading_intelligence.governance.promotion import GovernanceAuthority, PromotionGovernance
@@ -42,9 +47,25 @@ def db(tmp_path):
 def api(db):
     app = FastAPI()
     app.include_router(emergency.router)
-    app.dependency_overrides[require_admin] = lambda: ADMIN
+    app.dependency_overrides[require_admin_emergency] = lambda: ADMIN
     app.dependency_overrides[emergency.get_db] = lambda: db
     return TestClient(app)
+
+
+def _emergency_token(*, role="admin", act=EMERGENCY_ACTOR_CLAIM, lifetime=60, sub=ADMIN, issued_ago=0, **extra):
+    """A token signed like the user-backend's; defaults = what its admin emergency proxy mints."""
+    from jose import jwt
+
+    from app.core import security
+    from app.core.security import AUDIENCE, ISSUER
+
+    issued_at = int(time.time()) - issued_ago
+    claims = {"sub": sub, "type": "access", "role": role, "iss": ISSUER, "aud": AUDIENCE,
+              "iat": issued_at, "exp": issued_at + lifetime, **extra}
+    if act is not None:
+        claims["act"] = act
+    # The very settings object decode_token verifies with.
+    return jwt.encode(claims, security.settings.SECRET_KEY, algorithm=security.settings.ALGORITHM)
 
 
 def production_settings(demo=True, live=False):
@@ -67,7 +88,58 @@ def test_every_emergency_route_is_admin_only(db):
     assert client.post(f"{BASE}/flatten", json=FLATTEN).status_code == 401
     assert not PromotionGovernance(db).kill_switch_on()
     for route in emergency.router.routes:
-        assert require_admin in [d.call for d in route.dependant.dependencies], route.path
+        calls = [d.call for d in route.dependant.dependencies]
+        # The dedicated emergency dependency, not the generic role check.
+        assert require_admin_emergency in calls and require_admin not in calls, route.path
+
+
+def test_emergency_routes_require_the_admin_emergency_service_token(db):
+    """role=admin alone is not enough: an end-user account with users.role='admin' holds such a token.
+
+    Only the short-lived token the user-backend admin emergency proxy mints for
+    a verified ``admins``-table operator (``act`` claim + lifetime) is accepted.
+    """
+    app = FastAPI()
+    app.include_router(emergency.router)
+    app.dependency_overrides[emergency.get_db] = lambda: db
+    client = TestClient(app)
+
+    def call(token, method="get", path="/status", **kwargs):
+        return getattr(client, method)(f"{BASE}{path}", headers={"Authorization": f"Bearer {token}"}, **kwargs)
+
+    refused = {
+        "ordinary admin-role access token (no act claim)": _emergency_token(act=None, lifetime=600),
+        "admin-role token with a short lifetime but no act claim": _emergency_token(act=None),
+        "wrong act claim": _emergency_token(act="admin-portal"),
+        "right act claim on a long-lived token": _emergency_token(lifetime=EMERGENCY_TOKEN_MAX_LIFETIME_SECONDS + 1),
+        "right act claim without the admin role": _emergency_token(role="user"),
+    }
+    for label, token in refused.items():
+        assert call(token).status_code == 403, label
+        assert call(token, "post", "/kill-switch", json={"enabled": True, "reason": "incident drill"}).status_code == 403, label
+        assert call(token, "post", "/flatten", json=FLATTEN).status_code == 403, label
+    assert not PromotionGovernance(db).kill_switch_on()                    # none of them changed anything
+    with db.connect() as conn:
+        assert conn.execute("SELECT COUNT(*) FROM events WHERE event_type='EMERGENCY'").fetchone()[0] == 0
+
+    # Not a valid token at all: 401, as before.
+    assert call("not-a-jwt").status_code == 401
+    assert call(_emergency_token(issued_ago=3600)).status_code == 401      # expired
+    refresh = _emergency_token(type="refresh")
+    assert call(refresh).status_code == 401
+
+    # The proxy's token: accepted, and the audit trail names the operator in ``sub``.
+    token = _emergency_token()
+    assert call(token).status_code == 200
+    on = call(token, "post", "/kill-switch", json={"enabled": True, "reason": "incident drill"})
+    assert on.status_code == 200 and on.json()["kill_switch"]["set_by"] == f"admin:{ADMIN}"
+    assert PromotionGovernance(db).kill_switch_on()
+    # At the limit of the allowed lifetime it is still that token.
+    assert call(_emergency_token(lifetime=EMERGENCY_TOKEN_MAX_LIFETIME_SECONDS)).status_code == 200
+
+    # require_admin itself is unchanged: every other admin route keeps accepting a plain admin token.
+    assert require_admin(_emergency_token(act=None, lifetime=600)) == ADMIN
+    assert require_admin_emergency(token) == ADMIN
 
 
 def test_status_reports_the_contract_shape(api):

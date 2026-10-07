@@ -23,7 +23,7 @@ from app.exchange.bingx.client import BingXClient
 from app.exchange.oanda.client import OandaClient
 from app.exchange.binance.adapter import BinanceAdapter
 from app.exchange.oanda.adapter import OandaAdapter
-from app.exchange.mt_bridge.client import MTBridgeClient
+from app.exchange.mt_bridge.client import MTBridgeClient, harden_bridge_client
 from app.exchange.mt_bridge.adapter import MetaTraderBridgeAdapter
 
 if TYPE_CHECKING:  # annotation-only names; importing them at runtime would be circular
@@ -43,6 +43,46 @@ def build_exchange_client_from_auth(auth: "BrokerAuth") -> Any:  # type: ignore[
     """
     from shared_lib.broker.client_factory import build_client_from_auth
     return build_client_from_auth(auth)
+
+
+def _guard_stored_bridge_url(bridge_url: Any, broker_type: str) -> Any:
+    """Validate a stored MT bridge URL against the outbound (SSRF) policy.
+
+    Production: the URL must pass the same policy as a caller-supplied one --
+    https, no query / fragment, no credentials, public addresses only (the
+    BROKER_GATEWAY_ALLOWED_HOSTS allow-list is for admins' test connections,
+    not for stored user accounts). A refusal is a configuration error and is
+    raised as a ``ValueError`` naming the reason, never the URL. Returns a
+    callable that re-validates the destination; the client runs it before
+    every request.
+
+    Outside production the guard is relaxed: nothing is resolved or refused
+    and ``None`` is returned, so local bridges and tests keep working.
+
+    Note: ``build_exchange_client`` currently refuses to run in production at
+    all (PRODUCTION_REQUIRES_RESOLVED_BROKER_AUTH_FACTORY), so today this is
+    defence in depth for the day that restriction is lifted.
+    """
+    from app.core.config import settings
+    from shared_lib.core.security.url_guard import (
+        OutboundPolicy,
+        UnsafeDestinationError,
+        revalidate_destination,
+        validate_gateway_url,
+    )
+
+    policy = OutboundPolicy.from_settings(settings).public_only()
+    if not policy.production:
+        return None
+    try:
+        destination = validate_gateway_url(bridge_url, policy=policy)
+    except UnsafeDestinationError as exc:
+        raise ValueError(
+            f"MT_BRIDGE_URL_NOT_ALLOWED: the stored {str(broker_type).upper()} bridge URL is refused by the "
+            f"outbound policy ({exc.reason}). Fix the broker account's bridge URL (https, public address, "
+            "no query string or fragment)."
+        ) from None
+    return lambda: revalidate_destination(destination, policy=policy)
 
 
 def build_exchange_client(context: BotRunContext) -> Any:
@@ -175,6 +215,12 @@ def build_exchange_client(context: BotRunContext) -> Any:
         if not bridge_url or not api_token:
             raise ValueError(f"MT bridge requires broker_base_url (bridge URL) and broker_api_key (API token)")
         
+        # The bridge URL is STORED, but a user supplied it: apply the same
+        # outbound policy as the test-connection route before the engine
+        # sends the bearer token (and orders) there. Relaxed outside
+        # production (returns None).
+        destination_guard = _guard_stored_bridge_url(bridge_url, broker_type)
+
         # Create bridge client
         bridge_client = MTBridgeClient(
             base_url=bridge_url,
@@ -182,7 +228,10 @@ def build_exchange_client(context: BotRunContext) -> Any:
             timeout=10,
             verify_ssl=(getattr(context, "broker_tls_mode", "strict") != "insecure")
         )
-        
+        # Never follow a redirect off the validated host; in production also
+        # re-validate the destination before every request (DNS rebinding).
+        harden_bridge_client(bridge_client, destination_guard)
+
         # Wrap in adapter
         return MetaTraderBridgeAdapter(client=bridge_client, platform=broker_type)
         

@@ -91,6 +91,71 @@ def require_admin(token: str = Depends(oauth2_scheme)) -> str:
     return payload.get("sub")
 
 
+def caller_is_admin(
+    token: str = Depends(oauth2_scheme),
+    _user_id: str = Depends(get_current_user_id),
+) -> bool:
+    """True when the caller's access token carries the admin role.
+
+    Same rule as ``require_admin``, but for routes that serve ordinary users
+    too and only widen what an admin may do. It never rejects a valid
+    non-admin token; an invalid one is a 401 (via ``get_current_user_id``).
+    """
+    payload = decode_token(token) or {}
+    return payload.get("type") == "access" and payload.get("role") == "admin"
+
+
+#: ``act`` claim of the one-call service token the user-backend admin emergency
+#: proxy mints after it has verified the caller against its ``admins`` table
+#: (``backends/user-backend/app/api/admin_emergency.py``). No login flow issues
+#: a token with this claim.
+EMERGENCY_ACTOR_CLAIM = "admin-emergency"
+#: The proxy mints the token for one upstream call (60 s). Anything issued for
+#: longer than this is not that token.
+EMERGENCY_TOKEN_MAX_LIFETIME_SECONDS = 120
+
+
+def _is_number(value) -> bool:
+    return isinstance(value, (int, float)) and not isinstance(value, bool)
+
+
+def require_admin_emergency(token: str = Depends(oauth2_scheme)) -> str:
+    """Dependency for the emergency router (kill switch, flatten) ONLY.
+
+    ``require_admin`` accepts any access token with ``role=admin``, which an
+    end-user account whose ``users.role`` is ``admin`` also holds. Emergency
+    controls additionally require the dedicated, short-lived service token the
+    user-backend admin emergency proxy mints for a verified ``admins``-table
+    operator:
+
+    * ``act`` is exactly ``EMERGENCY_ACTOR_CLAIM``;
+    * the token was issued for at most
+      ``EMERGENCY_TOKEN_MAX_LIFETIME_SECONDS`` (``exp - iat``).
+
+    Returns the admin id (``sub``).
+
+    Raises:
+        HTTPException: 401 if invalid token, 403 if not such a token
+    """
+    payload = decode_token(token)
+    if not payload or payload.get("type") != "access":
+        raise HTTPException(status_code=401, detail="Invalid token")
+    if payload.get("role") != "admin":
+        raise HTTPException(status_code=403, detail="Admin access required")
+    issued_at, expires_at = payload.get("iat"), payload.get("exp")
+    lifetime_ok = (
+        _is_number(issued_at)
+        and _is_number(expires_at)
+        and 0 < expires_at - issued_at <= EMERGENCY_TOKEN_MAX_LIFETIME_SECONDS
+    )
+    if payload.get("act") != EMERGENCY_ACTOR_CLAIM or not lifetime_ok or not payload.get("sub"):
+        raise HTTPException(
+            status_code=403,
+            detail="Emergency controls require the admin emergency service credential",
+        )
+    return payload.get("sub")
+
+
 def require_permission(required_perm: str):
     """
     Factory for dependency that requires a specific permission.

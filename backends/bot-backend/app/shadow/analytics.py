@@ -241,7 +241,14 @@ class ShadowAnalytics:
               {bot_filter_shadow}
         """
 
-        real_query = """
+        # The real side is scoped to the SAME bot as the shadow side
+        # (trade_fills.bot_instance_id). Without this filter a user naming
+        # their own bot received the trade count, win rate and realised PnL of
+        # every bot on the platform. No bot named = all bots, which the route
+        # only allows for admins.
+        bot_filter_real = "AND bot_instance_id = :bot_id" if bot_instance_id else ""
+
+        real_query = f"""
             SELECT
                 'real'                              AS source,
                 COUNT(*) / 2                        AS trade_count,
@@ -256,6 +263,7 @@ class ShadowAnalytics:
                 NULL                                AS avg_mae
             FROM trade_fills
             WHERE timestamp_utc >= datetime('now', :days || ' days')
+              {bot_filter_real}
         """
 
         params: Dict[str, Any] = {"days": f"-{days}"}
@@ -263,7 +271,7 @@ class ShadowAnalytics:
             params["bot_id"] = bot_instance_id
 
         shadow_rows = self._query(shadow_query, params)
-        real_rows = self._query(real_query, {"days": f"-{days}"})
+        real_rows = self._query(real_query, params)
 
         return {
             "shadow": shadow_rows[0] if shadow_rows else {},

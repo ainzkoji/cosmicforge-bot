@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, Body
+from fastapi.concurrency import run_in_threadpool
 from typing import Dict, Any, List, Optional
 import uuid
 import time
@@ -6,15 +7,16 @@ import logging
 import requests
 from pydantic import BaseModel
 
-from app.core.auth import get_current_user_id
+from app.core.auth import caller_is_admin, get_current_user_id
 from app.core.config import settings
 from app.exchange.ibkr.client import IBKRClient
 from app.exchange.ibkr.session import IBKRSession, IBKRSessionManager
 from shared_lib.core.security.url_guard import (
     OutboundPolicy,
     UnsafeDestinationError,
+    ValidatedDestination,
+    validate_gateway_url,
     validate_outbound_host_port,
-    validate_outbound_url,
 )
 
 # Every route here requires an authenticated user (declared on the router so
@@ -60,12 +62,33 @@ class CallbackResponse(BaseModel):
 class ConnectionManager:
     """
     Simple in-memory store for IBKR connection flows.
+
+    Bounded: a record expires TTL_SECONDS after it was recorded and at most
+    MAX_CONNECTIONS are kept (oldest dropped first), so repeated
+    ``/connect/start`` calls cannot grow it without limit.
     """
+    TTL_SECONDS = 30 * 60
+    MAX_CONNECTIONS = 500
+
     def __init__(self):
         self._connections: Dict[str, Dict[str, Any]] = {}
-        
+        # connection_id -> time.monotonic() when recorded (insertion ordered).
+        self._recorded_at: Dict[str, float] = {}
+
+    def _purge(self, now: Optional[float] = None) -> None:
+        now = time.monotonic() if now is None else now
+        for connection_id in list(self._connections):
+            if now - self._recorded_at.get(connection_id, now) > self.TTL_SECONDS:
+                self._connections.pop(connection_id, None)
+                self._recorded_at.pop(connection_id, None)
+        while len(self._connections) > self.MAX_CONNECTIONS:
+            oldest = min(self._connections, key=lambda cid: self._recorded_at.get(cid, 0.0))
+            self._connections.pop(oldest, None)
+            self._recorded_at.pop(oldest, None)
+
     def get_connection(self, connection_id: str, user_id: Optional[str] = None) -> Optional[Dict[str, Any]]:
         """Return a connection record; with ``user_id`` only the owner's own record."""
+        self._purge()
         data = self._connections.get(connection_id)
         if data is None:
             return None
@@ -77,14 +100,38 @@ class ConnectionManager:
     # But we still store metadata about the "Frontend Connection Attempt" here
     def record_connection(self, connection_id: str, data: Dict[str, Any]):
         self._connections[connection_id] = data
+        self._recorded_at[connection_id] = time.monotonic()
+        self._purge()
 
 # Note: The global manager for connections
 manager = ConnectionManager()
 
+
+def _validate_destination(req: "ConnectStartRequest", is_admin: bool) -> ValidatedDestination:
+    """Apply the outbound policy to the caller's host:port (and legacy gateway_url).
+
+    Blocking (DNS): call through ``run_in_threadpool``. The allow-list names
+    the platform's own loopback / private gateways, so it applies to admins
+    only; an ordinary user is validated without it (public addresses only in
+    production).
+    """
+    policy = OutboundPolicy.from_settings(settings)
+    if not is_admin:
+        policy = policy.public_only()
+    destination = validate_outbound_host_port(req.host, req.port, policy=policy)
+    if req.gateway_url:
+        validate_gateway_url(req.gateway_url, policy=policy)
+    return destination
+
+
 # --- Endpoints ---
 
 @router.post("/connect/start", response_model=ConnectResponse)
-async def connect_start(req: ConnectStartRequest, user_id: str = Depends(get_current_user_id)):
+async def connect_start(
+    req: ConnectStartRequest,
+    user_id: str = Depends(get_current_user_id),
+    is_admin: bool = Depends(caller_is_admin),
+):
     """
     Start IBKR connection flow (TWS/Gateway Mode).
     Connects to the specified Host/Port using IB Insync.
@@ -94,12 +141,10 @@ async def connect_start(req: ConnectStartRequest, user_id: str = Depends(get_cur
 
     # host/port (and the legacy gateway_url) are caller-supplied: refuse any
     # destination the outbound policy does not allow BEFORE connecting, then
-    # connect to the IP that was validated (no second DNS lookup).
-    policy = OutboundPolicy.from_settings(settings)
+    # connect to the IP that was validated (no second DNS lookup). The guard
+    # resolves DNS, so it runs in the threadpool, not on the event loop.
     try:
-        destination = validate_outbound_host_port(req.host, req.port, policy=policy)
-        if req.gateway_url:
-            validate_outbound_url(req.gateway_url, policy=policy)
+        destination = await run_in_threadpool(_validate_destination, req, is_admin)
     except UnsafeDestinationError as exc:
         logger.warning(f"IBKR connection refused: destination not allowed ({exc.reason})")
         raise HTTPException(status_code=400, detail=f"Destination not allowed ({exc.reason})")
@@ -154,6 +199,11 @@ async def connect_start(req: ConnectStartRequest, user_id: str = Depends(get_cur
             )
     except Exception as e:
         logger.error(f"IBKR Connection Failed: {e}")
+        # A flow that failed after the socket opened must not leave it open.
+        try:
+            session_manager.close_session(connection_id)
+        except Exception:
+            pass
         return ConnectResponse(
             connect_url="",
             connection_id=connection_id,

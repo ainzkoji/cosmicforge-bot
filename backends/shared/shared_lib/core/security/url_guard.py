@@ -35,6 +35,19 @@ closed at the network layer (egress firewall). HTTP redirects are followed by
 the HTTP client, not by this guard: callers that must not follow a redirect to
 an internal address have to disable redirects on their client.
 
+Broker gateway / bridge base URLs go through :func:`validate_gateway_url`, the
+stricter variant: no query string or fragment (they would let the caller choose
+the path the server requests), and ``https`` only in production unless the host
+is allow-listed. To narrow the rebinding window, HTTP callers additionally call
+:func:`revalidate_destination` immediately before every request: it resolves
+the name again and applies the same address policy. It narrows the window to
+the gap between that lookup and the HTTP client's own; it does not close it.
+
+Allow-listed (loopback / private) destinations are operator infrastructure.
+Routes that serve ordinary users validate with
+:meth:`OutboundPolicy.public_only`, which drops the allow-list, so only an
+admin can reach an allow-listed address.
+
 Stdlib only; no network access unless a hostname has to be resolved.
 """
 from __future__ import annotations
@@ -50,6 +63,8 @@ __all__ = [
     "UnsafeDestinationError",
     "ValidatedDestination",
     "parse_allowed_hosts",
+    "revalidate_destination",
+    "validate_gateway_url",
     "validate_outbound_host_port",
     "validate_outbound_url",
 ]
@@ -141,6 +156,15 @@ class OutboundPolicy:
             production=bool(getattr(settings, "production", True)),
             allowed_hosts=parse_allowed_hosts(getattr(settings, "BROKER_GATEWAY_ALLOWED_HOSTS", "")),
         )
+
+    def public_only(self) -> "OutboundPolicy":
+        """The same environment without the allow-list.
+
+        For callers who are not operators: in production every loopback /
+        private address is refused, allow-listed or not. Outside production
+        the policy is unchanged (internal addresses are allowed there anyway).
+        """
+        return OutboundPolicy(production=self.production, allowed_hosts=frozenset())
 
 
 def _normalize_host(host: str) -> str:
@@ -393,3 +417,65 @@ def validate_outbound_url(
         host, port_value, production=is_production, allowed_hosts=allowed, resolver=resolver
     )
     return ValidatedDestination(host=host, port=port_value, addresses=addresses, scheme=scheme, url=text)
+
+
+def validate_gateway_url(
+    url: object,
+    *,
+    policy: Optional[OutboundPolicy] = None,
+    production: Optional[bool] = None,
+    allowed_hosts: Union[str, Iterable[str], frozenset, None] = None,
+    resolver: Optional[Resolver] = None,
+) -> ValidatedDestination:
+    """Validate a caller-supplied broker gateway / bridge BASE URL.
+
+    Everything :func:`validate_outbound_url` checks, plus:
+
+    * no query string and no fragment, in every environment: the server
+      appends its own endpoint path to this URL, and a trailing ``?x=`` or
+      ``#`` would turn that path into a query / fragment and leave the request
+      path to the caller;
+    * in production the scheme must be ``https`` unless the host (or
+      ``host:port``) is allow-listed -- plain ``http`` carries the bearer token
+      in clear text and has no certificate check against DNS rebinding.
+
+    Raises :class:`UnsafeDestinationError`.
+    """
+    is_production, allowed = _unpack_policy(policy, production, allowed_hosts)
+    if isinstance(url, str) and ("?" in url or "#" in url):
+        raise UnsafeDestinationError(
+            "URL_QUERY_NOT_ALLOWED", "a gateway URL must not contain a query string or a fragment"
+        )
+    destination = validate_outbound_url(
+        url, production=is_production, allowed_hosts=allowed, resolver=resolver
+    )
+    if (
+        is_production
+        and destination.scheme != "https"
+        and not _is_allow_listed((destination.host, *destination.addresses), destination.port, allowed)
+    ):
+        raise UnsafeDestinationError(
+            "HTTPS_REQUIRED", "https is required in production unless the host is allow-listed"
+        )
+    return destination
+
+
+def revalidate_destination(
+    destination: ValidatedDestination,
+    *,
+    policy: Optional[OutboundPolicy] = None,
+    production: Optional[bool] = None,
+    allowed_hosts: Union[str, Iterable[str], frozenset, None] = None,
+    resolver: Optional[Resolver] = None,
+) -> Tuple[str, ...]:
+    """Resolve an already validated destination again and re-apply the address policy.
+
+    Call it immediately before each request an HTTP client makes to
+    ``destination``: a name that answered with a public address at validation
+    time and with an internal one now (DNS rebinding) is refused here. Returns
+    the addresses the name resolves to now. Raises :class:`UnsafeDestinationError`.
+    """
+    is_production, allowed = _unpack_policy(policy, production, allowed_hosts)
+    return _resolve_and_check(
+        destination.host, destination.port, production=is_production, allowed_hosts=allowed, resolver=resolver
+    )

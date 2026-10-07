@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+import time
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
@@ -178,6 +179,42 @@ def _reject(
     return TradingViewWebhookResponse(status=response_status, reason=reason, execution_enabled=False)
 
 
+# Requests that failed token authentication, counted in memory instead of
+# being persisted: an anonymous caller must not be able to fill
+# tradingview_alerts / tradingview_decisions, nor attribute rows to a bot of
+# their choosing. ``STATUS_INVALID_TOKEN`` rows written before this change
+# remain readable.
+_UNAUTHENTICATED_REJECTIONS: dict[str, Any] = {"total": 0, "unlogged": 0, "last_log_monotonic": 0.0}
+_UNAUTHENTICATED_LOG_INTERVAL_SECONDS = 60.0
+
+
+def unauthenticated_rejection_count() -> int:
+    """How many webhook requests this process refused for an invalid / missing token."""
+    return int(_UNAUTHENTICATED_REJECTIONS["total"])
+
+
+def _reject_unauthenticated(*, webhook_id: str | None, source_ip: str | None) -> TradingViewWebhookResponse:
+    """Refuse an invalid-token request: same answer as before, no database row.
+
+    One aggregated log line per interval (a flood must not flood the log
+    either). Only server-side facts are logged -- the id of the webhook the
+    path matched, if any, and the peer address -- never a payload value.
+    """
+    stats = _UNAUTHENTICATED_REJECTIONS
+    stats["total"] += 1
+    stats["unlogged"] += 1
+    now = time.monotonic()
+    if now - stats["last_log_monotonic"] >= _UNAUTHENTICATED_LOG_INTERVAL_SECONDS or stats["total"] == 1:
+        logger.warning(
+            "[TradingView] rejected unauthenticated webhook request(s): reason=%s count=%d total=%d "
+            "last_webhook_id=%s last_source_ip=%s (not persisted)",
+            STATUS_INVALID_TOKEN, stats["unlogged"], stats["total"], webhook_id, source_ip,
+        )
+        stats["unlogged"] = 0
+        stats["last_log_monotonic"] = now
+    return TradingViewWebhookResponse(status="rejected", reason="INVALID_TOKEN", execution_enabled=False)
+
+
 @router.post("/webhook/{token_or_id}", response_model=TradingViewWebhookResponse)
 async def receive_tradingview_webhook(token_or_id: str, request: Request) -> TradingViewWebhookResponse:
     db = _get_db()
@@ -193,15 +230,12 @@ async def receive_tradingview_webhook(token_or_id: str, request: Request) -> Tra
     payload_token = payload.get("token")
     webhook, verified_token = find_webhook_by_id_or_token(db, token_or_id, payload_token)
     if not webhook or not verified_token:
-        return _reject(
-            db,
-            status=STATUS_INVALID_TOKEN,
-            reason="INVALID_TOKEN",
-            payload=payload,
+        # Unauthenticated: nothing in this request is trusted, so nothing from
+        # it is written to the database (it used to insert an alert row and a
+        # rejected-decision row under whatever bot_id the caller named).
+        return _reject_unauthenticated(
             webhook_id=webhook.get("id") if webhook else None,
-            bot_id=webhook.get("bot_id") if webhook else payload.get("bot_id"),
             source_ip=source_ip,
-            mode=webhook.get("mode") if webhook else None,
         )
 
     webhook_id = webhook["id"]

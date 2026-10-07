@@ -2961,8 +2961,44 @@ def _runtime_liveness() -> dict:
             "process_started_at": PROCESS_STARTED_AT}
 
 
+from fastapi import Request as _HealthRequest  # noqa: E402
+
+#: Process-level detail (a runtime fingerprint useful to an attacker: process
+#: id, install path, interpreter path). Served on ``/health`` to loopback
+#: callers only -- the ops scripts on the same host -- and on the admin route
+#: ``/api/admin/tradingview/runtime-fingerprint``.
+_HEALTH_LOCAL_ONLY_FINGERPRINT_FIELDS = ("pid", "working_directory", "python_executable")
+_HEALTH_LOOPBACK_PEERS = frozenset({"127.0.0.1", "::1", "::ffff:127.0.0.1"})
+#: Set by a reverse proxy. A proxied request reaches this process FROM
+#: loopback (nginx on the same host) but is not a local caller.
+_HEALTH_FORWARDING_HEADERS = ("x-forwarded-for", "x-real-ip", "forwarded")
+
+
+def _health_request_is_local(request: Any) -> bool:
+    """True only for a direct connection from this host (not one relayed by a proxy)."""
+    client = getattr(request, "client", None)
+    if getattr(client, "host", None) not in _HEALTH_LOOPBACK_PEERS:
+        return False
+    headers = getattr(request, "headers", None) or {}
+    return not any(headers.get(name) for name in _HEALTH_FORWARDING_HEADERS)
+
+
+def _redact_health_for_remote(body: dict) -> dict:
+    """The health body without process id / filesystem paths. Readiness fields are untouched."""
+    redacted = dict(body)
+    fingerprint = redacted.get("tradingview_runtime_fingerprint")
+    if isinstance(fingerprint, dict):
+        redacted["tradingview_runtime_fingerprint"] = {
+            key: value for key, value in fingerprint.items() if key not in _HEALTH_LOCAL_ONLY_FINGERPRINT_FIELDS
+        }
+    runtime_state = redacted.get("runtime")
+    if isinstance(runtime_state, dict) and "pid" in runtime_state:
+        redacted["runtime"] = {key: value for key, value in runtime_state.items() if key != "pid"}
+    return redacted
+
+
 @app.get("/health")
-async def health(ready: bool = False):
+async def health(request: _HealthRequest = None, ready: bool = False):
     """Health of the backend. ``?ready=1`` turns it into a readiness probe.
 
     Without the flag this answers 200 for as long as the web server does,
@@ -2971,6 +3007,11 @@ async def health(ready: bool = False):
     starting, stopping or failing -- something an uptime monitor can act on
     without parsing the body. It is deliberately the same public route, not a
     new one: only ``/``, ``/health`` and ``/cati`` are unauthenticated here.
+
+    The route is unauthenticated, so the process id, working directory and
+    interpreter path are included only for a direct loopback caller (the
+    health-check and TradingView ops scripts on this host). Every field a
+    readiness check uses is served to everyone.
     """
     production_health = {}
     if settings.production:
@@ -3030,6 +3071,8 @@ async def health(ready: bool = False):
         },
         "tradingview_runtime_fingerprint": _phase6_runtime_fingerprint(),
     }
+    if not _health_request_is_local(request):
+        body = _redact_health_for_remote(body)
     state = (production_health.get("runtime") or {}).get("state", "UNSUPERVISED")
     if ready and state not in ("HEALTHY", "UNSUPERVISED"):
         from fastapi.encoders import jsonable_encoder

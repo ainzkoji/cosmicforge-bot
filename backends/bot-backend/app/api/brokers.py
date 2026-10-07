@@ -1,10 +1,13 @@
 from fastapi import APIRouter, HTTPException, Body, Depends, Request
+from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel
 from typing import Dict, Any, Optional, List, Literal
+import json
 import logging
+import time
 import uuid
 from datetime import datetime
-from app.core.auth import get_current_user_id
+from app.core.auth import caller_is_admin, get_current_user_id
 from app.core.config import settings
 from app.exchange.ibkr.adapter import IBKRAdapter
 from app.exchange.ibkr.errors import IBKRConnectionError, IBKRAuthError
@@ -12,8 +15,9 @@ from shared_lib.core.security.url_guard import (
     OutboundPolicy,
     UnsafeDestinationError,
     ValidatedDestination,
+    revalidate_destination,
+    validate_gateway_url,
     validate_outbound_host_port,
-    validate_outbound_url,
 )
 
 # Every route in this router requires an authenticated user. The dependency is
@@ -26,15 +30,46 @@ logger = logging.getLogger(__name__)
 # These routes connect to addresses the caller supplies (IBKR gateway URL,
 # TWS/IB Gateway host:port, MT4/MT5 bridge URL). Every such address goes
 # through shared_lib.core.security.url_guard first.
+#
+# The allow-list (BROKER_GATEWAY_ALLOWED_HOSTS) names loopback / private
+# addresses, i.e. the platform's OWN gateways. In production only an admin may
+# target them: an ordinary user is validated without the allow-list and can
+# therefore only reach public addresses. Otherwise every user could run a test
+# connection against the platform's local gateway and read its accounts.
+#
+# The guards resolve DNS (blocking getaddrinfo). Async handlers must call them
+# through ``run_in_threadpool``; this process runs the trading loop too.
 
-def guard_gateway_url(url: Any) -> ValidatedDestination:
-    """Validate a caller-supplied gateway / bridge URL. Raises UnsafeDestinationError."""
-    return validate_outbound_url(url, policy=OutboundPolicy.from_settings(settings))
+def outbound_policy(is_admin: bool = False) -> OutboundPolicy:
+    """The outbound policy for this caller: the allow-list applies to admins only."""
+    policy = OutboundPolicy.from_settings(settings)
+    return policy if is_admin else policy.public_only()
 
 
-def guard_gateway_host_port(host: Any, port: Any) -> ValidatedDestination:
+def guard_gateway_url(url: Any, is_admin: bool = False) -> ValidatedDestination:
+    """Validate a caller-supplied gateway / bridge base URL. Raises UnsafeDestinationError.
+
+    Production: https only (http only for an allow-listed host, admins only).
+    Every environment: no query string, no fragment.
+    """
+    return validate_gateway_url(url, policy=outbound_policy(is_admin))
+
+
+def guard_gateway_host_port(host: Any, port: Any, is_admin: bool = False) -> ValidatedDestination:
     """Validate a caller-supplied TWS / IB Gateway host:port. Raises UnsafeDestinationError."""
-    return validate_outbound_host_port(host, port, policy=OutboundPolicy.from_settings(settings))
+    return validate_outbound_host_port(host, port, policy=outbound_policy(is_admin))
+
+
+def _close_ibkr_session(session_manager: Any, connection_id: str) -> None:
+    """Disconnect a one-off (test / discovery) IBKR session and forget it.
+
+    Called on the event loop on purpose: ib_insync is bound to it, and closing
+    the socket does not block.
+    """
+    try:
+        session_manager.close_session(connection_id)
+    except Exception as exc:  # never turn a finished test into an error
+        logger.warning(f"Could not close IBKR session {connection_id}: {type(exc).__name__}")
 
 
 def gateway_verify_tls(legacy_default: bool) -> bool:
@@ -130,9 +165,56 @@ _ACCOUNTS_DB: Dict[str, Dict[str, BrokerAccount]] = {}
 _CREDENTIALS_DB: Dict[str, Dict[str, Dict[str, Any]]] = {}
 # Bound the per-user draft store so an authenticated caller cannot grow it forever.
 _MAX_ACCOUNTS_PER_USER = 50
+# A draft (and the plaintext credentials submitted for it) lives this long
+# after it was created or last given credentials / validated, then it is
+# dropped: this store must not become a long-lived credential cache.
+_DRAFT_TTL_SECONDS = 30 * 60
+# Upper bound on one submitted credential set (serialized JSON). Real ones are
+# a few hundred bytes.
+_MAX_CREDENTIALS_BYTES = 16 * 1024
+# account_id -> time.monotonic() deadline.
+_DRAFT_EXPIRES_AT: Dict[str, float] = {}
+
+
+def _touch_draft(account_id: str) -> None:
+    _DRAFT_EXPIRES_AT[account_id] = time.monotonic() + _DRAFT_TTL_SECONDS
+
+
+def _purge_expired_drafts(now: Optional[float] = None) -> int:
+    """Drop every draft account (and its credentials) whose TTL has passed."""
+    now = time.monotonic() if now is None else now
+    removed = 0
+    live = set()
+    for user_id in list(_ACCOUNTS_DB):
+        accounts = _ACCOUNTS_DB.get(user_id) or {}
+        for account_id in list(accounts):
+            # A record without a deadline (created before this bookkeeping)
+            # starts its TTL now rather than living forever.
+            deadline = _DRAFT_EXPIRES_AT.setdefault(account_id, now + _DRAFT_TTL_SECONDS)
+            if deadline <= now:
+                accounts.pop(account_id, None)
+                _CREDENTIALS_DB.get(user_id, {}).pop(account_id, None)
+                removed += 1
+            else:
+                live.add(account_id)
+        if not accounts:
+            _ACCOUNTS_DB.pop(user_id, None)
+            _CREDENTIALS_DB.pop(user_id, None)
+    for account_id in list(_DRAFT_EXPIRES_AT):
+        if account_id not in live:
+            _DRAFT_EXPIRES_AT.pop(account_id, None)
+    return removed
+
+
+def _credentials_size(credentials: Dict[str, Any]) -> int:
+    try:
+        return len(json.dumps(credentials, default=str).encode("utf-8"))
+    except (TypeError, ValueError):
+        return _MAX_CREDENTIALS_BYTES + 1
 
 
 def _user_accounts(user_id: str) -> Dict[str, BrokerAccount]:
+    _purge_expired_drafts()
     return _ACCOUNTS_DB.setdefault(str(user_id), {})
 
 
@@ -142,6 +224,7 @@ def _user_credentials(user_id: str) -> Dict[str, Dict[str, Any]]:
 
 def _owned_account(user_id: str, account_id: str) -> BrokerAccount:
     """The caller's own draft account, or 404 (never another user's)."""
+    _purge_expired_drafts()
     account = _ACCOUNTS_DB.get(str(user_id), {}).get(account_id)
     if account is None:
         raise HTTPException(status_code=404, detail="Account not found")
@@ -261,6 +344,7 @@ async def get_broker_catalog():
 
 @router.get("/accounts", response_model=BrokerAccountsResponse)
 async def get_broker_accounts(user_id: str = Depends(get_current_user_id)):
+    _purge_expired_drafts()
     return BrokerAccountsResponse(accounts=list(_ACCOUNTS_DB.get(str(user_id), {}).values()))
 
 @router.post("/connect", response_model=ConnectResponse)
@@ -278,6 +362,7 @@ async def start_connection(request: ConnectRequest, user_id: str = Depends(get_c
         created_at=datetime.utcnow().isoformat()
     )
     accounts[account_id] = account
+    _touch_draft(account_id)
     return ConnectResponse(account_id=account_id, status="draft")
 
 @router.post("/{account_id}/credentials")
@@ -287,11 +372,15 @@ async def submit_credentials(
     user_id: str = Depends(get_current_user_id),
 ):
     account = _owned_account(user_id, account_id)
-    
+
+    if _credentials_size(request.credentials) > _MAX_CREDENTIALS_BYTES:
+        raise HTTPException(status_code=413, detail="Credentials payload too large")
+
     # In a real app, encrypt this!
     credentials = request.credentials.copy()
     _user_credentials(user_id)[account_id] = credentials
-    
+    _touch_draft(account_id)
+
     # Update account status
     account.status = "validating"
     account.environment = credentials.get("environment", "paper")
@@ -305,7 +394,14 @@ async def submit_credentials(
     return {"success": True, "status": "validating"}
 
 @router.post("/{account_id}/validate", response_model=ValidateResponse)
-async def validate_connection(account_id: str, user_id: str = Depends(get_current_user_id)):
+def validate_connection(
+    account_id: str,
+    user_id: str = Depends(get_current_user_id),
+    is_admin: bool = Depends(caller_is_admin),
+):
+    # A plain ``def`` on purpose: the destination guard resolves DNS and the
+    # gateway call is synchronous HTTP, so FastAPI runs this handler in its
+    # threadpool instead of on the event loop the trading runtime shares.
     account = _owned_account(user_id, account_id)
     credentials = _user_credentials(user_id).get(account_id)
     
@@ -317,8 +413,9 @@ async def validate_connection(account_id: str, user_id: str = Depends(get_curren
             # Reuse test logic
             gateway_url = credentials.get("gateway_url", "https://localhost:5000/v1/api")
             # Caller-supplied destination: refuse anything the outbound policy
-            # does not allow BEFORE the server connects to it.
-            guard_gateway_url(gateway_url)
+            # does not allow BEFORE the server connects to it. An allow-listed
+            # (loopback / private) gateway is for admins only.
+            guard_gateway_url(gateway_url, is_admin)
             # A local IBKR Client Portal gateway serves a self-signed
             # certificate, hence the legacy default of no verification.
             # Production verifies unless BROKER_GATEWAY_VERIFY_TLS=false.
@@ -348,6 +445,7 @@ async def validate_connection(account_id: str, user_id: str = Depends(get_curren
         # Success
         account.status = "connected"
         account.last_validated_at = datetime.utcnow().isoformat()
+        _touch_draft(account_id)
         return ValidateResponse(success=True)
         
     except UnsafeDestinationError as e:
@@ -363,6 +461,7 @@ async def validate_connection(account_id: str, user_id: str = Depends(get_curren
 
 @router.post("/{account_id}/disconnect")
 async def disconnect_account(account_id: str, user_id: str = Depends(get_current_user_id)):
+    _purge_expired_drafts()
     account = _ACCOUNTS_DB.get(str(user_id), {}).get(account_id)
     if account is not None:
         account.status = "disconnected"
@@ -370,14 +469,18 @@ async def disconnect_account(account_id: str, user_id: str = Depends(get_current
 
 @router.delete("/{account_id}")
 async def delete_account(account_id: str, user_id: str = Depends(get_current_user_id)):
-    _ACCOUNTS_DB.get(str(user_id), {}).pop(account_id, None)
+    removed = _ACCOUNTS_DB.get(str(user_id), {}).pop(account_id, None)
     _CREDENTIALS_DB.get(str(user_id), {}).pop(account_id, None)
+    if removed is not None:
+        _DRAFT_EXPIRES_AT.pop(account_id, None)
+    _purge_expired_drafts()
     return {"success": True}
 
 @router.post("/test-connection", response_model=TestConnectionResponse)
 async def test_broker_connection(
     request: TestConnectionRequest = Body(...),
     user_id: str = Depends(get_current_user_id),
+    is_admin: bool = Depends(caller_is_admin),
 ):
     """
     Test connection to a broker without saving credentials.
@@ -408,9 +511,10 @@ async def test_broker_connection(
     """
     # Route based on broker_id
     if request.broker_id == "ibkr":
-        return await _test_ibkr_connection(request)
+        return await _test_ibkr_connection(request, is_admin)
     elif request.broker_id in ("mt4", "mt5"):
-        return await _test_mt_bridge_connection(request)
+        # Synchronous HTTP (requests, 10 s timeouts) and DNS: off the event loop.
+        return await run_in_threadpool(_test_mt_bridge_connection, request, is_admin)
     else:
         # Mock success for other brokers (not yet implemented)
         return TestConnectionResponse(
@@ -419,8 +523,10 @@ async def test_broker_connection(
         )
 
 
-async def _test_ibkr_connection(request: TestConnectionRequest) -> TestConnectionResponse:
+async def _test_ibkr_connection(request: TestConnectionRequest, is_admin: bool = False) -> TestConnectionResponse:
     """Test IBKR bridge connection (TWS/IB Gateway)"""
+    session_manager = None
+    connection_id = None
     try:
         # Extract bridge configuration
         bridge_type = request.credentials.get("bridge_type", "ib_gateway")
@@ -429,9 +535,11 @@ async def _test_ibkr_connection(request: TestConnectionRequest) -> TestConnectio
         client_id = int(request.credentials.get("client_id", 1))
 
         # Caller-supplied host:port. Validate it, then connect to the IP that
-        # was validated so the hostname is not resolved a second time.
+        # was validated so the hostname is not resolved a second time. The
+        # guard resolves DNS, so it runs in the threadpool. An allow-listed
+        # (loopback / private) gateway is the platform's own: admins only.
         try:
-            destination = guard_gateway_host_port(host, port)
+            destination = await run_in_threadpool(guard_gateway_host_port, host, port, is_admin)
         except UnsafeDestinationError as e:
             logger.warning(f"IBKR test connection refused: destination not allowed ({e.reason})")
             return TestConnectionResponse(ok=False, error=_destination_error(e))
@@ -499,10 +607,48 @@ async def _test_ibkr_connection(request: TestConnectionRequest) -> TestConnectio
     except Exception as e:
         logger.exception("Test connection failed")
         return TestConnectionResponse(ok=False, error=str(e))
+    finally:
+        # A test connection is one-off: do not leave the TWS session (and its
+        # client id) open, and do not let the session cache grow per call.
+        if session_manager is not None and connection_id is not None:
+            _close_ibkr_session(session_manager, connection_id)
 
 
-async def _test_mt_bridge_connection(request: TestConnectionRequest) -> TestConnectionResponse:
-    """Test MT4/MT5 bridge connection"""
+_BRIDGE_FAILURE_TEXT = {
+    "TIMEOUT": "the bridge did not answer in time",
+    "UNREACHABLE": "the bridge could not be reached",
+    "REQUEST_FAILED": "the request to the bridge failed",
+    "INVALID_RESPONSE": "the bridge sent an unexpected response",
+    "HTTP_ERROR": "the bridge rejected the request",
+}
+
+
+def _bridge_failure_message(exc: Exception) -> str:
+    """What a caller is told when a bridge test fails: a fixed text and the HTTP status.
+
+    Never the exception message or the response body: both can carry text the
+    remote host chose, and the remote host is whatever URL the caller named.
+    """
+    reason = _BRIDGE_FAILURE_TEXT.get(getattr(exc, "failure_kind", None), "unexpected error")
+    status = getattr(exc, "status_code", None)
+    suffix = f" (HTTP {status})" if isinstance(status, int) and not isinstance(status, bool) else ""
+    return f"Bridge connection failed: {reason}{suffix}"
+
+
+def _redact(text: Any, *secrets: Any, limit: int = 500) -> str:
+    out = str(text)
+    for secret in secrets:
+        if secret:
+            out = out.replace(str(secret), "[REDACTED]")
+    return out[:limit]
+
+
+def _test_mt_bridge_connection(request: TestConnectionRequest, is_admin: bool = False) -> TestConnectionResponse:
+    """Test MT4/MT5 bridge connection.
+
+    Synchronous (requests + DNS): the route runs it in the threadpool.
+    """
+    bridge_token = None
     try:
         # Extract bridge credentials
         bridge_url = request.credentials.get("bridge_url")
@@ -517,8 +663,11 @@ async def _test_mt_bridge_connection(request: TestConnectionRequest) -> TestConn
         
         # Caller-supplied URL: refuse it before the server sends the bearer
         # token (or anything else) to a destination the policy does not allow.
+        # Production: https only, public addresses only unless the caller is
+        # an admin and the host is allow-listed; never a query or fragment.
+        policy = outbound_policy(is_admin)
         try:
-            destination = guard_gateway_url(bridge_url)
+            destination = validate_gateway_url(bridge_url, policy=policy)
         except UnsafeDestinationError as e:
             logger.warning(
                 f"{request.broker_id.upper()} bridge test refused: destination not allowed ({e.reason})"
@@ -531,23 +680,27 @@ async def _test_mt_bridge_connection(request: TestConnectionRequest) -> TestConn
             f"{destination.scheme}://{destination.host}:{destination.port} (tls_mode={tls_mode})"
         )
         
-        from app.exchange.mt_bridge.client import MTBridgeClient
-        
+        from app.exchange.mt_bridge.client import MTBridgeClient, harden_bridge_client
+
         # Create bridge client. "insecure" (caller-selected, for self-signed
         # bridges) is honoured outside production only, unless
         # BROKER_GATEWAY_VERIFY_TLS=false.
         client = MTBridgeClient(
-            base_url=bridge_url,
+            base_url=destination.url,
             api_token=bridge_token,
             timeout=10,
             verify_ssl=gateway_verify_tls(tls_mode != "insecure")
         )
         # Only bridge_url was validated: never follow a redirect to an address
         # the guard did not see (requests raises TooManyRedirects instead).
-        _http_session = getattr(client, "_session", None)
-        if _http_session is not None:
-            _http_session.max_redirects = 0
-        
+        # And because requests resolves the hostname again for every request,
+        # the destination is re-validated (fresh lookup, same policy)
+        # immediately before each one. Residual: the gap between that lookup
+        # and the one inside requests -- pinning the connection to the
+        # validated IP would break TLS SNI / certificate checks with requests,
+        # so close it at the network layer (egress firewall).
+        harden_bridge_client(client, lambda: revalidate_destination(destination, policy=policy))
+
         # Test health endpoint
         health = client.get_health()
         
@@ -570,23 +723,37 @@ async def _test_mt_bridge_connection(request: TestConnectionRequest) -> TestConn
         )
     
     except Exception as e:
-        logger.exception(f"{request.broker_id.upper()} Bridge test connection failed")
-        return TestConnectionResponse(
-            ok=False,
-            error=f"Bridge connection failed: {str(e)}"
+        # Detail (which may quote the remote host) stays in the server log,
+        # with the bearer token removed; the caller gets a fixed text.
+        logger.error(
+            f"{request.broker_id.upper()} Bridge test connection failed "
+            f"({type(e).__name__}): {_redact(e, bridge_token)}"
         )
+        if getattr(e, "failure_kind", None) == "DESTINATION_NOT_ALLOWED":
+            return TestConnectionResponse(ok=False, error="Destination not allowed (DESTINATION_CHANGED)")
+        return TestConnectionResponse(ok=False, error=_bridge_failure_message(e))
 
 # -----------------------------------------------
 # IBKR Link Flow
 # -----------------------------------------------
 
 @router.post("/ibkr/connect/start")
-async def start_ibkr_link_flow(request: Request = None, user_id: str = Depends(get_current_user_id)):
+async def start_ibkr_link_flow(
+    request: Request = None,
+    user_id: str = Depends(get_current_user_id),
+    is_admin: bool = Depends(caller_is_admin),
+):
     """
     Called by User-Backend to initiate IBKR connection.
-    In this MVP, assuming local gateway, we immediately attempt discovery 
+    In this MVP, assuming local gateway, we immediately attempt discovery
     and return the connected account info if successful.
+
+    Production: the default local gateway (and any other loopback / private
+    address) is reachable only when it is allow-listed AND the caller is an
+    admin; an ordinary user may only name a public address.
     """
+    session_manager = None
+    connection_id = None
     try:
         # Default local gateway params
         bridge_type = "ib_gateway"
@@ -604,10 +771,11 @@ async def start_ibkr_link_flow(request: Request = None, user_id: str = Depends(g
             except:
                 pass
 
-        # host/port may be caller-supplied: validate, then connect to the
-        # validated IP (no second DNS lookup).
+        # host/port may be caller-supplied: validate (in the threadpool: the
+        # guard resolves DNS), then connect to the validated IP (no second
+        # DNS lookup).
         try:
-            destination = guard_gateway_host_port(host, port)
+            destination = await run_in_threadpool(guard_gateway_host_port, host, port, is_admin)
         except UnsafeDestinationError as e:
             logger.warning(f"IBKR Link Flow refused: destination not allowed ({e.reason})")
             return {"status": "error", "message": _destination_error(e)}
@@ -645,3 +813,8 @@ async def start_ibkr_link_flow(request: Request = None, user_id: str = Depends(g
     except Exception as e:
          logger.exception("IBKR Link Start Failed")
          return {"status": "error", "message": str(e)}
+    finally:
+        # Discovery only: the session id is never returned to the caller, so
+        # nothing can use this session again. Close it rather than keep it.
+        if session_manager is not None and connection_id is not None:
+            _close_ibkr_session(session_manager, connection_id)

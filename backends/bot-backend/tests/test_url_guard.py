@@ -13,6 +13,8 @@ from shared_lib.core.security.url_guard import (
     OutboundPolicy,
     UnsafeDestinationError,
     parse_allowed_hosts,
+    revalidate_destination,
+    validate_gateway_url,
     validate_outbound_host_port,
     validate_outbound_url,
 )
@@ -238,3 +240,95 @@ def test_policy_from_settings_reads_environment_and_allow_list():
     assert _reason(validate_outbound_host_port, "127.0.0.1", 7496, policy=policy, resolver=_no_dns) == "DESTINATION_NOT_ALLOWED"
     dev = OutboundPolicy.from_settings(SimpleNamespace(production=False))
     assert validate_outbound_host_port("127.0.0.1", 7496, policy=dev, resolver=_no_dns).connect_host == "127.0.0.1"
+
+
+# ── gateway / bridge base URLs: the strict variant ──────────────────────────
+
+@pytest.mark.parametrize("production", [True, False])
+@pytest.mark.parametrize(
+    "url",
+    [
+        "https://93.184.216.34/#",                 # server-appended path becomes a fragment
+        "https://93.184.216.34/internal/admin?x=",  # ... or a query value
+        "https://93.184.216.34?",
+        "https://93.184.216.34/base#frag",
+        "https://93.184.216.34/base?token=1",
+    ],
+)
+def test_gateway_url_refuses_query_and_fragment_everywhere(url, production):
+    assert _reason(validate_gateway_url, url, production=production, resolver=_no_dns) == "URL_QUERY_NOT_ALLOWED"
+    # Allow-listing the host does not make a caller-chosen path acceptable.
+    assert (
+        _reason(validate_gateway_url, url, production=production, allowed_hosts="93.184.216.34", resolver=_no_dns)
+        == "URL_QUERY_NOT_ALLOWED"
+    )
+
+
+def test_gateway_url_requires_https_in_production_unless_allow_listed():
+    assert _reason(validate_gateway_url, "http://93.184.216.34:8443", production=True, resolver=_no_dns) == "HTTPS_REQUIRED"
+    resolver = _resolver({"bridge.example.com": ["93.184.216.34"]})
+    assert _reason(validate_gateway_url, "http://bridge.example.com/", production=True, resolver=resolver) == "HTTPS_REQUIRED"
+    assert validate_gateway_url("https://bridge.example.com:8443/base", production=True, resolver=resolver).scheme == "https"
+
+    # Plain http is accepted for an allow-listed host only (host, host:port, or its address).
+    listed = validate_gateway_url("http://10.0.0.5:8000", production=True, allowed_hosts="10.0.0.5:8000", resolver=_no_dns)
+    assert (listed.scheme, listed.port) == ("http", 8000)
+    assert validate_gateway_url("http://bridge.example.com/", production=True, allowed_hosts="bridge.example.com",
+                                resolver=resolver)
+    assert (
+        _reason(validate_gateway_url, "http://10.0.0.5:8001", production=True, allowed_hosts="10.0.0.5:8000",
+                resolver=_no_dns)
+        == "DESTINATION_NOT_ALLOWED"
+    )
+
+    # Outside production the scheme rule is relaxed (local bridges, tests).
+    assert validate_gateway_url("http://127.0.0.1:8000", production=False, resolver=_no_dns).scheme == "http"
+
+
+def test_gateway_url_keeps_every_base_check():
+    for url, reason in [
+        ("http://169.254.169.254/latest/meta-data/", "DESTINATION_BLOCKED"),
+        ("file:///etc/passwd", "SCHEME_NOT_ALLOWED"),
+        ("https://user:pw@93.184.216.34/", "URL_CREDENTIALS_NOT_ALLOWED"),
+        ("https://10.0.0.5:8443", "DESTINATION_NOT_ALLOWED"),
+        (None, "URL_REQUIRED"),
+    ]:
+        assert _reason(validate_gateway_url, url, production=True, resolver=_no_dns) == reason, url
+    # Fails closed like the base validator: no environment given means production.
+    assert _reason(validate_gateway_url, "http://93.184.216.34/", resolver=_no_dns) == "HTTPS_REQUIRED"
+
+
+def test_public_only_policy_drops_the_allow_list():
+    """Allow-listed (loopback / private) destinations are for admins: everyone else gets this policy."""
+    operator = OutboundPolicy.from_settings(
+        SimpleNamespace(production=True, BROKER_GATEWAY_ALLOWED_HOSTS="127.0.0.1:4001,10.0.0.5")
+    )
+    user = operator.public_only()
+    assert user.production is True and user.allowed_hosts == frozenset()
+
+    assert validate_outbound_host_port("127.0.0.1", 4001, policy=operator, resolver=_no_dns).port == 4001
+    assert _reason(validate_outbound_host_port, "127.0.0.1", 4001, policy=user, resolver=_no_dns) == "DESTINATION_NOT_ALLOWED"
+    assert validate_gateway_url("http://10.0.0.5:8000", policy=operator, resolver=_no_dns)
+    assert _reason(validate_gateway_url, "https://10.0.0.5:8000", policy=user, resolver=_no_dns) == "DESTINATION_NOT_ALLOWED"
+    # Public destinations are unaffected.
+    assert validate_gateway_url("https://93.184.216.34:8443", policy=user, resolver=_no_dns).port == 8443
+    # Outside production nothing changes: internal addresses stay reachable for development.
+    dev = OutboundPolicy.from_settings(SimpleNamespace(production=False)).public_only()
+    assert validate_outbound_host_port("127.0.0.1", 7496, policy=dev, resolver=_no_dns).connect_host == "127.0.0.1"
+
+
+def test_revalidate_destination_catches_dns_rebinding():
+    answers = {"bridge.attacker.example": ["93.184.216.34"]}
+    resolver = _resolver(answers)
+    destination = validate_gateway_url("https://bridge.attacker.example:8443", production=True, resolver=resolver)
+    assert revalidate_destination(destination, production=True, resolver=resolver) == ("93.184.216.34",)
+
+    # The name is re-pointed after validation: refused on the next request.
+    answers["bridge.attacker.example"] = ["127.0.0.1"]
+    assert _reason(revalidate_destination, destination, production=True, resolver=resolver) == "DESTINATION_NOT_ALLOWED"
+    answers["bridge.attacker.example"] = ["169.254.169.254"]
+    assert _reason(revalidate_destination, destination, production=True, resolver=resolver) == "DESTINATION_BLOCKED"
+    assert _reason(revalidate_destination, destination, production=False, resolver=resolver) == "DESTINATION_BLOCKED"
+    # An IP literal needs no lookup at all.
+    literal = validate_gateway_url("https://93.184.216.34", production=True, resolver=_no_dns)
+    assert revalidate_destination(literal, production=True, resolver=_no_dns) == ("93.184.216.34",)
