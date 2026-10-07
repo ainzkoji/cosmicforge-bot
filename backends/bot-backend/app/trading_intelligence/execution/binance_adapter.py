@@ -42,6 +42,8 @@ _STATUS_MAP = {
     "NO_TRADE_INVALID_QTY": (X.REJECTED.value, F.SIZING.value),
     "SKIPPED_NOT_LIVE_SYMBOL": (X.REJECTED.value, F.INSTRUMENT.value),
     "STALE_DATA_DETECTED": (X.REJECTED.value, F.OTHER.value),
+    # Freshness could not be verified at all (production fails closed): nothing was submitted.
+    "STALE_DATA_UNVERIFIABLE": (X.REJECTED.value, F.OTHER.value),
     "CIRCUIT_BREAKER_TRIPPED": (X.REJECTED.value, F.OTHER.value),
     "NO_TRADE": (X.REJECTED.value, F.OTHER.value),
     "PAPER_ERROR": (X.REJECTED.value, F.OTHER.value),
@@ -91,6 +93,22 @@ class BinanceExecutionAdapter:
             res = self._submit(request, signal)
         except ExchangeError as exc:
             if settings.production:
+                # A venue ANSWER of HTTP 4xx with a definitive error code proves the
+                # request was refused -- whether it was the order itself or a setup
+                # call (leverage) made before the order was ever sent. No order
+                # exists, so this is REJECTED: the attempt is terminal and the same
+                # plan is never submitted again. Only this venue's verified error
+                # shape is read that way; a timeout, 5xx or dropped connection
+                # below stays UNKNOWN and is never re-submitted.
+                code = None
+                if str(self.venue).upper() == "BINANCE_USDM":
+                    from app.execution.fill_resolution import definitive_rejection
+                    code = definitive_rejection(exc)
+                if code is not None:
+                    return EntryResult(status=X.REJECTED.value, raw_status="VENUE_REJECTED_DEFINITIVE",
+                                       rejection_family=F.OTHER.value,
+                                       reason_codes=("VENUE_REJECTED_DEFINITIVE", f"VENUE_CODE_{abs(code)}"),
+                                       detail=f"venue code {code}")
                 # A generic exchange exception does not prove CREATE was rejected.
                 # The durable client ID remains owned until broker read-back.
                 return EntryResult(status=X.SUBMIT_UNKNOWN.value, raw_status="EXCHANGE_OUTCOME_UNKNOWN",
@@ -152,6 +170,16 @@ class BinanceExecutionAdapter:
             return OrderState(broker_order_id, client_order_id, None, 0.0, 0.0, False)
         return OrderState(view.order_id, view.client_order_id, view.status, float(view.executed_qty),
                           float(view.avg_price), True)
+
+    def order_absent(self, venue_symbol: str, client_order_id: Optional[str]) -> bool:
+        """True only when the venue authoritatively reports that no order with
+        this client order id exists (never inferred from a failed read). Only
+        the venue whose not-found answer is verified can say so."""
+        if str(self.venue).upper() != "BINANCE_USDM":
+            return False
+        from app.execution.fill_resolution import client_order_absent
+
+        return client_order_absent(self.executor.client, venue_symbol, client_order_id)
 
     def cancel_order(self, venue_symbol: str, broker_order_id: str) -> bool:
         return bool(self.executor.client.cancel_order(venue_symbol, broker_order_id))

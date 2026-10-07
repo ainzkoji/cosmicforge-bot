@@ -1240,7 +1240,8 @@ class BinanceExecutor:
             else:
                 pos_amt = 0.0
         except Exception as e:
-            raise ExchangeError(f"Failed to fetch position info for {symbol}: {e}")
+            # Explicit cause: venue-error classification reads ``__cause__`` only.
+            raise ExchangeError(f"Failed to fetch position info for {symbol}: {e}") from e
 
         # Derive current position state (source of truth)
         if pos_amt > 0:
@@ -1793,6 +1794,7 @@ class BinanceExecutor:
         # We verify the last kline timestamp is within the expected interval buffer.
         freshness_interval = str(getattr(self, "market_data_interval", None) or settings.DEFAULT_INTERVAL or "1m")
         freshness_buffer_ms = int(getattr(settings, "EXECUTION_STALE_DATA_BUFFER_MS", 180000) or 180000)
+        _stale_unverifiable = None
         try:
             verify_attempts = max(1, int(getattr(settings, "EXECUTION_STALE_DATA_VERIFY_ATTEMPTS", 2) or 2))
             # Support both adapter (get_klines) and raw client (klines)
@@ -1849,8 +1851,26 @@ class BinanceExecutor:
                          success=False,
                          error="Stale market data detected. Entry suspended."
                      )
+            else:
+                _stale_unverifiable = "klines_unavailable"
         except Exception as stale_err:
              _log.getLogger(__name__).warning(f"[STALE CHECK] {symbol}: Could not verify kline freshness: {stale_err}")
+             _stale_unverifiable = type(stale_err).__name__
+        if _stale_unverifiable is not None and settings.production:
+            # Fail closed: this check used to let the entry through whenever the
+            # klines could not be read at all, i.e. exactly when market data was
+            # least trustworthy. In the production profile (the only one that can
+            # submit real orders) an unverifiable freshness is a rejection with
+            # its own reason. Nothing has been sent, so the entry lock is released.
+            if _ep is not None and _ep_lock_acquired:
+                _ep.mark_failed(self.bot_instance_id, symbol, _ep_side,
+                                reason="stale_data_unverifiable_pre_submit")
+            return ExecResult(
+                status="STALE_DATA_UNVERIFIABLE",
+                details={"symbol": symbol, "signal": signal, "cause": _stale_unverifiable},
+                success=False,
+                error="Market data freshness could not be verified. Entry suspended.",
+            )
 
         # ✅ C) Place Entry Order
         # Use the deterministic clientOrderId already computed for the entry-protection lock
@@ -1963,8 +1983,16 @@ class BinanceExecutor:
             # Classify error for Safe Mode Explicit Logging
             err_lower = err_str.lower()
             is_timeout = "timeout" in err_lower or "read timeout" in err_lower
+            # "Duplicate client order id": the venue refused THIS request, but an
+            # order carrying that id may exist (an earlier send whose answer was
+            # lost). Never a pre-submit failure: handled like a timeout below --
+            # the lock is kept and the read-back by client order id decides.
+            from app.execution.fill_resolution import duplicate_client_order_id
+            is_duplicate_id = not is_timeout and duplicate_client_order_id(order_err)
             if is_timeout:
                 err_class = "Timeout"
+            elif is_duplicate_id:
+                err_class = "Duplicate Client Order Id"
             elif "reject" in err_lower or "invalid" in err_lower:
                 err_class = "Order Rejection"
             else:
@@ -1978,26 +2006,29 @@ class BinanceExecutor:
             except Exception:
                 pass
 
-            if is_timeout:
+            if is_timeout or is_duplicate_id:
                 # POST-SUBMIT UNCERTAIN: The TCP request was dispatched; the exchange
-                # may have received and filled it.  We cannot retry or assume failure.
+                # may have received and filled it (or, for a duplicate client order
+                # id, already holds an order with that id).  We cannot retry or
+                # assume failure.
                 # Transition to OPEN_UNCERTAIN — lock stays held until reconciliation.
+                _why = "timeout" if is_timeout else "duplicate_client_order_id"
                 if _ep is not None and _ep_lock_acquired:
                     _ep.mark_submit_unknown(
                         self.bot_instance_id, symbol, _ep_side,
-                        reason=f"timeout_after_place_order: {err_str[:120]}",
+                        reason=f"{_why}_after_place_order: {err_str[:120]}",
                         max_exposure_limit=self._configured_max_exposure(current_equity),
                     )
                 _log.getLogger(__name__).warning(
-                    "[SUBMIT_UNCERTAIN] %s: Timeout after place_order() — order may "
+                    "[SUBMIT_UNCERTAIN] %s: %s after place_order() — order may "
                     "have reached exchange. Returning SUBMIT_UNCERTAIN (lock held).",
-                    symbol,
+                    symbol, _why,
                 )
                 return ExecResult(
                     status="SUBMIT_UNCERTAIN",
                     details={"symbol": symbol, "signal": signal, "side": _ep_side, "error": err_str},
                     success=False,
-                    error=f"[SUBMIT_UNCERTAIN] {symbol}: timeout after order dispatch — position unknown.",
+                    error=f"[SUBMIT_UNCERTAIN] {symbol}: {_why} after order dispatch — position unknown.",
                 )
 
             # All other exceptions are pre-submit failures — lock released

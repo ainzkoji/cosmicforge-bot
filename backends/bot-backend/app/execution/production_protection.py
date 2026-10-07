@@ -2,11 +2,78 @@
 
 An absent open order is not proof that an ambiguous CREATE failed. Such a leg
 stays unknown and cannot be recreated or amended automatically.
+
+Bounded retry (audit: one failed leg CREATE used to block the leg forever):
+every leg is a ``closePosition`` conditional order -- it can only close the
+position it protects, never open or increase one, and the venue refuses a
+second closePosition leg of the same kind and direction (-4130). A new attempt
+(``<base>-r<n>``, at most ``MAX_PROTECTION_ATTEMPTS`` per leg) is made only
+when the previous one is PROVEN absent:
+
+* the venue refused the CREATE (HTTP 4xx + definitive error code), or
+* the CREATE was never acknowledged, the venue's open-order list does not hold
+  it, and ``ABSENT_RESOLUTION_MS`` has passed since it was sent.
+
+A leg the venue ACKNOWLEDGED and that is no longer open is still never
+recreated here: it was triggered or cancelled, and the caller's fail-safe
+close decides.
 """
 from hashlib import sha256
 import json
 import time
 from decimal import Decimal
+
+from .production_close import ABSENT_RESOLUTION_MS, attempt_client_id, operator_alert
+
+#: Total CREATE attempts that may ever be sent for one protection leg.
+MAX_PROTECTION_ATTEMPTS = 3
+
+
+def _leg_ids(base):
+    return [attempt_client_id(base, n) for n in range(MAX_PROTECTION_ATTEMPTS)]
+
+
+def _set_response(db, account, cid, response, only_unanswered=False):
+    with db.connect() as c:
+        c.execute("UPDATE cati_production_protection SET response=? WHERE account_id=? AND client_id=?"
+                  + (" AND response IS NULL" if only_unanswered else ""), (json.dumps(response), account, cid))
+
+
+def _next_leg_attempt(db, account, symbol, candidates, now):
+    """The client id for the next CREATE of a leg that is not open at the
+    broker, or PROTECTION_SUBMIT_OUTCOME_UNKNOWN while that cannot be decided."""
+    with db.connect() as c:
+        rows = {r["client_id"]: r for r in c.execute(
+            "SELECT client_id,document,response FROM cati_production_protection WHERE account_id=? AND client_id IN (%s)"
+            % ",".join("?" for _ in candidates), (account, *candidates))}
+    for cid in candidates:
+        row = rows.get(cid)
+        if row is None:
+            return cid
+        response = json.loads(row["response"]) if row["response"] else None
+        if response is None:
+            # Sent, never acknowledged, not in the venue's open list.
+            document = json.loads(row["document"])
+            sent = document.get("_requested_at")
+            if sent is None:
+                # A row from before attempts were timed: start its clock now.
+                document["_requested_at"] = now
+                with db.connect() as c:
+                    c.execute("UPDATE cati_production_protection SET document=? WHERE account_id=? AND client_id=? "
+                              "AND response IS NULL", (json.dumps(document, sort_keys=True), account, cid))
+                raise ValueError("PROTECTION_SUBMIT_OUTCOME_UNKNOWN")
+            if now - int(sent) < ABSENT_RESOLUTION_MS:
+                raise ValueError("PROTECTION_SUBMIT_OUTCOME_UNKNOWN")
+            # Past the venue's receive window it can no longer be created.
+            _set_response(db, account, cid, {"_absent": True, "resolved_at": now}, only_unanswered=True)
+            continue
+        if response.get("_rejected") or response.get("_absent"):
+            continue
+        # Acknowledged by the venue and no longer open: never blindly recreated.
+        raise ValueError("PROTECTION_SUBMIT_OUTCOME_UNKNOWN")
+    operator_alert(db, account, symbol, candidates[0], {"leg_client_ids": list(candidates),
+                   "reason": "PROTECTION_LEG_ATTEMPTS_EXHAUSTED"})
+    raise ValueError("PROTECTION_SUBMIT_OUTCOME_UNKNOWN")
 
 
 def place_native_protection(client, request):
@@ -45,27 +112,47 @@ def place_native_protection(client, request):
         identity = getattr(client, "_production_intent_identity", None)
         if not identity:
             raise ValueError("PROTECTION_ENTRY_LINEAGE_REQUIRED")
-        cid = "CFP" + sha256((account + identity + json.dumps(params, sort_keys=True)).encode()).hexdigest()[:28]
-        params["clientAlgoId"] = cid
-        expected.append((leg, cid, kind, normalized))
+        candidates = _leg_ids("CFP" + sha256((account + identity + json.dumps(params, sort_keys=True)).encode()).hexdigest()[:28])
         # Every replay reads broker truth before considering any CREATE.
         orders = client.get_algo_orders(request.symbol, raise_on_error=True)
         if not isinstance(orders, list):
             raise ValueError("PROTECTION_READ_BACK_UNAVAILABLE")
-        found = next((o for o in orders if o.get("clientAlgoId") == cid), None)
+        found = next((o for o in orders if o.get("clientAlgoId") in candidates), None)
         if found is not None and (str(found.get("symbol")) != request.symbol or found.get("side") != exit_side
                 or found.get("type", found.get("orderType")) != kind
                 or Decimal(str(found.get("triggerPrice", found.get("stopPrice", 0)))) != Decimal(normalized)
                 or str(found.get("closePosition", "")).lower() != "true"):
             raise ValueError("PROTECTION_READ_BACK_GEOMETRY_MISMATCH")
+        now = int(time.time() * 1000)
+        # No attempt of this leg is open: the first id never used, or -- only
+        # when every earlier attempt is proven absent -- the next retry id.
+        cid = found["clientAlgoId"] if found is not None else _next_leg_attempt(db, account, request.symbol, candidates, now)
+        params["clientAlgoId"] = cid
+        expected.append((leg, cid, kind, normalized))
         if found is None:
             with db.connect() as c:
                 inserted = c.execute("INSERT OR IGNORE INTO cati_production_protection VALUES(?,?,?,NULL)",
-                    (account, cid, json.dumps(params, sort_keys=True))).rowcount
+                    (account, cid, json.dumps({**params, "_requested_at": now}, sort_keys=True))).rowcount
             if not inserted:
                 raise ValueError("PROTECTION_SUBMIT_OUTCOME_UNKNOWN")
-            # Any exception or malformed response leaves durable unknown ownership.
-            found = client._signed_post("/fapi/v1/algoOrder", params=params)
+            # Any exception or malformed response leaves durable unknown ownership,
+            # except a definitive venue refusal: that CREATE does not exist, and
+            # recording it is what lets a later call try the next attempt id.
+            try:
+                found = client._signed_post("/fapi/v1/algoOrder", params=params)
+            except Exception as exc:
+                from .fill_resolution import definitive_rejection
+                code = definitive_rejection(exc)
+                if code is not None:
+                    _set_response(db, account, cid, {"_rejected": True, "venue_code": code, "resolved_at": now},
+                                  only_unanswered=True)
+                raise
+            if isinstance(found, dict) and found.get("orderId") == "DUPLICATE_4130":
+                # The transport's marker for venue code -4130: another closePosition
+                # leg of this kind already exists, so THIS CREATE was refused.
+                _set_response(db, account, cid, {"_rejected": True, "venue_code": -4130, "resolved_at": now},
+                              only_unanswered=True)
+                raise ValueError("PROTECTION_SUBMIT_OUTCOME_UNKNOWN")
             if not isinstance(found, dict) or not found.get("algoId"):
                 raise ValueError("PROTECTION_SUBMIT_OUTCOME_UNKNOWN")
         # Also resolve a previously ambiguous CREATE when read-back found it.
@@ -107,11 +194,14 @@ def cancel_flat_protection(client, identity):
             return []
         rows = [dict(r) for r in c.execute('SELECT * FROM cati_production_protection WHERE account_id=?',(account,))]
     cancelled = []
+    now = int(time.time()*1000)
     for row in rows:
         params = json.loads(row['document'])
         cid = params.pop('clientAlgoId',None)
+        # Bookkeeping stored beside the venue parameters is not part of the id.
+        sent = params.pop('_requested_at',None)
         expected = 'CFP'+sha256((account+identity+json.dumps(params,sort_keys=True)).encode()).hexdigest()[:28]
-        if cid != expected:
+        if cid not in _leg_ids(expected):
             continue
         symbol = params['symbol']
         if float(client.get_position_amt(symbol)) != 0:
@@ -130,8 +220,20 @@ def cancel_flat_protection(client, identity):
             if any(o.get('clientAlgoId')==cid for o in client.get_algo_orders(symbol,raise_on_error=True)):
                 raise ValueError('PROTECTION_CANCEL_READ_BACK_UNCONFIRMED')
         elif response is None:
-            # An unacknowledged CREATE may still appear later. No false release.
-            raise ValueError('PROTECTION_SUBMIT_OUTCOME_UNKNOWN')
+            # An unacknowledged CREATE may still appear later. No false release
+            # until it provably cannot: the position is flat (checked above), the
+            # venue's open list does not hold the leg, and the venue's receive
+            # window for the request has long passed. Nothing is submitted here.
+            if sent is None:
+                # A row from before attempts were timed: start its clock now.
+                with db.connect() as c:
+                    c.execute('UPDATE cati_production_protection SET document=? WHERE account_id=? AND client_id=? '
+                              'AND response IS NULL',(json.dumps({**params,'clientAlgoId':cid,'_requested_at':now},
+                              sort_keys=True),account,cid))
+                raise ValueError('PROTECTION_SUBMIT_OUTCOME_UNKNOWN')
+            if now - int(sent) < ABSENT_RESOLUTION_MS:
+                raise ValueError('PROTECTION_SUBMIT_OUTCOME_UNKNOWN')
+            response = {'_absent':True,'resolved_at':now}
         with db.connect() as c:
             c.execute('UPDATE cati_production_protection SET response=? WHERE account_id=? AND client_id=?',
                       (json.dumps({**response,'_closed_flat':True}),account,cid))

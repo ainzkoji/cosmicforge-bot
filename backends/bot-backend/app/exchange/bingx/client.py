@@ -347,8 +347,11 @@ class BingXClient:
             mode = self._request("GET", "/openApi/swap/v1/positionSide/dual")["data"]["dualSidePosition"]
             if mode is not False:
                 raise ValueError("NATIVE_PROTECTION_REQUIRES_ONE_WAY_ACCOUNT")
-            return self._request("POST", "/openApi/swap/v2/trade/leverage", {
-                "symbol": symbol_normalized, "leverage": str(leverage), "side": "BOTH"})
+            # This branch used to RETURN a leverage call built from an undefined
+            # `leverage` (NameError, and no order). Leverage is the caller's job
+            # (set_leverage / place_order), as in the sibling venue clients, so
+            # the production branch only verifies one-way mode. The order below
+            # still passes the transport's own entry-authority gate in _request.
         
         payload = {
             "symbol": symbol_normalized,

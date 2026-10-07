@@ -170,6 +170,37 @@ class PromotionGovernance:
                     return True
         return False
 
+    def kill_switch_status(self, scope: str = GLOBAL_SCOPE) -> Dict[str, Any]:
+        """The latest kill-switch record of one scope, for operators: whether it is
+        on, why, when it was set and by whom. Read-only; ``kill_switch_on`` stays
+        the authority the execution boundary consults."""
+        with self._db.connect() as conn:
+            row = conn.execute(f"SELECT state, recorded_at, payload FROM {self.CONTROLS} WHERE control=? AND scope=? "
+                               "ORDER BY recorded_at DESC, rowid DESC LIMIT 1", (KILL_NEW_ENTRIES, scope)).fetchone()
+        if row is None:
+            return {"enabled": False, "reason": None, "set_at_ms": None, "set_by": None, "scope": scope}
+        try:
+            payload = json.loads(row[2]) if row[2] else {}
+        except (TypeError, ValueError):
+            payload = {}
+        if not isinstance(payload, dict):
+            payload = {}
+        return {"enabled": row[0] == "ON", "reason": payload.get("reason"), "set_at_ms": int(row[1]),
+                "set_by": payload.get("actor_ref"), "scope": scope}
+
+
+# ── Operator kill-switch helpers ─────────────────────────────────────────────
+# The ONLY governance surface an HTTP route may use. They can stop new entries
+# and lift that stop again; they cannot move a promotion phase, grant a scope
+# or touch evidence, because the caller never holds the governance object.
+def kill_switch_status(db: Any, scope: str = GLOBAL_SCOPE) -> Dict[str, Any]:
+    return PromotionGovernance(db).kill_switch_status(scope)
+
+
+def set_new_entry_kill_switch(db: Any, on: bool, *, reason: str, actor_ref: str) -> None:
+    """Set / clear the GLOBAL new-entry kill switch (append-only control record)."""
+    PromotionGovernance(db).set_kill_switch(bool(on), reason=reason, actor_ref=actor_ref)
+
 
 class GovernanceAuthority:
     """What the CATI execution boundary asks before any NEW entry (dual key
@@ -216,4 +247,5 @@ class StaticAuthority:
 
 
 __all__ = ["PromotionGovernance", "GovernanceAuthority", "StaticAuthority", "GovernanceError", "scope_hash",
-           "KILL_NEW_ENTRIES", "GLOBAL_SCOPE", "GOVERNANCE_VERSION"]
+           "KILL_NEW_ENTRIES", "GLOBAL_SCOPE", "GOVERNANCE_VERSION", "kill_switch_status",
+           "set_new_entry_kill_switch"]

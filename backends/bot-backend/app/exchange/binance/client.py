@@ -3,16 +3,110 @@ from shared_lib.core.production import require_broker_mutation_permission
 
 
 import random
+import threading
 import time
+from typing import Dict, List
+
 import requests
 
 from app.exchange.binance.signing import build_query, sign
 from decimal import Decimal
+# Was undefined at module level: get_symbol_filters()'s fallback raised NameError.
+from app.models.unified_trading import SymbolFilters
 from app.exchange.binance.filters import (
     extract_filters,
     round_qty,
 )
 from app.exchange.binance.filters import set_exchange_info
+
+
+#: The venue's request-weight budget per minute for this API (per IP), and the
+#: share of it after which signed READS are paced. Tune here, not at call sites.
+REQUEST_WEIGHT_LIMIT_1M = 2400
+REQUEST_WEIGHT_PAUSE_FRACTION = 0.8
+#: Pause before each signed read while the recorded weight is above the threshold.
+REQUEST_WEIGHT_PAUSE_SECONDS = 1.0
+#: HTTP 429 on an idempotent GET: honour Retry-After and try again at most this
+#: many times, never sleeping longer than the cap for one wait. A longer wait
+#: is not slept: it is recorded as a backoff and the read fails at once.
+RATE_LIMIT_MAX_RETRIES = 2
+RATE_LIMIT_MAX_SLEEP_SECONDS = 4.0
+#: TOTAL time all clients of one venue endpoint together may sleep for rate
+#: limits (Retry-After waits and weight pacing) within one window. The window
+#: is the length of a runtime broker cycle, which holds the lock an operator
+#: emergency flatten needs: however many accounts and reads a cycle has, it
+#: cannot spend more than this waiting on rate limits. Beyond the budget a
+#: Retry-After wait is not slept -- the backoff is recorded and reads fail
+#: closed with ``BinanceRateLimited`` -- and weight pacing is simply skipped.
+RATE_LIMIT_SLEEP_BUDGET_SECONDS = 8.0
+RATE_LIMIT_SLEEP_BUDGET_WINDOW_SECONDS = 30.0
+
+
+class BinanceRateLimited(RuntimeError):
+    """A read was NOT sent: the venue told this IP to back off (Retry-After on
+    HTTP 429 / 418) and that time has not passed. Fails the caller's cycle
+    closed without sleeping. Never raised for a mutating request.
+
+    Operator emergency flatten: its close order (POST) is never paced, delayed
+    or refused here. Its pre-close reads (open positions, read-back, position
+    size) are ordinary signed GETs, so during a venue-mandated backoff they
+    raise this at once and that account's flatten is reported as failed --
+    asking the venue earlier could not succeed and would lengthen the ban."""
+
+
+# ── Process-wide rate-limit state ────────────────────────────────────────────
+# Binance limits are per IP, not per API key or client object. The state is
+# therefore kept per venue base URL for the whole process: it is shared by
+# every account's client and it survives a client being rebuilt (the runtime
+# drops its cached client after any error -- a fresh client used to forget the
+# backoff and hit the banned IP again on the very next cycle).
+_RATE_LOCK = threading.Lock()
+_RATE_STATE: Dict[str, dict] = {}
+
+
+def _rate_state(base_url: str) -> dict:
+    """This endpoint's state. Call with ``_RATE_LOCK`` held."""
+    return _RATE_STATE.setdefault(base_url, {"until": 0.0, "status": None, "used": None, "noted_at": 0.0,
+                                             "window_start": 0.0, "slept": 0.0})
+
+
+def reset_rate_limit_state(base_url: str | None = None) -> None:
+    """Forget the recorded state (tests; an operator who knows a ban was lifted)."""
+    with _RATE_LOCK:
+        if base_url is None:
+            _RATE_STATE.clear()
+        else:
+            _RATE_STATE.pop(base_url.rstrip("/"), None)
+
+
+def rate_limit_backoff_remaining(base_url: str) -> float:
+    """Seconds until reads of this endpoint are sent again (0.0 when not backing off)."""
+    with _RATE_LOCK:
+        return max(0.0, _rate_state(base_url.rstrip("/"))["until"] - time.monotonic())
+
+
+def _note_backoff(base_url: str, seconds: float, status: int) -> None:
+    """The venue said when it will answer this IP again: no read before then."""
+    with _RATE_LOCK:
+        state = _rate_state(base_url)
+        until = time.monotonic() + max(0.0, float(seconds))
+        if until > state["until"]:
+            state["until"], state["status"] = until, status
+
+
+def _reserve_sleep(base_url: str, seconds: float) -> bool:
+    """Take ``seconds`` out of the endpoint's sleep budget for the current
+    window. False -- and nothing taken -- when that would exceed the budget:
+    the caller must then NOT sleep. The lock is never held while sleeping."""
+    seconds = max(0.0, float(seconds))
+    with _RATE_LOCK:
+        state, now = _rate_state(base_url), time.monotonic()
+        if now - state["window_start"] >= RATE_LIMIT_SLEEP_BUDGET_WINDOW_SECONDS:
+            state["window_start"], state["slept"] = now, 0.0
+        if state["slept"] + seconds > RATE_LIMIT_SLEEP_BUDGET_SECONDS:
+            return False
+        state["slept"] += seconds
+        return True
 
 
 def kline_closes(klines: list) -> list[float]:
@@ -68,8 +162,55 @@ class BinanceFuturesClient:
             value = response.headers.get("X-MBX-USED-WEIGHT-1M")
             if value is not None:
                 self.last_used_weight_1m = int(value)
+                # The count is per IP: every client of this endpoint paces on it.
+                with _RATE_LOCK:
+                    state = _rate_state(self.base_url)
+                    state["used"], state["noted_at"] = int(value), time.monotonic()
         except Exception:
             pass
+
+    @staticmethod
+    def _retry_after_seconds(response, default: float) -> float:
+        try:
+            value = response.headers.get("Retry-After")
+            return max(0.0, float(value)) if value is not None else default
+        except Exception:
+            return default
+
+    def _refuse_read_during_backoff(self) -> None:
+        """Raise ``BinanceRateLimited`` -- without any network call or sleep --
+        while the venue's Retry-After (HTTP 429 / 418) has not passed. Asking
+        earlier cannot succeed and lengthens an IP ban. Reads only."""
+        with _RATE_LOCK:
+            state = _rate_state(self.base_url)
+            remaining, status = state["until"] - time.monotonic(), state["status"]
+        if remaining > 0:
+            raise BinanceRateLimited(
+                f"Binance rate limit backoff: read deferred for {remaining:.0f}s (HTTP {status})")
+
+    def _pace_signed_read(self) -> None:
+        """Rate-limit courtesy for idempotent signed GETs ONLY.
+
+        A mutating request (order / cancel / leverage) is never delayed, blocked
+        or retried here: a close must always be attempted, and a retried POST
+        could act twice.
+
+        Two different things happen to a read:
+        * venue-mandated backoff -- it is refused locally (BinanceRateLimited);
+        * proactive pacing near the weight budget -- it is delayed by a short
+          pause, but only within the endpoint's sleep budget. Pacing never
+          refuses a read: once the budget is spent the read is sent unpaced.
+        """
+        self._refuse_read_during_backoff()
+        with _RATE_LOCK:
+            state = _rate_state(self.base_url)
+            used, noted_at = state["used"], state["noted_at"]
+        if (used is not None and time.monotonic() - noted_at < 60.0
+                and used >= REQUEST_WEIGHT_LIMIT_1M * REQUEST_WEIGHT_PAUSE_FRACTION
+                and _reserve_sleep(self.base_url, REQUEST_WEIGHT_PAUSE_SECONDS)):
+            # Close to the per-minute budget: slow reads down before the venue
+            # starts refusing them (the count is refreshed by the next response).
+            time.sleep(REQUEST_WEIGHT_PAUSE_SECONDS)
 
     def _request(
         self, method: str, path: str, params=None, headers=None, max_retries: int = 6
@@ -83,6 +224,9 @@ class BinanceFuturesClient:
         mutation = method.upper() not in {"GET", "HEAD", "OPTIONS"}
         if mutation:
             max_retries = 0
+        else:
+            # Same per-IP backoff as the signed reads; never for a mutation.
+            self._refuse_read_during_backoff()
         last_err = None
         for attempt in range(max_retries + 1):
             try:
@@ -103,10 +247,17 @@ class BinanceFuturesClient:
                     # distinguished from an ordinary transport failure.
                     body = " ".join(str(getattr(r, "text", "") or "").split())[:200]
                     last_err = RuntimeError(f"HTTP {r.status_code}: {body}".rstrip())
-                    ra = r.headers.get("Retry-After")
-                    sleep_s = float(ra) if ra else (0.4 * (2**attempt))
+                    banned = r.status_code == 418
+                    sleep_s = self._retry_after_seconds(r, 60.0 if banned else 0.4 * (2**attempt))
                     sleep_s += random.uniform(0, 0.2)
-                    time.sleep(min(sleep_s, 10.0))
+                    # A ban, the last try, a long wait or a spent sleep budget:
+                    # do not sleep under the caller's lock. Record the backoff
+                    # for every client of this endpoint and surface the error.
+                    if (banned or attempt >= max_retries or sleep_s > RATE_LIMIT_MAX_SLEEP_SECONDS
+                            or not _reserve_sleep(self.base_url, sleep_s)):
+                        _note_backoff(self.base_url, sleep_s, r.status_code)
+                        break
+                    time.sleep(sleep_s)
                     continue
 
                 if r.status_code == 400 and "timestamp" in r.text.lower():
@@ -141,7 +292,11 @@ class BinanceFuturesClient:
     # ---------------- TIME SYNC ----------------
 
     def _public_get(self, path: str, params: dict | None = None) -> dict:
+        self._refuse_read_during_backoff()
         r = self.session.get(f"{self.base_url}{path}", params=params or {}, timeout=20)
+        if r.status_code in (418, 429):
+            _note_backoff(self.base_url, self._retry_after_seconds(r, 1.0 if r.status_code == 429 else 60.0),
+                          r.status_code)
         if r.status_code >= 400:
             raise RuntimeError(f"Binance HTTP {r.status_code}: {r.text}")
         return r.json()
@@ -189,7 +344,30 @@ class BinanceFuturesClient:
         headers = {"X-MBX-APIKEY": self.api_key}
 
         if method == "GET":
+            self._pace_signed_read()
             r = self.session.get(url, headers=headers, timeout=20)
+            # HTTP 429 / 418 on an idempotent read: honour Retry-After. A short
+            # 429 wait is slept (bounded per wait, per call and -- across every
+            # client of this endpoint -- per window) and the read repeated at
+            # most RATE_LIMIT_MAX_RETRIES times; a longer wait, a spent sleep
+            # budget, or a 418 ban is recorded process-wide so later reads of
+            # ANY client back off locally, and the error surfaces as before.
+            # POST / DELETE never enter this loop.
+            retries = 0
+            while r.status_code in (418, 429):
+                self._note_weight(r)
+                wait = self._retry_after_seconds(r, 1.0 if r.status_code == 429 else 60.0)
+                if (r.status_code == 418 or retries >= RATE_LIMIT_MAX_RETRIES or wait > RATE_LIMIT_MAX_SLEEP_SECONDS
+                        or not _reserve_sleep(self.base_url, wait)):
+                    _note_backoff(self.base_url, wait, r.status_code)
+                    break
+                time.sleep(wait)
+                retries += 1
+                params["timestamp"] = int(time.time() * 1000) + int(self._time_offset_ms)
+                query = build_query(params)
+                signature = sign(self.api_secret, query)
+                url = f"{self.base_url}{path}?{query}&signature={signature}"
+                r = self.session.get(url, headers=headers, timeout=20)
         elif method == "POST":
             r = self.session.post(url, headers=headers, timeout=20)
         elif method == "DELETE":
@@ -204,20 +382,30 @@ class BinanceFuturesClient:
                 data = None
 
             if isinstance(data, dict) and data.get("code") == -1021:
-                self.sync_time()
-                params["timestamp"] = int(time.time() * 1000) + int(
-                    self._time_offset_ms
-                )
-                query = build_query(params)
-                signature = sign(self.api_secret, query)
-                url = f"{self.base_url}{path}?{query}&signature={signature}"
+                # The venue refused this request for its timestamp (it was NOT
+                # processed), so one re-send with a fresh clock is safe. When
+                # the clock cannot be re-read, nothing is re-sent and the
+                # venue's own -1021 answer surfaces below: the caller then
+                # still sees a definitive "not processed", not a sync error.
+                try:
+                    self.sync_time()
+                    synced = True
+                except Exception:
+                    synced = False
+                if synced:
+                    params["timestamp"] = int(time.time() * 1000) + int(
+                        self._time_offset_ms
+                    )
+                    query = build_query(params)
+                    signature = sign(self.api_secret, query)
+                    url = f"{self.base_url}{path}?{query}&signature={signature}"
 
-                if method == "GET":
-                    r = self.session.get(url, headers=headers, timeout=20)
-                elif method == "POST":
-                    r = self.session.post(url, headers=headers, timeout=20)
-                elif method == "DELETE":
-                    r = self.session.delete(url, headers=headers, timeout=20)
+                    if method == "GET":
+                        r = self.session.get(url, headers=headers, timeout=20)
+                    elif method == "POST":
+                        r = self.session.post(url, headers=headers, timeout=20)
+                    elif method == "DELETE":
+                        r = self.session.delete(url, headers=headers, timeout=20)
 
         self._note_weight(r)
         if r.status_code >= 400:

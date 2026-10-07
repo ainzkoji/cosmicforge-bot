@@ -1,7 +1,10 @@
 from __future__ import annotations
 from dataclasses import dataclass
 from datetime import date, timedelta
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
+
+if TYPE_CHECKING:
+    from app.metrics.health import HealthMetrics
 
 @dataclass
 class DailyRiskState:

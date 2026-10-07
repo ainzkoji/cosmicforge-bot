@@ -4,7 +4,7 @@ Analytics Proxy API
 Proxies analytics requests from frontend to bot-backend service.
 """
 from fastapi import APIRouter, Depends, Query, HTTPException
-from fastapi.responses import StreamingResponse
+from fastapi.responses import Response, StreamingResponse
 from starlette.background import BackgroundTask
 from starlette.requests import Request
 from typing import Optional

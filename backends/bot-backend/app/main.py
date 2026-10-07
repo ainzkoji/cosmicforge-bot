@@ -310,7 +310,22 @@ from shared_lib.core.security.redaction import install_log_redaction
 assert_broker_encryption_configured()
 install_log_redaction()
 
-app = FastAPI(title="CosmicForge Bot MVP")
+# /docs, /redoc and /openapi.json enumerate the whole operator surface. They
+# stay available in development and under test; a production process serves
+# them only when API_DOCS_ENABLED=true is set explicitly.
+def _api_docs_enabled(cfg: Any) -> bool:
+    """Fails closed: a settings object without ``production`` counts as production."""
+    return (not getattr(cfg, "production", True)) or bool(getattr(cfg, "API_DOCS_ENABLED", False))
+
+
+API_DOCS_ENABLED = _api_docs_enabled(settings)
+
+app = FastAPI(
+    title="CosmicForge Bot MVP",
+    docs_url="/docs" if API_DOCS_ENABLED else None,
+    redoc_url="/redoc" if API_DOCS_ENABLED else None,
+    openapi_url="/openapi.json" if API_DOCS_ENABLED else None,
+)
 
 # --- CORS Middleware ---
 from fastapi.middleware.cors import CORSMiddleware
@@ -437,8 +452,10 @@ app.include_router(capability_admin_router, prefix="/api/v1/capabilities", tags=
 
 # Register IBKR Connect API router
 from app.api.ibkr import router as ibkr_router
+from app.api.emergency import router as emergency_router
 
 app.include_router(ibkr_router)  # Prefix already defined in router
+app.include_router(emergency_router)  # /api/v1/admin/emergency/* (admin only)
 
 # Register News Intelligence API router (Phase 3)
 from app.api.news_intelligence import router as news_intelligence_router
@@ -464,10 +481,29 @@ CURRENT_RUN_ID: str | None = None
 run_manager = RunManager()
 
 
+# /debug/config masks by RULE, not by list: a new secret setting is masked the
+# day it is added, without anyone remembering to register it here. A setting is
+# masked when its NAME contains one of these markers (case-insensitive) or its
+# VALUE is a URL with embedded credentials. Masked values are replaced by a
+# fixed marker -- never a prefix/suffix of the real value.
+SENSITIVE_NAME_MARKERS = (
+    "KEY",
+    "SECRET",
+    "TOKEN",
+    "PASSWORD",
+    "PASS",
+    "DSN",
+    "CREDENTIAL",
+    "PRIVATE",
+    "WEBHOOK",
+)
+# Explicit extras, masked whatever their name looks like.
 SENSITIVE_KEYS = {
     "BINANCE_API_KEY",
     "BINANCE_API_SECRET",
 }
+CONFIG_MASK = "***"
+CONFIG_MASK_UNSET = "<unset>"
 
 
 def _utc_now_iso() -> str:
@@ -2581,42 +2617,8 @@ def audit_tail(limit: int = Query(50, ge=1, le=500)):
     return {"ok": True, "limit": limit, "lines": tail}
 
 
-@app.post("/emergency/flatten", dependencies=_LEGACY_ADMIN_ONLY)
-async def emergency_flatten():
-    """
-    Cancel all open orders and close all positions for EVERY active bot managed by MultiBotRunner.
-    This replaces the legacy symbol-only flatten logic.
-    """
-    if not runner_service.multi_runner:
-        # Fallback to legacy flatten if MultiBotRunner isn't active (unlikely)
-        logger.warning(
-            "[EMERGENCY] MultiBotRunner not found. Falling back to legacy flatten logic."
-        )
-        # ... (Legacy logic below if we want to keep it, but better to fail or fix)
-        return {"ok": False, "error": "MultiBotRunner not initialized."}
-
-    try:
-        results = await runner_service.multi_runner.flatten_all()
-        # Audit
-        try:
-            # Audit on the first available runner or generally
-            for bot_res in results:
-                bot_id = bot_res["bot_id"]
-                logger.info(
-                    f"[EMERGENCY] Bot {bot_id} flatted: {len(bot_res['symbols'])} symbols processed."
-                )
-        except Exception:
-            pass
-
-        return {
-            "ok": True,
-            "message": f"Flatten triggered for {len(results)} active bots.",
-            "results": results,
-        }
-    except Exception as e:
-        logger.error(f"Critical error during Global Emergency Flatten: {e}")
-        return {"ok": False, "error": str(e)}
-
+# /emergency/flatten moved to app/api/emergency.py (admin emergency router):
+# the legacy handler only walked legacy runners, which never exist in production.
 
 @app.get("/debug/position_amt/{symbol}", dependencies=_LEGACY_ADMIN_ONLY)
 def debug_position_amt(symbol: str):
@@ -2782,7 +2784,10 @@ def _phase6_runtime_fingerprint() -> Dict[str, Any]:
     }
 
 
-@app.get("/api/admin/tradingview/runtime-fingerprint")
+# Operator diagnostics (pid, interpreter path, working directory, the active
+# bot's id and its TradingView counters): admin token required, like every
+# other operator route in this module.
+@app.get("/api/admin/tradingview/runtime-fingerprint", dependencies=_LEGACY_ADMIN_ONLY)
 async def tradingview_runtime_fingerprint():
     return _phase6_runtime_fingerprint()
 
@@ -2897,7 +2902,7 @@ def _phase6_status_counts(bot_id: str | None) -> Dict[str, Any]:
     }
 
 
-@app.get("/api/admin/tradingview/limited-status")
+@app.get("/api/admin/tradingview/limited-status", dependencies=_LEGACY_ADMIN_ONLY)
 async def tradingview_limited_status():
     bot_id = _active_bot_id_for_tradingview()
     fp = _phase6_runtime_fingerprint()
@@ -2934,7 +2939,7 @@ async def tradingview_limited_status():
     }
 
 
-@app.get("/api/admin/tradingview/processor-status")
+@app.get("/api/admin/tradingview/processor-status", dependencies=_LEGACY_ADMIN_ONLY)
 async def tradingview_processor_status():
     bot_id = _active_bot_id_for_tradingview()
     return {
@@ -3034,13 +3039,40 @@ async def health(ready: bool = False):
     return body
 
 
+import re as _re
+
+# scheme://userinfo@host -- credentials embedded in a URL (database DSNs,
+# webhook URLs, proxies), anywhere in the value.
+_URL_WITH_CREDENTIALS = _re.compile(r"[A-Za-z][A-Za-z0-9+.\-]*://[^/?#\s@]+@")
+
+
+def _is_sensitive_setting_name(name: Any) -> bool:
+    upper = str(name).upper()
+    return upper in SENSITIVE_KEYS or any(marker in upper for marker in SENSITIVE_NAME_MARKERS)
+
+
+def _mask_config_value(name: Any, value: Any) -> Any:
+    """Mask one setting by rule; recurses into nested dicts / lists."""
+    if _is_sensitive_setting_name(name):
+        # Fixed marker only: whether a secret is configured is useful to an
+        # operator, any part of its value is not.
+        return CONFIG_MASK_UNSET if value is None or value == "" else CONFIG_MASK
+    if isinstance(value, dict):
+        return {k: _mask_config_value(k, v) for k, v in value.items()}
+    if isinstance(value, (list, tuple, set)):
+        return [_mask_config_value(name, v) for v in value]
+    if isinstance(value, (bytes, bytearray)):
+        return CONFIG_MASK
+    if isinstance(value, str) and _URL_WITH_CREDENTIALS.search(value):
+        return CONFIG_MASK
+    return value
+
+
 def _settings_public_dict() -> Dict[str, Any]:
     data = settings.model_dump()
-    # remove/mask secrets
-    for k in list(data.keys()):
-        if k in SENSITIVE_KEYS:
-            data[k] = "***"
-    return data
+    # Mask secrets by rule (see SENSITIVE_NAME_MARKERS), never by a list that
+    # has to be kept in step with the settings model.
+    return {k: _mask_config_value(k, v) for k, v in data.items()}
 
 
 @app.get("/debug/config", dependencies=_LEGACY_ADMIN_ONLY)

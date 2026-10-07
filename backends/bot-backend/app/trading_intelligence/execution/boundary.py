@@ -111,6 +111,14 @@ DEFAULT_RESOLUTION_ESCALATION_MS = 15 * 60_000
 
 SUBMIT_OUTCOME_UNRESOLVED = "SUBMIT_OUTCOME_UNRESOLVED"
 
+#: An unknown entry may be resolved to "no position" from the venue's authoritative
+#: "no such order" only inside this window after it was sent. Lower bound: far beyond
+#: the venue's receive window for a signed request, so the order cannot still arrive.
+#: Upper bound: inside the period for which the venue keeps every order's history, so
+#: "no such order" cannot mean "an old order that was purged".
+ENTRY_ABSENT_MIN_MS = 120_000
+ENTRY_ABSENT_MAX_MS = 72 * 3_600_000
+
 
 def _now() -> int:
     return int(time.time() * 1000)
@@ -325,6 +333,10 @@ class CATIExecutionBoundary:
             why = self._production_plan_reason(plan, submit_now)
             if why:
                 return self._fail_before_risk(plan,submit_now,BoundaryStatus.GOVERNANCE_NOT_AUTHORIZED,why)
+        # The claim row must stay a pure function of the plan and the cycle's ``now``: two
+        # cycles racing for the same plan have to produce the IDENTICAL row so that exactly
+        # one insert wins (the other is DUPLICATE_PLAN). Its ``submitted_at`` is therefore
+        # the cycle time; the send-time bound is stamped on the settled row below.
         base = self._attempt(plan, attempt_id, risk.risk_decision_id, req, status=X.PENDING_SUBMIT.value, now=now)
         executor = getattr(self.adapter, "executor", None)
         if executor is not None and hasattr(executor, "_build_entry_idempotency"):
@@ -358,6 +370,14 @@ class CATIExecutionBoundary:
             entry = EntryResult(status=X.SUBMIT_UNKNOWN.value, raw_status=f"EXCEPTION:{type(exc).__name__}",
                                 reason_codes=("SUBMIT_OUTCOME_UNKNOWN_EXCEPTION",))
         METRICS.observe("cati_stage_latency_ms", (time.perf_counter() - t1) * 1000.0, stage="EXECUTION")
+        if entry.status == X.SUBMIT_UNKNOWN.value or entry.raw_status == "ENTRY_INTENT_REUSED":
+            # Unknown outcome. ``submitted_at`` starts the window after which an order the
+            # venue reports as non-existent is believed absent (ENTRY_ABSENT_MIN_MS), so it
+            # must not predate the real send. Risk, sizing and the adapter's own reads
+            # (each can wait on a rate limit) ran since ``now``; the only bound known here
+            # is "sent no later than this moment" -- later than the send, never earlier.
+            # Only the single claimant gets here, so this row needs no determinism.
+            base = replace(base, submitted_at=now + int((time.monotonic() - started) * 1000))
         return self._settle(plan, base, req, entry, now, runtime_session_id)
 
     # ---------------------------------------------------------------------------------------
@@ -479,12 +499,69 @@ class CATIExecutionBoundary:
                                reason_codes=base.reason_codes + ("RECONCILED_FROM_BROKER",))
             self.attempts.append(resolved, len(rows))
             self._resolve(plan, "RELEASED", now, "BROKER_CONFIRMED_NO_ENTRY")
+            # The broker answered: this order ended without a fill. The executor's lock for
+            # that same order id would otherwise keep the account blocked for good.
+            if last.get("client_order_id"):
+                self._release_executor_intent(plan, last["client_order_id"], "broker_confirmed_zero_fill_terminal")
             METRICS.inc("cati_execution_reconciliation_total", outcome="NO_POSITION")
             return BoundaryResult(BoundaryStatus.RECONCILED, plan.trade_plan_id, ("RECONCILED_NO_POSITION",),
                                   attempt=resolved, reservation_status=self._res_status(plan))
+        # An entry whose submit outcome is unknown and whose order the venue AUTHORITATIVELY
+        # reports as non-existent created nothing -- but only once the request can no longer
+        # arrive (ENTRY_ABSENT_MIN_MS after it was sent), while the account is flat on the
+        # symbol, and while the venue still keeps order history for that period
+        # (ENTRY_ABSENT_MAX_MS). An unanswered or failed read is never this evidence, and
+        # the attempt becomes terminal: the plan is never submitted again.
+        sent = last.get("submitted_at")
+        cid = last.get("client_order_id")
+        absent = getattr(self.adapter, "order_absent", None)
+        if pos.answered and pos.side == "FLAT" and not order.answered and cid and callable(absent) \
+                and sent is not None and ENTRY_ABSENT_MIN_MS <= now - int(sent) <= ENTRY_ABSENT_MAX_MS:
+            try:
+                # The executor's own durable lock records the id that was really sent; an
+                # id that differs from this attempt's proves nothing about that order.
+                gone = self._executor_intent_matches(plan, cid) and absent(sym, cid) is True
+            except Exception:
+                gone = False
+            if gone:
+                resolved = replace(base, status=X.RECONCILED_NO_POSITION.value, resolved_at=now, recorded_at=now,
+                                   reason_codes=base.reason_codes + ("RECONCILED_FROM_BROKER", "BROKER_ORDER_ABSENT"))
+                self.attempts.append(resolved, len(rows))
+                self._resolve(plan, "RELEASED", now, "BROKER_CONFIRMED_NO_ENTRY")
+                self._release_executor_intent(plan, cid, "broker_confirmed_order_absent")
+                METRICS.inc("cati_execution_reconciliation_total", outcome="NO_POSITION")
+                return BoundaryResult(BoundaryStatus.RECONCILED, plan.trade_plan_id, ("RECONCILED_NO_POSITION",),
+                                      attempt=resolved, reservation_status=self._res_status(plan))
         METRICS.inc("cati_execution_reconciliation_total", outcome="STILL_UNKNOWN")
         return BoundaryResult(BoundaryStatus.STILL_UNKNOWN, plan.trade_plan_id, ("BROKER_STATE_STILL_UNKNOWN",),
                               reservation_status=self._res_status(plan))
+
+    def _executor_intent_matches(self, plan: TradePlan, client_order_id: str) -> bool:
+        """False when the executor holds an entry lock for this plan's symbol/side under a
+        DIFFERENT client order id (then this attempt's id is not the one to ask about).
+        No lock at all is consistent: the executor releases it on a pre-submit failure."""
+        from app.execution.entry_protection import get_entry_protection
+
+        held = get_entry_protection(self._db).get_entry(plan.bot_instance_id, plan.instrument_key.venue_symbol,
+                                                        plan.side)
+        return not held or str(held.get("client_order_id") or "") == str(client_order_id)
+
+    def _release_executor_intent(self, plan: TradePlan, client_order_id: str, reason: str) -> None:
+        """Release the executor's own durable entry lock for an entry the broker proved was
+        never created. Only the lock that carries THIS attempt's client order id is touched;
+        any failure leaves it held (the account stays blocked -- fail closed)."""
+        try:
+            from app.execution.entry_protection import get_entry_protection
+
+            protection = get_entry_protection(self._db)
+            sym = plan.instrument_key.venue_symbol
+            held = protection.get_entry(plan.bot_instance_id, sym, plan.side)
+            if held and str(held.get("client_order_id") or "") == str(client_order_id) \
+                    and str(held.get("state") or "") != "OPEN_CONFIRMED":
+                protection.release_entry(plan.bot_instance_id, sym, plan.side, reason)
+        except Exception as exc:
+            record_stage_error("boundary.release_executor_intent", "EXECUTION", exc, db=self._db,
+                               broker_account_id=plan.broker_account_id, bot_instance_id=plan.bot_instance_id)
 
     def _resolve(self, plan: TradePlan, to_status: str, now: int, note: str) -> None:
         rid = plan.portfolio_reservation_id

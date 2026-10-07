@@ -160,7 +160,9 @@ def _token(role: str) -> str:
 LEGACY_ROUTES = [
     ("post", "/runner/live/start"), ("post", "/runner/live/stop"), ("post", "/binance/leverage"),
     ("post", "/binance/cancel-all"), ("get", "/binance/balance"), ("get", "/binance/order"),
-    ("post", "/emergency/flatten"), ("post", "/risk/kill"), ("post", "/risk/unkill"),
+    # "/emergency/flatten" was the legacy no-op (it walked runners that do not exist in
+    # production); the working control is /api/v1/admin/emergency/* (test_emergency_controls.py).
+    ("post", "/risk/kill"), ("post", "/risk/unkill"),
     ("get", "/logs/events/tail"), ("post", "/debug/crash-next-cycle"), ("get", "/runner/status"),
 ]
 

@@ -29,6 +29,57 @@ COLLECTOR_HEARTBEAT_FRESH_MS = 360_000
 #: has reached the broker gets its protection before the process exits.
 _idle = threading.Event()
 _idle.set()
+#: Serialises everything that can mutate at a broker: the ~30 s broker cycle
+#: and an operator emergency flatten take the SAME lock, so a flatten can never
+#: interleave with a cycle on the same account (or share a client with it).
+_cycle_lock = threading.RLock()
+
+#: The broker client of each account, reused across cycles. Building one costs
+#: an exchangeInfo download and a time sync, which used to be paid per account
+#: per cycle. Reuse is only ever for the factory's own client of the SAME
+#: credentials; any doubt rebuilds.
+_DEFAULT_CLIENT_FACTORY = build_client_from_auth
+CLIENT_CACHE_MAX_AGE_SECONDS = 600.
+_clients = {}
+
+
+def _client_key(db, auth):
+    """Identity of the credentials a cached client was built from, or None when
+    a change could not be detected (then nothing is cached)."""
+    version, fingerprint = getattr(auth, "credential_version", None), getattr(auth, "key_fingerprint", None)
+    if version is None and not fingerprint:
+        return None
+    return (getattr(db, "path", None), getattr(auth, "account_id", None), getattr(auth, "user_id", None),
+            str(getattr(auth, "broker_type", "")), str(getattr(auth, "environment", "")),
+            getattr(auth, "base_url", None), version, fingerprint)
+
+
+def invalidate_client(account_id):
+    """Drop an account's cached client (an error, or credentials changed).
+
+    Rate-limit backoff is NOT lost with it: the Binance client keeps that state
+    per venue endpoint for the whole process (limits are per IP), so the
+    rebuilt client -- and every other account's -- still honours a Retry-After
+    and does not touch a banned IP again."""
+    _clients.pop(account_id, None)
+
+
+def account_client(db, account_id, auth, factory=build_client_from_auth):
+    """This account's broker client. Only the production factory's clients are
+    cached; an injected factory (tests, tools) is always called."""
+    key = _client_key(db, auth) if factory is _DEFAULT_CLIENT_FACTORY else None
+    if key is None:
+        return factory(auth)
+    cached = _clients.get(account_id)
+    if cached and cached[0] == key and time.monotonic() - cached[2] < CLIENT_CACHE_MAX_AGE_SECONDS:
+        client = cached[1]
+        # Lineage identity is per call: never inherit the previous cycle's.
+        client._production_intent_identity = None
+        return client
+    _clients.pop(account_id, None)
+    client = factory(auth)
+    _clients[account_id] = (key, client, time.monotonic())
+    return client
 #: Liveness evidence for the runtime supervisor (monotonic seconds).
 _progress = {"loop_started": None, "cycle_started": None, "cycle_completed": None,
              "cycles": 0, "cycles_without_lease": 0, "last_error": None}
@@ -95,29 +146,52 @@ def sync_account(db, account, *, factory=build_client_from_auth, execute=False):
     account = {**account, "environment": env.value.upper(),
                "broker_id": account.get("broker_id", getattr(auth, "broker_type", "binance"))}
     gate = order_submission_gate(env)
-    client = factory(auth)
+    client = account_client(db, account["id"], auth, factory)
+    try:
+        return _sync_with_client(db, account, auth, env, gate, client, factory, execute)
+    except Exception:
+        # Safe invalidation: whatever went wrong, the next cycle starts from a
+        # freshly built client (new time sync, new session, current metadata).
+        invalidate_client(account["id"])
+        raise
+
+
+def _sync_with_client(db, account, auth, env, gate, client, factory, execute):
     client._production_credential_version = getattr(auth, "credential_version", None)
     balance = client.get_balance()
     positions = client.position_risk()
     orders = client.open_orders()
     if not isinstance(balance, dict) or not isinstance(positions, list) or not isinstance(orders, list):
         raise ValueError("BROKER_READ_SHAPE_INVALID")
-    # Reuse canonical position reconciliation; it changes local projections,
-    # never the exchange. Each projection keeps its resolved account provenance.
-    from app.execution.position_reconciliation import parse_broker_positions, reconcile_position_rows, _position_spec
-    with db.connect() as c:
-        bots = c.execute("SELECT id FROM bot_instances WHERE broker_account_id=? AND status='active'",
-                         (account["id"],)).fetchall()
-    reconciliation = []
-    # Multiple bot owners on the same account cannot each claim its full book.
-    if len(bots) == 1:
-        hedge = any(str(p.get("positionSide", "BOTH")).upper() in {"LONG", "SHORT"} for p in positions)
-        reconciliation.append(reconcile_position_rows(db, bot_instance_id=bots[0][0], broker_account_id=account["id"],
-            broker_positions=parse_broker_positions(positions, hedge_mode=hedge),
-            position_mode="HEDGE" if hedge else "ONE_WAY", spec_resolver=lambda s: _position_spec(client, s),
-            execution_mode="broker", broker_environment=env.value.upper().lower()))
-    from app.activation.account_status import refresh_if_stale
-    discovery = refresh_if_stale(db, auth, client_factory=factory)
+    try:
+        # Reuse canonical position reconciliation; it changes local projections,
+        # never the exchange. Each projection keeps its resolved account provenance.
+        from app.execution.position_reconciliation import parse_broker_positions, reconcile_position_rows, _position_spec
+        with db.connect() as c:
+            bots = c.execute("SELECT id FROM bot_instances WHERE broker_account_id=? AND status='active'",
+                             (account["id"],)).fetchall()
+        reconciliation = []
+        # Multiple bot owners on the same account cannot each claim its full book.
+        if len(bots) == 1:
+            hedge = any(str(p.get("positionSide", "BOTH")).upper() in {"LONG", "SHORT"} for p in positions)
+            reconciliation.append(reconcile_position_rows(db, bot_instance_id=bots[0][0], broker_account_id=account["id"],
+                broker_positions=parse_broker_positions(positions, hedge_mode=hedge),
+                position_mode="HEDGE" if hedge else "ONE_WAY", spec_resolver=lambda s: _position_spec(client, s),
+                execution_mode="broker", broker_environment=env.value.upper().lower()))
+        from app.activation.account_status import refresh_if_stale
+        discovery = refresh_if_stale(db, auth, client_factory=factory)
+    except Exception:
+        # A local projection or instrument discovery failed. The account still
+        # fails closed for this cycle (the error is re-raised, no entry is
+        # evaluated) -- but an existing position's protection / fail-safe close
+        # does not depend on either, so that maintenance still gets its turn.
+        if execute:
+            try:
+                from .production_execution import maintain_only
+                maintain_only(db, account, client)
+            except Exception as exc:
+                logger.warning("[CATI_PRODUCTION] position maintenance failed: %s", type(exc).__name__)
+        raise
     now = int(time.time() * 1000)
     result = {**account_identity(account), "status": "SYNCED", "balance": balance, "positions": positions,
               "orders": orders, "discovery": discovery, "reconciliation": reconciliation,
@@ -133,6 +207,8 @@ def sync_account(db, account, *, factory=build_client_from_auth, execute=False):
             result["execution"] = process_account(db, account, client, result)
             result["risk"] = result["execution"].get("risk", result["risk"])
         except Exception as exc:
+            # Same safe invalidation as a failed read: rebuild the client next cycle.
+            invalidate_client(account["id"])
             code = getattr(exc, "reason_code", None)
             if not code and isinstance(exc, ValueError):
                 candidate = str(exc)
@@ -285,15 +361,78 @@ def broker_cycle(db):
     """
     _idle.clear()
     try:
-        from app.ops.runtime_shutdown import stop_requested
-        if not stop_requested():
-            from app.execution.demo_transport_smoke import process_local_request
-            _isolated("demo_transport_request", process_local_request, db)
-            from app.execution.demo_boundary_certification import process_local_request as certify_boundary
-            _isolated("demo_certification_request", certify_boundary, db)
-        sync(db)
+        with _cycle_lock:  # shared with flatten(): one broker-mutating actor at a time
+            from app.ops.runtime_shutdown import stop_requested
+            if not stop_requested():
+                from app.execution.demo_transport_smoke import process_local_request
+                _isolated("demo_transport_request", process_local_request, db)
+                from app.execution.demo_boundary_certification import process_local_request as certify_boundary
+                _isolated("demo_certification_request", certify_boundary, db)
+            sync(db)
     finally:
         _idle.set()
+
+
+class EngineUnavailable(RuntimeError):
+    """The production engine in THIS process cannot act on a broker right now."""
+
+
+#: How long an emergency flatten waits for the cycle in flight to finish.
+FLATTEN_LOCK_WAIT_SECONDS = 60.
+
+
+def flatten(db, *, account_id=None, request_id, factory=build_client_from_auth, lock_wait=FLATTEN_LOCK_WAIT_SECONDS):
+    """Operator emergency flatten of one account or of every execution account.
+
+    Runs under the broker-cycle lock, through the same durable reduce-only
+    close as the fail-safe (``production_execution.flatten_account``). It
+    submits no entry and bypasses no gate. Raises ``EngineUnavailable`` when
+    this process cannot act at all -- it never reports success for nothing.
+    Returns one result per account position (or one failed row per account)."""
+    if not settings.production:
+        raise EngineUnavailable("CATI_PRODUCTION_PROFILE_REQUIRED")
+    if not owner_current(db):
+        # Closes are only ever sent by the process that holds the runtime lease.
+        raise EngineUnavailable("CANONICAL_RUNTIME_LEASE_REQUIRED")
+    accounts = execution_accounts(db)
+    if account_id is not None:
+        accounts = [a for a in accounts if a["id"] == account_id]
+        if not accounts:
+            raise EngineUnavailable("EXECUTION_ACCOUNT_NOT_FOUND")
+    if not accounts:
+        raise EngineUnavailable("BROKER_ACCOUNT_REQUIRED")
+    if not any(order_submission_gate(a["environment"])["enabled"] for a in accounts):
+        raise EngineUnavailable("ORDER_SUBMISSION_DISABLED")
+    if not _cycle_lock.acquire(timeout=lock_wait):
+        raise EngineUnavailable("BROKER_CYCLE_BUSY")
+    try:
+        from .production_execution import ACCOUNT_LEVEL, flatten_account
+        results = []
+        for account in accounts:
+            try:
+                if account["broker_id"].lower() not in {"binance", "bybit", "bingx"}:
+                    # No account-scoped read exists here for these venues.
+                    raise ValueError("EMERGENCY_FLATTEN_UNSUPPORTED_BROKER")
+                auth = resolve_broker_auth(account["id"], account["user_id"], db)
+                env = normalize_environment(auth.environment)
+                if normalize_environment(account["environment"]) != env:
+                    raise ValueError("BROKER_ENVIRONMENT_MISMATCH")
+                scoped = {**account, "environment": env.value.upper()}
+                client = account_client(db, account["id"], auth, factory)
+                client._production_credential_version = getattr(auth, "credential_version", None)
+                results.extend(flatten_account(db, scoped, client, request_id=request_id))
+            except Exception as exc:
+                invalidate_client(account["id"])
+                code = getattr(exc, "reason_code", None)
+                if not code and isinstance(exc, ValueError):
+                    candidate = str(exc)
+                    code = candidate if candidate.replace("_", "").isalnum() and candidate.upper() == candidate else None
+                # Never publish credentials or signed exception URLs.
+                results.append({"account_id": account["id"], "symbol": ACCOUNT_LEVEL, "status": "failed",
+                                "detail": code or type(exc).__name__})
+        return results
+    finally:
+        _cycle_lock.release()
 
 
 def operations_summary(db):

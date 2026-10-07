@@ -14,7 +14,7 @@ The legacy build_exchange_client(context) path is retained for gradual migration
 but will be removed once all callers have been updated.
 """
 from __future__ import annotations
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from app.runner.bot_context import BotRunContext
 from app.exchange.binance.client import BinanceFuturesClient
@@ -25,6 +25,10 @@ from app.exchange.binance.adapter import BinanceAdapter
 from app.exchange.oanda.adapter import OandaAdapter
 from app.exchange.mt_bridge.client import MTBridgeClient
 from app.exchange.mt_bridge.adapter import MetaTraderBridgeAdapter
+
+if TYPE_CHECKING:  # annotation-only names; importing them at runtime would be circular
+    from shared_lib.broker.resolver import BrokerAuth
+    from app.exchange.interface import ExchangeClient
 
 
 def build_exchange_client_from_auth(auth: "BrokerAuth") -> Any:  # type: ignore[name-defined]

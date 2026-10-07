@@ -659,6 +659,10 @@ class PositionManager:
             return False
 
         if "DUPLICATE_4130" in {str(sl_order_id or ""), str(tp_order_id or "")}:
+            # `_log` was undefined here: the refusal raised NameError instead of
+            # returning False. Same logger the rest of this module uses.
+            import logging
+            _log = logging.getLogger(__name__)
             _log.critical(
                 "[LIFECYCLE_TRUTH] %s: refused placeholder DUPLICATE_4130 "
                 "as protection order evidence (status=%s reason=%s)",

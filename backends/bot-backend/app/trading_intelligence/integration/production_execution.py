@@ -10,6 +10,7 @@ from datetime import datetime, timezone, time as day_time
 from zoneinfo import ZoneInfo
 import json
 import hashlib
+import logging
 import math
 import time
 
@@ -17,6 +18,8 @@ from app.core.config import settings
 from shared_lib.broker.environment import normalize_environment
 from shared_lib.core.production import order_submission_gate
 from .residual_prospective import FAMILY, REGISTRY_HASH, SOURCE, Q, owner_current, frozen_definition
+
+logger = logging.getLogger(__name__)
 
 _boundaries = {}
 _TRADING_INCOME = {"REALIZED_PNL", "COMMISSION", "FUNDING_FEE", "INSURANCE_CLEAR", "COMMISSION_REBATE",
@@ -483,6 +486,270 @@ def process_account(db, account, client, snapshot, *, now_ms=None, boundary_fact
     return result
 
 
+def _native_protection_snapshot(db, account, client, snapshot, row):
+    """Add the account's native conditional (protection) orders to the snapshot."""
+    if account["broker_id"].lower() == "binance":
+        symbols = {p["symbol"] for p in snapshot["positions"] if abs(float(p["positionAmt"])) > 0}
+        if row and row["selected_symbol"]:
+            symbols.add(row["selected_symbol"])
+        with db.connect() as c:
+            symbols.update(r[0] for r in c.execute("SELECT e.symbol FROM pending_entries e JOIN bot_instances b ON b.id=e.bot_id WHERE b.broker_account_id=? AND e.state!='OPEN_FAILED'", (account['id'],)))
+            if c.execute("SELECT 1 FROM sqlite_master WHERE name='cati_production_protection'").fetchone():
+                symbols.update(json.loads(r[0])["symbol"] for r in c.execute(
+                    "SELECT document FROM cati_production_protection WHERE account_id=?", (account["id"],)))
+        for symbol in sorted(symbols):
+            protective = client.get_algo_orders(symbol, raise_on_error=True)
+            if not isinstance(protective, list):
+                raise ValueError("NATIVE_PROTECTION_READ_UNAVAILABLE")
+            snapshot["orders"].extend(protective)
+
+
+def open_lineage(db, account_id):
+    """Execution lineage of this account that still needs maintenance: the bots
+    behind unresolved attempts / open positions / unresolved reservations, and
+    whether a close is pending. Local reads only."""
+    from app.trading_intelligence.contracts.execution import POSITION_EXISTS
+    # A position may exist, or it is unknown whether one does.
+    live = set(POSITION_EXISTS) | {'PENDING_SUBMIT', 'SUBMIT_UNKNOWN'}
+    bots, pending_close = [], False
+    with db.connect() as c:
+        tables = {r[0] for r in c.execute("SELECT name FROM sqlite_master WHERE type='table' AND name IN "
+            "('cati_execution_attempts','cati_production_closes','cati_portfolio_reservations')")}
+        if 'cati_execution_attempts' in tables:
+            latest = {}
+            for r in c.execute("SELECT execution_attempt_id,status,bot_instance_id FROM cati_execution_attempts "
+                               "WHERE broker_account_id=? ORDER BY recorded_at, sequence", (account_id,)):
+                latest[r[0]] = (r[1], r[2])
+            bots += [bot for status, bot in latest.values() if status in live]
+        if 'cati_portfolio_reservations' in tables:
+            bots += [r[0] for r in c.execute("SELECT bot_instance_id FROM cati_portfolio_reservations "
+                                             "WHERE broker_account_id=? AND status='RESOLUTION_PENDING'", (account_id,))]
+        if 'cati_production_closes' in tables:
+            pending_close = bool(c.execute("SELECT 1 FROM cati_production_closes WHERE account_id=? AND status!='CLOSED' "
+                                           "LIMIT 1", (account_id,)).fetchone())
+    return {'bots': list(dict.fromkeys(b for b in bots if b)), 'pending_close': pending_close}
+
+
+def maintain_account(db, account, client, bots, now, boundary_factory=boundary_for):
+    """Position-safety maintenance of EXISTING lineage only: resolve unknown
+    submits, repair protection, run the fail-safe / horizon close. It never
+    evaluates or submits an entry and needs no entry precondition (no account
+    risk, no auto-trading consent, no active bot). Returns None when the
+    account has nothing to maintain; raises -- after doing everything it
+    could -- when any part failed, so the caller fails closed."""
+    lineage = open_lineage(db, account['id'])
+    if not lineage['bots'] and not lineage['pending_close']:
+        return None
+    # The boundary only carries this account's adapter and scope: any bot of the
+    # account builds it. Prefer the single active bot, then the lineage's own
+    # bot (it may be paused or stopped -- its position is still ours to manage).
+    candidates = [bots[0]] if len(bots) == 1 else []
+    candidates += [{'id': b} for b in lineage['bots'] if b not in {c['id'] for c in candidates}]
+    if not candidates:
+        with db.connect() as c:
+            candidates = [{'id': r[0]} for r in c.execute(
+                "SELECT id FROM bot_instances WHERE broker_account_id=? ORDER BY status='active' DESC, id", (account['id'],))]
+    boundary = bot_id = build_error = None
+    for bot in candidates:
+        try:
+            boundary, bot_id = boundary_factory(db, account, bot, client), bot['id']
+            break
+        except Exception as exc:
+            build_error = build_error or exc
+    if boundary is None:
+        raise build_error or ValueError('MAINTENANCE_BOUNDARY_UNAVAILABLE')
+    done = {'boundary': boundary, 'bot_id': bot_id, 'recovery': [], 'execution_history': []}
+    failure = None
+    try:
+        done['recovery'] = [asdict(r) for r in boundary.recover_pending(now_ms=now)]
+    except Exception as exc:
+        failure = exc  # positions are still reconciled below
+    try:
+        done['execution_history'] = reconcile_executions(db, boundary, client, now)
+    except Exception as exc:
+        done['execution_history'] = getattr(exc, 'execution_history', [])
+        failure = failure or exc
+    if failure is not None:
+        failure.maintenance = done
+        raise failure
+    return done
+
+
+def maintain_only(db, account, client, *, now_ms=None, boundary_factory=boundary_for):
+    """Maintenance for a cycle that cannot evaluate entries at all (an auxiliary
+    step of the account sync failed). Same authority checks as a full cycle."""
+    initialize(db)
+    if not settings.production:
+        raise ValueError("CATI_PRODUCTION_PROFILE_REQUIRED")
+    if not owner_current(db):
+        raise ValueError("CANONICAL_RUNTIME_LEASE_REQUIRED")
+    if account["broker_id"].lower() not in {"binance", "bybit", "bingx"}:
+        return None
+    with db.connect() as c:
+        bots = [dict(b) for b in c.execute("SELECT * FROM bot_instances WHERE broker_account_id=? AND status='active'", (account["id"],))]
+    return maintain_account(db, account, client, bots, int(time.time()*1000) if now_ms is None else now_ms, boundary_factory)
+
+
+#: ``symbol`` of a flatten result row that describes a whole account, not one
+#: position (every result field is always a string for API consumers).
+ACCOUNT_LEVEL = "*"
+#: ``detail`` prefix of every ``submitted`` flatten row: THIS request sent a
+#: close order and the venue acknowledged it. The API counts a ``submitted``
+#: row as success only with this evidence.
+SUBMITTED_DETAIL_PREFIX = "CLOSE_ORDER_ACKNOWLEDGED"
+
+
+def _reason(exc):
+    """A stable reason code for an exception; never its (possibly signed) text."""
+    code = getattr(exc, 'reason_code', None)
+    if not code and isinstance(exc, ValueError) and str(exc).replace('_','').isalnum() and str(exc).upper() == str(exc):
+        code = str(exc)
+    return code or type(exc).__name__
+
+
+def flatten_account(db, account, client, *, request_id, now_ms=None, boundary_factory=boundary_for):
+    """Operator emergency flatten of ONE account: every open position is closed
+    with the SAME durable reduce-only close the fail-safe uses (same gates, same
+    read-back, same bounded retry), then the normal reconciliation cancels the
+    protection legs of what is confirmed flat. Never submits an entry. The
+    caller holds the runtime cycle lock and has already set the kill switch.
+
+    Returns one result per open symbol:
+
+    * ``closed``       the close order is FILLED and the broker reports flat
+    * ``no_position``  the broker reports flat
+    * ``submitted``    THIS request sent a close order and the venue acknowledged
+                       it; only the fill / flat confirmation is outstanding
+    * ``failed``       everything else, with a precise ``detail`` -- including a
+                       close that an EARLIER request or cycle sent and that is
+                       still unconfirmed: this request did nothing about it.
+
+    Which durable close intent is used for a symbol, in this order:
+
+    1. the lineage of the trade plan that opened the position (so this close IS
+       the fail-safe close: same durable row, same client ids);
+    2. any close intent of this account and symbol that is still open (an
+       earlier emergency request, or a lineage whose plan cannot be read);
+    3. a new ``EMERGENCY|<request id>`` intent.
+
+    The next one is tried only when the previous one sent nothing AND its
+    latest attempt is PROVEN not to be working at the venue (refused, absent,
+    terminal, exhausted or waiting out a retry backoff). While an attempt may
+    still be live, nothing further is sent, so closes are never stacked; at
+    most one close order per symbol is sent by one request. (Stacking would
+    still be exposure-safe -- every close is reduce-only -- but it is bounded.)"""
+    from app.execution.production_close import close_position, EMERGENCY_IDENTITY_PREFIX
+    from app.trading_intelligence.contracts.execution import NO_POSITION
+    from app.trading_intelligence.evidence.stores import ExecutionAttemptStore
+    from app.trading_intelligence.trade_plan.evidence_store import TradePlanEvidenceStore
+    now = int(time.time()*1000) if now_ms is None else now_ms
+    initialize(db)
+    if not settings.production:
+        raise ValueError("CATI_PRODUCTION_PROFILE_REQUIRED")
+    if not owner_current(db):
+        raise ValueError("CANONICAL_RUNTIME_LEASE_REQUIRED")
+    environment = normalize_environment(account["environment"]).value.upper()
+    if normalize_environment(client.broker_environment).value.upper() != environment:
+        raise ValueError("BROKER_ENVIRONMENT_MISMATCH")
+    positions = client.position_risk()
+    if not isinstance(positions, list):
+        raise ValueError("BROKER_READ_SHAPE_INVALID")
+    symbols = list(dict.fromkeys(p["symbol"] for p in positions if abs(float(p["positionAmt"])) > 0))
+    base = {"account_id": account["id"]}
+    if not symbols:
+        return [{**base, "symbol": ACCOUNT_LEVEL, "status": "no_position", "detail": "BROKER_REPORTS_FLAT"}]
+    if account["broker_id"].lower() != "binance":
+        # The durable close speaks this venue's order API only: an open position
+        # elsewhere is reported as NOT closed, never silently skipped.
+        return [{**base, "symbol": s, "status": "failed", "detail": "EMERGENCY_FLATTEN_UNSUPPORTED_BROKER"} for s in symbols]
+    gate = order_submission_gate(environment)
+    if not gate["enabled"]:
+        # The close path's own gate; reported, never bypassed.
+        return [{**base, "symbol": s, "status": "failed", "detail": gate["reason"]} for s in symbols]
+    client._production_db, client._production_account_id = db, account["id"]
+    # A position opened by a trade plan is closed under that plan's identity, so
+    # this close IS the fail-safe close (same durable row, same client id).
+    # Discovery is best effort per row: one unreadable attempt or plan must not
+    # fail the whole account's flatten -- that symbol falls through to an open
+    # close intent or to the emergency identity.
+    lineage, plans, latest = {}, TradePlanEvidenceStore(db), {}
+    try:
+        for attempt in ExecutionAttemptStore(db).for_account(account["id"]):
+            latest[attempt["execution_attempt_id"]] = attempt
+    except Exception as exc:
+        latest = {}
+        logger.warning("[EMERGENCY_FLATTEN] account=%s execution lineage unreadable (%s); emergency identity is used",
+                       account["id"], type(exc).__name__)
+    for attempt in latest.values():
+        try:
+            if attempt["status"] in NO_POSITION or attempt["status"] == "POSITION_CLOSED":
+                continue
+            plan = plans.load_plan(account["id"], attempt["trade_plan_id"])
+            if plan is not None and (plan.user_id, plan.broker_account_id) == (account["user_id"], account["id"]):
+                lineage[plan.instrument_key.venue_symbol] = f"{plan.trade_plan_id}|{plan.trade_plan_hash}"
+        except Exception as exc:
+            logger.warning("[EMERGENCY_FLATTEN] account=%s lineage of attempt %s unreadable (%s); skipped",
+                           account["id"], attempt.get("execution_attempt_id") if isinstance(attempt, dict) else "?",
+                           type(exc).__name__)
+
+    def open_intents(symbol):
+        """Identities of this account's close intents for ``symbol`` that are not
+        CLOSED, oldest first. Local read; unreadable means none."""
+        try:
+            with db.connect() as c:
+                if not c.execute("SELECT 1 FROM sqlite_master WHERE name='cati_production_closes'").fetchone():
+                    return []
+                return [r[0] for r in c.execute("SELECT identity FROM cati_production_closes WHERE account_id=? "
+                                                "AND symbol=? AND status!='CLOSED' ORDER BY rowid", (account["id"], symbol))]
+        except Exception as exc:
+            logger.warning("[EMERGENCY_FLATTEN] account=%s open close intents unreadable (%s)", account["id"],
+                           type(exc).__name__)
+            return []
+
+    def close_as(identity, symbol):
+        """(status, detail, trace) of one durable close intent."""
+        client._production_intent_identity = identity
+        trace = {}
+        try:
+            order = close_position(client, symbol, trace=trace)
+        except Exception as exc:
+            code = _reason(exc)
+            state = trace.get("state")
+            detail = code if not state or state == code else f"{code}:{state}"
+            # "submitted" is evidence about THIS request only: it sent a close
+            # order, the venue acknowledged it, and that order is not known to
+            # be dead. A close some earlier call sent is never reported as such.
+            if trace.get("acknowledged") and not trace.get("dead"):
+                return "submitted", f"{SUBMITTED_DETAIL_PREFIX}:{detail}", trace
+            return "failed", detail, trace
+        flat = isinstance(order, dict) and order.get("status") == "no_position"
+        return ("no_position", "BROKER_REPORTS_FLAT", trace) if flat else ("closed", "CLOSE_FILLED_AND_FLAT_CONFIRMED", trace)
+
+    results = []
+    emergency = f"{EMERGENCY_IDENTITY_PREFIX}{request_id}"
+    for symbol in symbols:
+        candidates = list(dict.fromkeys(i for i in [lineage.get(symbol), *open_intents(symbol), emergency] if i))
+        status = detail = None
+        for identity in candidates:
+            status, detail, trace = close_as(identity, symbol)
+            # Move on to the next intent only when this one sent nothing and
+            # cannot still be working at the venue (see the docstring).
+            if status != "failed" or trace.get("posted") or not trace.get("not_working"):
+                break
+        results.append({**base, "symbol": symbol, "status": status, "detail": detail})
+    # Cancel the now-orphaned protection legs the way the normal close path does.
+    try:
+        with db.connect() as c:
+            bots = [dict(b) for b in c.execute("SELECT * FROM bot_instances WHERE broker_account_id=? AND status='active'", (account["id"],))]
+        maintain_account(db, account, client, bots, now, boundary_factory)
+    except Exception as exc:
+        cleanup = str(exc) if isinstance(exc, ValueError) and str(exc).replace('_','').isalnum() else type(exc).__name__
+        for item in results:
+            if item["status"] == "closed":
+                item["detail"] += f"; PROTECTION_CLEANUP_PENDING:{cleanup}"
+    return results
+
+
 def _process_account(db, account, client, snapshot, *, now_ms=None, boundary_factory=boundary_for, evaluation):
     from app.trading_intelligence.execution.boundary import AccountState
     from app.trading_intelligence.trade_plan.evidence_store import TradePlanEvidenceStore
@@ -515,35 +782,58 @@ def _process_account(db, account, client, snapshot, *, now_ms=None, boundary_fac
         from shared_lib.broker.auto_trading import authorization
         result["auto_trading"] = authorization(c, account, bots)
     result['bot_instance_id'] = bots[0]['id'] if len(bots) == 1 else None
-    if any(b.get("user_id") != account["user_id"] for b in bots):
+    mismatch = any(b.get("user_id") != account["user_id"] for b in bots)
+    supported = account["broker_id"].lower() in {"binance", "bybit", "bingx"}
+    # ── Position safety first ────────────────────────────────────────────────
+    # Recovery and reconciliation of EXISTING attempts/positions (protection
+    # repair, fail-safe close, horizon close) used to run only after
+    # account_risk() succeeded and only with exactly one active bot: a paused
+    # bot, a second bot or one unreadable income page left an open position
+    # unmanaged. They now run first, for any account that has such lineage, and
+    # need nothing that gates an ENTRY. Entry evaluation below is unchanged.
+    snapshot_error = maintenance = None
+    if supported:
+        if not mismatch:
+            try:
+                # The same pre-maintenance order snapshot entry evaluation always used.
+                _native_protection_snapshot(db, account, client, snapshot, row)
+            except Exception as exc:
+                snapshot_error = exc  # raised below, after maintenance had its turn
+        try:
+            maintenance = maintain_account(db, account, client, bots, now, boundary_factory)
+        except Exception as exc:
+            done = getattr(exc, 'maintenance', None) or {}
+            result.update(recovery=done.get('recovery', []), execution_history=done.get('execution_history', []))
+            if not mismatch and snapshot_error is None:
+                try:
+                    # Keep the account-wide loss latch and risk evidence current.
+                    result["risk"] = account_risk(db, account, client, snapshot["positions"], snapshot["orders"], bots, now)
+                except Exception:
+                    pass
+            raise  # fail closed: no entry is evaluated after a maintenance failure
+        if maintenance:
+            result.update(recovery=maintenance['recovery'], execution_history=maintenance['execution_history'])
+        if snapshot_error is not None:
+            raise snapshot_error
+    if mismatch:
         result["reason"] = "BROKER_ACCOUNT_OWNERSHIP_MISMATCH"
-    elif account["broker_id"].lower() not in {"binance", "bybit", "bingx"}:
+    elif not supported:
         result["reason"] = "DEMO_CAPABILITY_UNAVAILABLE" if environment == "DEMO" else "EXECUTION_ADAPTER_UNVALIDATED"
         result["missing_capabilities"] = ["COMPLETE_ACCOUNT_INCOME_HISTORY", "DURABLE_PROTECTION_READ_BACK"]
     else:
         # Multiple owners must never each claim the account. Resolve a unique
         # execution bot; risk still includes ALL broker and bot activity.
-        if account["broker_id"].lower() == "binance":
-            symbols = {p["symbol"] for p in snapshot["positions"] if abs(float(p["positionAmt"])) > 0}
-            if row and row["selected_symbol"]:
-                symbols.add(row["selected_symbol"])
-            with db.connect() as c:
-                symbols.update(r[0] for r in c.execute("SELECT e.symbol FROM pending_entries e JOIN bot_instances b ON b.id=e.bot_id WHERE b.broker_account_id=? AND e.state!='OPEN_FAILED'", (account['id'],)))
-                if c.execute("SELECT 1 FROM sqlite_master WHERE name='cati_production_protection'").fetchone():
-                    symbols.update(json.loads(r[0])["symbol"] for r in c.execute(
-                        "SELECT document FROM cati_production_protection WHERE account_id=?", (account["id"],)))
-            for symbol in sorted(symbols):
-                protective = client.get_algo_orders(symbol, raise_on_error=True)
-                if not isinstance(protective, list):
-                    raise ValueError("NATIVE_PROTECTION_READ_UNAVAILABLE")
-                snapshot["orders"].extend(protective)
         result["risk"] = account_risk(db, account, client, snapshot["positions"], snapshot["orders"], bots, now)
         if len(bots) != 1:
             result["reason"] = "ACCOUNT_EXECUTION_OWNER_AMBIGUOUS" if bots else "AUTO_TRADING_DISABLED"
         else:
-            boundary = boundary_factory(db, account, bots[0], client)
-            result["recovery"] = [asdict(r) for r in boundary.recover_pending(now_ms=now)]
-            result["execution_history"] = reconcile_executions(db, boundary, client, now)
+            boundary = (maintenance['boundary'] if maintenance and maintenance['bot_id'] == bots[0]['id']
+                        else boundary_factory(db, account, bots[0], client))
+            if not maintenance:
+                # Nothing existed to maintain above; these are then no-ops kept
+                # in their original place.
+                result["recovery"] = [asdict(r) for r in boundary.recover_pending(now_ms=now)]
+                result["execution_history"] = reconcile_executions(db, boundary, client, now)
             from .production_portfolio import execution_portfolio, reconcile_confirmed_intents
             result['intent_reconciliation'] = reconcile_confirmed_intents(db, account, snapshot)
             result['execution_portfolio'] = execution_portfolio(db, account, snapshot, result['execution_history'], now)
@@ -718,13 +1008,24 @@ def reconcile_executions(db, boundary, client, now):
         if c.execute("SELECT 1 FROM sqlite_master WHERE name='cati_production_closes'").fetchone():
             pending_closes = [dict(r) for r in c.execute(
                 "SELECT * FROM cati_production_closes WHERE account_id=? AND status!='CLOSED'", (account,))]
+    # One position's problem must not stop the rest of the account's maintenance:
+    # every pending close and every attempt is processed, each failure is kept,
+    # and the first is raised only at the end (the account still fails closed:
+    # the caller evaluates no entry after an exception from here).
+    failures = []
+    from app.execution.production_close import close_position, EMERGENCY_IDENTITY_PREFIX
     for pending in pending_closes:
-        plan = plans.load_plan(account,pending['identity'].split('|')[0])
-        if plan is None or (plan.user_id,plan.broker_account_id) != boundary.account_scope:
-            raise ValueError('CLOSE_ACCOUNT_OWNERSHIP_UNCONFIRMED')
-        client._production_intent_identity = pending['identity']
-        from app.execution.production_close import close_position
-        close_position(client,pending['symbol'])
+        try:
+            # An operator emergency flatten carries no trade-plan lineage; its row
+            # is already scoped to this account by the query above.
+            if not pending['identity'].startswith(EMERGENCY_IDENTITY_PREFIX):
+                plan = plans.load_plan(account,pending['identity'].split('|')[0])
+                if plan is None or (plan.user_id,plan.broker_account_id) != boundary.account_scope:
+                    raise ValueError('CLOSE_ACCOUNT_OWNERSHIP_UNCONFIRMED')
+            client._production_intent_identity = pending['identity']
+            close_position(client,pending['symbol'])
+        except Exception as exc:
+            failures.append(exc)
     latest = {}
     for attempt in attempts.for_account(account):
         if attempt["user_id"] == boundary.account_scope[0]:
@@ -734,12 +1035,32 @@ def reconcile_executions(db, boundary, client, now):
         from app.trading_intelligence.contracts.execution import NO_POSITION
         if attempt['status'] in NO_POSITION or attempt['status'] == 'POSITION_CLOSED':
             continue
-        plan = plans.load_plan(account, attempt["trade_plan_id"])
+        try:
+            plan = plans.load_plan(account, attempt["trade_plan_id"])
+        except Exception as exc:
+            # One unreadable plan row: kept as this account's failure (it still
+            # fails closed) without skipping every other position's maintenance.
+            failures.append(exc)
+            continue
         if plan is None or (plan.user_id, plan.broker_account_id) != boundary.account_scope:
             continue
         payload = attempt["payload"]
         if not payload.get("client_order_id") and not payload.get("broker_order_id"):
             continue
+        try:
+            _reconcile_attempt(db, boundary, client, now, plans, attempts, account, attempt, plan, payload, history)
+        except Exception as exc:
+            failures.append(exc)
+    if failures:
+        # What was reconciled stays available to the caller; the error is unchanged.
+        failures[0].execution_history = history
+        raise failures[0]
+    return history
+
+
+def _reconcile_attempt(db, boundary, client, now, plans, attempts, account, attempt, plan, payload, history):
+    """Order/fill/protection truth of ONE persisted attempt (see reconcile_executions)."""
+    if True:  # body kept at its original indentation so the change stays reviewable
         order = boundary.adapter.query_order(plan.instrument_key.venue_symbol,
             broker_order_id=payload.get("broker_order_id"), client_order_id=payload.get("client_order_id"))
         position = boundary.adapter.reconcile_position(plan.instrument_key.venue_symbol)
@@ -795,7 +1116,10 @@ def reconcile_executions(db, boundary, client, now):
             identity = f'{plan.trade_plan_id}|{plan.trade_plan_hash}'
             with db.connect() as c:
                 closed = c.execute("SELECT 1 FROM sqlite_master WHERE name='cati_production_closes'").fetchone()
-                closed = closed and c.execute("SELECT 1 FROM cati_production_closes WHERE account_id=? AND identity=? AND status='CLOSED'",(account,identity)).fetchone()
+                closed = closed and c.execute("SELECT document FROM cati_production_closes WHERE account_id=? AND identity=? AND status='CLOSED'",(account,identity)).fetchone()
+            # A close intent retired because the account was already flat carries
+            # no confirmed close order: it is not evidence of an exit by itself.
+            closed = bool(closed and json.loads(closed[0]).get('order'))
             entry_time = max((int(f.get('time',now)) for f in fills),default=now)
             exits = [f for f in all_fills if int(f.get('time',0)) >= entry_time
                      and f.get('side') == ('SELL' if plan.side == 'LONG' else 'BUY')]
@@ -820,4 +1144,3 @@ def reconcile_executions(db, boundary, client, now):
                 boundary._resolve(plan,'CONSUMED',now,'BROKER_CONFIRMED_ENTRY_AND_CLOSE')
                 item.update(lifecycle='CLOSED',exit_fills=exits)
         history.append(item)
-    return history

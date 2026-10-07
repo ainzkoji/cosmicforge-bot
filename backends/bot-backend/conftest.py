@@ -117,6 +117,19 @@ def _reset_cached_trace_recorder():
         pass
 
 
+@pytest.fixture(autouse=True)
+def _reset_binance_rate_limit_state():
+    """No test inherits another test's rate-limit backoff or sleep budget.
+
+    The Binance client keeps that state per venue endpoint for the whole
+    process (limits are per IP), so without this a test that provokes a 429
+    would make every later test's reads of the same endpoint fail."""
+    module = sys.modules.get("app.exchange.binance.client")  # never imports the application
+    if module is not None and hasattr(module, "reset_rate_limit_state"):
+        module.reset_rate_limit_state()
+    yield
+
+
 # ── 3. Live order transport guard ────────────────────────────────────────────
 
 

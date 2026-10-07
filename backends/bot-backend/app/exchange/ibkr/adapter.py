@@ -71,7 +71,8 @@ class IBKRAdapter(ExchangeClient):
         # Client instance (session will be managed per-call)
         self._client: Optional[IBKRClient] = None
         
-        logger.info(f"IBKRAdapter initialized for base_url={base_url}")
+        # `base_url` does not exist in bridge mode (NameError on every construction).
+        logger.info(f"IBKRAdapter initialized for host={host} port={port}")
     
     @property
     def capabilities(self) -> BrokerCapabilities:
