@@ -7,6 +7,10 @@ on:
     branches: [ "main" ]
   workflow_dispatch:
 
+permissions:
+  contents: read
+  pull-requests: write
+
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
@@ -41,7 +45,14 @@ jobs:
       run: >
         ruff check backends/bot-backend/app backends/user-backend/app
         backends/admin-backend/app backends/shared/shared_lib
-        --select E9,F63,F7,F82 --output-format=github
+        --select E9,F63,F7,F82 --output-format=concise | tee "$RUNNER_TEMP/ruff.log"
+      shell: bash -o pipefail {0}
+    - name: Post failure summary to the pull request
+      if: failure() && github.event_name == 'pull_request'
+      env:
+        GITHUB_TOKEN: ${{ github.token }}
+        PR_NUMBER: ${{ github.event.pull_request.number }}
+      run: python3 "$GITHUB_WORKSPACE/.github/scripts/ci_report.py" "Python lint" "$RUNNER_TEMP/ruff.log"
 
   bot-backend-tests:
     name: Bot backend tests
@@ -64,7 +75,13 @@ jobs:
     - name: Point tests at a throwaway database
       run: echo "DATABASE_URL=sqlite:///$RUNNER_TEMP/cosmicforge-ci-bot.db" >> "$GITHUB_ENV"
     - name: Run tests
-      run: python -m pytest backends/bot-backend/tests -q --tb=short -p no:cacheprovider
+      run: python -m pytest backends/bot-backend/tests -q --tb=short -p no:cacheprovider --junitxml="$RUNNER_TEMP/bot.xml"
+    - name: Post failure summary to the pull request
+      if: failure() && github.event_name == 'pull_request'
+      env:
+        GITHUB_TOKEN: ${{ github.token }}
+        PR_NUMBER: ${{ github.event.pull_request.number }}
+      run: python3 "$GITHUB_WORKSPACE/.github/scripts/ci_report.py" "Bot backend tests" "$RUNNER_TEMP/bot.xml"
 
   user-backend-tests:
     name: User backend tests
@@ -88,7 +105,13 @@ jobs:
       run: echo "DATABASE_URL=sqlite:///$RUNNER_TEMP/cosmicforge-ci-user.db" >> "$GITHUB_ENV"
     - name: Run tests
       working-directory: backends/user-backend
-      run: python -m pytest tests -q --tb=short -p no:cacheprovider
+      run: python -m pytest tests -q --tb=short -p no:cacheprovider --junitxml="$RUNNER_TEMP/user.xml"
+    - name: Post failure summary to the pull request
+      if: failure() && github.event_name == 'pull_request'
+      env:
+        GITHUB_TOKEN: ${{ github.token }}
+        PR_NUMBER: ${{ github.event.pull_request.number }}
+      run: python3 "$GITHUB_WORKSPACE/.github/scripts/ci_report.py" "User backend tests" "$RUNNER_TEMP/user.xml"
 
   admin-and-shared-tests:
     name: Admin backend, shared library and root unit tests
@@ -114,15 +137,21 @@ jobs:
       run: echo "DATABASE_URL=sqlite:///$RUNNER_TEMP/cosmicforge-ci-root.db" >> "$GITHUB_ENV"
     - name: Admin backend tests
       if: always()
-      run: python -m pytest backends/admin-backend/tests -q --tb=short -p no:cacheprovider
+      run: python -m pytest backends/admin-backend/tests -q --tb=short -p no:cacheprovider --junitxml="$RUNNER_TEMP/admin.xml"
     - name: Shared library tests
       if: always()
-      run: python -m pytest backends/shared/tests -q --tb=short -p no:cacheprovider
+      run: python -m pytest backends/shared/tests -q --tb=short -p no:cacheprovider --junitxml="$RUNNER_TEMP/shared.xml"
     # tests/integration needs both backends running on localhost and is not
     # part of the default run; see tests/integration/README.md.
     - name: Root unit tests
       if: always()
-      run: python -m pytest tests -q --tb=short -p no:cacheprovider --ignore=tests/integration
+      run: python -m pytest tests -q --tb=short -p no:cacheprovider --ignore=tests/integration --junitxml="$RUNNER_TEMP/root.xml"
+    - name: Post failure summary to the pull request
+      if: failure() && github.event_name == 'pull_request'
+      env:
+        GITHUB_TOKEN: ${{ github.token }}
+        PR_NUMBER: ${{ github.event.pull_request.number }}
+      run: python3 "$GITHUB_WORKSPACE/.github/scripts/ci_report.py" "Admin, shared and root tests" "$RUNNER_TEMP/admin.xml" "$RUNNER_TEMP/shared.xml" "$RUNNER_TEMP/root.xml"
 
   frontend-user:
     name: User frontend (lint, test, build)
@@ -139,13 +168,22 @@ jobs:
         cache-dependency-path: frontends/user-frontend/package-lock.json
     - run: npm ci
     - name: Lint
-      run: npm run lint
+      shell: bash -o pipefail {0}
+      run: npm run lint 2>&1 | tee "$RUNNER_TEMP/lint.log"
     - name: Unit tests
       if: always()
-      run: npm test
+      shell: bash -o pipefail {0}
+      run: npm test 2>&1 | tee "$RUNNER_TEMP/test.log"
     - name: Build
       if: always()
-      run: npm run build
+      shell: bash -o pipefail {0}
+      run: npm run build 2>&1 | tee "$RUNNER_TEMP/build.log"
+    - name: Post failure summary to the pull request
+      if: failure() && github.event_name == 'pull_request'
+      env:
+        GITHUB_TOKEN: ${{ github.token }}
+        PR_NUMBER: ${{ github.event.pull_request.number }}
+      run: python3 "$GITHUB_WORKSPACE/.github/scripts/ci_report.py" "Frontend (${{ github.job }})" "$RUNNER_TEMP/build.log" "$RUNNER_TEMP/test.log" "$RUNNER_TEMP/lint.log"
 
   frontend-admin:
     name: Admin frontend (lint, test, build)
@@ -162,10 +200,19 @@ jobs:
         cache-dependency-path: frontends/admin-frontend/package-lock.json
     - run: npm ci
     - name: Lint
-      run: npm run lint
+      shell: bash -o pipefail {0}
+      run: npm run lint 2>&1 | tee "$RUNNER_TEMP/lint.log"
     - name: Unit tests
       if: always()
-      run: npm test
+      shell: bash -o pipefail {0}
+      run: npm test 2>&1 | tee "$RUNNER_TEMP/test.log"
     - name: Build
       if: always()
-      run: npm run build
+      shell: bash -o pipefail {0}
+      run: npm run build 2>&1 | tee "$RUNNER_TEMP/build.log"
+    - name: Post failure summary to the pull request
+      if: failure() && github.event_name == 'pull_request'
+      env:
+        GITHUB_TOKEN: ${{ github.token }}
+        PR_NUMBER: ${{ github.event.pull_request.number }}
+      run: python3 "$GITHUB_WORKSPACE/.github/scripts/ci_report.py" "Frontend (${{ github.job }})" "$RUNNER_TEMP/build.log" "$RUNNER_TEMP/test.log" "$RUNNER_TEMP/lint.log"
