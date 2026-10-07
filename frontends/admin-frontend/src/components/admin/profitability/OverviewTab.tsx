@@ -1,6 +1,6 @@
 import React from "react";
 import {
-    Activity, BarChart3, CheckCircle2, AlertTriangle,
+    Activity, BarChart3,
     Percent, TrendingDown, TrendingUp, Wallet,
 } from "lucide-react";
 import type { ProfitabilityReportResponse } from "@/api/admin";

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Activity, BarChart2, AlertCircle, RefreshCw, ChevronDown } from "lucide-react";
+import { Activity, BarChart2, AlertCircle, RefreshCw } from "lucide-react";
 import { useRecentReactionsQuery, useReactionsForEventQuery, useEventSnapshotsQuery } from "@/hooks/useEventReaction";
 import { useUpcomingEventsQuery } from "@/hooks/useEventCalendar";
 import { EventReactionCard } from "@/components/admin/events/EventReactionCard";

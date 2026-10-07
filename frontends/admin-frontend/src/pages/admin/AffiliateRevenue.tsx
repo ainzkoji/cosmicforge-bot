@@ -7,7 +7,6 @@ import {
     CheckCircle2,
     ChevronDown,
     Loader2,
-    Link2,
 } from "lucide-react";
 import {
     getAffiliateSettings,
@@ -180,7 +179,9 @@ export default function AffiliateRevenue() {
 
     function handleSave() {
         setSaveStatus("idle");
-        const { id: _id, updated_at: _ua, ...payload } = form as any;
+        const payload = { ...(form as any) };
+        delete payload.id;
+        delete payload.updated_at;
         mutation.mutate(payload);
     }
 

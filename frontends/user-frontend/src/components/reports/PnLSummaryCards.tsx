@@ -1,7 +1,7 @@
 import React from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { ReportsAPI, type PnLSummaryResponse, type TradeStatsResponse } from '@/api/reports';
-import { DollarSign, TrendingUp, TrendingDown, Activity } from 'lucide-react';
+import { DollarSign, TrendingUp, Activity } from 'lucide-react';
 
 interface PnLSummaryCardsProps {
     brokerAccountId?: string;

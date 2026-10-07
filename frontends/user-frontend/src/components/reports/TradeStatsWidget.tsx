@@ -1,7 +1,6 @@
 import React from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { ReportsAPI, type TradeStatsResponse } from '@/api/reports';
-import { ArrowUp, ArrowDown, Minus } from 'lucide-react';
 
 interface TradeStatsWidgetProps {
     brokerAccountId?: string;

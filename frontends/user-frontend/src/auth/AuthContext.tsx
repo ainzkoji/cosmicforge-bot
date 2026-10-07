@@ -101,7 +101,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                     });
                     fetchProfile();
                 }
-            } catch (e) {
+            } catch {
                 // Invalid token... (existing code)
                 localStorage.removeItem("access_token");
                 localStorage.removeItem("refresh_token");

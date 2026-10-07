@@ -3,7 +3,6 @@ import {
     BookOpen, PlayCircle, Rocket, TrendingUp, ShieldCheck,
     ArrowRight, CheckCircle2, Award
 } from "lucide-react";
-import { motion } from "framer-motion";
 
 export function BeginnerDashboard() {
     return (

@@ -58,7 +58,6 @@ export const SourceTrustMonitor: React.FC = () => {
 
   const trusted  = sources.filter(s => s.is_trusted && !s.is_blocked).length;
   const blocked  = sources.filter(s => s.is_blocked).length;
-  const untrusted = sources.filter(s => !s.is_trusted && !s.is_blocked).length;
 
   return (
     <div style={{

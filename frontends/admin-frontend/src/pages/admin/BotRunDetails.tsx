@@ -1,7 +1,7 @@
 import { AdminLayout } from "@/components/admin/layout/AdminLayout";
 import { useEffect, useState } from "react";
 import { useParams, Link } from "react-router-dom";
-import { ArrowLeft, Clock, TrendingUp, TrendingDown, Target, Zap, Activity } from "lucide-react";
+import { ArrowLeft, Clock, TrendingUp, TrendingDown, Target, Activity } from "lucide-react";
 import { getBotRunDetails } from "@/api/admin";
 
 interface RunDetails {

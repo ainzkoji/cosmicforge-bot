@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { LifeBuoy, MessageSquare, Mail, Phone, ExternalLink, ChevronDown, ChevronUp } from "lucide-react";
+import { LifeBuoy, MessageSquare, Mail, ExternalLink, ChevronDown, ChevronUp } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 
 export default function Support() {

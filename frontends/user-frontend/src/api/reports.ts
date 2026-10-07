@@ -43,7 +43,7 @@ export interface PnLTotal {
     currency: string;
 }
 
-export interface PnLSummaryResponse extends PnLTotal {}
+export type PnLSummaryResponse = PnLTotal;
 
 export interface PnLBreakdownItem {
     group_key: string; // broker_account_id, bot_instance_id, or symbol
@@ -78,7 +78,7 @@ export interface TradeStatsSummary {
     currency: string;
 }
 
-export interface TradeStatsResponse extends TradeStatsSummary {}
+export type TradeStatsResponse = TradeStatsSummary;
 
 export interface TradeItem {
     symbol: string;

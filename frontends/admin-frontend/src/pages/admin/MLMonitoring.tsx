@@ -49,7 +49,6 @@ import type { MLActionDefinition, MLPhaseIChecklistItem } from "@/api/admin";
 import {
     buildDocument1ChecklistSummary,
     buildSafeStateStatus,
-    formatCompactPath as _formatCompactPath,
 } from "@/utils/mlMonitoringUtils";
 
 export type MLSectionKey = "overview" | "readiness" | "data-quality" | "activity" | "controls" | "history";

@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { api, AnalyticsBenchmark } from '@/api/client';
-import { Loader2, TrendingUp, AlertTriangle } from 'lucide-react';
+import { api } from '@/api/client';
+import { Loader2, AlertTriangle } from 'lucide-react';
 
 interface BenchmarksProps {
     timeframe: string;

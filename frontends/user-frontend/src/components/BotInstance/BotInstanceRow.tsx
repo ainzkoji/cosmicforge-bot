@@ -1,6 +1,6 @@
 
 import { Link } from 'react-router-dom';
-import { Play, Pause, Square, Trash2, FileText, Settings, ExternalLink, MoreHorizontal } from 'lucide-react';
+import { Play, Pause, Square, Trash2, FileText, Settings } from 'lucide-react';
 import { StatusBadge } from './StatusBadge';
 import { BotHealthBadge } from './BotHealthBadge';
 import { api, BotInstance } from '@/api/client';
@@ -20,7 +20,7 @@ interface BotInstanceRowProps {
 }
 
 export const BotInstanceRow = ({ bot, onStart, onPause, onStop, onDelete, onViewLogs, isProcessing = false, brokers = [] }: BotInstanceRowProps) => {
-    const [showActions, setShowActions] = useState(false);
+    useState(false);
     const engineStatus = useQuery({
         queryKey: ['botEngineStatus', bot.id],
         queryFn: () => api.getBotEngineStatus(bot.id),

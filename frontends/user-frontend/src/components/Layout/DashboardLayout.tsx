@@ -3,10 +3,10 @@
 import { useState } from "react";
 import { Link, useLocation, Outlet } from "react-router-dom";
 import {
-    LayoutDashboard, LineChart, Users, GraduationCap,
-    CreditCard, Settings, Bell, Search, Menu, X,
+    LayoutDashboard, LineChart, GraduationCap,
+    CreditCard, Search, Menu,
     LogOut, User, ChevronRight, Zap, Shield, Wallet,
-    Layers, BookOpen, LifeBuoy, Bot, ShoppingBag, PenTool, List, History, Activity
+    Layers, Bot, History, Activity
 } from "lucide-react";
 import { useAuth } from "@/auth/AuthContext";
 import { motion, AnimatePresence } from "framer-motion";
@@ -125,7 +125,6 @@ export function DashboardLayout() {
                                                 className="overflow-hidden ml-4 pl-4 border-l border-white/10 space-y-1"
                                             >
                                                 {item.children.map(child => {
-                                                    const isChildActive = location.pathname === child.path || (child.path.includes('?') && location.pathname === child.path.split('?')[0] && location.search === (child.path.split('?')[1] ? `?${child.path.split('?')[1]}` : ''));
                                                     // Simple active check
                                                     const isChildReallyActive = location.pathname === child.path.split('?')[0];
 

@@ -142,7 +142,7 @@ export default function SignalPairs() {
     const [search, setSearch] = useState("");
     const [tierFilter, setTierFilter] = useState("all");
     const [safeFilter, setSafeFilter] = useState("all");
-    const [enabledFilter, setEnabledFilter] = useState("all");
+    const [enabledFilter] =useState("all");
     const [blacklistedFilter, setBlacklistedFilter] = useState("all");
     const [detailRows, setDetailRows] = useState<{ title: string; rows: [string, unknown][] } | null>(null);
     const [selectedScanRunId, setSelectedScanRunId] = useState<string | null>(null);

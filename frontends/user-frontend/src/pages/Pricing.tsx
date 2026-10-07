@@ -28,18 +28,6 @@ export default function Pricing() {
     if (isLoading) return <div className="min-h-screen pt-32 text-center">Loading plans...</div>;
 
     const plans = data?.plans || [];
-    const filteredPlans = plans.filter(p => {
-        if (p.price === 0) return true; // Show free plan always (or handle duplication if needed)
-
-        // If it's a paid plan, match interval
-        // Note: Free plan in backend has 'month' interval. 
-        // We want to show "Star Gazer" for both? 
-        // Backend returns all plans. Let's filter by interval.
-        // Free plan is usually shown in both views.
-        if (p.price === 0) return true;
-        return p.interval === interval;
-    });
-
     // Deduplicate free plan if it appears multiple times (it won't with current backend logic, but good safety)
     // Actually, backend sends "plan_free" once with interval="month". 
     // If we filter p.interval === interval, free plan (month) won't show on year tab.

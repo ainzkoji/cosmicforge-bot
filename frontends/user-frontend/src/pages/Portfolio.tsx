@@ -2,9 +2,9 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "../api/client";
 import {
-    Wallet, TrendingUp, TrendingDown, DollarSign,
-    ArrowUpRight, ArrowDownRight, Download, Upload,
-    RefreshCw, AlertCircle, Building2, Eye, EyeOff
+    Wallet, TrendingUp, DollarSign,
+    ArrowUpRight, ArrowDownRight,
+    AlertCircle, Building2, Eye, EyeOff
 } from "lucide-react";
 import { Link } from "react-router-dom";
 
@@ -25,7 +25,6 @@ function AccountCard({ account, hideBalances }: { account: any; hideBalances: bo
     // Extract real data from API
     const capital = summary?.capital;
     const totalEquity = capital?.total_equity || 0;
-    const availableBalance = capital?.available_balance || 0;
     const openPositions = capital?.position_count || 0;
     const marginUsed = capital?.initial_margin || 0;
 
@@ -117,7 +116,7 @@ export default function Portfolio() {
         );
     }
 
-    const { summary, positions, allocation, account_details } = portfolioData || {};
+    const { summary, allocation, account_details } = portfolioData || {};
     const accounts = brokerData?.accounts || [];
     const connectedAccounts = accounts.filter((a: any) => a.status === 'connected');
 
@@ -125,26 +124,14 @@ export default function Portfolio() {
     // Use account_details if available, otherwise fall back to allocation/summary
     const totalBalance = account_details?.margin_balance || summary?.total_portfolio_value || 0;
     const availableCash = account_details?.available_balance || allocation?.find(a => a.asset === 'Cash')?.value || 0;
-    // Invested amount (Initial Margin)
-    const marginUsed = account_details?.initial_margin || account_details?.margin_used || allocation?.find(a => a.asset === 'Invested')?.value || 0;
     // Maintenance Margin (Minimum required)
     const maintenanceMargin = account_details?.maintenance_margin || 0;
 
     const unrealizedPnL = account_details?.unrealized_pnl || summary?.total_day_pnl || 0;
-    const walletBalance = account_details?.wallet_balance || (totalBalance - unrealizedPnL);
     const pnlPercent = summary?.total_day_pnl_percent || 0;
 
     // Margin Ratio %
     const marginRatio = account_details?.margin_ratio_percent || (totalBalance > 0 && maintenanceMargin > 0 ? (maintenanceMargin / totalBalance) * 100 : 0);
-
-    // Group positions by account_id for per-broker breakdown
-    const positionsByAccount = (positions || []).reduce((acc: any, pos: any) => {
-        if (!acc[pos.account_id]) {
-            acc[pos.account_id] = [];
-        }
-        acc[pos.account_id].push(pos);
-        return acc;
-    }, {});
 
     const formatCurrency = (value: number) => {
         if (hideBalances) return "****";

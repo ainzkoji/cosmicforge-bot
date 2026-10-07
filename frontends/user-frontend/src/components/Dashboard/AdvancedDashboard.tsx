@@ -1,14 +1,13 @@
 import { Link, useNavigate } from "react-router-dom";
 import {
-    TrendingUp, TrendingDown, Activity, Zap, DollarSign, BarChart3,
-    Play, Pause, Settings, Plus, ArrowUpRight, ArrowDownRight,
-    Bot, Wallet, Target, AlertCircle, Eye, EyeOff, RefreshCw, Sparkles, Brain,
-    MoreHorizontal, Calendar, Filter, Download, Trophy, CheckCircle2, X
+    Activity, BarChart3,
+    ArrowUpRight, ArrowDownRight,
+    Wallet, AlertCircle, Eye, EyeOff, Sparkles,
+    MoreHorizontal, Calendar, Filter, Trophy, CheckCircle2, X
 } from "lucide-react";
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@/api/client";
-import { motion } from "framer-motion";
 import { CumulativePnlChart } from "@/components/analytics/CumulativePnlChart";
 import type { ReconciliationResponse } from "@/api/client";
 

@@ -4,7 +4,7 @@ import { api, TwoFASetupResponse } from "@/api/client";
 import { Loader2, Copy, Check, Shield } from "lucide-react";
 
 export function TwoFASetup({ onComplete }: { onComplete: () => void }) {
-    const [step, setStep] = useState<"init" | "verify">("init");
+    const [, setStep] =useState<"init" | "verify">("init");
     const [setupData, setSetupData] = useState<TwoFASetupResponse | null>(null);
     const [verifyCode, setVerifyCode] = useState("");
     const [loading, setLoading] = useState(false);
@@ -43,7 +43,7 @@ export function TwoFASetup({ onComplete }: { onComplete: () => void }) {
         try {
             await api.verify2FA(verifyCode);
             onComplete();
-        } catch (err: any) {
+        } catch {
             setError("Invalid code. Please try again.");
         } finally {
             setLoading(false);
@@ -122,7 +122,7 @@ export function TwoFAVerify({ onVerify }: { onVerify: (code: string) => Promise<
         setError(null);
         try {
             await onVerify(code);
-        } catch (err: any) {
+        } catch {
             setError("Invalid code");
         } finally {
             setLoading(false);

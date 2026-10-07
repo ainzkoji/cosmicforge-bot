@@ -1,5 +1,4 @@
 import { Shield, BookOpen, Zap, Check } from 'lucide-react';
-import { motion } from 'framer-motion';
 
 interface ExperienceStepProps {
     onNext: (data: { experience_level: string }) => void;

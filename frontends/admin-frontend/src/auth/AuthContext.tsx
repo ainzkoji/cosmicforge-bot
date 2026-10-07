@@ -51,12 +51,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
     };
 
-    // Check if user has admin role - Admin token natively proves admin role!
-    const checkAdminRole = async (tokenToCheck?: string) => {
-        const accessToken = tokenToCheck || localStorage.getItem("admin_access_token");
-        return !!accessToken; // In the new model, having a valid admin token inherently means they are an admin
-    };
-
     // Check localStorage on mount
     useEffect(() => {
         const token = localStorage.getItem("admin_access_token");
@@ -112,7 +106,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                     });
                     fetchProfile();
                 }
-            } catch (e) {
+            } catch {
                 // Invalid token...
                 localStorage.removeItem("admin_access_token");
                 localStorage.removeItem("admin_refresh_token");

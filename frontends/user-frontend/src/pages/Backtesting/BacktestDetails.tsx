@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation } from '@tanstack/react-query';
-import { BacktestAPI, BacktestRun } from '@/api/backtest';
+import { BacktestAPI } from '@/api/backtest';
 import {
     Button, Badge, Card, CardHeader, CardTitle, CardContent,
     Table, TableBody, TableCell, TableHead, TableHeader, TableRow
@@ -39,7 +39,7 @@ export default function BacktestDetails() {
     const formatDate = (dateStr: string) => {
         try {
             return new Date(dateStr).toLocaleDateString() + ' ' + new Date(dateStr).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-        } catch (e) {
+        } catch {
             return dateStr;
         }
     };

@@ -94,7 +94,7 @@ export default function BotDetails() {
         onError: (err: Error) => setActionError(`Could not stop bot: ${errorMessage(err, 'Failed to stop bot instance')}`)
     });
 
-    const deleteMutation = useMutation({
+    useMutation({
         mutationFn: api.deleteBotInstance,
         onMutate: () => { setActionLoading('delete'); setActionError(null); },
         onSettled: () => {

@@ -248,7 +248,7 @@ export default function UserManagement() {
     // Client-side search + role filter + sort
     const filteredUsers = useMemo(() => {
         const q = searchQuery.trim().toLowerCase();
-        let result = users.filter((u) => {
+        const result = users.filter((u) => {
             const matchesSearch =
                 !q ||
                 (u.email || "").toLowerCase().includes(q) ||

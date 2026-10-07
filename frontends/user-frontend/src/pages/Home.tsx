@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { AdvancedDashboard } from "@/components/Dashboard/AdvancedDashboard";
 import { BeginnerDashboard } from "@/components/Dashboard/BeginnerDashboard";
-import { Settings2, User, Zap } from "lucide-react";
+import { User, Zap } from "lucide-react";
 
 export default function Home() {
     const [viewMode, setViewMode] = useState<'beginner' | 'advanced'>('advanced');

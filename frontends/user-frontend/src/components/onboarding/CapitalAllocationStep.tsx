@@ -55,9 +55,6 @@ export function CapitalAllocationStep({ onNext, isLoading, defaultValue, riskPro
         });
     };
 
-    const exampleBalance = parseFloat(globalCapital) || 1000;
-    const calculatedValue = type === 'percent_balance' ? (parseFloat(amount || '0') / 100) * exampleBalance : parseFloat(amount || '0');
-
     return (
         <div className="space-y-8 animate-in fade-in slide-in-from-right-4 duration-500 max-w-lg mx-auto">
             <div className="text-center space-y-4">

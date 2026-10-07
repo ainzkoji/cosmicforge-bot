@@ -1,6 +1,6 @@
 import { AdminLayout } from "@/components/admin/layout/AdminLayout";
 import { useState } from "react";
-import { Filter, Shield, AlertCircle, CheckCircle, Info, DollarSign, Loader2 } from "lucide-react";
+import { Shield, AlertCircle, Info, DollarSign, Loader2 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { getAuditLogs } from "@/api/admin";
 import { ExportButton } from "@/components/admin/common/ExportButton";

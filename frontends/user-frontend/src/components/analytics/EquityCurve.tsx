@@ -10,25 +10,6 @@ import { ReportsAPI, EquityCurve as EquityCurveType } from '@/api/reports';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import { TrendingUp, TrendingDown, DollarSign, Calendar } from 'lucide-react';
 
-interface EquityDataPoint {
-    timestamp: string;
-    equity: number;
-    wallet_balance: number;
-    available_balance: number;
-    unrealized_pnl: number;
-    broker_id: string;
-    source: string;
-}
-
-interface EquityCurveData {
-    data: EquityDataPoint[];
-    count: number;
-    broker_account_id?: string;
-    bot_instance_id?: string;
-    period_days: number;
-    currency: string;
-}
-
 interface EquityCurveProps {
     brokerAccountId?: string;
     botInstanceId?: string;
@@ -37,7 +18,6 @@ interface EquityCurveProps {
 
 export const EquityCurve: React.FC<EquityCurveProps> = ({
     brokerAccountId,
-    botInstanceId,
     defaultDays = 30
 }) => {
     const [days, setDays] = useState(defaultDays);

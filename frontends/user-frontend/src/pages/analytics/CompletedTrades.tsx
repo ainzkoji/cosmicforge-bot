@@ -184,7 +184,7 @@ function CopyButton({ text, label = 'Copy' }: { text: string; label?: string }) 
 }
 
 // --- Collapsible Fill IDs ---
-function FillIdList({ ids, label }: { ids: string[]; label: string }) {
+function FillIdList({ ids }: { ids: string[]; label: string }) {
     const [expanded, setExpanded] = useState(false);
     const COLLAPSE_THRESHOLD = 3;
     const shouldCollapse = ids.length > COLLAPSE_THRESHOLD;

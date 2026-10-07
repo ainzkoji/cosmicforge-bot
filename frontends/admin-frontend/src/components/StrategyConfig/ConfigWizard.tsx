@@ -3,8 +3,7 @@ import { api } from '../../api/client';
 import {
     CheckCircle,
     ChevronRight,
-    ShieldAlert,
-    SlidersHorizontal
+    ShieldAlert
 } from 'lucide-react';
 
 interface ConfigWizardProps {
@@ -185,8 +184,8 @@ export const ConfigWizard: React.FC<ConfigWizardProps> = ({ accountId, onClose, 
                         </div>
                     </div>
                 );
-            case 2:
-                const risk = customRiskParams || riskTemplates[selectedRiskProfile] || {};
+            case 2: {
+                const risk =customRiskParams || riskTemplates[selectedRiskProfile] || {};
                 return (
                     <div className="space-y-6">
                         <div className="bg-gradient-to-br from-gray-800 to-gray-900 p-6 rounded-xl border border-gray-700">
@@ -229,6 +228,7 @@ export const ConfigWizard: React.FC<ConfigWizardProps> = ({ accountId, onClose, 
                         </div>
                     </div>
                 );
+            }
             default:
                 return null;
         }

@@ -72,7 +72,7 @@ export function RiskToleranceStep({ onNext, isLoading, defaultValue }: RiskToler
     );
 }
 
-function RiskCard({ value, title, description, icon: Icon, color, accentColor, onClick, isSelected, isLoading }: any) {
+function RiskCard({ value, title, description, icon: Icon, color, onClick, isSelected, isLoading }: any) {
     // accentColor is used for dynamic class names, but Tailwind needs full class names to scan.
     // We'll map them explicitly or assume they are safe-listed. safest is to use standard colors or style objects.
     // For simplicity here, I'll use inline styles or specific mappings if I knew the full tailwind config, but let's stick to known classes.

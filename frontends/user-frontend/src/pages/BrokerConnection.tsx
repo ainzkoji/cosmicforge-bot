@@ -1,9 +1,9 @@
 import { useState, useEffect } from "react";
-import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import {
     Shield, Zap, Search, ChevronRight, Check, AlertTriangle, RefreshCw,
-    Trash2, Edit2, Globe, Clock, Lock, X, Building2, ShieldCheck,
+    Trash2, Globe, Clock, Lock, X, Building2, ShieldCheck,
     Plus, MoreVertical, CheckCircle2, ExternalLink, AlertCircle, Wallet
 } from "lucide-react";
 import { api } from "../api/client";
@@ -15,7 +15,7 @@ import { ConfirmationDialog } from "@/components/UI/ConfirmationDialog";
 
 // --- Components ---
 function CapitalSummary({ accountId }: { accountId: string }) {
-    const { data: summary, isLoading, refetch } = useQuery({
+    const { data: summary, isLoading } = useQuery({
         queryKey: ["broker-capital", accountId],
         queryFn: () => api.getBrokerSummary(accountId),
         refetchInterval: 30000,
@@ -116,7 +116,7 @@ export default function BrokerConnection() {
     const showNotice = (text: string) => setNotice(text);
     const [pendingAccountAction, setPendingAccountAction] = useState<{ type: "disconnect" | "delete"; id: string } | null>(null);
     const [accountActionBusy, setAccountActionBusy] = useState(false);
-    const [testResult, setTestResult] = useState<any>(null); // Store test result for modal/alert
+    useState<any>(null); // Store test result for modal/alert
 
     // --- Queries ---
     const catalogQuery = useQuery({
@@ -258,7 +258,7 @@ export default function BrokerConnection() {
     // --- Helpers ---
     const selectedBroker = catalogQuery.data?.brokers.find((b: Broker) => b.id === selectedBrokerId);
 
-    const handleSelectBroker = (brokerId: string, marketType: string) => {
+    const handleSelectBroker = (brokerId: string) => {
         // Force the market type to selectedMarket just in case, but usually follows broker
         const existingDraft = accountsQuery.data?.accounts.find(
             (a: BrokerAccount) => a.broker_id === brokerId && a.status === 'draft'
@@ -622,7 +622,7 @@ export default function BrokerConnection() {
                                     }`}
                                 onClick={() => {
                                     if (broker.is_available) {
-                                        handleSelectBroker(broker.id, selectedMarket);
+                                        handleSelectBroker(broker.id);
                                     }
                                 }}
                             >

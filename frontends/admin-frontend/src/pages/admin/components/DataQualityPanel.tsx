@@ -49,7 +49,6 @@ export const DataQualityPanel: React.FC = () => {
   }, []);
 
   const validRatio = data ? (data.valid_clusters / Math.max(1, data.total_clusters)) : 0;
-  const spamRatio  = data ? (data.spam_clusters / Math.max(1, data.total_clusters)) : 0;
 
   return (
     <div style={{

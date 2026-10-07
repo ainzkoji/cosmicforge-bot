@@ -3,11 +3,11 @@ import { PnLSummaryCards } from '@/components/reports/PnLSummaryCards';
 import { TradeStatsWidget } from '@/components/reports/TradeStatsWidget';
 import { TaxReportExport } from '@/components/reports/TaxReportExport';
 import EquityCurve from '@/components/analytics/EquityCurve'; // Enhanced existing component
-import { BarChart2, Calendar } from 'lucide-react';
+import { Calendar } from 'lucide-react';
 
 export const ReportsDashboard: React.FC = () => {
     const [days, setDays] = useState(30);
-    const [brokerAccountId, setBrokerAccountId] = useState<string | undefined>(undefined);
+    const [brokerAccountId] =useState<string | undefined>(undefined);
 
     // TODO: Add broker account selector using api/brokers
 

@@ -1,11 +1,11 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { motion } from 'framer-motion'; // Assuming framer-motion is used
 import { useSearchParams } from 'react-router-dom';
 import { useAnalyticsStream } from '@/hooks/useAnalyticsStream'; // Keep streaming hook
 import { api } from '@/api/client';
 import {
-    RefreshCw, Printer, Download, FileText, BarChart3, TrendingUp, Landmark,
+    Printer, Download, FileText, BarChart3, TrendingUp, Landmark,
     List, Loader2 // New icon for Trades
 } from 'lucide-react';
 

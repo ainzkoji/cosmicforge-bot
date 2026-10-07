@@ -4,7 +4,7 @@ import { RiskDiagCard, type DiagSeverity, formatNumber } from "./shared";
 
 interface Props { report: ProfitabilityReportResponse; }
 
-function countSev(n: number, warnAt = 1, critAt = 3): DiagSeverity {
+function countSev(n: number, critAt = 3): DiagSeverity {
     if (n === 0)        return "healthy";
     if (n < critAt)     return "warning";
     return "critical";
@@ -46,13 +46,13 @@ export function RiskQualityTab({ report }: Props) {
                     label: "Missing Run ID",
                     value: risk.missing_run_id_count,
                     hint: "Fills with no linked run_id. Prevents tracing a trade back to a bot session.",
-                    severity: countSev(risk.missing_run_id_count, 1, 5),
+                    severity: countSev(risk.missing_run_id_count, 5),
                 },
                 {
                     label: "Missing Position ID",
                     value: risk.missing_position_id_count,
                     hint: "Fills with no position_id. Open/close pairs cannot be matched without this field.",
-                    severity: countSev(risk.missing_position_id_count, 1, 5),
+                    severity: countSev(risk.missing_position_id_count, 5),
                 },
             ],
         },
@@ -63,13 +63,13 @@ export function RiskQualityTab({ report }: Props) {
                     label: "Null Exit Reason (CLOSE fills)",
                     value: risk.closed_fills_null_exit_reason,
                     hint: "CLOSE fills missing an exit_reason. Indicates a silent or force-close that bypassed normal exit logic.",
-                    severity: countSev(risk.closed_fills_null_exit_reason, 1, 5),
+                    severity: countSev(risk.closed_fills_null_exit_reason, 5),
                 },
                 {
                     label: "Null R Multiple (CLOSE fills)",
                     value: risk.closed_fills_null_r_multiple,
                     hint: "CLOSE fills where R-multiple was not recorded. R-multiple is required for performance scoring.",
-                    severity: countSev(risk.closed_fills_null_r_multiple, 1, 5),
+                    severity: countSev(risk.closed_fills_null_r_multiple, 5),
                 },
             ],
         },

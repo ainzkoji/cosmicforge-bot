@@ -1,7 +1,7 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { onboardingApi, Strategy } from '../../api/onboarding';
-import { Layers, Activity, Info, Check } from 'lucide-react';
+import { Layers, Activity, Check } from 'lucide-react';
 
 interface StrategyStepProps {
     onNext: (data: { strategy_preference: string }) => void;

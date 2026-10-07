@@ -5,7 +5,7 @@ import { api } from "../api/client";
 
 // --- Components ---
 
-const PricingCard = ({ plan, billingCycle, onSelect, currentPlanId }: { plan: any, billingCycle: "monthly" | "yearly", onSelect: () => void, currentPlanId?: string }) => {
+const PricingCard = ({ plan, onSelect, currentPlanId }: { plan: any, billingCycle: "monthly" | "yearly", onSelect: () => void, currentPlanId?: string }) => {
     // Backend plans are monthly by default in this MVP
     const price = plan.price;
     const isCurrent = currentPlanId === plan.id;

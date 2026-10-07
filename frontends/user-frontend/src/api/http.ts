@@ -119,11 +119,12 @@ async function performRefresh(staleAccessToken: string | null): Promise<RefreshO
  * token makes the backend revoke every session of the user, so two tabs must
  * never refresh with the same token at the same time.
  */
-function runExclusive(task: () => Promise<RefreshOutcome>): Promise<RefreshOutcome> {
+async function runExclusive(task: () => Promise<RefreshOutcome>): Promise<RefreshOutcome> {
     if (typeof navigator !== "undefined" && "locks" in navigator) {
-        return navigator.locks.request(REFRESH_LOCK_NAME, task);
+        // `locks.request` resolves with the callback's (awaited) result.
+        return await navigator.locks.request(REFRESH_LOCK_NAME, () => task());
     }
-    return task();
+    return await task();
 }
 
 let refreshInFlight: Promise<RefreshOutcome> | null = null;

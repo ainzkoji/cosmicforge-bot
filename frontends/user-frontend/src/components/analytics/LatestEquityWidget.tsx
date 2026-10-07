@@ -7,7 +7,7 @@
 import React from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { api, type LatestEquityResponse } from '@/api/client';
-import { DollarSign, TrendingUp, Wallet } from 'lucide-react';
+import { DollarSign, TrendingUp } from 'lucide-react';
 
 export const LatestEquityWidget: React.FC = () => {
     const { data, isLoading } = useQuery<LatestEquityResponse>({

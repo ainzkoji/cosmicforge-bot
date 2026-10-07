@@ -1,10 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { Bell, Mail, Send, Save, Check, Smartphone, Trash2, Plus } from 'lucide-react';
+import { Bell, Mail, Send, Save, Check, Smartphone, Trash2 } from 'lucide-react';
 import { apiClient } from '../api/client';
 import {
     initializeFirebaseMessaging,
     registerFCMToken,
-    getUserDevices,
     removeDevice,
     isPushNotificationSupported,
     getNotificationPermission
@@ -40,12 +39,11 @@ const NotificationSettings: React.FC = () => {
     const [saving, setSaving] = useState(false);
     const [telegramLinkCode, setTelegramLinkCode] = useState('');
     const [telegramDeepLink, setTelegramDeepLink] = useState('');
-    const [pushEnabled, setPushEnabled] = useState(false);
+    useState(false);
     const [registeringPush, setRegisteringPush] = useState(false);
 
     const channels = ['in_app', 'email', 'telegram', 'push'];
     const categories = ['trade', 'risk', 'system', 'marketing'];
-    const severities = ['INFO', 'WARNING', 'ERROR', 'CRITICAL'];
 
     useEffect(() => {
         loadSettings();
