@@ -5,94 +5,167 @@ on:
     branches: [ "main" ]
   pull_request:
     branches: [ "main" ]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+# Test jobs never inherit the default production profile or runtime DB.
+# DATABASE_URL is set per job from $RUNNER_TEMP (the `runner` context is not
+# available in job-level `env`, which previously made this whole file invalid).
+env:
+  APP_ENV: TEST
+  COSMICFORGE_TEST_MODE: "1"
+  DATABASE_ROLE: test
+  LIVE_ORDER_SUBMISSION_ENABLED: "false"
+  EXECUTION_MODE: paper
+  BINANCE_API_KEY: mock_ci_key
+  BINANCE_API_SECRET: mock_ci_secret
+  BOT_BACKEND_URL: http://localhost:9000
+  PIP_DISABLE_PIP_VERSION_CHECK: "1"
 
 jobs:
-  backend-tests:
+  python-lint:
+    name: Python lint (syntax and undefined names)
     runs-on: ubuntu-latest
-    env:
-      # Test jobs never inherit the default production profile or runtime DB.
-      APP_ENV: TEST
-      COSMICFORGE_TEST_MODE: "1"
-      DATABASE_ROLE: test
-      DATABASE_URL: sqlite:///${{ runner.temp }}/cosmicforge-ci-root.db
-      LIVE_ORDER_SUBMISSION_ENABLED: "false"
-      EXECUTION_MODE: paper
-      BINANCE_API_KEY: mock_ci_key
-      BINANCE_API_SECRET: mock_ci_secret
-      BOT_BACKEND_URL: http://localhost:9000
     steps:
     - uses: actions/checkout@v4
-
-    - name: Set up Python 3.12
-      uses: actions/setup-python@v5
+    - uses: actions/setup-python@v5
       with:
         python-version: "3.12"
-        cache: 'pip'
+    - run: pip install ruff
+    # E9 = syntax errors, F63/F7 = invalid comparisons/statements,
+    # F82 = undefined names. These are bugs, not style.
+    - name: Ruff (correctness rules only)
+      run: >
+        ruff check backends/bot-backend/app backends/user-backend/app
+        backends/admin-backend/app backends/shared/shared_lib
+        --select E9,F63,F7,F82 --output-format=github
 
+  bot-backend-tests:
+    name: Bot backend tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+    - uses: actions/checkout@v4
+    - uses: actions/setup-python@v5
+      with:
+        python-version: "3.12"
+        cache: pip
+        cache-dependency-path: |
+          backends/bot-backend/requirements.txt
+          deploy/constraints.txt
+    - name: Install dependencies (same pins as the server)
+      run: |
+        pip install -e backends/shared
+        pip install -r backends/bot-backend/requirements.txt -c deploy/constraints.txt
+        pip install pytest-asyncio pytest-mock -c deploy/constraints.txt
+    - name: Point tests at a throwaway database
+      run: echo "DATABASE_URL=sqlite:///$RUNNER_TEMP/cosmicforge-ci-bot.db" >> "$GITHUB_ENV"
+    - name: Run tests
+      run: python -m pytest backends/bot-backend/tests -q --tb=short -p no:cacheprovider
+
+  user-backend-tests:
+    name: User backend tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+    - uses: actions/checkout@v4
+    - uses: actions/setup-python@v5
+      with:
+        python-version: "3.12"
+        cache: pip
+        cache-dependency-path: |
+          backends/user-backend/requirements.txt
+          deploy/constraints.txt
     - name: Install dependencies
       run: |
-        python -m pip install --upgrade pip
-        # Install shared lib in editable mode
         pip install -e backends/shared
-        # Install backend dependencies
-        pip install -r backends/bot-backend/requirements.txt
-        pip install -r backends/user-backend/requirements.txt
-        # Install test dependencies (if separate, otherwise assume included above)
-        pip install pytest pytest-asyncio httpx pytest-mock
+        pip install -r backends/user-backend/requirements.txt -c deploy/constraints.txt
+        pip install pytest pytest-asyncio pytest-mock -c deploy/constraints.txt
+    - name: Point tests at a throwaway database
+      run: echo "DATABASE_URL=sqlite:///$RUNNER_TEMP/cosmicforge-ci-user.db" >> "$GITHUB_ENV"
+    - name: Run tests
+      working-directory: backends/user-backend
+      run: python -m pytest tests -q --tb=short -p no:cacheprovider
 
-    - name: Run Root Integration Tests
+  admin-and-shared-tests:
+    name: Admin backend, shared library and root unit tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+    - uses: actions/checkout@v4
+    - uses: actions/setup-python@v5
+      with:
+        python-version: "3.12"
+        cache: pip
+        cache-dependency-path: |
+          backends/bot-backend/requirements.txt
+          backends/user-backend/requirements.txt
+          deploy/constraints.txt
+    - name: Install dependencies
       run: |
-        python -m pytest tests
+        pip install -e backends/shared
+        pip install -r backends/bot-backend/requirements.txt -c deploy/constraints.txt
+        pip install -r backends/user-backend/requirements.txt -c deploy/constraints.txt
+        pip install pytest-asyncio pytest-mock -c deploy/constraints.txt
+    - name: Point tests at a throwaway database
+      run: echo "DATABASE_URL=sqlite:///$RUNNER_TEMP/cosmicforge-ci-root.db" >> "$GITHUB_ENV"
+    - name: Admin backend tests
+      if: always()
+      run: python -m pytest backends/admin-backend/tests -q --tb=short -p no:cacheprovider
+    - name: Shared library tests
+      if: always()
+      run: python -m pytest backends/shared/tests -q --tb=short -p no:cacheprovider
+    # tests/integration needs both backends running on localhost and is not
+    # part of the default run; see tests/integration/README.md.
+    - name: Root unit tests
+      if: always()
+      run: python -m pytest tests -q --tb=short -p no:cacheprovider --ignore=tests/integration
 
-    - name: Run Bot Parity Tests
-      run: |
-        python -m pytest backends/bot-backend/tests
-
-  frontend-user-build:
+  frontend-user:
+    name: User frontend (lint, test, build)
     runs-on: ubuntu-latest
     defaults:
       run:
         working-directory: frontends/user-frontend
     steps:
     - uses: actions/checkout@v4
-
-    - name: Set up Node 20
-      uses: actions/setup-node@v4
+    - uses: actions/setup-node@v4
       with:
-        node-version: '20'
+        node-version: '22'
         cache: 'npm'
         cache-dependency-path: frontends/user-frontend/package-lock.json
-
-    - name: Install dependencies
-      run: npm ci
-
+    - run: npm ci
     - name: Lint
       run: npm run lint
-
+    - name: Unit tests
+      if: always()
+      run: npm test
     - name: Build
+      if: always()
       run: npm run build
 
-  frontend-admin-build:
+  frontend-admin:
+    name: Admin frontend (lint, test, build)
     runs-on: ubuntu-latest
     defaults:
       run:
         working-directory: frontends/admin-frontend
     steps:
     - uses: actions/checkout@v4
-
-    - name: Set up Node 20
-      uses: actions/setup-node@v4
+    - uses: actions/setup-node@v4
       with:
-        node-version: '20'
+        node-version: '22'
         cache: 'npm'
         cache-dependency-path: frontends/admin-frontend/package-lock.json
-
-    - name: Install dependencies
-      run: npm ci
-
+    - run: npm ci
     - name: Lint
-      # Run lint if configured, otherwise warn
-      run: npm run lint || echo "Lint script missing or failed (non-blocking for now)"
-
+      run: npm run lint
+    - name: Unit tests
+      if: always()
+      run: npm test
     - name: Build
+      if: always()
       run: npm run build
