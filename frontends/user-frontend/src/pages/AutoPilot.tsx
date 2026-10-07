@@ -4,6 +4,7 @@ import { Zap, Shield, TrendingUp, Activity, Check, AlertTriangle, Play } from "l
 import { api } from "../api/client";
 import { useNavigate } from "react-router-dom";
 import { LiveTradingConfirmDialog } from "@/components/UI/LiveTradingConfirmDialog";
+import { isPaperMode } from "@/utils/tradingMode";
 
 export default function AutoPilot() {
     const navigate = useNavigate();
@@ -120,8 +121,10 @@ export default function AutoPilot() {
             return "Position allocation percentage cannot exceed 100%";
         }
         const dailyLoss = parseDailyLoss();
-        if (dailyLoss !== null && (isNaN(dailyLoss) || dailyLoss <= 0)) {
-            return "Daily loss limit must be a positive percentage, or empty to use the risk profile default";
+        // Sent as a fraction (x / 100); the API accepts 0 < fraction < 1 and
+        // bot-backend then applies the exact system limits and reports them.
+        if (dailyLoss !== null && (isNaN(dailyLoss) || dailyLoss <= 0 || dailyLoss >= 100)) {
+            return "Daily loss limit must be a percentage above 0 and below 100, or empty to use the risk profile default";
         }
         if (marketType === "forex" && forexAllowlist.length === 0) {
             return "Please select at least one currency pair for Forex allowlist.";
@@ -177,7 +180,7 @@ export default function AutoPilot() {
         const problem = validateForm();
         setFormError(problem);
         if (problem) return;
-        if (mode === "live") {
+        if (!isPaperMode(mode)) {
             setLiveConfirmOpen(true);
             return;
         }

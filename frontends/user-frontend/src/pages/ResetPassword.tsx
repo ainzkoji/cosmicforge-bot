@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { api } from "@/api/client";
 import { Loader2, ArrowLeft, Lock, KeyRound, Check, Eye, EyeOff } from "lucide-react";
+import logo from "../assets/logo.png";
 
 export default function ResetPassword() {
     const [searchParams] = useSearchParams();
@@ -81,7 +82,7 @@ export default function ResetPassword() {
             <div className="w-full max-w-md">
                 {/* Logo */}
                 <div className="flex justify-center mb-8">
-                    <img src="/src/assets/logo.png" alt="CosmicForge" className="h-12 w-12" />
+                    <img src={logo} alt="CosmicForge" className="h-12 w-12" />
                 </div>
 
                 <div className="text-center mb-8">

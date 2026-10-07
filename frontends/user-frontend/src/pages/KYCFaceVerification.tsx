@@ -105,7 +105,7 @@ export default function KYCFaceVerification() {
                             Continue to submit your verification for review.
                         </p>
                         <button
-                            onClick={() => navigate("/kyc/status")}
+                            onClick={() => navigate("/dashboard/kyc/status")}
                             className="w-full py-4 bg-[#1E1B4B] text-white font-semibold rounded-xl hover:bg-[#2D2A5B] transition-colors flex items-center justify-center gap-2"
                         >
                             Continue
@@ -282,7 +282,7 @@ export default function KYCFaceVerification() {
                     {/* Back Link */}
                     <div className="mt-6 text-center">
                         <button
-                            onClick={() => navigate("/kyc/id-upload")}
+                            onClick={() => navigate("/dashboard/kyc/id-upload")}
                             disabled={isSubmitting}
                             className="flex items-center gap-2 text-gray-600 hover:text-[#1E1B4B] transition-colors mx-auto"
                         >

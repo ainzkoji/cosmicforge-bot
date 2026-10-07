@@ -35,7 +35,7 @@ export default function Setup2FA() {
                             >
                                 <h2 className="text-2xl font-bold">Secure Your Account</h2>
                                 <p className="text-muted-foreground text-lg">
-                                    We require Two-Factor Authentication (2FA) for all accounts to protect your assets and API keys.
+                                    We recommend enabling Two-Factor Authentication (2FA) to help protect your account and API keys. It is optional and you can set it up later in Security settings.
                                 </p>
                                 <button
                                     onClick={() => setStep("setup")}
@@ -55,7 +55,7 @@ export default function Setup2FA() {
                                 animate={{ opacity: 1, x: 0 }}
                                 className="space-y-6"
                             >
-                                <TwoFASetup onComplete={() => navigate("/subscription?plan_selection=true")} />
+                                <TwoFASetup onComplete={() => navigate("/dashboard/subscription?plan_selection=true")} />
                                 <button onClick={() => setStep("intro")} className="text-sm text-primary hover:underline">
                                     Back
                                 </button>

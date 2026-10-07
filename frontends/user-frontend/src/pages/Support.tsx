@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { LifeBuoy, MessageSquare, Mail, ExternalLink, ChevronDown, ChevronUp } from "lucide-react";
+import { Mail, ChevronDown, ChevronUp } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 
 export default function Support() {
@@ -18,70 +18,23 @@ export default function Support() {
             <div className="text-center space-y-4">
                 <h1 className="text-4xl font-bold">How can we help you?</h1>
                 <p className="text-xl text-muted-foreground max-w-2xl mx-auto">
-                    Search our knowledge base, read FAQs, or contact our support team directly.
+                    Read the FAQs below, or email our support team.
                 </p>
             </div>
 
-            {/* Contact Cards */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <div className="bg-card border border-border rounded-xl p-6 text-center hover:border-primary/50 transition-colors group">
-                    <div className="w-12 h-12 bg-primary/10 rounded-full flex items-center justify-center mx-auto mb-4 text-primary group-hover:scale-110 transition-transform">
-                        <MessageSquare className="w-6 h-6" />
-                    </div>
-                    <h3 className="font-bold text-lg mb-2">Live Chat</h3>
-                    <p className="text-sm text-muted-foreground mb-4">Chat with our AI assistant or a support agent.</p>
-                    <button className="text-primary font-bold text-sm hover:underline">Start Chat</button>
-                    <span className="block text-xs text-muted-foreground mt-2">Available 24/7</span>
-                </div>
-
+            {/* Contact: support is handled by email only (no live chat, help center or ticket system). */}
+            <div className="max-w-md mx-auto">
                 <div className="bg-card border border-border rounded-xl p-6 text-center hover:border-primary/50 transition-colors group">
                     <div className="w-12 h-12 bg-primary/10 rounded-full flex items-center justify-center mx-auto mb-4 text-primary group-hover:scale-110 transition-transform">
                         <Mail className="w-6 h-6" />
                     </div>
                     <h3 className="font-bold text-lg mb-2">Email Support</h3>
-                    <p className="text-sm text-muted-foreground mb-4">Send us a detailed message about your issue.</p>
+                    <p className="text-sm text-muted-foreground mb-4">
+                        Support is provided by email. Send us a detailed message about your issue, including the
+                        bot or broker account it concerns.
+                    </p>
                     <a href="mailto:support@cosmicforge.com" className="text-primary font-bold text-sm hover:underline">support@cosmicforge.com</a>
-                    <span className="block text-xs text-muted-foreground mt-2">Response time: ~24h</span>
                 </div>
-
-                <div className="bg-card border border-border rounded-xl p-6 text-center hover:border-primary/50 transition-colors group">
-                    <div className="w-12 h-12 bg-primary/10 rounded-full flex items-center justify-center mx-auto mb-4 text-primary group-hover:scale-110 transition-transform">
-                        <LifeBuoy className="w-6 h-6" />
-                    </div>
-                    <h3 className="font-bold text-lg mb-2">Help Center</h3>
-                    <p className="text-sm text-muted-foreground mb-4">Browse documentation and tutorials.</p>
-                    <button className="text-primary font-bold text-sm hover:underline flex items-center justify-center gap-1">
-                        Visit Help Center <ExternalLink className="w-3 h-3" />
-                    </button>
-                </div>
-            </div>
-
-            {/* Ticket Form */}
-            <div className="bg-card border border-border rounded-2xl p-8">
-                <h2 className="text-2xl font-bold mb-6">Submit a Ticket</h2>
-                <form className="space-y-4">
-                    <div className="grid grid-cols-2 gap-4">
-                        <div className="space-y-2">
-                            <label className="text-sm font-medium">Name</label>
-                            <input type="text" className="w-full bg-background border border-border rounded-lg p-2 focus:ring-2 focus:ring-primary/50 outline-none" placeholder="Your Name" />
-                        </div>
-                        <div className="space-y-2">
-                            <label className="text-sm font-medium">Email</label>
-                            <input type="email" className="w-full bg-background border border-border rounded-lg p-2 focus:ring-2 focus:ring-primary/50 outline-none" placeholder="john@example.com" />
-                        </div>
-                    </div>
-                    <div className="space-y-2">
-                        <label className="text-sm font-medium">Subject</label>
-                        <input type="text" className="w-full bg-background border border-border rounded-lg p-2 focus:ring-2 focus:ring-primary/50 outline-none" placeholder="Brief description of the issue" />
-                    </div>
-                    <div className="space-y-2">
-                        <label className="text-sm font-medium">Message</label>
-                        <textarea className="w-full bg-background border border-border rounded-lg p-2 focus:ring-2 focus:ring-primary/50 outline-none min-h-[120px]" placeholder="Please provide as much detail as possible..." />
-                    </div>
-                    <button className="px-6 py-2 bg-primary text-primary-foreground rounded-lg font-bold hover:bg-primary/90 transition-colors">
-                        Submit Ticket
-                    </button>
-                </form>
             </div>
 
             {/* FAQ */}

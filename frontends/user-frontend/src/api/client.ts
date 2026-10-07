@@ -711,6 +711,56 @@ function errorDetail(detail: unknown, fallback: string): string {
     return String(d.message ?? d.reason ?? JSON.stringify(detail));
 }
 
+/** Why a 2FA setup/verify/disable call failed, so the UI can say what to do next. */
+export type TwoFAErrorCode = "INVALID_CODE" | "RATE_LIMITED" | "SESSION_EXPIRED" | "FAILED";
+
+export class TwoFAError extends Error {
+    code: TwoFAErrorCode;
+    status: number;
+    constructor(message: string, code: TwoFAErrorCode, status: number) {
+        super(message);
+        this.name = "TwoFAError";
+        this.code = code;
+        this.status = status;
+    }
+}
+
+/**
+ * Build the error for a failed 2FA call from the backend's own `detail`.
+ * 429 = too many attempts (do not keep guessing); 400/401/422 with a code in
+ * the request = the code was not accepted. A 401 only reaches here after
+ * apiFetch already tried to refresh the session and retried once.
+ */
+async function twoFAError(res: Response, fallback: string): Promise<TwoFAError> {
+    const body = await res.json().catch(() => null);
+    const detail = body && typeof body === 'object' ? (body as Record<string, unknown>).detail : null;
+    const serverText = detail ? errorDetail(detail, "") : "";
+    if (res.status === 429) {
+        const retryAfter = Number(res.headers.get("Retry-After"));
+        const wait = Number.isFinite(retryAfter) && retryAfter > 0
+            ? ` Try again in ${Math.ceil(retryAfter / 60)} minute(s).`
+            : " Wait a few minutes before trying again.";
+        return new TwoFAError(`Too many attempts.${wait}${serverText ? ` (${serverText})` : ""}`, "RATE_LIMITED", 429);
+    }
+    if (res.status === 401) {
+        const looksLikeSession = /credential|token|not authenticated|user not found/i.test(serverText);
+        return looksLikeSession
+            ? new TwoFAError("Your session has expired. Please sign in again.", "SESSION_EXPIRED", 401)
+            : new TwoFAError(serverText || "That code is not valid. Enter the current 6-digit code from your authenticator app.", "INVALID_CODE", 401);
+    }
+    if (res.status === 400 || res.status === 422) {
+        const invalid = res.status === 422 || /invalid code/i.test(serverText);
+        return new TwoFAError(
+            invalid
+                ? "That code is not valid. Enter the current 6-digit code from your authenticator app."
+                : (serverText || fallback),
+            invalid ? "INVALID_CODE" : "FAILED",
+            res.status,
+        );
+    }
+    return new TwoFAError(serverText || `${fallback} (HTTP ${res.status})`, "FAILED", res.status);
+}
+
 function normalizeAnalyticsTrade(raw: Record<string, any>): AnalyticsTrade {
     const id = String(raw.id ?? raw.trade_id ?? '');
     const ts = String(raw.timestamp_utc ?? raw.timestamp ?? '');
@@ -875,22 +925,20 @@ export const api = {
     },
 
     // --- 2FA & Security ---
+    // These use apiFetch so an expired access token is refreshed mid-flow.
     setup2FA: async (): Promise<TwoFASetupResponse> => {
-        const res = await fetch(`${AUTH_BASE}/2fa/setup`, {
+        const res = await apiFetch(`${AUTH_BASE}/2fa/setup`, {
             method: 'POST',
             headers: {
                 'Authorization': `Bearer ${localStorage.getItem('access_token')}`
             }
         });
-        if (!res.ok) {
-            const err = await res.json().catch(() => ({}));
-            throw new Error(errorDetail(err?.detail, "Failed to setup 2FA"));
-        }
+        if (!res.ok) throw await twoFAError(res, "Failed to setup 2FA");
         return res.json();
     },
 
     verify2FA: async (code: string): Promise<{ message: string }> => {
-        const res = await fetch(`${AUTH_BASE}/2fa/verify`, {
+        const res = await apiFetch(`${AUTH_BASE}/2fa/verify`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -898,12 +946,12 @@ export const api = {
             },
             body: JSON.stringify({ code })
         });
-        if (!res.ok) throw new Error("Invalid code");
+        if (!res.ok) throw await twoFAError(res, "Could not verify the code");
         return res.json();
     },
 
     disable2FA: async (code: string): Promise<{ message: string }> => {
-        const res = await fetch(`${AUTH_BASE}/2fa/disable`, {
+        const res = await apiFetch(`${AUTH_BASE}/2fa/disable`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -911,7 +959,7 @@ export const api = {
             },
             body: JSON.stringify({ code })
         });
-        if (!res.ok) throw new Error("Failed to disable 2FA");
+        if (!res.ok) throw await twoFAError(res, "Failed to disable 2FA");
         return res.json();
     },
 
@@ -1057,11 +1105,13 @@ export const api = {
     },
 
     // --- KYC ---
+    // All KYC calls go through apiFetch so an access token that expires
+    // mid-flow is refreshed and the request retried instead of failing.
     kycGetRequirements: async (action?: string): Promise<any> => {
         const url = action
-            ? `${API_BASE}/kyc/requirements?action=${action}`
+            ? `${API_BASE}/kyc/requirements?action=${encodeURIComponent(action)}`
             : `${API_BASE}/kyc/requirements`;
-        const res = await fetch(url, {
+        const res = await apiFetch(url, {
             headers: { 'Authorization': `Bearer ${localStorage.getItem('access_token')}` }
         });
         if (!res.ok) throw new Error("Failed to get KYC requirements");
@@ -1069,7 +1119,7 @@ export const api = {
     },
 
     kycStart: async (): Promise<{ case_id: string; status: string; message: string }> => {
-        const res = await fetch(`${API_BASE}/kyc/start`, {
+        const res = await apiFetch(`${API_BASE}/kyc/start`, {
             method: 'POST',
             headers: { 'Authorization': `Bearer ${localStorage.getItem('access_token')}` }
         });
@@ -1078,7 +1128,7 @@ export const api = {
     },
 
     kycGetStatus: async (): Promise<any> => {
-        const res = await fetch(`${API_BASE}/kyc/status`, {
+        const res = await apiFetch(`${API_BASE}/kyc/status`, {
             headers: { 'Authorization': `Bearer ${localStorage.getItem('access_token')}` }
         });
         if (!res.ok) throw new Error("Failed to get KYC status");
@@ -1086,7 +1136,7 @@ export const api = {
     },
 
     kycGetChecklist: async (): Promise<any> => {
-        const res = await fetch(`${API_BASE}/kyc/checklist`, {
+        const res = await apiFetch(`${API_BASE}/kyc/checklist`, {
             headers: { 'Authorization': `Bearer ${localStorage.getItem('access_token')}` }
         });
         if (!res.ok) throw new Error("Failed to get KYC checklist");
@@ -1104,7 +1154,7 @@ export const api = {
         address_postal_code: string;
         phone?: string;
     }): Promise<{ success: boolean; profile_id: string }> => {
-        const res = await fetch(`${API_BASE}/kyc/personal-info`, {
+        const res = await apiFetch(`${API_BASE}/kyc/personal-info`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -1114,13 +1164,13 @@ export const api = {
         });
         if (!res.ok) {
             const err = await res.json().catch(() => ({}));
-            throw new Error(err.detail || "Failed to submit personal info");
+            throw new Error(errorDetail(err?.detail, "Failed to submit personal info"));
         }
         return res.json();
     },
 
     kycGetPersonalInfo: async (): Promise<any> => {
-        const res = await fetch(`${API_BASE}/kyc/personal-info`, {
+        const res = await apiFetch(`${API_BASE}/kyc/personal-info`, {
             headers: { 'Authorization': `Bearer ${localStorage.getItem('access_token')}` }
         });
         if (!res.ok) throw new Error("Failed to get personal info");
@@ -1133,7 +1183,7 @@ export const api = {
         file_ref: string;
         expires_at: number;
     }> => {
-        const res = await fetch(`${API_BASE}/kyc/documents/upload-url`, {
+        const res = await apiFetch(`${API_BASE}/kyc/documents/upload-url`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -1149,7 +1199,7 @@ export const api = {
     },
 
     kycConfirmUpload: async (docId: string, fileRef: string, side: string, fileSizeBytes: number, contentType: string): Promise<{ success: boolean; is_complete: boolean }> => {
-        const res = await fetch(`${API_BASE}/kyc/documents/confirm`, {
+        const res = await apiFetch(`${API_BASE}/kyc/documents/confirm`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -1170,8 +1220,11 @@ export const api = {
         return res.json();
     },
 
+    // `uploadUrl` is a signed PATH on our own backend (always prefixed with
+    // API_BASE), so apiFetch sends exactly the same request as before: the
+    // Authorization header plus the File body (re-sendable on a 401 retry).
     kycUploadFile: async (uploadUrl: string, file: File): Promise<{ success: boolean; file_ref: string }> => {
-        const res = await fetch(`${API_BASE}${uploadUrl}`, {
+        const res = await apiFetch(`${API_BASE}${uploadUrl}`, {
             method: 'PUT',
             headers: { 'Authorization': `Bearer ${localStorage.getItem('access_token')}` },
             body: file
@@ -1184,7 +1237,7 @@ export const api = {
     },
 
     kycGetDocuments: async (): Promise<{ documents: any[] }> => {
-        const res = await fetch(`${API_BASE}/kyc/documents`, {
+        const res = await apiFetch(`${API_BASE}/kyc/documents`, {
             headers: { 'Authorization': `Bearer ${localStorage.getItem('access_token')}` }
         });
         if (!res.ok) throw new Error("Failed to get documents");
@@ -1194,7 +1247,7 @@ export const api = {
     // Starts a selfie session. `upload_url` is a signed URL (bound to this user) for
     // kycUploadFile; the selfie must be uploaded there before kycCompleteFaceVerification.
     kycStartFaceVerification: async (): Promise<{ check_id: string; session_id: string; selfie_upload_ref: string; upload_url: string; expires_at: number }> => {
-        const res = await fetch(`${API_BASE}/kyc/face/start`, {
+        const res = await apiFetch(`${API_BASE}/kyc/face/start`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -1212,7 +1265,7 @@ export const api = {
     // The server decides the outcome: it only records "submitted, pending manual review"
     // once the selfie has really been uploaded. No pass/fail flag is sent by the client.
     kycCompleteFaceVerification: async (selfieFileRef?: string): Promise<{ success: boolean; status: string; message?: string }> => {
-        const res = await fetch(`${API_BASE}/kyc/face/complete`, {
+        const res = await apiFetch(`${API_BASE}/kyc/face/complete`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -1228,13 +1281,13 @@ export const api = {
     },
 
     kycSubmit: async (): Promise<{ success: boolean; status: string; message: string }> => {
-        const res = await fetch(`${API_BASE}/kyc/submit`, {
+        const res = await apiFetch(`${API_BASE}/kyc/submit`, {
             method: 'POST',
             headers: { 'Authorization': `Bearer ${localStorage.getItem('access_token')}` }
         });
         if (!res.ok) {
             const err = await res.json().catch(() => ({}));
-            throw new Error(err.detail || "Failed to submit KYC");
+            throw new Error(errorDetail(err?.detail, "Failed to submit KYC"));
         }
         return res.json();
     }
@@ -2038,7 +2091,7 @@ export const api = {
         status: string;
     }> => {
         const { brokerId, environment = "demo" } = params;
-        const res = await fetch(`${API_BASE}/api/v1/mt/pairing-sessions`, {
+        const res = await apiFetch(`${API_BASE}/api/v1/mt/pairing-sessions`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -2067,12 +2120,15 @@ export const api = {
     // Polls by SESSION ID. The pairing code is a connector credential and is never
     // sent to (or known by) the browser.
     getMTPairingStatus: async (sessionId: string): Promise<any> => {
-        const res = await fetch(`${API_BASE}/api/v1/mt/connect/status?session_id=${encodeURIComponent(sessionId)}`, {
+        const res = await apiFetch(`${API_BASE}/api/v1/mt/connect/status?session_id=${encodeURIComponent(sessionId)}`, {
             headers: {
                 'Authorization': `Bearer ${localStorage.getItem('access_token')}`
             }
         });
-        if (!res.ok) throw new Error("Failed to get pairing status");
+        if (!res.ok) {
+            const err = await res.json().catch(() => ({}));
+            throw new Error(errorDetail(err?.detail, "Failed to get pairing status"));
+        }
         return res.json();
     },
 
@@ -2145,7 +2201,9 @@ export const api = {
         return res.blob();
     },
 
-    // Connector-side API (for testing purposes, actual connector uses direct HTTP)
+    // Connector-side API (for testing purposes, actual connector uses direct HTTP).
+    // Deliberately a raw fetch: this endpoint is unauthenticated and must not
+    // receive the user's bearer token.
     claimConnectorToken: async (token: string): Promise<{
         pairing_code: string;
         platform: string;

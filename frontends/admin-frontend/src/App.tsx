@@ -4,9 +4,6 @@ import { AuthProvider } from './auth/AuthContext';
 import { MarketingProvider } from './context/MarketingContext';
 import { AdminProtectedRoute } from './components/Auth/AdminProtectedRoute';
 import Login from '@/pages/Login';
-import VerifyEmail from '@/pages/VerifyEmail';
-import ForgotPassword from '@/pages/ForgotPassword';
-import ResetPassword from '@/pages/ResetPassword';
 import AdminDashboard from '@/pages/admin/Dashboard';
 import UserManagement from '@/pages/admin/UserManagement';
 import RevenueAnalytics from '@/pages/admin/RevenueAnalytics';
@@ -59,11 +56,10 @@ function App() {
                   dashboard, which redirects to /login when signed out. */}
               <Route path="/" element={<Navigate to="/admin" replace />} />
 
-              {/* Admin sign-in */}
+              {/* Admin sign-in. admin-auth exposes only login/refresh/logout/me:
+                  there is no self-service verify-email or password reset for
+                  admin accounts, so those pages and routes were removed. */}
               <Route path="/login" element={<Login />} />
-              <Route path="/verify-email" element={<VerifyEmail />} />
-              <Route path="/forgot-password" element={<ForgotPassword />} />
-              <Route path="/reset-password" element={<ResetPassword />} />
 
               {/* Sole owner of /admin/* routes.
                   Keep admin-only UI here and do not add new admin routes to user-frontend. */}

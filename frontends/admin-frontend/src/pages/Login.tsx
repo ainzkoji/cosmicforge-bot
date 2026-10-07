@@ -1,7 +1,8 @@
 import { useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/auth/AuthContext";
 import { Loader2, Eye, EyeOff } from "lucide-react";
+import logo from "../assets/logo.png";
 
 export default function Login() {
     const { login } = useAuth();
@@ -33,7 +34,7 @@ export default function Login() {
             <div className="w-full max-w-md px-8 py-12">
                 {/* Logo */}
                 <div className="flex justify-center mb-8">
-                    <img src="/src/assets/logo.png" alt="CosmicForge" className="h-16 w-16" />
+                    <img src={logo}alt="CosmicForge" className="h-16 w-16" />
                 </div>
 
                 {/* Title */}
@@ -82,10 +83,10 @@ export default function Login() {
                         </div>
                     </div>
 
-                    {/* Forgot Password */}
-                    <div className="text-right">
-                        <Link to="/forgot-password" className="text-sm text-[#1E1B4B] hover:underline">Forgot Password?</Link>
-                    </div>
+                    {/* Admin accounts have no self-service password reset. */}
+                    <p className="text-right text-xs text-gray-500">
+                        Forgot your password? Ask a platform administrator to reset it.
+                    </p>
 
                     {/* Submit Button */}
                     <button

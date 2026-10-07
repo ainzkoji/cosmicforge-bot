@@ -1,9 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { DollarSign, ArrowUpRight, PieChart, TrendingUp, Activity, Loader2, Download, FileText, Hash, Wallet, AlertTriangle } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { EquityCurve } from '@/components/analytics/EquityCurve';
 import { api } from '@/api/client';
-import { apiFetch } from '@/api/http';
+import { API_BASE, apiFetch } from '@/api/http';
 
 interface AnalyticsOverviewProps {
     timeframe: string;
@@ -22,7 +22,8 @@ export function AnalyticsOverview({ timeframe }: AnalyticsOverviewProps) {
         setIsExporting(true);
         setExportMenuOpen(false);
         try {
-            const response = await apiFetch(`/api/analytics/export/pdf?timeframe=${timeframe}`);
+            // Absolute API URL: a relative path would hit the frontend's own origin.
+            const response = await apiFetch(`${API_BASE}/api/analytics/export/pdf?timeframe=${encodeURIComponent(timeframe)}`);
 
             if (!response.ok) throw new Error('Export failed');
 

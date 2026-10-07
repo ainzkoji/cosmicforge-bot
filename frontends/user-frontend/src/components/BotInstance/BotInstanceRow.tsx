@@ -7,6 +7,7 @@ import { api, BotInstance } from '@/api/client';
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { CopyableId } from '../UI/CopyableId';
+import { isPaperMode, tradingModeLabel } from '@/utils/tradingMode';
 
 interface BotInstanceRowProps {
     bot: BotInstance;
@@ -80,9 +81,9 @@ export const BotInstanceRow = ({ bot, onStart, onPause, onStop, onDelete, onView
                             <span>•</span>
                             <span className="font-mono text-xs">{bot.symbols?.[0] || 'Multi-Symbol'}</span>
                             <span>•</span>
-                            <span className={`text-[10px] px-1.5 py-0.5 rounded uppercase font-bold tracking-wider ${bot.mode === 'live' ? 'bg-red-500/10 text-red-500' : 'bg-blue-500/10 text-blue-500'
+                            <span className={`text-[10px] px-1.5 py-0.5 rounded uppercase font-bold tracking-wider ${isPaperMode(bot.mode) ? 'bg-blue-500/10 text-blue-500' : 'bg-red-500/10 text-red-500'
                                 }`}>
-                                {bot.mode}
+                                {tradingModeLabel(bot.mode)}
                             </span>
                         </div>
                         <div className="mt-2 text-xs text-muted-foreground" aria-live="polite">

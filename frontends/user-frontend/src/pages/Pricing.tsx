@@ -50,10 +50,10 @@ export default function Pricing() {
         if (limits.backtesting === 'advanced') feats.push("Advanced Backtesting Engine");
         else feats.push("Basic Backtesting");
 
-        if (limits.copy_trading === 'true') feats.push("Social & Copy Trading");
-        if (limits.api_access === 'true') feats.push("Full API Access");
+        // Only features that exist in the product are listed. The plan data
+        // also carries copy_trading, api_access and dedicated_support flags,
+        // but none of those is available, so they are not advertised here.
         if (limits.advanced_reports === 'true') feats.push("Advanced Reporting & Analytics");
-        if (limits.dedicated_support === 'true') feats.push("Dedicated Account Manager");
 
         return feats;
     };

@@ -48,6 +48,11 @@ class DeployAutoPilotRequest(BaseModel):
     symbols: Optional[List[str]] = None
     market_type: Literal["crypto", "forex"] = Field(default="crypto")
     forex_config: Optional[dict] = None # Or use specific schema if shared
+    # Daily loss limit as a FRACTION of day-opening account equity (0.03 = 3%).
+    # None/omitted: the selected risk profile's default applies. Only a coarse
+    # sanity bound here; bot-backend enforces the exact system limits
+    # (validate_daily_loss_limit_pct) and its refusal is relayed to the client.
+    daily_loss_limit_pct: Optional[float] = Field(default=None, gt=0, lt=1)
 
     class Config:
         extra = "forbid"
@@ -100,6 +105,7 @@ async def deploy_auto_pilot(
         "forex_config": body.forex_config,
         "symbol_universe_mode": body.symbol_universe_mode,
         "symbols": body.symbols,
+        "daily_loss_limit_pct": body.daily_loss_limit_pct,
     }
     
     return await proxy_request(

@@ -19,7 +19,8 @@ export default function KYCStatus() {
 
                 // If not started, redirect to intro
                 if (data.case_status === "not_started") {
-                    navigate("/kyc/intro");
+                    // The intro page is the index route of /dashboard/kyc.
+                    navigate("/dashboard/kyc");
                 }
             } catch (e: any) {
                 setError(e.message || "Failed to load status");
@@ -189,7 +190,7 @@ export default function KYCStatus() {
                                     </div>
                                     {(!step.is_complete || isRejected || needsResubmission) && step.step !== 'face_verification' && (
                                         <Link
-                                            to={step.step === 'personal_info' ? '/kyc/personal-info' : '/kyc/id-upload'}
+                                            to={step.step === 'personal_info' ? '/dashboard/kyc/personal-info' : '/dashboard/kyc/id-upload'}
                                             className="text-sm text-[#1E1B4B] hover:underline"
                                         >
                                             {step.is_complete ? "Update" : "Start"}
@@ -197,7 +198,7 @@ export default function KYCStatus() {
                                     )}
                                     {(!step.is_complete || isRejected || needsResubmission) && step.step === 'face_verification' && (
                                         <Link
-                                            to="/kyc/face-verification"
+                                            to="/dashboard/kyc/face-verification"
                                             className="text-sm text-[#1E1B4B] hover:underline"
                                         >
                                             {step.is_complete ? "Update" : "Start"}

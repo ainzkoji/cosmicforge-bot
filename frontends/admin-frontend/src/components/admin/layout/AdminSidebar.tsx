@@ -19,6 +19,7 @@ import {
     Network,
     Database,
 } from "lucide-react";
+import logo from "../../../assets/logo.png";
 
 type NavItem = {
     path: string;
@@ -64,7 +65,7 @@ export function AdminSidebar() {
             {/* Logo — fixed at top, never scrolls */}
             <div className="p-6 border-b" style={{ borderColor: "var(--admin-border-color)", flexShrink: 0 }}>
                 <div className="flex items-center gap-3">
-                    <img src="/src/assets/logo.png" alt="CosmicForge" className="h-8 w-8" />
+                    <img src={logo}alt="CosmicForge" className="h-8 w-8" />
                     <div>
                         <div className="text-sm font-bold" style={{ color: "var(--admin-text-primary)" }}>
                             CosmicForge

@@ -10,6 +10,7 @@ import {
 import { BotInstanceRow } from "@/components/BotInstance/BotInstanceRow";
 import { ConfirmationDialog } from "@/components/UI/ConfirmationDialog";
 import { LiveTradingConfirmDialog } from "@/components/UI/LiveTradingConfirmDialog";
+import { isPaperMode, tradingModeLabel } from "@/utils/tradingMode";
 
 interface StopAllResult {
     id: string;
@@ -24,7 +25,7 @@ function errorMessage(err: unknown, fallback: string): string {
 
 function botLabel(bot: BotInstance): string {
     const symbol = bot.symbols?.[0] || "multi-symbol";
-    return `${bot.name || bot.strategy_id} · ${symbol} · ${bot.mode.toUpperCase()} · ${bot.id.slice(0, 8)}`;
+    return `${bot.name || bot.strategy_id} · ${symbol} · ${tradingModeLabel(bot.mode).toUpperCase()} · ${bot.id.slice(0, 8)}`;
 }
 
 export default function MyBots() {
@@ -34,8 +35,9 @@ export default function MyBots() {
 
     // Dialog State
     const [confirmAction, setConfirmAction] = useState<{ type: 'stop' | 'delete', id: string } | null>(null);
-    // A LIVE (real-money) bot is only started after an explicit confirmation.
-    const [liveStartBot, setLiveStartBot] = useState<BotInstance | null>(null);
+    // A bot that is not positively paper/demo is only started after an explicit
+    // confirmation. Held by id so a bot missing from the list still gets the dialog.
+    const [liveStartId, setLiveStartId] = useState<string | null>(null);
     const [liveStartError, setLiveStartError] = useState<string | null>(null);
     // Server error from the last start/pause/stop/delete action.
     const [actionError, setActionError] = useState<string | null>(null);
@@ -52,6 +54,9 @@ export default function MyBots() {
         },
         refetchInterval: 5000 // Poll every 5s for status updates
     });
+    const liveStartBot: BotInstance | null = liveStartId
+        ? bots.find((b) => b.id === liveStartId) ?? null
+        : null;
 
     // Fetch Brokers (for badges)
     const { data: brokersData } = useQuery({
@@ -63,7 +68,9 @@ export default function MyBots() {
     // Filtering
     const filteredBots = bots.filter((bot) => {
         if (filterStatus !== 'all' && bot.status !== filterStatus) return false;
-        if (filterMode !== 'all' && bot.mode !== filterMode) return false;
+        // "live" lists everything that is not positively paper (unknown mode included).
+        if (filterMode === 'paper' && !isPaperMode(bot.mode)) return false;
+        if (filterMode === 'live' && isPaperMode(bot.mode)) return false;
         return true;
     });
 
@@ -73,23 +80,26 @@ export default function MyBots() {
     // The interface has total_trades but not PnL. I'll omit PnL or mock it if not available.
     // The interface I defined didn't have PnL. I'll stick to what I have.
 
-    // Mutations
+    // Mutations. networkMode "always": an action clicked while offline fails
+    // immediately instead of being paused by react-query and fired on reconnect.
     const startMutation = useMutation({
+        networkMode: "always",
         mutationFn: api.startBotInstance,
         onMutate: () => { setActionError(null); setLiveStartError(null); },
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ['botInstances'] });
-            setLiveStartBot(null);
+            setLiveStartId(null);
         },
         onError: (err: Error) => {
             const message = errorMessage(err, 'Failed to start bot instance');
             // Keep the live confirmation open and show the server's reason inside it.
-            if (liveStartBot) setLiveStartError(message);
+            if (liveStartId) setLiveStartError(message);
             else setActionError(`Could not start bot: ${message}`);
         }
     });
 
     const pauseMutation = useMutation({
+        networkMode: "always",
         mutationFn: api.pauseBotInstance,
         onMutate: () => setActionError(null),
         onSuccess: () => queryClient.invalidateQueries({ queryKey: ['botInstances'] }),
@@ -97,6 +107,7 @@ export default function MyBots() {
     });
 
     const stopMutation = useMutation({
+        networkMode: "always",
         mutationFn: api.stopBotInstance,
         onMutate: () => setActionError(null),
         onSuccess: () => {
@@ -110,6 +121,7 @@ export default function MyBots() {
     });
 
     const deleteMutation = useMutation({
+        networkMode: "always",
         mutationFn: api.deleteBotInstance,
         onMutate: () => setActionError(null),
         onSuccess: () => {
@@ -122,15 +134,17 @@ export default function MyBots() {
         }
     });
 
-    // Paper/demo bots start with one click; LIVE bots require confirmation first.
+    // Start and resume share this handler. Only a bot that is found in the list
+    // AND positively paper/demo starts with one click; a live, unknown-mode or
+    // missing bot is treated as real money and must be confirmed first.
     const handleStart = (id: string) => {
         const bot = bots.find((b) => b.id === id);
-        if (bot && bot.mode === 'live') {
-            setLiveStartError(null);
-            setLiveStartBot(bot);
+        if (bot && isPaperMode(bot.mode)) {
+            startMutation.mutate(id);
             return;
         }
-        startMutation.mutate(id);
+        setLiveStartError(null);
+        setLiveStartId(id);
     };
 
     // Every bot that is not already stopped (active, paused or in error).
@@ -365,9 +379,9 @@ export default function MyBots() {
             </ConfirmationDialog>
 
             <LiveTradingConfirmDialog
-                isOpen={liveStartBot !== null}
-                onClose={() => { if (!startMutation.isPending) setLiveStartBot(null); }}
-                onConfirm={() => liveStartBot && startMutation.mutate(liveStartBot.id)}
+                isOpen={liveStartId !== null}
+                onClose={() => { if (!startMutation.isPending) setLiveStartId(null); }}
+                onConfirm={() => liveStartId && startMutation.mutate(liveStartId)}
                 title="Start LIVE bot?"
                 confirmLabel="Start live bot"
                 broker={liveStartAccount?.broker_id || liveStartBot?.broker_id || "unknown"}
@@ -375,6 +389,7 @@ export default function MyBots() {
                 environment={liveStartAccount?.environment}
                 details={liveStartBot ? [
                     { label: "Bot", value: liveStartBot.name || liveStartBot.strategy_id },
+                    { label: "Reported mode", value: tradingModeLabel(liveStartBot.mode) },
                     { label: "Symbols", value: liveStartBot.symbols?.length ? liveStartBot.symbols.join(", ") : "Multi-symbol" },
                     {
                         label: "Trade amount",
@@ -382,7 +397,9 @@ export default function MyBots() {
                             ? `${liveStartBot.allocation_value}% of equity`
                             : `${liveStartBot.allocation_value} (fixed)`
                     },
-                ] : []}
+                ] : [
+                    { label: "Bot", value: `${liveStartId ?? "unknown"} (not in the loaded list — details unavailable)` },
+                ]}
                 isLoading={startMutation.isPending}
                 error={liveStartError}
             />

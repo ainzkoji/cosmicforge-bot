@@ -2,6 +2,7 @@ import { Link, Outlet, useLocation } from "react-router-dom";
 import { useMarketing } from "@/context/MarketingContext";
 import { useEffect } from "react";
 import { RiskNotice } from "@/components/Legal/RiskNotice";
+import logo from "../../assets/logo.png";
 
 export function PublicLayout() {
     const { trackEvent } = useMarketing();
@@ -18,7 +19,7 @@ export function PublicLayout() {
             <nav className="fixed top-0 left-0 right-0 bg-white/95 backdrop-blur-sm border-b border-gray-100 z-50">
                 <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
                     <Link to="/" className="flex items-center gap-2">
-                        <img src="/src/assets/logo.png" alt="CosmicForge" className="h-10 w-10" />
+                        <img src={logo} alt="CosmicForge" className="h-10 w-10" />
                         <span className="font-bold text-xl text-[#1E1B4B]">CosmicForge Stratos</span>
                     </Link>
                     <div className="hidden md:flex items-center gap-8">
@@ -44,7 +45,7 @@ export function PublicLayout() {
                 <div className="max-w-7xl mx-auto grid md:grid-cols-3 gap-8">
                     <div>
                         <div className="flex items-center gap-2 mb-4">
-                            <img src="/src/assets/logo.png" alt="CosmicForge" className="h-8 w-8 brightness-0 invert" />
+                            <img src={logo} alt="CosmicForge" className="h-8 w-8 brightness-0 invert" />
                             <span className="font-bold">CosmicForge Stratos</span>
                         </div>
                         <p className="text-gray-400 text-sm">Automated trading tools for your own exchange account.</p>

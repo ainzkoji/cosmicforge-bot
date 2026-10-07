@@ -2,7 +2,7 @@ import { Link, useNavigate } from "react-router-dom";
 import {
     Activity, BarChart3,
     ArrowUpRight, ArrowDownRight,
-    Wallet, AlertCircle, Eye, EyeOff, Sparkles,
+    Wallet, AlertCircle, Eye, EyeOff,
     MoreHorizontal, Calendar, Filter, Trophy, CheckCircle2, X
 } from "lucide-react";
 import { useState } from "react";
@@ -288,25 +288,6 @@ export function AdvancedDashboard() {
                             >
                                 View Reconciliation <ArrowUpRight className="w-3.5 h-3.5" />
                             </button>
-                        </div>
-
-                        {/* Market Compass / AI Insight */}
-                        <div className="bg-gradient-to-br from-indigo-500/10 to-purple-500/10 border border-indigo-500/20 rounded-2xl p-6 flex flex-col justify-between hover:border-indigo-500/40 transition-colors shadow-lg relative overflow-hidden">
-                            <div className="absolute inset-0 bg-grid-white/5 [mask-image:linear-gradient(to_bottom,transparent,black)]" />
-                            <div className="relative z-10">
-                                <div className="flex items-center gap-2 mb-3">
-                                    <div className="p-1.5 bg-indigo-500/20 rounded-lg">
-                                        <Sparkles className="w-4 h-4 text-indigo-400" />
-                                    </div>
-                                    <span className="text-sm font-bold text-indigo-300">AI Market Insights</span>
-                                </div>
-                                <div className="text-sm font-semibold text-indigo-200/80 mb-2">
-                                    Not yet active
-                                </div>
-                                <p className="text-xs text-indigo-200/50 leading-relaxed">
-                                    AI Market Insights are not active yet. Insights will appear once signal intelligence is connected.
-                                </p>
-                            </div>
                         </div>
                     </div>
 

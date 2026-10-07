@@ -1,4 +1,5 @@
 import { ExternalLink, RefreshCw } from "lucide-react";
+import logo from "../../assets/logo.png";
 
 export function Footer() {
     return (
@@ -9,7 +10,7 @@ export function Footer() {
                     <div className="flex flex-col gap-4">
                         <div className="flex items-center gap-2">
                             <img
-                                src="/src/assets/logo.png"
+                                src={logo}
                                 alt="CosmicForge"
                                 className="w-8 h-8 object-contain"
                             />

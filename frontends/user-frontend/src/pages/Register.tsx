@@ -20,8 +20,10 @@ export default function Register() {
 
     const { register } = useAuth();
     const [error, setError] = useState<string | null>(null);
-    // Must be ticked by the user; never pre-checked.
-    const [acceptedRiskAndTerms, setAcceptedRiskAndTerms] = useState(false);
+    // Must be ticked by the user; never pre-checked. This records ONLY the Risk
+    // Disclosure acknowledgement: the Terms and Privacy pages are placeholders,
+    // so no terms acceptance is claimed or recorded until real terms exist.
+    const [acceptedRisk, setAcceptedRisk] = useState(false);
 
     const handleRegister = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -34,8 +36,8 @@ export default function Register() {
             return;
         }
 
-        if (!acceptedRiskAndTerms) {
-            setError("Please confirm that you have read and accept the Risk Disclosure and Terms.");
+        if (!acceptedRisk) {
+            setError("Please confirm that you have read and understood the Risk Disclosure.");
             setIsLoading(false);
             return;
         }
@@ -46,7 +48,8 @@ export default function Register() {
                 email: formData.email,
                 password: formData.password,
                 confirmed_password: formData.confirmPassword, // Updated backend expects this
-                terms_accepted_at: acceptedAt,
+                // terms_accepted_at is deliberately not sent (optional on the
+                // backend): there are no published terms to accept yet.
                 risk_disclaimer_accepted_at: acceptedAt,
             });
             // On success, backend usually returns user or token.
@@ -199,21 +202,19 @@ export default function Register() {
                             <input
                                 type="checkbox"
                                 required
-                                checked={acceptedRiskAndTerms}
-                                onChange={e => setAcceptedRiskAndTerms(e.target.checked)}
+                                checked={acceptedRisk}
+                                onChange={e => setAcceptedRisk(e.target.checked)}
                                 className="mt-0.5 h-4 w-4 shrink-0"
                             />
                             <span>
-                                I have read and accept the{" "}
-                                <Link to="/risk-disclosure" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline font-semibold">Risk Disclosure</Link>
-                                {" "}and{" "}
-                                <Link to="/terms" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline font-semibold">Terms</Link>.
+                                I have read and understood the{" "}
+                                <Link to="/risk-disclosure" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline font-semibold">Risk Disclosure</Link>.
                             </span>
                         </label>
 
                         <button
                             type="submit"
-                            disabled={isLoading || !acceptedRiskAndTerms}
+                            disabled={isLoading || !acceptedRisk}
                             className="w-full h-11 bg-primary text-primary-foreground rounded-lg font-bold hover:bg-primary/90 transition-all shadow-lg hover:shadow-primary/25 disabled:opacity-50 flex items-center justify-center gap-2"
                         >
                             {isLoading ? "Creating Account..." : "Create Account"} <ArrowRight className="w-4 h-4" />

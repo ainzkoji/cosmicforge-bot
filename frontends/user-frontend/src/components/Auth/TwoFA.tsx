@@ -43,8 +43,18 @@ export function TwoFASetup({ onComplete }: { onComplete: () => void }) {
         try {
             await api.verify2FA(verifyCode);
             onComplete();
-        } catch {
-            setError("Invalid code. Please try again.");
+        } catch (err) {
+            // api.verify2FA distinguishes a wrong code, a rate limit (429), an
+            // expired session and a network failure; show what it reports.
+            if (err instanceof TypeError) {
+                // fetch rejects with a TypeError when the server cannot be reached.
+                setError("Could not reach the server. Check your connection and try again.");
+            } else {
+                setError(err instanceof Error && err.message
+                    ? err.message
+                    : "Could not verify the code. Please try again.");
+            }
+            setVerifyCode("");
         } finally {
             setLoading(false);
         }

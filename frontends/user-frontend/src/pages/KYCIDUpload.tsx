@@ -70,7 +70,7 @@ export default function KYCIDUpload() {
             }
             setUploadProgress(100);
 
-            navigate("/kyc/face-verification");
+            navigate("/dashboard/kyc/face-verification");
         } catch (e: any) {
             setError(e.message || "Failed to upload documents. Please try again.");
             setIsUploading(false);
@@ -250,7 +250,7 @@ export default function KYCIDUpload() {
                     {/* Navigation */}
                     <div className="flex items-center justify-between">
                         <button
-                            onClick={() => navigate("/kyc/personal-info")}
+                            onClick={() => navigate("/dashboard/kyc/personal-info")}
                             disabled={isUploading}
                             className={`flex items-center gap-2 text-gray-600 hover:text-[#1E1B4B] transition-colors ${isUploading ? 'opacity-50' : ''}`}
                         >

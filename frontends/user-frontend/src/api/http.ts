@@ -11,7 +11,7 @@
  * backend support and is tracked separately.
  */
 
-const API_BASE: string = import.meta.env.VITE_API_BASE || "http://localhost:8000";
+export const API_BASE: string = import.meta.env.VITE_API_BASE || "http://localhost:8000";
 const REFRESH_URL = `${API_BASE}/api/v1/auth/refresh`;
 
 const ACCESS_TOKEN_KEY = "access_token";
@@ -124,7 +124,65 @@ async function runExclusive(task: () => Promise<RefreshOutcome>): Promise<Refres
         // `locks.request` resolves with the callback's (awaited) result.
         return await navigator.locks.request(REFRESH_LOCK_NAME, () => task());
     }
-    return await task();
+    return await runWithStorageLock(task);
+}
+
+/*
+ * Fallback for browsers without the Web Locks API: a small localStorage mutex.
+ * localStorage has no compare-and-set, so after writing a claim we wait a
+ * moment and confirm it is still ours; the loser waits for the winner. A claim
+ * expires after FALLBACK_LOCK_TTL_MS so a crashed tab cannot block refreshes.
+ * If the lock cannot be taken in time (or storage is unavailable) the task
+ * runs anyway: performRefresh first re-reads the stored tokens and adopts a
+ * pair that another tab has just rotated instead of refreshing again.
+ */
+const FALLBACK_LOCK_KEY = `${REFRESH_LOCK_NAME}:lock`;
+const FALLBACK_LOCK_TTL_MS = 10_000;
+
+function sleep(ms: number): Promise<void> {
+    return new Promise((resolve) => {
+        window.setTimeout(resolve, ms);
+    });
+}
+
+/** Owner id of the current, unexpired claim ("<owner>|<expiresAtMs>"), if any. */
+function storageLockOwner(): string | null {
+    const raw = readStorage(FALLBACK_LOCK_KEY);
+    if (!raw) return null;
+    const [owner, expires] = raw.split("|");
+    const expiresAt = Number(expires);
+    if (!owner || !Number.isFinite(expiresAt) || expiresAt <= Date.now()) return null;
+    return owner;
+}
+
+async function runWithStorageLock(task: () => Promise<RefreshOutcome>): Promise<RefreshOutcome> {
+    const owner = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    const giveUpAt = Date.now() + FALLBACK_LOCK_TTL_MS;
+    let held = false;
+    while (!held && Date.now() < giveUpAt) {
+        if (storageLockOwner() !== null) {
+            await sleep(100);
+            continue;
+        }
+        try {
+            localStorage.setItem(FALLBACK_LOCK_KEY, `${owner}|${Date.now() + FALLBACK_LOCK_TTL_MS}`);
+        } catch {
+            break; // Storage unavailable: there is no cross-tab state to protect.
+        }
+        await sleep(25 + Math.random() * 50);
+        held = storageLockOwner() === owner;
+    }
+    try {
+        return await task();
+    } finally {
+        if (held && storageLockOwner() === owner) {
+            try {
+                localStorage.removeItem(FALLBACK_LOCK_KEY);
+            } catch {
+                // Storage unavailable: the claim expires on its own.
+            }
+        }
+    }
 }
 
 let refreshInFlight: Promise<RefreshOutcome> | null = null;
@@ -148,9 +206,35 @@ function requestUrl(input: RequestInfo | URL): string {
     return input.url;
 }
 
-/** Only our own backend ever receives the bearer token. */
+/** Origin of a URL (relative URLs resolve against the page); null when unusable. */
+function originOf(url: string): string | null {
+    try {
+        const origin = new URL(url, window.location.href).origin;
+        return origin === "null" ? null : origin;
+    } catch {
+        return null;
+    }
+}
+
+let apiOrigins: Set<string> | null = null;
+
+/**
+ * Only our own backend ever receives the bearer token. URLs are compared by
+ * ORIGIN, not by string prefix: "//evil.host/x" and
+ * "http://localhost:8000.evil.host/x" resolve to a foreign origin and get a
+ * plain fetch without the token. A relative URL is the page's own origin, so
+ * it counts as the API only when VITE_API_BASE is on that same origin (the
+ * production nginx layout); every API call in this app uses an absolute
+ * API_BASE URL.
+ */
 function isApiUrl(url: string): boolean {
-    return url.startsWith(API_BASE) || url.startsWith("/");
+    if (apiOrigins === null) {
+        apiOrigins = new Set(
+            [API_BASE].map(originOf).filter((origin): origin is string => origin !== null),
+        );
+    }
+    const origin = originOf(url);
+    return origin !== null && apiOrigins.has(origin);
 }
 
 function withAuth(input: RequestInfo | URL, init: RequestInit, token: string | null): RequestInit {

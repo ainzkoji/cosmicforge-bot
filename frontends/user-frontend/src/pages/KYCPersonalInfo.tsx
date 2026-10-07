@@ -54,7 +54,7 @@ export default function KYCPersonalInfo() {
                 address_city: formData.city,
                 address_postal_code: formData.postalCode,
             });
-            navigate("/kyc/id-upload");
+            navigate("/dashboard/kyc/id-upload");
         } catch (e: any) {
             console.error("Submission error:", e);
             if (e.response && e.response.data) {
@@ -289,7 +289,7 @@ export default function KYCPersonalInfo() {
                         <div className="flex items-center justify-between pt-6">
                             <button
                                 type="button"
-                                onClick={() => navigate("/kyc")}
+                                onClick={() => navigate("/dashboard/kyc")}
                                 className="flex items-center gap-2 text-gray-600 hover:text-[#1E1B4B] transition-colors"
                             >
                                 <ArrowLeft className="w-4 h-4" />

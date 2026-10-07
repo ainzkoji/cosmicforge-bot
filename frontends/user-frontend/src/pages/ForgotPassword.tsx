@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Link } from "react-router-dom";
 import { api } from "@/api/client";
 import { Loader2, ArrowLeft, Mail, Check } from "lucide-react";
+import logo from "../assets/logo.png";
 
 export default function ForgotPassword() {
     const [email, setEmail] = useState("");
@@ -55,7 +56,7 @@ export default function ForgotPassword() {
             <div className="w-full max-w-md">
                 {/* Logo */}
                 <div className="flex justify-center mb-8">
-                    <img src="/src/assets/logo.png" alt="CosmicForge" className="h-12 w-12" />
+                    <img src={logo} alt="CosmicForge" className="h-12 w-12" />
                 </div>
 
                 <div className="text-center mb-8">

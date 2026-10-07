@@ -56,12 +56,12 @@ export function SummaryStep({ onComplete, isLoading, onboardingState }: SummaryS
                                         blocker === 'KYC_REQUIRED' ? 'Complete Identity Verification' : blocker}
                                 </span>
                                 {blocker === 'NO_BROKER' && (
-                                    <Link to="/features/brokers" className="text-blue-400 hover:text-blue-300 text-xs flex items-center gap-1">
+                                    <Link to="/dashboard/brokers"className="text-blue-400 hover:text-blue-300 text-xs flex items-center gap-1">
                                         Connect <ExternalLink className="w-3 h-3" />
                                     </Link>
                                 )}
                                 {blocker === 'KYC_REQUIRED' && (
-                                    <Link to="/kyc" className="text-blue-400 hover:text-blue-300 text-xs flex items-center gap-1">
+                                    <Link to="/dashboard/kyc"className="text-blue-400 hover:text-blue-300 text-xs flex items-center gap-1">
                                         Verify <ExternalLink className="w-3 h-3" />
                                     </Link>
                                 )}

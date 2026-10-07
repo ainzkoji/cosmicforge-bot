@@ -2,6 +2,7 @@ import { Bell, Settings, User, LogOut } from "lucide-react";
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { useAuth } from "@/auth/AuthContext";
+import logo from "../../assets/logo.png";
 
 export function Header() {
     const [online] = useState(true);
@@ -19,7 +20,7 @@ export function Header() {
                 {/* Logo & Brand */}
                 <Link to="/dashboard" className="flex items-center gap-3">
                     <img
-                        src="/src/assets/logo.png"
+                        src={logo}
                         alt="CosmicForge"
                         className="w-10 h-10 object-contain"
                     />
@@ -61,12 +62,6 @@ export function Header() {
                             Analytics
                         </Link>
                         <Link
-                            to="/dashboard/social"
-                            className="px-4 py-1.5 rounded-full text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-all"
-                        >
-                            Social
-                        </Link>
-                        <Link
                             to="/dashboard/academy"
                             className="px-4 py-1.5 rounded-full text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-all"
                         >
@@ -85,7 +80,7 @@ export function Header() {
                             Billing
                         </Link>
                         <Link
-                            to="/dashboard/onboarding"
+                            to="/onboarding"
                             className="px-4 py-1.5 rounded-full text-sm font-medium bg-primary/10 text-primary hover:bg-primary/20 transition-all border border-primary/20"
                         >
                             Setup

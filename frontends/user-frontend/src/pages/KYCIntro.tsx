@@ -13,7 +13,7 @@ export default function KYCIntro() {
         setError(null);
         try {
             await api.kycStart();
-            navigate("/kyc/personal-info");
+            navigate("/dashboard/kyc/personal-info");
         } catch (e: any) {
             setError(e.message || "Failed to start KYC");
         } finally {

@@ -20,6 +20,7 @@ import { useState } from "react";
 import { ConfirmationDialog } from "@/components/UI/ConfirmationDialog";
 import { LiveTradingConfirmDialog } from "@/components/UI/LiveTradingConfirmDialog";
 import { CopyableId } from "@/components/UI/CopyableId";
+import { isPaperMode, tradingModeLabel } from "@/utils/tradingMode";
 
 function errorMessage(err: unknown, fallback: string): string {
     return err instanceof Error && err.message ? err.message : fallback;
@@ -53,7 +54,10 @@ export default function BotDetails() {
         refetchInterval: 5000 // Live updates
     });
 
+    // networkMode "always": an action clicked while offline fails immediately
+    // instead of being paused by react-query and fired later on reconnect.
     const startMutation = useMutation({
+        networkMode: "always",
         mutationFn: api.startBotInstance,
         onMutate: () => { setActionLoading('start'); setActionError(null); setLiveStartError(null); },
         onSettled: () => setActionLoading(null),
@@ -70,6 +74,7 @@ export default function BotDetails() {
     });
 
     const pauseMutation = useMutation({
+        networkMode: "always",
         mutationFn: api.pauseBotInstance,
         onMutate: () => { setActionLoading('pause'); setActionError(null); },
         onSettled: () => setActionLoading(null),
@@ -81,6 +86,7 @@ export default function BotDetails() {
     });
 
     const stopMutation = useMutation({
+        networkMode: "always",
         mutationFn: api.stopBotInstance,
         onMutate: () => { setActionLoading('stop'); setActionError(null); },
         onSettled: () => {
@@ -95,6 +101,7 @@ export default function BotDetails() {
     });
 
     useMutation({
+        networkMode: "always",
         mutationFn: api.deleteBotInstance,
         onMutate: () => { setActionLoading('delete'); setActionError(null); },
         onSettled: () => {
@@ -134,9 +141,10 @@ export default function BotDetails() {
 
     const brokerAccount = (brokersData?.accounts || []).find((a) => a.id === bot.broker_account_id);
 
-    // Paper/demo bots start with one click; LIVE bots require confirmation first.
+    // Only a bot that is positively paper/demo starts (or resumes) with one click.
+    // Live, unknown or missing mode all require the real-money confirmation.
     const handleStart = () => {
-        if (bot.mode === 'live') {
+        if (!isPaperMode(bot.mode)) {
             setLiveStartError(null);
             setLiveStartOpen(true);
             return;
@@ -336,7 +344,7 @@ export default function BotDetails() {
                                     <ConfigItem label="Bot Instance ID" value={<CopyableId id={bot.id} maxLength={32} className="bg-transparent border-none p-0 text-gray-300 hover:text-white" />} />
                                     <ConfigItem label="Broker Account ID" value={<CopyableId id={bot.broker_account_id} maxLength={32} className="bg-transparent border-none p-0 text-gray-300 hover:text-white" />} />
                                     <ConfigItem label="Status" value={<StatusBadge status={bot.status} />} />
-                                    <ConfigItem label="Execution Mode" value={<span className={`text-xs px-2 py-0.5 rounded uppercase font-bold tracking-wider ${bot.mode === 'live' ? 'bg-red-500/10 text-red-500' : 'bg-blue-500/10 text-blue-500'}`}>{bot.mode}</span>} />
+                                    <ConfigItem label="Execution Mode" value={<span className={`text-xs px-2 py-0.5 rounded uppercase font-bold tracking-wider ${isPaperMode(bot.mode) ? 'bg-blue-500/10 text-blue-500' : 'bg-red-500/10 text-red-500'}`}>{tradingModeLabel(bot.mode)}</span>} />
                                     {bot.block_category && (
                                         <ConfigItem label="Blocked Reason" value={<span className="text-red-400 text-sm max-w-xs text-right block">{bot.block_reason_detail || bot.block_category}</span>} />
                                     )}
@@ -397,6 +405,7 @@ export default function BotDetails() {
                 environment={brokerAccount?.environment}
                 details={[
                     { label: "Bot", value: bot.name || bot.strategy_id },
+                    { label: "Reported mode", value: tradingModeLabel(bot.mode) },
                     { label: "Symbols", value: bot.symbols?.length ? bot.symbols.join(", ") : "Multi-symbol" },
                     {
                         label: "Trade amount",

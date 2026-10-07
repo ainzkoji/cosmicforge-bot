@@ -376,7 +376,7 @@ export default function BrokerConnection() {
                             Exchange Connections
                         </h1>
                         <p className="text-muted-foreground mt-2 text-lg max-w-2xl">
-                            Securely connect your exchange accounts to enable automated trading. Your keys are encrypted and stored in a secure vault.
+                            Securely connect your exchange accounts to enable automated trading. Your API keys are encrypted at rest.
                         </p>
                     </div>
                     <button
@@ -736,7 +736,7 @@ export default function BrokerConnection() {
                                     <div>
                                         <h3 className="text-2xl font-bold mb-2">Download Windows Connector</h3>
                                         <p className="text-muted-foreground max-w-lg mx-auto">
-                                            Install the secure connector on your Windows machine running MetaTrader. One-time setup, works forever.
+                                            Install the connector on the Windows machine that runs MetaTrader.
                                         </p>
                                     </div>
                                     <a

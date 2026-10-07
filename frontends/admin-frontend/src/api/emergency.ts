@@ -2,16 +2,14 @@
  * Admin emergency controls (kill switch, flatten).
  *
  * The API lives in bot-backend under /api/v1/admin/emergency/*. The admin app
- * has no direct bot-backend connection by default: like the other admin
- * families (for example /api/admin/cati/*) it goes through the main backend,
- * which forwards the admin token to bot-backend:
+ * has no direct bot-backend connection: like the other admin families (for
+ * example /api/admin/cati/*) it goes through the main backend, which verifies
+ * the admin and calls bot-backend with its own short-lived service credential
+ * (the only credential bot-backend accepts for this API):
  *
  *   {VITE_API_BASE}/api/admin/emergency/status        -> GET  /api/v1/admin/emergency/status
  *   {VITE_API_BASE}/api/admin/emergency/kill-switch   -> POST /api/v1/admin/emergency/kill-switch
  *   {VITE_API_BASE}/api/admin/emergency/flatten       -> POST /api/v1/admin/emergency/flatten
- *
- * If VITE_BOT_API_BASE is set, bot-backend is called directly instead
- * ({VITE_BOT_API_BASE}/api/v1/admin/emergency/*).
  */
 import { apiClient } from "./client";
 
@@ -58,28 +56,41 @@ export class EmergencyApiError extends Error {
     status: number | null;
     /** Per-account results, when the backend included them in the error body. */
     results: FlattenResult[];
+    /**
+     * True when the request was (or may have been) sent but no definite answer
+     * came back: client timeout/abort, a network failure, HTTP 504 from the
+     * proxy, or an unreadable reply. The action MAY have happened. False means
+     * the server definitely refused or failed it (400/409/502/503 with its text).
+     */
+    outcomeUnknown: boolean;
 
-    constructor(message: string, status: number | null, results: FlattenResult[] = []) {
+    constructor(message: string, status: number | null, results: FlattenResult[] = [], outcomeUnknown = false) {
         super(message);
         this.name = "EmergencyApiError";
         this.status = status;
         this.results = results;
+        this.outcomeUnknown = outcomeUnknown;
     }
 }
 
-const BOT_API_BASE = String(import.meta.env.VITE_BOT_API_BASE || "").trim().replace(/\/$/, "");
-const DIRECT_TO_BOT_BACKEND = BOT_API_BASE !== "";
-const EMERGENCY_PATH = DIRECT_TO_BOT_BACKEND ? "/api/v1/admin/emergency" : "/api/admin/emergency";
+const EMERGENCY_PATH = "/api/admin/emergency";
 
 /** Human-readable description of the route in use, shown with errors. */
-export const EMERGENCY_API_ROUTE = DIRECT_TO_BOT_BACKEND
-    ? `${BOT_API_BASE}${EMERGENCY_PATH} (bot-backend, direct)`
-    : `${EMERGENCY_PATH} (main backend proxy to bot-backend)`;
+export const EMERGENCY_API_ROUTE = `${EMERGENCY_PATH} (main backend proxy to bot-backend)`;
 
 const STATUS_TIMEOUT_MS = 15_000;
 const KILL_SWITCH_TIMEOUT_MS = 30_000;
-// Flattening closes positions on the exchange account by account and can be slow.
-const FLATTEN_TIMEOUT_MS = 120_000;
+// Flattening closes positions on the exchange account by account and can be
+// slow. The proxy gives bot-backend 120 s and then answers 504; the browser
+// must wait LONGER than that, otherwise it gives up at the same moment and
+// never sees the proxy's answer.
+const FLATTEN_TIMEOUT_MS = 140_000;
+
+/**
+ * Statuses that do not tell us whether the action ran: the gateway timed out
+ * (504/408) or the server failed without a handled answer (500).
+ */
+const UNKNOWN_OUTCOME_STATUSES: ReadonlySet<number> = new Set([408, 500, 504]);
 
 function isRecord(value: unknown): value is Record<string, unknown> {
     return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -136,8 +147,9 @@ function toEmergencyError(error: unknown, action: string): EmergencyApiError {
     const fallback = error instanceof Error && error.message ? error.message : "Request failed";
 
     if (!response) {
-        // No response: network error, timeout, CORS. The outcome is unknown.
-        return new EmergencyApiError(`${action} failed: no response from the server (${fallback}).`, null);
+        // No response after the request left the browser: network error,
+        // client timeout/abort, CORS. The server may still have acted on it.
+        return new EmergencyApiError(`${action}: no response from the server (${fallback}).`, null, [], true);
     }
 
     const status = typeof response.status === "number" ? response.status : null;
@@ -148,17 +160,28 @@ function toEmergencyError(error: unknown, action: string): EmergencyApiError {
     if (status === 404) {
         message = `${message} — the emergency API is not reachable at ${EMERGENCY_API_ROUTE}.`;
     }
-    return new EmergencyApiError(`${action} failed (HTTP ${status ?? "?"}): ${message}`, status, results);
+    const outcomeUnknown = status === null || UNKNOWN_OUTCOME_STATUSES.has(status);
+    return new EmergencyApiError(
+        outcomeUnknown
+            ? `${action}: no definite answer (HTTP ${status ?? "?"}): ${message}`
+            : `${action} failed (HTTP ${status ?? "?"}): ${message}`,
+        status,
+        results,
+        outcomeUnknown,
+    );
 }
 
 async function request(method: "get" | "post", path: string, data: unknown, timeout: number, action: string): Promise<unknown> {
+    // Known offline before sending: a definite "nothing was sent", not an unknown outcome.
+    if (typeof navigator !== "undefined" && navigator.onLine === false) {
+        throw new EmergencyApiError(`${action} failed: this device is offline, so the request was NOT sent.`, null);
+    }
     try {
         const response = await apiClient.request({
             method,
             url: `${EMERGENCY_PATH}${path}`,
             data,
             timeout,
-            ...(DIRECT_TO_BOT_BACKEND ? { baseURL: BOT_API_BASE } : {}),
         });
         return response.data;
     } catch (error) {
@@ -178,7 +201,12 @@ export async function setKillSwitch(enabled: boolean, reason: string): Promise<E
     const action = enabled ? "Enabling the kill switch" : "Disabling the kill switch";
     const data = await request("post", "/kill-switch", { enabled, reason }, KILL_SWITCH_TIMEOUT_MS, action);
     if (!isEmergencyStatus(data)) {
-        throw new EmergencyApiError(`${action} failed: the server returned an unexpected response. Reload the status to see the real state.`, null);
+        throw new EmergencyApiError(
+            `${action}: the server returned an unexpected response. Reload the status to see the real state.`,
+            null,
+            [],
+            true,
+        );
     }
     if (data.kill_switch.enabled !== enabled) {
         throw new EmergencyApiError(
@@ -204,8 +232,10 @@ export async function flattenAllPositions(reason: string): Promise<FlattenRespon
     );
     if (!isRecord(data) || typeof data.ok !== "boolean") {
         throw new EmergencyApiError(
-            "Flatten failed: the server returned an unexpected response. Positions may still be open — verify on the exchange.",
+            "Flatten: the server returned an unexpected response. Positions may or may not have been closed — verify on the exchange.",
             null,
+            [],
+            true,
         );
     }
     return {

@@ -17,10 +17,49 @@ const MIN_REASON_LENGTH = 3;
 
 type FlattenOutcome =
     | { kind: "response"; response: FlattenResponse; at: string }
-    | { kind: "error"; message: string; results: FlattenResult[]; at: string };
+    /** The server definitely refused or failed the request (400/409/502/503 with its text). */
+    | { kind: "error"; message: string; results: FlattenResult[]; at: string }
+    /** Sent, but no definite answer (HTTP 504, client timeout/abort, network failure). */
+    | { kind: "unknown"; message: string; results: FlattenResult[]; at: string };
+
+/** How the flatten outcome is presented. Green is reserved for "confirmed". */
+type FlattenVerdict = "confirmed" | "submitted" | "failed" | "unknown";
+
+const CONFIRMED_STATUSES: ReadonlySet<string> = new Set(["closed", "no_position"]);
+
+function flattenVerdict(outcome: FlattenOutcome): FlattenVerdict {
+    if (outcome.kind === "unknown") return "unknown";
+    if (outcome.kind === "error" || outcome.response.ok !== true) return "failed";
+    const rows = outcome.response.results;
+    // Green only when EVERY row is confirmed closed / had no position.
+    if (rows.length > 0 && rows.every((row) => CONFIRMED_STATUSES.has(row.status))) return "confirmed";
+    // ok === true with "submitted" rows: close orders were sent, not confirmed.
+    if (rows.length > 0 && rows.every((row) => CONFIRMED_STATUSES.has(row.status) || row.status === "submitted")) {
+        return "submitted";
+    }
+    return "failed";
+}
+
+const VERDICT_STYLE: Record<FlattenVerdict, string> = {
+    confirmed: "border-green-500/30 bg-green-500/10 text-green-100",
+    submitted: "border-amber-500/50 bg-amber-500/10 text-amber-100",
+    unknown: "border-amber-500/60 bg-amber-500/15 text-amber-100",
+    failed: "border-red-500/50 bg-red-500/10 text-red-100",
+};
+
+const VERDICT_TITLE: Record<FlattenVerdict, string> = {
+    confirmed: "Flatten completed",
+    submitted: "CLOSE ORDERS SENT — NOT YET CONFIRMED. Verify on the exchange.",
+    unknown: "OUTCOME UNKNOWN — check positions on the exchange now",
+    failed: "FLATTEN FAILED",
+};
 
 function errorText(error: unknown): string {
     return error instanceof Error && error.message ? error.message : "Request failed";
+}
+
+function isOutcomeUnknown(error: unknown): boolean {
+    return error instanceof EmergencyApiError && error.outcomeUnknown;
 }
 
 function formatDateTime(iso: string | null | undefined): string {
@@ -65,7 +104,7 @@ function ResultsTable({ results }: { results: FlattenResult[] }) {
                                 : row.status === "submitted"
                                     ? "admin-badge-warning"
                                     : "admin-badge-danger"}`}>
-                                {row.status}
+                                {row.status === "submitted" ? "close order sent — verify" : row.status}
                             </span>
                         </td>
                         <td className="text-xs">{row.detail || "—"}</td>
@@ -102,7 +141,10 @@ export function EmergencyControls() {
     const [flattenReason, setFlattenReason] = useState("");
     const [flattenOutcome, setFlattenOutcome] = useState<FlattenOutcome | null>(null);
 
+    // networkMode "always": an emergency action clicked while offline must fail
+    // immediately, never sit paused and fire later when the network returns.
     const killMutation = useMutation({
+        networkMode: "always",
         mutationFn: (vars: { enabled: boolean; reason: string }) => setKillSwitch(vars.enabled, vars.reason),
         onSuccess: (data: EmergencyStatus) => {
             queryClient.setQueryData(STATUS_QUERY_KEY, data);
@@ -119,13 +161,14 @@ export function EmergencyControls() {
     });
 
     const flattenMutation = useMutation({
+        networkMode: "always",
         mutationFn: (reason: string) => flattenAllPositions(reason),
         onSuccess: (response: FlattenResponse) => {
             setFlattenOutcome({ kind: "response", response, at: new Date().toISOString() });
         },
         onError: (error: Error) => {
             setFlattenOutcome({
-                kind: "error",
+                kind: isOutcomeUnknown(error) ? "unknown" : "error",
                 message: errorText(error),
                 results: error instanceof EmergencyApiError ? error.results : [],
                 at: new Date().toISOString(),
@@ -157,8 +200,7 @@ export function EmergencyControls() {
 
     const killEnabled = status ? status.kill_switch.enabled : null;
     const openPositions = status ? status.open_positions : null;
-    const flattenFailed = flattenOutcome !== null
-        && (flattenOutcome.kind === "error" || flattenOutcome.response.ok !== true);
+    const verdict: FlattenVerdict | null = flattenOutcome ? flattenVerdict(flattenOutcome) : null;
 
     return (
         <div className="admin-card" style={{ borderColor: killEnabled ? "var(--admin-red)" : undefined }}>
@@ -281,19 +323,17 @@ export function EmergencyControls() {
                 </div>
             )}
 
-            {flattenOutcome && (
+            {flattenOutcome && verdict && (
                 <div
-                    role={flattenFailed ? "alert" : "status"}
-                    className={`mt-4 rounded-lg border px-4 py-3 text-sm ${flattenFailed ? "border-red-500/50 bg-red-500/10 text-red-100" : "border-green-500/30 bg-green-500/10 text-green-100"}`}
+                    role={verdict === "confirmed" ? "status" : "alert"}
+                    className={`mt-4 rounded-lg border px-4 py-3 text-sm ${VERDICT_STYLE[verdict]}`}
                 >
                     <div className="flex items-start justify-between gap-3">
                         <div>
                             <div className="text-base font-bold">
-                                {flattenOutcome.kind === "error"
-                                    ? "FLATTEN FAILED"
-                                    : flattenOutcome.response.ok === true
-                                        ? "Flatten completed"
-                                        : "FLATTEN DID NOT COMPLETE — the server reported failures"}
+                                {flattenOutcome.kind === "response" && verdict === "failed"
+                                    ? "FLATTEN DID NOT COMPLETE — the server reported failures"
+                                    : VERDICT_TITLE[verdict]}
                             </div>
                             <div className="mt-1 text-xs opacity-80">Reported {formatDateTime(flattenOutcome.at)}</div>
                         </div>
@@ -302,7 +342,17 @@ export function EmergencyControls() {
                         </button>
                     </div>
 
-                    {flattenOutcome.kind === "error" ? (
+                    {flattenOutcome.kind === "unknown" ? (
+                        <div className="mt-2 space-y-2">
+                            <div>{flattenOutcome.message}</div>
+                            <div className="font-semibold">
+                                The request was sent but no definite answer came back. The flatten may have run fully,
+                                partly or not at all, and the kill switch may now be ON. Do not assume either way:
+                                check every account on the exchange now, then use Refresh status.
+                            </div>
+                            {flattenOutcome.results.length > 0 && <ResultsTable results={flattenOutcome.results} />}
+                        </div>
+                    ) : flattenOutcome.kind === "error" ? (
                         <div className="mt-2 space-y-2">
                             <div>{flattenOutcome.message}</div>
                             <div className="font-semibold">
@@ -314,8 +364,17 @@ export function EmergencyControls() {
                         <div className="mt-2 space-y-2">
                             <div>
                                 Kill switch after flatten: {flattenOutcome.response.kill_switch_enabled ? "ENABLED" : "DISABLED"}
+                                {flattenOutcome.response.kill_switch_enabled
+                                    ? " — it stays on (no new entries) until an admin disables it."
+                                    : ""}
                             </div>
-                            {flattenOutcome.response.ok !== true && (
+                            {verdict === "submitted" && (
+                                <div className="font-semibold">
+                                    Close orders were sent for the rows marked "close order sent — verify", but the positions
+                                    are not confirmed closed yet. Verify each one on the exchange and use Refresh status.
+                                </div>
+                            )}
+                            {verdict === "failed" && (
                                 <div className="font-semibold">
                                     Some positions were not closed. Review each row and verify on the exchange.
                                 </div>
@@ -362,6 +421,11 @@ export function EmergencyControls() {
                     </div>
                     {killMutation.isError && (
                         <div role="alert" className="rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-100">
+                            {isOutcomeUnknown(killMutation.error) && (
+                                <div className="font-bold">
+                                    OUTCOME UNKNOWN — the kill switch may or may not have changed. Use Refresh status before retrying.
+                                </div>
+                            )}
                             {errorText(killMutation.error)}
                         </div>
                     )}
@@ -415,6 +479,10 @@ export function EmergencyControls() {
                                     </span>
                                     .
                                 </div>
+                                <div className="font-semibold">
+                                    Flatten also turns the kill switch ON first (no new entries platform-wide). It stays
+                                    ON until an admin turns it off with "Disable kill switch".
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -446,7 +514,7 @@ export function EmergencyControls() {
                     </div>
                     {flattenMutation.isPending && (
                         <div role="status" className="text-sm text-muted-foreground">
-                            Flatten in progress. Do not close this page; this can take up to two minutes.
+                            Flatten in progress. Do not close this page; this can take more than two minutes.
                         </div>
                     )}
                 </div>

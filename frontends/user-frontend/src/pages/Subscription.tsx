@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Check, CreditCard, Calendar, Zap, Shield, TrendingUp, Download, AlertCircle, Loader2 } from "lucide-react";
+import { Check, CreditCard, Calendar, Zap, Shield, TrendingUp, Download, Loader2 } from "lucide-react";
 import { motion } from "framer-motion";
 import { api } from "../api/client";
 
@@ -353,24 +353,13 @@ export default function Subscription() {
                                 </div>
                                 <h3 className="text-lg font-bold mb-2">Upgrade to Tycoon</h3>
                                 <p className="text-sm text-muted-foreground mb-4">
-                                    Unlock unlimited bots, lowest latency execution, and AI strategy optimization.
+                                    Higher plans raise the number of bots and exchange accounts you can run. Compare the plans for details.
                                 </p>
                                 <button onClick={() => setView("pricing")} className="w-full py-2 bg-primary text-primary-foreground rounded-lg font-medium shadow-lg hover:bg-primary/90 transition-all">
                                     View Upgrade Options
                                 </button>
                             </div>
                         )}
-
-                        <div className="bg-card border border-border rounded-xl p-6">
-                            <h3 className="font-semibold mb-4 flex items-center gap-2">
-                                <AlertCircle className="w-4 h-4 text-muted-foreground" />
-                                Need Higher Limits?
-                            </h3>
-                            <p className="text-sm text-muted-foreground mb-4">
-                                Running a large operation? Contact sales for a custom enterprise plan with higher limits and dedicated infrastructure.
-                            </p>
-                            <button className="text-sm text-primary font-medium hover:underline">Contact Sales &rarr;</button>
-                        </div>
                     </div>
                 </div>
             </div>
@@ -426,15 +415,6 @@ export default function Subscription() {
                         onSelect={() => handleSubscribe(plan.id)}
                     />
                 ))}
-            </div>
-
-            <div className="bg-muted/30 rounded-2xl p-8 text-center border border-border/50">
-                <h3 className="text-lg font-semibold mb-2">Enterprise & Institutional</h3>
-                <p className="text-muted-foreground max-w-xl mx-auto mb-6">
-                    Need custom API limits, dedicated nodes, or on-premise deployment?
-                    We offer tailored solutions for funds and high-volume traders.
-                </p>
-                <button className="text-primary font-medium hover:underline">Contact Enterprise Sales &rarr;</button>
             </div>
         </div>
     );

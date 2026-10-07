@@ -1,5 +1,6 @@
 import { Link } from "react-router-dom";
 import { ArrowRight } from "lucide-react";
+import logo from "../assets/logo.png";
 
 export default function Welcome() {
     return (
@@ -8,7 +9,7 @@ export default function Welcome() {
             <div className="flex-1 flex flex-col items-center justify-center px-8 py-12">
                 {/* Illustration */}
                 <div className="w-40 h-40 mb-8 relative flex items-center justify-center">
-                    <img src="/src/assets/logo.png" alt="CosmicForge Stratos" className="w-full h-full object-contain drop-shadow-xl" />
+                    <img src={logo} alt="CosmicForge Stratos" className="w-full h-full object-contain drop-shadow-xl" />
                 </div>
 
                 {/* Title & Description */}
