@@ -35,6 +35,31 @@ def junit_section(path: Path) -> str:
     return "\n".join(lines) + "\n"
 
 
+def eslint_section(path: Path) -> str:
+    """Summarise an ESLint JSON report: counts per rule, then every error that
+    is not an explicit-any finding (those are counted, not listed)."""
+    try:
+        data = json.loads(path.read_text())
+    except Exception as exc:
+        return f"### {path.name}\ncould not read report: {exc}\n"
+    counts: dict[str, int] = {}
+    listed: list[str] = []
+    for f in data:
+        name = f.get("filePath", "").split("/src/")[-1]
+        for m in f.get("messages", []):
+            if m.get("severity") != 2:
+                continue
+            rule = m.get("ruleId") or "parse-error"
+            counts[rule] = counts.get(rule, 0) + 1
+            if rule != "@typescript-eslint/no-explicit-any":
+                listed.append(f"- `{name}:{m.get('line')}` {rule}: {str(m.get('message'))[:160]}")
+    lines = [f"### eslint: {sum(counts.values())} errors"]
+    lines += [f"- {n} x {r}" for r, n in sorted(counts.items(), key=lambda kv: -kv[1])]
+    lines.append("")
+    lines += listed
+    return "\n".join(lines) + "\n"
+
+
 def log_section(path: Path) -> str:
     try:
         text = path.read_text(errors="replace")
@@ -50,6 +75,8 @@ def main() -> int:
         p = Path(arg)
         if not p.exists():
             parts.append(f"### {p.name}\n(not produced)\n")
+        elif p.name.startswith("eslint") and p.suffix == ".json":
+            parts.append(eslint_section(p))
         elif p.suffix == ".xml":
             parts.append(junit_section(p))
         else:

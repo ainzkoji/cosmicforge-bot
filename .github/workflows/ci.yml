@@ -169,7 +169,7 @@ jobs:
     - run: npm ci
     - name: Lint
       shell: bash -o pipefail {0}
-      run: npm run lint 2>&1 | tee "$RUNNER_TEMP/lint.log"
+      run: npx eslint . -f json -o "$RUNNER_TEMP/eslint.json" || (npx eslint . 2>&1 | tail -n 40; exit 1)
     - name: Unit tests
       if: always()
       shell: bash -o pipefail {0}
@@ -183,7 +183,7 @@ jobs:
       env:
         GITHUB_TOKEN: ${{ github.token }}
         PR_NUMBER: ${{ github.event.pull_request.number }}
-      run: python3 "$GITHUB_WORKSPACE/.github/scripts/ci_report.py" "Frontend (${{ github.job }})" "$RUNNER_TEMP/build.log" "$RUNNER_TEMP/test.log" "$RUNNER_TEMP/lint.log"
+      run: python3 "$GITHUB_WORKSPACE/.github/scripts/ci_report.py" "Frontend (${{ github.job }})" "$RUNNER_TEMP/build.log" "$RUNNER_TEMP/test.log" "$RUNNER_TEMP/eslint.json"
 
   frontend-admin:
     name: Admin frontend (lint, test, build)
@@ -201,7 +201,7 @@ jobs:
     - run: npm ci
     - name: Lint
       shell: bash -o pipefail {0}
-      run: npm run lint 2>&1 | tee "$RUNNER_TEMP/lint.log"
+      run: npx eslint . -f json -o "$RUNNER_TEMP/eslint.json" || (npx eslint . 2>&1 | tail -n 40; exit 1)
     - name: Unit tests
       if: always()
       shell: bash -o pipefail {0}
@@ -215,4 +215,4 @@ jobs:
       env:
         GITHUB_TOKEN: ${{ github.token }}
         PR_NUMBER: ${{ github.event.pull_request.number }}
-      run: python3 "$GITHUB_WORKSPACE/.github/scripts/ci_report.py" "Frontend (${{ github.job }})" "$RUNNER_TEMP/build.log" "$RUNNER_TEMP/test.log" "$RUNNER_TEMP/lint.log"
+      run: python3 "$GITHUB_WORKSPACE/.github/scripts/ci_report.py" "Frontend (${{ github.job }})" "$RUNNER_TEMP/build.log" "$RUNNER_TEMP/test.log" "$RUNNER_TEMP/eslint.json"
