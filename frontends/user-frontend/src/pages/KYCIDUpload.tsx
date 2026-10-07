@@ -22,7 +22,11 @@ export default function KYCIDUpload() {
     const handleFileChange = (side: "front" | "back", e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
         if (file) {
-            // Basic validation
+            // Basic validation (the server re-checks the real file content)
+            if (!["image/jpeg", "image/png", "application/pdf"].includes(file.type)) {
+                setError("Please upload a JPG, PNG or PDF file");
+                return;
+            }
             if (file.size > 10 * 1024 * 1024) {
                 setError("File size must be less than 10MB");
                 return;
@@ -147,7 +151,7 @@ export default function KYCIDUpload() {
                             <input
                                 ref={frontInputRef}
                                 type="file"
-                                accept="image/*"
+                                accept="image/jpeg,image/png,application/pdf"
                                 onChange={(e) => handleFileChange("front", e)}
                                 className="hidden"
                                 disabled={isUploading}
@@ -184,7 +188,7 @@ export default function KYCIDUpload() {
                             <input
                                 ref={backInputRef}
                                 type="file"
-                                accept="image/*"
+                                accept="image/jpeg,image/png,application/pdf"
                                 onChange={(e) => handleFileChange("back", e)}
                                 className="hidden"
                                 disabled={documentType === "passport" || isUploading}

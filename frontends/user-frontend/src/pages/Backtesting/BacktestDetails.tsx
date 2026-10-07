@@ -33,6 +33,7 @@ export default function BacktestDetails() {
     const navigate = useNavigate();
     const [activeTab, setActiveTab] = useState("overview");
     const [fillsPage, setFillsPage] = useState(1);
+    const [downloadError, setDownloadError] = useState<string | null>(null);
 
     // Helper for date formatting
     const formatDate = (dateStr: string) => {
@@ -78,10 +79,14 @@ export default function BacktestDetails() {
         }
     });
 
-    const handleDownload = (format: "csv" | "json") => {
+    const handleDownload = async (format: "csv" | "json") => {
         if (!id) return;
-        const url = BacktestAPI.getExportUrl(id, format);
-        window.open(url, '_blank');
+        setDownloadError(null);
+        try {
+            await BacktestAPI.downloadExport(id, format);
+        } catch (err) {
+            setDownloadError(err instanceof Error ? err.message : "Download failed");
+        }
     };
 
     if (isLoadingRun) return <div className="flex justify-center p-20"><Loader2 className="animate-spin h-8 w-8" /></div>;
@@ -123,6 +128,12 @@ export default function BacktestDetails() {
                     </Button>
                 </div>
             </div>
+
+            {downloadError && (
+                <div role="alert" className="rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-500">
+                    Export failed: {downloadError}
+                </div>
+            )}
 
             {/* KPI Cards */}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">

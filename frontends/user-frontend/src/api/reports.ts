@@ -1,4 +1,5 @@
 import { apiClient } from "./client";
+import { downloadAuthenticated } from "./http";
 
 // ============================================================================
 // INTERFACES
@@ -248,41 +249,41 @@ export interface BenchmarkOption {
 export const ReportsAPI = {
     // P&L
     getRealizedPnL: async (params?: { broker_account_id?: string; bot_instance_id?: string; symbol?: string; days?: number }) => {
-        const response = await apiClient.get<PnLRealized>("/reports/pnl/realized", { params });
+        const response = await apiClient.get<PnLRealized>("/api/v1/reports/pnl/realized", { params });
         return response.data;
     },
     getUnrealizedPnL: async (params?: { broker_account_id?: string }) => {
-        const response = await apiClient.get<PnLUnrealized>("/reports/pnl/unrealized", { params });
+        const response = await apiClient.get<PnLUnrealized>("/api/v1/reports/pnl/unrealized", { params });
         return response.data;
     },
     getTotalPnL: async (params?: { broker_account_id?: string; bot_instance_id?: string; days?: number }) => {
-        const response = await apiClient.get<PnLTotal>("/reports/pnl/total", { params });
+        const response = await apiClient.get<PnLTotal>("/api/v1/reports/pnl/total", { params });
         return response.data;
     },
     getPnLBreakdown: async (params?: { group_by?: string; days?: number }) => {
-        const response = await apiClient.get<PnLBreakdown>("/reports/pnl/breakdown", { params });
+        const response = await apiClient.get<PnLBreakdown>("/api/v1/reports/pnl/breakdown", { params });
         return response.data;
     },
 
     // Trade Stats
     getWinRate: async (params?: { broker_account_id?: string; days?: number }) => {
-        const response = await apiClient.get<any>("/reports/stats/win-rate", { params });
+        const response = await apiClient.get<any>("/api/v1/reports/stats/win-rate", { params });
         return response.data;
     },
     getTradeSummary: async (params?: { broker_account_id?: string; bot_instance_id?: string; days?: number }) => {
-        const response = await apiClient.get<TradeStatsSummary>("/reports/stats/summary", { params });
+        const response = await apiClient.get<TradeStatsSummary>("/api/v1/reports/stats/summary", { params });
         return response.data;
     },
     getBestWorstTrades: async (params?: { broker_account_id?: string; limit?: number }) => {
-        const response = await apiClient.get<BestWorstTrades>("/reports/stats/best-worst", { params });
+        const response = await apiClient.get<BestWorstTrades>("/api/v1/reports/stats/best-worst", { params });
         return response.data;
     },
     getSymbolPerformance: async (params?: { broker_account_id?: string; days?: number }) => {
-        const response = await apiClient.get<SymbolPerformance>("/reports/stats/by-symbol", { params });
+        const response = await apiClient.get<SymbolPerformance>("/api/v1/reports/stats/by-symbol", { params });
         return response.data;
     },
     getTimeSeriesPerformance: async (params?: { interval?: string; days?: number }) => {
-        const response = await apiClient.get<TimeSeriesPerformance>("/reports/stats/time-series", { params });
+        const response = await apiClient.get<TimeSeriesPerformance>("/api/v1/reports/stats/time-series", { params });
         return response.data;
     },
 
@@ -292,45 +293,47 @@ export const ReportsAPI = {
         return response.data;
     },
     getMaxDrawdown: async (params?: { broker_account_id?: string; days?: number }) => {
-        const response = await apiClient.get<MaxDrawdown>("/reports/drawdown/max", { params });
+        const response = await apiClient.get<MaxDrawdown>("/api/v1/reports/drawdown/max", { params });
         return response.data;
     },
     getCurrentDrawdown: async (params?: { broker_account_id?: string }) => {
-        const response = await apiClient.get<CurrentDrawdown>("/reports/drawdown/current", { params });
+        const response = await apiClient.get<CurrentDrawdown>("/api/v1/reports/drawdown/current", { params });
         return response.data;
     },
     getDrawdownPeriods: async (params?: { broker_account_id?: string; days?: number }) => {
-        const response = await apiClient.get<DrawdownPeriods>("/reports/drawdown/periods", { params });
+        const response = await apiClient.get<DrawdownPeriods>("/api/v1/reports/drawdown/periods", { params });
         return response.data;
     },
 
     // Tax
     getTaxReport: async (taxYear: number, params?: { broker_account_id?: string }) => {
-        const response = await apiClient.get<TaxReport>(`/reports/tax/report/${taxYear}`, { params });
+        const response = await apiClient.get<TaxReport>(`/api/v1/reports/tax/report/${taxYear}`, { params });
         return response.data;
     },
-    exportTaxReportCsvUrl: (taxYear: number, token: string, brokerAccountId?: string) => {
-        const baseUrl = apiClient.defaults.baseURL || "";
-        let url = `${baseUrl}/reports/tax/export/${taxYear}/csv?token=${token}`; // Assuming backend supports token in query for downloads or interceptor handles it if using fetch
-        // Better approach for downloads with Auth header: use blob download helper
-        return `${baseUrl}/reports/tax/export/${taxYear}/csv`;
-    },
-    exportTaxReportPdfUrl: (taxYear: number, token: string, brokerAccountId?: string) => {
-        const baseUrl = apiClient.defaults.baseURL || "";
-        return `${baseUrl}/reports/tax/export/${taxYear}/pdf`;
+    /**
+     * Download the tax export through an authenticated request (Authorization
+     * header, never a token in the URL) and save it as a file.
+     */
+    downloadTaxReport: async (taxYear: number, format: "csv" | "json" | "pdf", brokerAccountId?: string): Promise<void> => {
+        const baseUrl = String(apiClient.defaults.baseURL || "").replace(/\/$/, "");
+        const query = brokerAccountId ? `?broker_account_id=${encodeURIComponent(brokerAccountId)}` : "";
+        await downloadAuthenticated(
+            `${baseUrl}/api/v1/reports/tax/export/${taxYear}/${format}${query}`,
+            `tax_report_${taxYear}.${format}`,
+        );
     },
 
     // Benchmark
     getAvailableBenchmarks: async () => {
-        const response = await apiClient.get<{ benchmarks: BenchmarkOption[] }>("/reports/benchmark/available");
+        const response = await apiClient.get<{ benchmarks: BenchmarkOption[] }>("/api/v1/reports/benchmark/available");
         return response.data;
     },
     getBenchmarkComparison: async (params?: { benchmark_symbol?: string; days?: number }) => {
-        const response = await apiClient.get<BenchmarkComparison>("/reports/benchmark/comparison", { params });
+        const response = await apiClient.get<BenchmarkComparison>("/api/v1/reports/benchmark/comparison", { params });
         return response.data;
     },
     getSharpeRatio: async (params?: { days?: number; risk_free_rate?: number }) => {
-        const response = await apiClient.get<SharpeRatio>("/reports/benchmark/sharpe-ratio", { params });
+        const response = await apiClient.get<SharpeRatio>("/api/v1/reports/benchmark/sharpe-ratio", { params });
         return response.data;
     }
 };

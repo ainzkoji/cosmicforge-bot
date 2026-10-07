@@ -1,7 +1,6 @@
 import { useParams, useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { api, BotInstance } from "@/api/client";
-import { motion } from "framer-motion";
+import { api } from "@/api/client";
 import {
     ArrowLeft,
     Play,
@@ -19,7 +18,12 @@ import { StatusBadge } from "@/components/BotInstance/StatusBadge";
 import { BotHealthBadge } from "@/components/BotInstance/BotHealthBadge";
 import { useState } from "react";
 import { ConfirmationDialog } from "@/components/UI/ConfirmationDialog";
+import { LiveTradingConfirmDialog } from "@/components/UI/LiveTradingConfirmDialog";
 import { CopyableId } from "@/components/UI/CopyableId";
+
+function errorMessage(err: unknown, fallback: string): string {
+    return err instanceof Error && err.message ? err.message : fallback;
+}
 
 export default function BotDetails() {
     const { id } = useParams<{ id: string }>();
@@ -30,6 +34,17 @@ export default function BotDetails() {
     // Actions State
     const [actionLoading, setActionLoading] = useState<string | null>(null);
     const [confirmAction, setConfirmAction] = useState<{ type: 'stop' | 'delete', isOpen: boolean }>({ type: 'stop', isOpen: false });
+    // Server error from the last start/pause/stop/delete action.
+    const [actionError, setActionError] = useState<string | null>(null);
+    // A LIVE (real-money) bot is only started after an explicit confirmation.
+    const [liveStartOpen, setLiveStartOpen] = useState(false);
+    const [liveStartError, setLiveStartError] = useState<string | null>(null);
+
+    const { data: brokersData } = useQuery({
+        queryKey: ['broker-accounts'],
+        queryFn: api.getBrokerAccounts,
+        staleTime: 1000 * 60 * 5
+    });
 
     const { data: bot, isLoading, error } = useQuery({
         queryKey: ['bot', id],
@@ -40,44 +55,57 @@ export default function BotDetails() {
 
     const startMutation = useMutation({
         mutationFn: api.startBotInstance,
-        onMutate: () => setActionLoading('start'),
+        onMutate: () => { setActionLoading('start'); setActionError(null); setLiveStartError(null); },
         onSettled: () => setActionLoading(null),
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ['bot', id] });
+            queryClient.invalidateQueries({ queryKey: ['botInstances'] });
+            setLiveStartOpen(false);
+        },
+        onError: (err: Error) => {
+            const message = errorMessage(err, 'Failed to start bot instance');
+            if (liveStartOpen) setLiveStartError(message);
+            else setActionError(`Could not start bot: ${message}`);
         }
     });
 
     const pauseMutation = useMutation({
         mutationFn: api.pauseBotInstance,
-        onMutate: () => setActionLoading('pause'),
+        onMutate: () => { setActionLoading('pause'); setActionError(null); },
         onSettled: () => setActionLoading(null),
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ['bot', id] });
-        }
+            queryClient.invalidateQueries({ queryKey: ['botInstances'] });
+        },
+        onError: (err: Error) => setActionError(`Could not pause bot: ${errorMessage(err, 'Failed to pause bot instance')}`)
     });
 
     const stopMutation = useMutation({
         mutationFn: api.stopBotInstance,
-        onMutate: () => setActionLoading('stop'),
+        onMutate: () => { setActionLoading('stop'); setActionError(null); },
         onSettled: () => {
             setActionLoading(null);
             setConfirmAction({ ...confirmAction, isOpen: false });
         },
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ['bot', id] });
-        }
+            queryClient.invalidateQueries({ queryKey: ['botInstances'] });
+        },
+        onError: (err: Error) => setActionError(`Could not stop bot: ${errorMessage(err, 'Failed to stop bot instance')}`)
     });
 
     const deleteMutation = useMutation({
         mutationFn: api.deleteBotInstance,
-        onMutate: () => setActionLoading('delete'),
+        onMutate: () => { setActionLoading('delete'); setActionError(null); },
         onSettled: () => {
             setActionLoading(null);
             setConfirmAction({ ...confirmAction, isOpen: false });
         },
         onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ['botInstances'] });
             navigate('/dashboard/bots');
-        }
+        },
+        onError: (err: Error) => setActionError(`Could not delete bot: ${errorMessage(err, 'Failed to delete bot instance')}`)
     });
 
     if (isLoading) {
@@ -103,6 +131,18 @@ export default function BotDetails() {
             </div>
         );
     }
+
+    const brokerAccount = (brokersData?.accounts || []).find((a) => a.id === bot.broker_account_id);
+
+    // Paper/demo bots start with one click; LIVE bots require confirmation first.
+    const handleStart = () => {
+        if (bot.mode === 'live') {
+            setLiveStartError(null);
+            setLiveStartOpen(true);
+            return;
+        }
+        startMutation.mutate(bot.id);
+    };
 
     return (
         <div className="space-y-6">
@@ -134,7 +174,7 @@ export default function BotDetails() {
                 <div className="flex items-center gap-2">
                     {bot.status !== 'active' && (
                         <button
-                            onClick={() => startMutation.mutate(bot.id)}
+                            onClick={handleStart}
                             disabled={actionLoading === 'start'}
                             className="flex items-center gap-2 px-4 py-2 bg-green-500/10 text-green-400 border border-green-500/20 rounded-lg hover:bg-green-500/20 disabled:opacity-50 transition-colors"
                         >
@@ -170,6 +210,16 @@ export default function BotDetails() {
                 </div>
             </div>
 
+            {actionError && (
+                <div role="alert" className="flex items-start gap-2 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-400">
+                    <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" />
+                    <span className="flex-1">{actionError}</span>
+                    <button type="button" onClick={() => setActionError(null)} className="shrink-0 underline hover:no-underline">
+                        Dismiss
+                    </button>
+                </div>
+            )}
+
             {/* Overview Stats */}
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                 <StatCard
@@ -189,14 +239,14 @@ export default function BotDetails() {
                 <StatCard
                     label="Status"
                     value={bot.status.toUpperCase()}
-                    subValue={`Run Time: 24h`} // Placeholder
+                    subValue={bot.started_at ? `Started ${new Date(bot.started_at).toLocaleString()}` : 'Not started'}
                     color="text-purple-400"
                     icon={Clock}
                 />
                 <StatCard
                     label="Active Positions"
-                    value="0" // Placeholder
-                    subValue="Exposure: $0.00"
+                    value={String(bot.active_positions ?? 0)}
+                    subValue="As reported by the bot"
                     color="text-yellow-400"
                     icon={FileText}
                 />
@@ -310,12 +360,7 @@ export default function BotDetails() {
                                 <span>System Logs</span>
                             </div>
                             <div className="space-y-2 text-gray-300">
-                                <p><span className="text-gray-500">[2023-10-27 10:00:00]</span> [INFO] Bot started successfully.</p>
-                                <p><span className="text-gray-500">[2023-10-27 10:00:05]</span> [INFO] Connected to Binance API.</p>
-                                <p><span className="text-gray-500">[2023-10-27 10:01:00]</span> [INFO] Analyzing market conditions for {bot.market?.symbol}...</p>
-                                <p><span className="text-gray-500">[2023-10-27 10:05:00]</span> [INFO] No trade signals detected.</p>
-                                {/* Placeholder logs */}
-                                <p className="text-yellow-500 italic mt-4">Real-time log streaming coming soon...</p>
+                                <p className="text-yellow-500 italic">Log streaming is not available yet. No log lines are shown here.</p>
                             </div>
                         </div>
                     )}
@@ -335,10 +380,33 @@ export default function BotDetails() {
                 onClose={() => setConfirmAction({ ...confirmAction, isOpen: false })}
                 onConfirm={() => stopMutation.mutate(bot.id)}
                 title="Stop Bot Instance?"
-                message="Stopping this bot will close all open positions immediately. This action cannot be undone."
+                message="The bot will stop and open no new trades. This does NOT close open positions: they stay on your exchange account, the stopped bot no longer manages them, and you must monitor or close them yourself. You can start the bot again later."
                 confirmLabel="Stop Bot"
                 variant="danger"
                 isLoading={actionLoading === 'stop'}
+            />
+
+            <LiveTradingConfirmDialog
+                isOpen={liveStartOpen}
+                onClose={() => { if (!startMutation.isPending) setLiveStartOpen(false); }}
+                onConfirm={() => startMutation.mutate(bot.id)}
+                title="Start LIVE bot?"
+                confirmLabel="Start live bot"
+                broker={brokerAccount?.broker_id || bot.broker_id || "unknown"}
+                account={brokerAccount?.label || bot.broker_account_id}
+                environment={brokerAccount?.environment}
+                details={[
+                    { label: "Bot", value: bot.name || bot.strategy_id },
+                    { label: "Symbols", value: bot.symbols?.length ? bot.symbols.join(", ") : "Multi-symbol" },
+                    {
+                        label: "Trade amount",
+                        value: bot.allocation_type === 'percent_balance'
+                            ? `${bot.allocation_value}% of equity`
+                            : `${bot.allocation_value} (fixed)`
+                    },
+                ]}
+                isLoading={startMutation.isPending}
+                error={liveStartError}
             />
 
             {/* Assuming Delete is not directly on this page, or we want it here? Added button for 'stop', 'pause', 'start'. 'delete' usually in settings or here. */}

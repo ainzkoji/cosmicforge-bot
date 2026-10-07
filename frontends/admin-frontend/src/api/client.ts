@@ -3,6 +3,8 @@
 // ... (Rest of the client.ts content, rewritten to include new methods)
 
 import axios from "axios";
+import type { AxiosInstance } from "axios";
+import { apiFetch, clearSession, getAccessToken, isRefreshableUrl, refreshAccessToken } from "./http";
 
 const API_BASE = import.meta.env.VITE_API_BASE || "http://localhost:8000";
 const ADMIN_API_BASE = import.meta.env.VITE_ADMIN_API_BASE || API_BASE;
@@ -34,7 +36,7 @@ async function fetchWithTimeout(input: RequestInfo | URL, init: RequestInit = {}
     }, DEFAULT_API_TIMEOUT_MS);
 
     try {
-        return await fetch(input, { ...init, signal: controller.signal });
+        return await apiFetch(input, { ...init, signal: controller.signal });
     } catch (error: any) {
         if (didTimeout || error?.name === "AbortError") {
             throw new Error(timeoutMessage);
@@ -104,11 +106,36 @@ function attachAdminAuthHeader(config: any) {
     return config;
 }
 
-function normalizeApiError(error: any) {
-    if (error.code === "ECONNABORTED" || String(error.message || "").toLowerCase().includes("timeout")) {
-        return Promise.reject(new Error("Request timed out. Please check that the backend is running and try again."));
-    }
-    return Promise.reject(error);
+/**
+ * Response error handler shared by every admin axios client: normalises
+ * timeouts and, on a 401, runs the same single-flight token refresh as
+ * apiFetch (see ./http), retrying the request once. When the refresh token is
+ * rejected the session is cleared and the app returns to the login screen.
+ */
+function createApiErrorHandler(client: AxiosInstance) {
+    return async (error: any) => {
+        if (error.code === "ECONNABORTED" || String(error.message || "").toLowerCase().includes("timeout")) {
+            return Promise.reject(new Error("Request timed out. Please check that the backend is running and try again."));
+        }
+        const original = error.config;
+        if (error.response && error.response.status === 401 && original && !original._retriedAfterRefresh) {
+            const url = String(original.url || "");
+            if (isRefreshableUrl(url)) {
+                const sentHeader = String(original.headers?.Authorization || "");
+                const sentToken = sentHeader.startsWith("Bearer ") ? sentHeader.slice(7) : getAccessToken();
+                const outcome = await refreshAccessToken(sentToken);
+                if (outcome.status === "refreshed") {
+                    original._retriedAfterRefresh = true;
+                    original.headers.Authorization = `Bearer ${outcome.token}`;
+                    return client.request(original);
+                }
+                if (outcome.status === "rejected") {
+                    clearSession();
+                }
+            }
+        }
+        return Promise.reject(error);
+    };
 }
 
 // Add auth header to every request
@@ -125,43 +152,43 @@ adminMLApiClient.interceptors.request.use(attachAdminAuthHeader);
 
 apiClient.interceptors.response.use(
     (response) => response,
-    normalizeApiError
+    createApiErrorHandler(apiClient)
 );
 adminDashboardApiClient.interceptors.response.use(
     (response) => response,
-    normalizeApiError
+    createApiErrorHandler(adminDashboardApiClient)
 );
 adminRevenueApiClient.interceptors.response.use(
     (response) => response,
-    normalizeApiError
+    createApiErrorHandler(adminRevenueApiClient)
 );
 adminProfitabilityApiClient.interceptors.response.use(
     (response) => response,
-    normalizeApiError
+    createApiErrorHandler(adminProfitabilityApiClient)
 );
 adminTradingViewApiClient.interceptors.response.use(
     (response) => response,
-    normalizeApiError
+    createApiErrorHandler(adminTradingViewApiClient)
 );
 adminBotMonitorApiClient.interceptors.response.use(
     (response) => response,
-    normalizeApiError
+    createApiErrorHandler(adminBotMonitorApiClient)
 );
 adminSignalsApiClient.interceptors.response.use(
     (response) => response,
-    normalizeApiError
+    createApiErrorHandler(adminSignalsApiClient)
 );
 adminEventsApiClient.interceptors.response.use(
     (response) => response,
-    normalizeApiError
+    createApiErrorHandler(adminEventsApiClient)
 );
 adminNewsApiClient.interceptors.response.use(
     (response) => response,
-    normalizeApiError
+    createApiErrorHandler(adminNewsApiClient)
 );
 adminMLApiClient.interceptors.response.use(
     (response) => response,
-    normalizeApiError
+    createApiErrorHandler(adminMLApiClient)
 );
 
 export interface User {
@@ -376,7 +403,7 @@ export const api = {
         const params = new URLSearchParams();
         if (data.name !== undefined) params.append('name', data.name);
 
-        const res = await fetch(`${AUTH_BASE}/me?${params.toString()}`, {
+        const res = await apiFetch(`${AUTH_BASE}/me?${params.toString()}`, {
             method: 'PATCH',
             headers: { 'Authorization': `Bearer ${localStorage.getItem('admin_access_token')}` }
         });
@@ -384,44 +411,7 @@ export const api = {
         return res.json();
     },
 
-    // --- 2FA & Security ---
-    setup2FA: async (): Promise<TwoFASetupResponse> => {
-        const res = await fetch(`${AUTH_BASE}/2fa/setup`, {
-            method: 'POST',
-            headers: {
-                'Authorization': `Bearer ${localStorage.getItem('admin_access_token')}`
-            }
-        });
-        if (!res.ok) throw new Error("Failed to setup 2FA");
-        return res.json();
-    },
-
-    verify2FA: async (code: string): Promise<{ message: string }> => {
-        const res = await fetch(`${AUTH_BASE}/2fa/verify`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${localStorage.getItem('admin_access_token')}`
-            },
-            body: JSON.stringify({ code })
-        });
-        if (!res.ok) throw new Error("Invalid code");
-        return res.json();
-    },
-
-    disable2FA: async (code: string): Promise<{ message: string }> => {
-        const res = await fetch(`${AUTH_BASE}/2fa/disable`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${localStorage.getItem('admin_access_token')}`
-            },
-            body: JSON.stringify({ code })
-        });
-        if (!res.ok) throw new Error("Failed to disable 2FA");
-        return res.json();
-    },
-
+    // --- Sessions ---
     getSessions: async (): Promise<SessionListResponse> => {
         const res = await fetchWithTimeout(`${AUTH_BASE}/sessions`, {
             headers: { 'Authorization': `Bearer ${localStorage.getItem('admin_access_token')}` }
@@ -498,200 +488,34 @@ export const api = {
 
     // --- Monitoring ---
     getDashboard: async (): Promise<DashboardStats> => {
-        const res = await fetch(`${API_BASE}/monitoring/dashboard`);
+        const res = await apiFetch(`${API_BASE}/monitoring/dashboard`);
         if (res.status === 401) throw new Error("Unauthorized");
         if (!res.ok) throw new Error("Failed to fetch dashboard");
         return res.json();
     },
 
     getTraces: async (limit = 20): Promise<TraceListResponse> => {
-        const res = await fetch(`${API_BASE}/monitoring/traces?limit=${limit}`);
+        const res = await apiFetch(`${API_BASE}/monitoring/traces?limit=${limit}`);
         if (!res.ok) throw new Error("Failed to fetch traces");
         return res.json();
     },
 
     getTrace: async (traceId: string): Promise<any> => {
-        const res = await fetch(`${API_BASE}/monitoring/trace/${traceId}`);
+        const res = await apiFetch(`${API_BASE}/monitoring/trace/${traceId}`);
         if (!res.ok) throw new Error("Failed to fetch trace");
         const data = await res.json();
         return data.found ? data.trace : null;
     },
 
     getViolations: async (limit = 20): Promise<{ violations: Violation[] }> => {
-        const res = await fetch(`${API_BASE}/monitoring/violations?limit=${limit}`);
+        const res = await apiFetch(`${API_BASE}/monitoring/violations?limit=${limit}`);
         if (!res.ok) throw new Error("Failed to fetch violations");
         return res.json();
     },
 
-    // --- KYC ---
-    kycGetRequirements: async (action?: string): Promise<any> => {
-        const url = action
-            ? `${API_BASE}/kyc/requirements?action=${action}`
-            : `${API_BASE}/kyc/requirements`;
-        const res = await fetch(url, {
-            headers: { 'Authorization': `Bearer ${localStorage.getItem('admin_access_token')}` }
-        });
-        if (!res.ok) throw new Error("Failed to get KYC requirements");
-        return res.json();
-    },
-
-    kycStart: async (): Promise<{ case_id: string; status: string; message: string }> => {
-        const res = await fetch(`${API_BASE}/kyc/start`, {
-            method: 'POST',
-            headers: { 'Authorization': `Bearer ${localStorage.getItem('admin_access_token')}` }
-        });
-        if (!res.ok) throw new Error("Failed to start KYC");
-        return res.json();
-    },
-
-    kycGetStatus: async (): Promise<any> => {
-        const res = await fetch(`${API_BASE}/kyc/status`, {
-            headers: { 'Authorization': `Bearer ${localStorage.getItem('admin_access_token')}` }
-        });
-        if (!res.ok) throw new Error("Failed to get KYC status");
-        return res.json();
-    },
-
-    kycGetChecklist: async (): Promise<any> => {
-        const res = await fetch(`${API_BASE}/kyc/checklist`, {
-            headers: { 'Authorization': `Bearer ${localStorage.getItem('admin_access_token')}` }
-        });
-        if (!res.ok) throw new Error("Failed to get KYC checklist");
-        return res.json();
-    },
-
-    kycSubmitPersonalInfo: async (data: {
-        full_legal_name: string;
-        date_of_birth: string;
-        nationality: string;
-        country_of_residence: string;
-        address_line1: string;
-        address_city: string;
-        address_state?: string;
-        address_postal_code: string;
-        phone?: string;
-    }): Promise<{ success: boolean; profile_id: string }> => {
-        const res = await fetch(`${API_BASE}/kyc/personal-info`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${localStorage.getItem('admin_access_token')}`
-            },
-            body: JSON.stringify(data)
-        });
-        if (!res.ok) {
-            const err = await res.json().catch(() => ({}));
-            throw new Error(err.detail || "Failed to submit personal info");
-        }
-        return res.json();
-    },
-
-    kycGetPersonalInfo: async (): Promise<any> => {
-        const res = await fetch(`${API_BASE}/kyc/personal-info`, {
-            headers: { 'Authorization': `Bearer ${localStorage.getItem('admin_access_token')}` }
-        });
-        if (!res.ok) throw new Error("Failed to get personal info");
-        return res.json();
-    },
-
-    kycRequestUploadUrl: async (docType: string, side: string = 'front'): Promise<{
-        doc_id: string;
-        upload_url: string;
-        file_ref: string;
-        expires_at: number;
-    }> => {
-        const res = await fetch(`${API_BASE}/kyc/documents/upload-url`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${localStorage.getItem('admin_access_token')}`
-            },
-            body: JSON.stringify({ doc_type: docType, side })
-        });
-        if (!res.ok) throw new Error("Failed to get upload URL");
-        return res.json();
-    },
-
-    kycConfirmUpload: async (docId: string, fileRef: string, side: string, fileSizeBytes: number, contentType: string): Promise<{ success: boolean; is_complete: boolean }> => {
-        const res = await fetch(`${API_BASE}/kyc/documents/confirm`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${localStorage.getItem('admin_access_token')}`
-            },
-            body: JSON.stringify({
-                doc_id: docId,
-                file_ref: fileRef,
-                side,
-                file_size_bytes: fileSizeBytes,
-                content_type: contentType
-            })
-        });
-        if (!res.ok) throw new Error("Failed to confirm upload");
-        return res.json();
-    },
-
-    kycUploadFile: async (uploadUrl: string, file: File): Promise<{ success: boolean; file_ref: string }> => {
-        const res = await fetch(`${API_BASE}${uploadUrl}`, {
-            method: 'PUT',
-            headers: { 'Authorization': `Bearer ${localStorage.getItem('admin_access_token')}` },
-            body: file
-        });
-        if (!res.ok) throw new Error("Failed to upload file");
-        return res.json();
-    },
-
-    kycGetDocuments: async (): Promise<{ documents: any[] }> => {
-        const res = await fetch(`${API_BASE}/kyc/documents`, {
-            headers: { 'Authorization': `Bearer ${localStorage.getItem('admin_access_token')}` }
-        });
-        if (!res.ok) throw new Error("Failed to get documents");
-        return res.json();
-    },
-
-    kycStartFaceVerification: async (): Promise<{ check_id: string; session_id: string; selfie_upload_ref: string }> => {
-        const res = await fetch(`${API_BASE}/kyc/face/start`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${localStorage.getItem('admin_access_token')}`
-            },
-            body: JSON.stringify({ provider: 'internal' })
-        });
-        if (!res.ok) throw new Error("Failed to start face verification");
-        return res.json();
-    },
-
-    kycCompleteFaceVerification: async (selfieFileRef?: string, passed: boolean = true): Promise<{ success: boolean; status: string }> => {
-        const res = await fetch(`${API_BASE}/kyc/face/complete`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${localStorage.getItem('admin_access_token')}`
-            },
-            body: JSON.stringify({ selfie_file_ref: selfieFileRef, passed })
-        });
-        if (!res.ok) throw new Error("Failed to complete face verification");
-        return res.json();
-    },
-
-    kycSubmit: async (): Promise<{ success: boolean; status: string; message: string }> => {
-        const res = await fetch(`${API_BASE}/kyc/submit`, {
-            method: 'POST',
-            headers: { 'Authorization': `Bearer ${localStorage.getItem('admin_access_token')}` }
-        });
-        if (!res.ok) {
-            const err = await res.json().catch(() => ({}));
-            throw new Error(err.detail || "Failed to submit KYC");
-        }
-        return res.json();
-    }
-
-    ,
-
     // --- Broker Management ---
     getBrokerCatalog: async (): Promise<{ brokers: any[] }> => {
-        const res = await fetch(`${API_BASE}/api/brokers/catalog`, {
+        const res = await apiFetch(`${API_BASE}/api/brokers/catalog`, {
             headers: { 'Authorization': `Bearer ${localStorage.getItem('admin_access_token')}` }
         });
         if (!res.ok) throw new Error("Failed to fetch catalog");
@@ -699,7 +523,7 @@ export const api = {
     },
 
     getBrokerAccounts: async (): Promise<{ accounts: any[] }> => {
-        const res = await fetch(`${API_BASE}/api/brokers/accounts`, {
+        const res = await apiFetch(`${API_BASE}/api/brokers/accounts`, {
             headers: { 'Authorization': `Bearer ${localStorage.getItem('admin_access_token')}` }
         });
         if (!res.ok) throw new Error("Failed to fetch accounts");
@@ -707,7 +531,7 @@ export const api = {
     },
 
     startBrokerConnection: async (data: { broker_id: string, market_type: string, label?: string }): Promise<{ account_id: string, status: string }> => {
-        const res = await fetch(`${API_BASE}/api/brokers/connect`, {
+        const res = await apiFetch(`${API_BASE}/api/brokers/connect`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -720,7 +544,7 @@ export const api = {
     },
 
     submitBrokerCredentials: async (accountId: string, credentials: any): Promise<{ success: boolean, status: string }> => {
-        const res = await fetch(`${API_BASE}/api/brokers/${accountId}/credentials`, {
+        const res = await apiFetch(`${API_BASE}/api/brokers/${accountId}/credentials`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -733,7 +557,7 @@ export const api = {
     },
 
     validateBrokerConnection: async (accountId: string): Promise<any> => {
-        const res = await fetch(`${API_BASE}/api/brokers/${accountId}/validate`, {
+        const res = await apiFetch(`${API_BASE}/api/brokers/${accountId}/validate`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -745,7 +569,7 @@ export const api = {
     },
 
     disconnectBrokerAccount: async (accountId: string): Promise<{ success: boolean }> => {
-        const res = await fetch(`${API_BASE}/api/brokers/${accountId}/disconnect`, {
+        const res = await apiFetch(`${API_BASE}/api/brokers/${accountId}/disconnect`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -768,13 +592,13 @@ export const api = {
         // For now using what I implemented in billing.py (router.get("/plans"))
         // If main.py has app.include_router(billing.router, prefix="/api/billing")
         // I will assume /api/billing for now.
-        const res = await fetch(`${API_BASE}/api/billing/plans`);
+        const res = await apiFetch(`${API_BASE}/api/billing/plans`);
         if (!res.ok) throw new Error("Failed to fetch plans");
         return res.json();
     },
 
     createCheckoutSession: async (planId: string, successUrl?: string, cancelUrl?: string): Promise<{ checkout_url: string, session_id: string }> => {
-        const res = await fetch(`${API_BASE}/api/billing/checkout`, {
+        const res = await apiFetch(`${API_BASE}/api/billing/checkout`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -787,7 +611,7 @@ export const api = {
     },
 
     getSubscription: async (): Promise<any> => {
-        const res = await fetch(`${API_BASE}/api/billing/subscription`, {
+        const res = await apiFetch(`${API_BASE}/api/billing/subscription`, {
             headers: { 'Authorization': `Bearer ${localStorage.getItem('admin_access_token')}` }
         });
         if (!res.ok) throw new Error("Failed to fetch subscription");
@@ -795,7 +619,7 @@ export const api = {
     },
 
     getBillingHistory: async (): Promise<{ invoices: any[] }> => {
-        const res = await fetch(`${API_BASE}/api/billing/history`, {
+        const res = await apiFetch(`${API_BASE}/api/billing/history`, {
             headers: { 'Authorization': `Bearer ${localStorage.getItem('admin_access_token')}` }
         });
         if (!res.ok) throw new Error("Failed to fetch history");
@@ -803,7 +627,7 @@ export const api = {
     },
 
     manageSubscription: async (action: 'cancel' | 'resume' | 'upgrade', planId?: string): Promise<{ status: string, message?: string, checkout_url?: string }> => {
-        const res = await fetch(`${API_BASE}/api/billing/subscription/manage`, {
+        const res = await apiFetch(`${API_BASE}/api/billing/subscription/manage`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -817,7 +641,7 @@ export const api = {
 
     // --- Strategy System ---
     getStrategyCatalog: async (): Promise<{ strategies: any[] }> => {
-        const res = await fetch(`${API_BASE}/api/strategies/catalog`, {
+        const res = await apiFetch(`${API_BASE}/api/strategies/catalog`, {
             headers: { 'Authorization': `Bearer ${localStorage.getItem('admin_access_token')}` }
         });
         if (!res.ok) throw new Error("Failed to fetch strategies");
@@ -825,21 +649,21 @@ export const api = {
     },
     // Alias for compatibility
     getStrategies: async (): Promise<{ strategies: any[] }> => {
-        const res = await fetch(`${API_BASE}/api/strategies/catalog`, {
+        const res = await apiFetch(`${API_BASE}/api/strategies/catalog`, {
             headers: { 'Authorization': `Bearer ${localStorage.getItem('admin_access_token')}` }
         });
         if (!res.ok) throw new Error("Failed to fetch strategies");
         return res.json();
     },
     getStrategy: async (id: string) => {
-        const res = await fetch(`${API_BASE}/api/strategies/${id}`, {
+        const res = await apiFetch(`${API_BASE}/api/strategies/${id}`, {
             headers: { 'Authorization': `Bearer ${localStorage.getItem('admin_access_token')}` }
         });
         if (!res.ok) throw new Error("Failed to fetch strategy");
         return res.json();
     },
     createStrategy: async (data: any) => {
-        const res = await fetch(`${API_BASE}/api/strategies/`, {
+        const res = await apiFetch(`${API_BASE}/api/strategies/`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -853,7 +677,7 @@ export const api = {
 
     // --- Onboarding ---
     getOnboardingStrategies: async () => {
-        const res = await fetch(`${API_BASE}/api/onboarding/strategies`, {
+        const res = await apiFetch(`${API_BASE}/api/onboarding/strategies`, {
             headers: { 'Authorization': `Bearer ${localStorage.getItem('admin_access_token')}` }
         });
         if (!res.ok) throw new Error("Failed to fetch onboarding strategies");
@@ -862,7 +686,7 @@ export const api = {
 
     // --- Onboarding ---
     getOnboardingState: async (): Promise<{ status: string, current_step: string, data: any, recommended_defaults?: any }> => {
-        const res = await fetch(`${API_BASE}/api/onboarding/state`, {
+        const res = await apiFetch(`${API_BASE}/api/onboarding/state`, {
             headers: { 'Authorization': `Bearer ${localStorage.getItem('admin_access_token')}` }
         });
         if (!res.ok) throw new Error("Failed to fetch onboarding state");
@@ -870,7 +694,7 @@ export const api = {
     },
 
     saveOnboardingStep: async (step: string, data: any): Promise<{ status: string }> => {
-        const res = await fetch(`${API_BASE}/api/onboarding/step`, {
+        const res = await apiFetch(`${API_BASE}/api/onboarding/step`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -883,7 +707,7 @@ export const api = {
     },
 
     completeOnboarding: async (): Promise<{ status: string, defaults: any }> => {
-        const res = await fetch(`${API_BASE}/api/onboarding/complete`, {
+        const res = await apiFetch(`${API_BASE}/api/onboarding/complete`, {
             method: 'POST',
             headers: { 'Authorization': `Bearer ${localStorage.getItem('admin_access_token')}` }
         });
@@ -894,7 +718,7 @@ export const api = {
     // (Removed duplicate getStrategies)
 
     getOnboardingNextSteps: async (): Promise<{ can_proceed_to_live: boolean, blockers: string[], recommended_action: string }> => {
-        const res = await fetch(`${API_BASE}/api/onboarding/next-steps`, {
+        const res = await apiFetch(`${API_BASE}/api/onboarding/next-steps`, {
             headers: { 'Authorization': `Bearer ${localStorage.getItem('admin_access_token')}` }
         });
         if (!res.ok) throw new Error("Failed to fetch next steps");
@@ -903,7 +727,7 @@ export const api = {
 
     // --- Analytics ---
     getAnalyticsOverview: async (timeframe = 'ALL'): Promise<OverviewStats> => {
-        const res = await fetch(`${API_BASE}/api/analytics/overview?timeframe=${timeframe}`, {
+        const res = await apiFetch(`${API_BASE}/api/analytics/overview?timeframe=${timeframe}`, {
             headers: { 'Authorization': `Bearer ${localStorage.getItem('admin_access_token')}` }
         });
         if (!res.ok) throw new Error("Failed to fetch analytics overview");
@@ -911,7 +735,7 @@ export const api = {
     },
 
     getAnalyticsLeaderboard: async (limit = 20): Promise<StrategyPerfItem[]> => {
-        const res = await fetch(`${API_BASE}/api/analytics/leaderboard?limit=${limit}`, {
+        const res = await apiFetch(`${API_BASE}/api/analytics/leaderboard?limit=${limit}`, {
             headers: { 'Authorization': `Bearer ${localStorage.getItem('admin_access_token')}` }
         });
         if (!res.ok) throw new Error("Failed to fetch leaderboard");
@@ -920,7 +744,7 @@ export const api = {
     // --- Strategy System ---
     getMarketplaceStrategies: async (filters: any = {}): Promise<any> => {
         const query = new URLSearchParams(filters).toString();
-        const res = await fetch(`${API_BASE}/api/strategies/?${query}`, {
+        const res = await apiFetch(`${API_BASE}/api/strategies/?${query}`, {
             headers: { 'Authorization': `Bearer ${localStorage.getItem('admin_access_token')}` }
         });
         if (!res.ok) throw new Error("Failed to fetch marketplace strategies");
@@ -928,7 +752,7 @@ export const api = {
     },
 
     getStrategyDetails: async (id: string): Promise<any> => {
-        const res = await fetch(`${API_BASE}/api/strategies/${id}`, {
+        const res = await apiFetch(`${API_BASE}/api/strategies/${id}`, {
             headers: { 'Authorization': `Bearer ${localStorage.getItem('admin_access_token')}` }
         });
         if (!res.ok) throw new Error("Failed to fetch strategy details");
@@ -936,7 +760,7 @@ export const api = {
     },
 
     getMyStrategies: async (): Promise<any> => {
-        const res = await fetch(`${API_BASE}/api/strategies/my/my`, {
+        const res = await apiFetch(`${API_BASE}/api/strategies/my/my`, {
             headers: { 'Authorization': `Bearer ${localStorage.getItem('admin_access_token')}` }
         });
         if (!res.ok) throw new Error("Failed to fetch my strategies");
@@ -944,7 +768,7 @@ export const api = {
     },
 
     createStrategyDraft: async (data: any): Promise<{ id: string, status: string }> => {
-        const res = await fetch(`${API_BASE}/api/strategies/my/`, {
+        const res = await apiFetch(`${API_BASE}/api/strategies/my/`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -957,7 +781,7 @@ export const api = {
     },
 
     validateStrategySpec: async (spec: any): Promise<{ valid: boolean, errors: string[] }> => {
-        const res = await fetch(`${API_BASE}/api/strategies/build/validate`, {
+        const res = await apiFetch(`${API_BASE}/api/strategies/build/validate`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -970,7 +794,7 @@ export const api = {
     },
 
     saveStrategyVersion: async (id: string, spec: any, changelog: string): Promise<{ version: string }> => {
-        const res = await fetch(`${API_BASE}/api/strategies/build/${id}/versions`, {
+        const res = await apiFetch(`${API_BASE}/api/strategies/build/${id}/versions`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -983,7 +807,7 @@ export const api = {
     },
     // --- Strategy Configurations (Risk & Safety) ---
     createStrategyConfig: async (data: any) => {
-        const res = await fetch(`${API_BASE}/api/strategy-configs/`, {
+        const res = await apiFetch(`${API_BASE}/api/strategy-configs/`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -999,7 +823,7 @@ export const api = {
         const url = brokerAccountId
             ? `${API_BASE}/api/strategy-configs/?broker_account_id=${brokerAccountId}`
             : `${API_BASE}/api/strategy-configs/`;
-        const res = await fetch(url, {
+        const res = await apiFetch(url, {
             headers: { 'Authorization': `Bearer ${localStorage.getItem('admin_access_token')}` }
         });
         if (!res.ok) throw new Error("Failed to fetch configs");
@@ -1007,7 +831,7 @@ export const api = {
     },
 
     getStrategyConfig: async (configId: string) => {
-        const res = await fetch(`${API_BASE}/api/strategy-configs/${configId}`, {
+        const res = await apiFetch(`${API_BASE}/api/strategy-configs/${configId}`, {
             headers: { 'Authorization': `Bearer ${localStorage.getItem('admin_access_token')}` }
         });
         if (!res.ok) throw new Error("Failed to fetch config");
@@ -1015,7 +839,7 @@ export const api = {
     },
 
     updateStrategyConfig: async (configId: string, data: any) => {
-        const res = await fetch(`${API_BASE}/api/strategy-configs/${configId}`, {
+        const res = await apiFetch(`${API_BASE}/api/strategy-configs/${configId}`, {
             method: 'PUT',
             headers: {
                 'Content-Type': 'application/json',
@@ -1028,7 +852,7 @@ export const api = {
     },
 
     activateStrategyConfig: async (configId: string) => {
-        const res = await fetch(`${API_BASE}/api/strategy-configs/${configId}/activate`, {
+        const res = await apiFetch(`${API_BASE}/api/strategy-configs/${configId}/activate`, {
             method: 'POST',
             headers: { 'Authorization': `Bearer ${localStorage.getItem('admin_access_token')}` }
         });
@@ -1037,7 +861,7 @@ export const api = {
     },
 
     deactivateStrategyConfig: async (configId: string) => {
-        const res = await fetch(`${API_BASE}/api/strategy-configs/${configId}/deactivate`, {
+        const res = await apiFetch(`${API_BASE}/api/strategy-configs/${configId}/deactivate`, {
             method: 'POST',
             headers: { 'Authorization': `Bearer ${localStorage.getItem('admin_access_token')}` }
         });
@@ -1046,7 +870,7 @@ export const api = {
     },
 
     getActiveConfig: async (brokerAccountId: string) => {
-        const res = await fetch(`${API_BASE}/api/strategy-configs/account/${brokerAccountId}/active`, {
+        const res = await apiFetch(`${API_BASE}/api/strategy-configs/account/${brokerAccountId}/active`, {
             headers: { 'Authorization': `Bearer ${localStorage.getItem('admin_access_token')}` }
         });
         if (res.status === 404) return null;
@@ -1055,7 +879,7 @@ export const api = {
     },
 
     getProtectionStatus: async (configId: string) => {
-        const res = await fetch(`${API_BASE}/api/strategy-configs/${configId}/protection-status`, {
+        const res = await apiFetch(`${API_BASE}/api/strategy-configs/${configId}/protection-status`, {
             headers: { 'Authorization': `Bearer ${localStorage.getItem('admin_access_token')}` }
         });
         if (!res.ok) throw new Error("Failed to fetch protection status");
@@ -1063,7 +887,7 @@ export const api = {
     },
 
     resetProtection: async (configId: string) => {
-        const res = await fetch(`${API_BASE}/api/strategy-configs/${configId}/reset-protection`, {
+        const res = await apiFetch(`${API_BASE}/api/strategy-configs/${configId}/reset-protection`, {
             method: 'POST',
             headers: { 'Authorization': `Bearer ${localStorage.getItem('admin_access_token')}` }
         });
@@ -1073,7 +897,7 @@ export const api = {
 
     // --- Risk Profiles ---
     getRiskTemplates: async () => {
-        const res = await fetch(`${API_BASE}/api/risk-profiles/templates`, {
+        const res = await apiFetch(`${API_BASE}/api/risk-profiles/templates`, {
             headers: { 'Authorization': `Bearer ${localStorage.getItem('admin_access_token')}` }
         });
         if (!res.ok) throw new Error("Failed to fetch risk templates");
@@ -1081,7 +905,7 @@ export const api = {
     },
 
     calculatePositionSize: async (data: any) => {
-        const res = await fetch(`${API_BASE}/api/risk-profiles/calculate`, {
+        const res = await apiFetch(`${API_BASE}/api/risk-profiles/calculate`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -1094,7 +918,7 @@ export const api = {
     },
 
     validateRiskParams: async (data: any) => {
-        const res = await fetch(`${API_BASE}/api/risk-profiles/validate`, {
+        const res = await apiFetch(`${API_BASE}/api/risk-profiles/validate`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',

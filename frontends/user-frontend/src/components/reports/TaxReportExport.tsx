@@ -1,8 +1,6 @@
 import React, { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
 import { ReportsAPI } from '@/api/reports';
 import { Download, FileText, AlertTriangle } from 'lucide-react';
-import { apiClient } from '@/api/client';
 
 interface TaxReportExportProps {
     brokerAccountId?: string;
@@ -12,19 +10,20 @@ export const TaxReportExport: React.FC<TaxReportExportProps> = ({ brokerAccountI
     const currentYear = new Date().getFullYear();
     const [selectedYear, setSelectedYear] = useState(currentYear - 1); // Default to previous year
 
-    const handleExport = (format: 'csv' | 'json' | 'pdf') => {
-        const token = localStorage.getItem('access_token') || '';
-        if (format === 'csv') {
-            // Direct download via URL for CSV
-            const url = ReportsAPI.exportTaxReportCsvUrl(selectedYear, token, brokerAccountId);
-            window.open(url, '_blank');
-        } else if (format === 'pdf') {
-            const url = ReportsAPI.exportTaxReportPdfUrl(selectedYear, token, brokerAccountId);
-            window.open(url, '_blank');
-        } else {
-            // For JSON, we could fetch and download blob, but let's stick to CSV as primary for now
-            // Or implement JSON download logic here
-            alert("JSON export via UI coming soon. Please use CSV for now.");
+    const [exporting, setExporting] = useState<'csv' | 'pdf' | null>(null);
+    const [exportError, setExportError] = useState<string | null>(null);
+
+    // The export endpoints require the Authorization header, so the file is
+    // fetched with the session and saved from a Blob instead of opening a URL.
+    const handleExport = async (format: 'csv' | 'pdf') => {
+        setExporting(format);
+        setExportError(null);
+        try {
+            await ReportsAPI.downloadTaxReport(selectedYear, format, brokerAccountId);
+        } catch (err) {
+            setExportError(err instanceof Error ? err.message : 'Export failed');
+        } finally {
+            setExporting(null);
         }
     };
 
@@ -68,20 +67,28 @@ export const TaxReportExport: React.FC<TaxReportExportProps> = ({ brokerAccountI
                 <div className="flex gap-2">
                     <button
                         onClick={() => handleExport('csv')}
-                        className="flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition"
+                        disabled={exporting !== null}
+                        className="flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition disabled:opacity-50"
                     >
                         <Download className="h-4 w-4" />
-                        Export CSV
+                        {exporting === 'csv' ? 'Preparing…' : 'Export CSV'}
                     </button>
                     <button
                         onClick={() => handleExport('pdf')}
-                        className="flex items-center justify-center gap-2 px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 transition"
+                        disabled={exporting !== null}
+                        className="flex items-center justify-center gap-2 px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 transition disabled:opacity-50"
                     >
                         <FileText className="h-4 w-4" />
-                        Export PDF
+                        {exporting === 'pdf' ? 'Preparing…' : 'Export PDF'}
                     </button>
                 </div>
             </div>
+
+            {exportError && (
+                <p role="alert" className="mt-4 text-sm text-red-600">
+                    Export failed: {exportError}
+                </p>
+            )}
         </div>
     );
 };

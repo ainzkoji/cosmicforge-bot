@@ -130,10 +130,33 @@ export default function Subscription() {
     };
 
     const handleSubscribe = async (planId: string) => {
+        const onPaidPlan = !!subscription?.plan && subscription.plan.id !== 'plan_free';
+
+        // The free plan is not purchased: moving to it means cancelling the paid one.
+        if (planId === 'plan_free') {
+            if (onPaidPlan) await handleCancel();
+            return;
+        }
+
         setIsProcessing(true);
         try {
-            const result = await api.createCheckoutSession(planId, window.location.href, window.location.href);
-            // Redirect to stripe/mock url
+            if (onPaidPlan) {
+                // Existing subscription: the server changes it in place (or starts
+                // a checkout when there is nothing to change).
+                const result = await api.manageSubscription('upgrade', planId);
+                if (result.checkout_url) {
+                    window.location.href = result.checkout_url;
+                    return;
+                }
+                alert(result.message || "Your plan change is being processed.");
+                await loadData();
+                setView("dashboard");
+                setIsProcessing(false);
+                return;
+            }
+            // Price and return URLs are decided by the server; the plan is
+            // activated only after the payment provider confirms the payment.
+            const result = await api.createCheckoutSession(planId);
             window.location.href = result.checkout_url;
         } catch (err: any) {
             alert("Failed to start checkout: " + err.message);
@@ -145,11 +168,20 @@ export default function Subscription() {
         if (confirm("Are you sure? You will lose access to premium features at the end of the billing period.")) {
             try {
                 await api.manageSubscription('cancel');
-                alert("Subscription cancelled. access remains until end of period.");
+                alert("Subscription cancelled. Access remains until the end of the billing period.");
                 loadData(); // refresh
             } catch (err: any) {
                 alert("Failed to cancel: " + err.message);
             }
+        }
+    };
+
+    const handleResume = async () => {
+        try {
+            await api.manageSubscription('resume');
+            loadData(); // refresh
+        } catch (err: any) {
+            alert("Failed to resume: " + err.message);
         }
     };
 
@@ -164,6 +196,9 @@ export default function Subscription() {
     if (view === "dashboard" && subscription) {
         const currentPlan = subscription.plan || { name: "Free", price: 0 };
         const entitlements = subscription.entitlements || {};
+        // Real counts from GET /api/billing/subscription (bots / connected brokers).
+        const usage = subscription.usage || {};
+        const formatDate = (value?: string | null) => value ? new Date(value).toLocaleDateString() : "—";
 
         return (
             <div className="max-w-6xl mx-auto space-y-8 animate-in fade-in duration-500">
@@ -201,9 +236,13 @@ export default function Subscription() {
                                         </span>
                                     </div>
                                     <p className="text-muted-foreground text-sm">
-                                        {subscription.cancel_at_period_end
-                                            ? `Access continues until ${new Date(subscription.current_period_end).toLocaleDateString()}`
-                                            : `Next billing date: ${new Date(subscription.current_period_end).toLocaleDateString()}`}
+                                        {subscription.status === 'past_due'
+                                            ? `Your last payment failed. Update your payment method to keep your plan; access continues until ${formatDate(subscription.grace_period_end)}.`
+                                            : subscription.cancel_at_period_end
+                                                ? `Access continues until ${formatDate(subscription.current_period_end)}`
+                                                : subscription.current_period_end
+                                                    ? `Next billing date: ${formatDate(subscription.current_period_end)}`
+                                                    : "No billing scheduled."}
                                     </p>
                                 </div>
                                 <div className="text-right">
@@ -226,6 +265,14 @@ export default function Subscription() {
                                         Cancel Renewal
                                     </button>
                                 )}
+                                {subscription.cancel_at_period_end && currentPlan.id !== 'plan_free' && (
+                                    <button
+                                        onClick={handleResume}
+                                        className="px-4 py-2 border border-border bg-background hover:bg-muted text-foreground rounded-lg text-sm font-medium transition-colors"
+                                    >
+                                        Resume Renewal
+                                    </button>
+                                )}
                             </div>
                         </div>
 
@@ -236,14 +283,14 @@ export default function Subscription() {
                             </h3>
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                 <UsageBar
-                                    label="Active Bots"
-                                    current={0} // TODO: fetch real usage
+                                    label="Bots"
+                                    current={usage.bots ?? 0}
                                     max={entitlements.max_bots || 1}
                                     icon={Zap}
                                 />
                                 <UsageBar
                                     label="Connected Brokers"
-                                    current={0} // TODO: fetch real usage
+                                    current={usage.brokers ?? 0}
                                     max={entitlements.max_brokers || 1}
                                     icon={Shield}
                                 />
@@ -274,9 +321,9 @@ export default function Subscription() {
                                                 <tr key={inv.id} className="border-b border-border/50 last:border-0 hover:bg-muted/30 transition-colors">
                                                     <td className="py-3 px-4">{new Date(inv.date).toLocaleDateString()}</td>
                                                     <td className="py-3 px-4 font-mono text-xs">{inv.id}</td>
-                                                    <td className="py-3 px-4 font-medium">${inv.amount.toFixed(2)}</td>
+                                                    <td className="py-3 px-4 font-medium">${Number(inv.amount ?? 0).toFixed(2)}</td>
                                                     <td className="py-3 px-4">
-                                                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-500/10 text-green-500 capitalize">
+                                                        <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium capitalize ${inv.status === 'paid' ? 'bg-green-500/10 text-green-500' : 'bg-yellow-500/10 text-yellow-500'}`}>
                                                             {inv.status}
                                                         </span>
                                                     </td>
@@ -337,7 +384,7 @@ export default function Subscription() {
                 <div className="fixed inset-0 z-50 bg-background/80 backdrop-blur-sm flex items-center justify-center">
                     <div className="flex flex-col items-center gap-4">
                         <Loader2 className="w-10 h-10 animate-spin text-primary" />
-                        <p className="text-lg font-medium">Processing Payment...</p>
+                        <p className="text-lg font-medium">Redirecting to secure checkout...</p>
                     </div>
                 </div>
             )}

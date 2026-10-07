@@ -1,7 +1,8 @@
 import { AdminLayout } from "@/components/admin/layout/AdminLayout";
 import { useEffect, useState } from "react";
-import { Activity, TrendingUp, TrendingDown, Square, Clock, AlertCircle, RefreshCw } from "lucide-react";
+import { Activity, TrendingUp, TrendingDown, Clock, AlertCircle, RefreshCw } from "lucide-react";
 import { getBotOverview, getBotLiveTelemetry, getBotRuns } from "@/api/admin";
+import { EmergencyControls } from "@/components/admin/emergency/EmergencyControls";
 import { Link } from "react-router-dom";
 
 interface BotOverview {
@@ -93,14 +94,6 @@ export default function BotMonitor() {
         }
     };
 
-    const handleEmergencyStop = async () => {
-        if (!confirm("Are you sure you want to stop the bot? This will halt all trading activity.")) {
-            return;
-        }
-        // TODO: Implement emergency stop API call
-        alert("Emergency stop triggered!");
-    };
-
     const formatTime = (isoString?: string | null) => {
         if (!isoString) return 'n/a';
         const date = new Date(isoString);
@@ -124,16 +117,6 @@ export default function BotMonitor() {
         return Number.isFinite(parsed) && parsed !== 0 ? parsed.toString() : 'n/a';
     };
 
-    if (loading) {
-        return (
-            <AdminLayout>
-                <div className="flex items-center justify-center h-screen">
-                    <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
-                </div>
-            </AdminLayout>
-        );
-    }
-
     return (
         <AdminLayout>
             <div className="space-y-6">
@@ -147,16 +130,17 @@ export default function BotMonitor() {
                             Real-time tracking of trading bot operations
                         </p>
                     </div>
-                    <button
-                        onClick={handleEmergencyStop}
-                        className="admin-btn admin-btn-danger flex items-center gap-2"
-                    >
-                        <Square className="w-4 h-4" />
-                        Emergency Stop
-                    </button>
                 </div>
 
-                {/* Overview Cards */}
+                {/* Kill switch + flatten, wired to the emergency API */}
+                <EmergencyControls />
+
+                {loading ? (
+                    <div className="flex items-center justify-center py-24">
+                        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
+                    </div>
+                ) : (
+                <>
                 {error && (
                     <div className="admin-card flex items-center justify-between gap-4 border-red-500/20 bg-red-500/5">
                         <div className="flex items-center gap-2 text-sm text-red-300">
@@ -339,6 +323,8 @@ export default function BotMonitor() {
                         </tbody>
                     </table>
                 </div>
+                </>
+                )}
             </div>
         </AdminLayout>
     );

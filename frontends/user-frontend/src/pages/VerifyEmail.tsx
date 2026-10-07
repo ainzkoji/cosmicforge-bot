@@ -1,9 +1,12 @@
 import { useState, useEffect } from "react";
 import { Link, useNavigate, useLocation } from "react-router-dom";
-import { Loader2, Mail, ArrowRight, RefreshCw } from "lucide-react";
+import { Loader2, Mail, ArrowRight, RefreshCw, KeyRound } from "lucide-react";
 import { api } from "@/api/client";
 
 const RESEND_COOLDOWN_SECONDS = 90;
+
+/** verify-email response. `password_reset_required` is set when the account has no usable password yet. */
+type VerifyEmailResult = { message: string; password_reset_required?: boolean };
 
 export default function VerifyEmail() {
     const navigate = useNavigate();
@@ -17,6 +20,8 @@ export default function VerifyEmail() {
     const [error, setError] = useState<string | null>(null);
     const [success, setSuccess] = useState<string | null>((location.state as any)?.message || null);
     const [cooldown, setCooldown] = useState(0);
+    // Verified, but the account has no password yet: it must be set through "Forgot password".
+    const [passwordSetupRequired, setPasswordSetupRequired] = useState(false);
 
     // Countdown timer for resend
     useEffect(() => {
@@ -31,7 +36,13 @@ export default function VerifyEmail() {
         setLoading(true);
         setError(null);
         try {
-            await api.verifyEmail(email, code);
+            const result = (await api.verifyEmail(email, code)) as VerifyEmailResult;
+            if (result?.password_reset_required === true) {
+                // Signing in would fail: there is no password to sign in with yet.
+                setSuccess(null);
+                setPasswordSetupRequired(true);
+                return;
+            }
             setSuccess("Email verified! Redirecting to login...");
             setTimeout(() => navigate("/login"), 2000);
         } catch (err: any) {
@@ -67,6 +78,42 @@ export default function VerifyEmail() {
         const secs = seconds % 60;
         return `${mins}:${secs.toString().padStart(2, '0')}`;
     };
+
+    if (passwordSetupRequired) {
+        return (
+            <div className="min-h-screen flex items-center justify-center bg-white">
+                <div className="w-full max-w-md px-8 py-12 text-center">
+                    <div className="flex justify-center mb-8">
+                        <div className="w-16 h-16 rounded-full bg-[#2D3A8C] flex items-center justify-center">
+                            <KeyRound className="w-8 h-8 text-white" />
+                        </div>
+                    </div>
+                    <h1 className="text-2xl font-bold text-gray-900 mb-2">Email verified</h1>
+                    <div
+                        role="status"
+                        className="p-3 rounded-lg bg-green-50 border border-green-200 text-green-700 text-sm mb-5"
+                    >
+                        Your email address{email ? <> <span className="font-semibold">{email}</span></> : null} is verified.
+                    </div>
+                    <p className="text-gray-600 text-sm mb-8">
+                        One more step: this account does not have a password yet, so you cannot sign in until you
+                        set one. Use &ldquo;Forgot password&rdquo; with the same email address &mdash; we will send
+                        you a code to choose your password.
+                    </p>
+                    <Link
+                        to="/forgot-password"
+                        state={{ email }}
+                        className="w-full py-3.5 rounded-xl bg-[#2D3A8C] text-white font-semibold hover:bg-[#252f73] flex items-center justify-center gap-2 transition-all shadow-lg shadow-[#2D3A8C]/30"
+                    >
+                        Set your password <ArrowRight className="w-5 h-5" />
+                    </Link>
+                    <p className="mt-6 text-gray-500 text-sm">
+                        <Link to="/login" className="text-[#2D3A8C] font-semibold hover:underline">Back to Login</Link>
+                    </p>
+                </div>
+            </div>
+        );
+    }
 
     return (
         <div className="min-h-screen flex items-center justify-center bg-white">

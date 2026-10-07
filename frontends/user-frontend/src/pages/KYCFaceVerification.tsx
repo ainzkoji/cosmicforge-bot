@@ -1,39 +1,54 @@
 import { useState, useRef, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { ArrowLeft, Check, Camera, Upload, User, CheckCircle, XCircle, Loader2 } from "lucide-react";
+import { ArrowLeft, ArrowRight, Check, Camera, Clock, Upload, User, CheckCircle, XCircle, Loader2 } from "lucide-react";
 import { api } from "@/api/client";
 
 export default function KYCFaceVerification() {
     const navigate = useNavigate();
     const fileInputRef = useRef<HTMLInputElement>(null);
+    const cameraInputRef = useRef<HTMLInputElement>(null);
 
     const [selfieImage, setSelfieImage] = useState<File | null>(null);
     const [previewUrl, setPreviewUrl] = useState<string | null>(null);
-    const [isCapturing, setIsCapturing] = useState(false);
 
     // API State
 
     const [uploadRef, setUploadRef] = useState<string | null>(null);
+    const [uploadUrl, setUploadUrl] = useState<string | null>(null);
     const [isSubmitting, setIsSubmitting] = useState(false);
+    const [isSubmitted, setIsSubmitted] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
     // Start verification session on mount
     useEffect(() => {
+        let cancelled = false;
         const startSession = async () => {
             try {
-                const { selfie_upload_ref } = await api.kycStartFaceVerification();
+                // The server generates the selfie reference and a signed upload URL for it.
+                const { selfie_upload_ref, upload_url } = await api.kycStartFaceVerification();
+                if (cancelled) return;
                 setUploadRef(selfie_upload_ref);
-            } catch (e) {
+                setUploadUrl(upload_url);
+            } catch (e: any) {
                 console.error("Failed to start face verification session", e);
-                setError("Failed to initialize verification session");
+                if (!cancelled) setError(e?.message || "Failed to initialize verification session");
             }
         };
         startSession();
+        return () => {
+            cancelled = true;
+        };
     }, []);
 
     const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
+        // Allow re-selecting the same file after an error
+        e.target.value = "";
         if (file) {
+            if (file.type !== "image/jpeg" && file.type !== "image/png") {
+                setError("Please use a JPG or PNG photo");
+                return;
+            }
             if (file.size > 10 * 1024 * 1024) {
                 setError("File size must be less than 10MB");
                 return;
@@ -45,76 +60,62 @@ export default function KYCFaceVerification() {
     };
 
     const handleCapture = () => {
-        // Simulate capture - in real app would use webcam API
-        setIsCapturing(true);
-        setTimeout(() => {
-            setIsCapturing(false);
-            // In a real app, this would capture a blob from the video stream
-            alert("In a real implementation, this would capture from your webcam. For now, please use 'Upload Photo Instead'.");
-        }, 500);
+        // Opens the device's front camera where supported (falls back to a file picker)
+        cameraInputRef.current?.click();
     };
 
     const handleSubmit = async () => {
-        if (!selfieImage || !uploadRef) return;
+        if (!selfieImage) return;
+        if (!uploadRef || !uploadUrl) {
+            setError("Verification session is not ready. Please reload the page and try again.");
+            return;
+        }
 
         setIsSubmitting(true);
         setError(null);
 
         try {
-            // 1. Upload the selfie file to the pre-generated ref
-            // Note: In a real implementation with S3 presigned URLs, we would need a specific upload URL.
-            // For now, our backend 'upload_document_file' handles specific paths, but for face verification
-            // we might need a dedicated endpoint or reuse the logic. 
-            // However, the backend 'kyc_storage' generates unique paths.
-            // The 'kycStartFaceVerification' returns 'selfie_upload_ref' which is just the file path prefix/ref.
-            // We need a way to upload to this ref. 
+            // 1. Upload the selfie to the signed, user-bound URL issued by the server
+            await api.kycUploadFile(uploadUrl, selfieImage);
 
-            // Wait, the client 'kycUploadFile' expects a full URL.
-            // The backend 'api.kycStartFaceVerification' returns 'selfie_upload_ref' but NOT a signed upload URL.
-            // Actually looking at 'kyc.py':
-            // start_face_verification returns { check_id, session_id, selfie_upload_ref }
-            // It does NOT return a signed upload URL like 'request_upload_url' does.
-            // And 'upload_document_file' endpoint requires 'file_ref', 'expires', 'sig'.
+            // 2. Tell the server the selfie is in place. The server verifies the upload
+            //    itself and records the check as "pending manual review" - the client
+            //    never reports a pass/fail result.
+            await api.kycCompleteFaceVerification(uploadRef);
 
-            // To fix this without changing backend too much:
-            // I should have made 'start_face_verification' return a signed upload URL.
-            // But since I can't change backend right now easily without restarting and potential issues,
-            // I will use a workaround or check if I can reuse 'request_upload_url'.
-
-            // Actually, for this demo, let's treat it as if we are just submitting the file in a separate endpoint
-            // OR we can change the client to use a different upload method.
-
-            // Reviewing 'kyc.py', 'complete_face_verification' takes 'selfie_file_ref'.
-            // It assumes the file is already there?
-            // Ah, the logic in 'complete_face_verification' just updates the DB with the ref.
-
-            // I missed implementing a direct upload endpoint for the selfie (or generating a signed URL for it) in the backend 'start' response.
-            // But wait, 'api.kycRequestUploadUrl' is for documents.
-
-            // Let's look at how to get a signed URL for the selfie ref.
-            // I can't easily get one with current API.
-
-            // OPTION: Use 'kycRequestUploadUrl' with a dummy type to get a valid signed URL/ref?
-            // No, that creates a 'kyc_documents' record.
-
-            // OPTION: Just mock the success for now since user wants to see flow.
-            // I will simulate the upload delay and then call complete with the ref.
-            // The backend 'complete' doesn't check if file actually exists on disk (it just stores the ref).
-            // So for now, we will skip the actual physical upload of the selfie to avoid the missing API gap.
-            // This is acceptable for a "simulated" webcam flow in this iteration.
-
-            await new Promise(resolve => setTimeout(resolve, 1500)); // Simulate upload
-
-            // 2. Complete verification
-            await api.kycCompleteFaceVerification(uploadRef, true);
-
-            navigate("/kyc/status");
+            setIsSubmitted(true);
         } catch (e: any) {
-            setError(e.message || "Failed to complete verification");
+            setError(e.message || "Failed to submit your selfie. Please try again.");
         } finally {
             setIsSubmitting(false);
         }
     };
+
+    if (isSubmitted) {
+        return (
+            <div className="min-h-screen bg-gray-50 py-12 px-4">
+                <div className="max-w-lg mx-auto">
+                    <div className="bg-white rounded-2xl shadow-lg p-8 text-center">
+                        <div className="w-24 h-24 mx-auto mb-6 bg-blue-100 rounded-full flex items-center justify-center">
+                            <Clock className="w-12 h-12 text-blue-500" />
+                        </div>
+                        <h1 className="text-2xl font-bold text-gray-900 mb-3">Selfie Submitted for Review</h1>
+                        <p className="text-gray-600 mb-8">
+                            Your selfie was uploaded and will be checked by our team together with your ID.
+                            Continue to submit your verification for review.
+                        </p>
+                        <button
+                            onClick={() => navigate("/kyc/status")}
+                            className="w-full py-4 bg-[#1E1B4B] text-white font-semibold rounded-xl hover:bg-[#2D2A5B] transition-colors flex items-center justify-center gap-2"
+                        >
+                            Continue
+                            <ArrowRight className="w-5 h-5" />
+                        </button>
+                    </div>
+                </div>
+            </div>
+        );
+    }
 
     return (
         <div className="min-h-screen bg-gray-50 py-12 px-4">
@@ -222,19 +223,27 @@ export default function KYCFaceVerification() {
                     {/* Capture Button */}
                     {!previewUrl && (
                         <>
+                            <input
+                                ref={cameraInputRef}
+                                type="file"
+                                accept="image/jpeg,image/png"
+                                capture="user"
+                                onChange={handleFileChange}
+                                className="hidden"
+                            />
                             <button
                                 onClick={handleCapture}
-                                disabled={isCapturing || isSubmitting}
+                                disabled={isSubmitting}
                                 className="w-full py-4 bg-[#1E1B4B] text-white font-semibold rounded-xl hover:bg-[#2D2A5B] transition-colors flex items-center justify-center gap-2 mb-4"
                             >
                                 <Camera className="w-5 h-5" />
-                                {isCapturing ? "Capturing..." : "Capture Photo"}
+                                Take Photo
                             </button>
 
                             <input
                                 ref={fileInputRef}
                                 type="file"
-                                accept="image/*"
+                                accept="image/jpeg,image/png"
                                 onChange={handleFileChange}
                                 className="hidden"
                             />
@@ -259,12 +268,12 @@ export default function KYCFaceVerification() {
                             {isSubmitting ? (
                                 <>
                                     <Loader2 className="w-5 h-5 animate-spin" />
-                                    Verifying...
+                                    Uploading...
                                 </>
                             ) : (
                                 <>
                                     <CheckCircle className="w-5 h-5" />
-                                    Submit Verification
+                                    Submit Selfie for Review
                                 </>
                             )}
                         </button>

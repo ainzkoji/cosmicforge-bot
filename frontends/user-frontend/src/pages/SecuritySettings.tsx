@@ -136,7 +136,7 @@ export default function SecuritySettings() {
             {/* Encryption Notice */}
             <div className="flex items-center gap-3 p-4 bg-gray-50 rounded-xl border border-gray-100 text-xs text-gray-500 justify-center">
                 <Shield className="w-4 h-4" />
-                <span>Your data is encrypted using AES-256 military-grade encryption. We never store your passwords in plain text.</span>
+                <span>Broker credentials are encrypted at rest. We never store your passwords in plain text.</span>
             </div>
         </div>
     );

@@ -10,6 +10,7 @@ import { api } from "../api/client";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import MultiAssetPanel from "../components/Broker/MultiAssetPanel";
 import { brokerEnvironment } from "../lib/brokerEnvironment";
+import { ConfirmationDialog } from "@/components/UI/ConfirmationDialog";
 
 
 // --- Components ---
@@ -90,7 +91,8 @@ export default function BrokerConnection() {
     // Connection State
     const [selectedMarket, setSelectedMarket] = useState<"crypto" | "forex">("crypto");
     const [selectedBrokerId, setSelectedBrokerId] = useState<string | null>(null);
-    const [environment, setEnvironment] = useState<"live" | "demo">("live");
+    // Default to DEMO (virtual funds); LIVE has to be chosen explicitly.
+    const [environment, setEnvironment] = useState<"live" | "demo">("demo");
 
     const [accountId, setAccountId] = useState<string | null>(null);
     const [credentials, setCredentials] = useState<Record<string, string>>({});
@@ -109,6 +111,11 @@ export default function BrokerConnection() {
 
     // UI State
     const [activeMenuId, setActiveMenuId] = useState<string | null>(null);
+    // In-page notice (replaces window.alert) and confirmation dialog (replaces window.confirm).
+    const [notice, setNotice] = useState<string | null>(null);
+    const showNotice = (text: string) => setNotice(text);
+    const [pendingAccountAction, setPendingAccountAction] = useState<{ type: "disconnect" | "delete"; id: string } | null>(null);
+    const [accountActionBusy, setAccountActionBusy] = useState(false);
     const [testResult, setTestResult] = useState<any>(null); // Store test result for modal/alert
 
     // --- Queries ---
@@ -154,7 +161,7 @@ export default function BrokerConnection() {
             queryClient.invalidateQueries({ queryKey: ["broker-accounts"] });
         },
         onError: (error: any) => {
-            alert(`Failed to submit credentials: ${error.message}`);
+            showNotice(`Failed to submit credentials: ${error.message}`);
         }
     });
 
@@ -165,11 +172,11 @@ export default function BrokerConnection() {
                 setStep("success");
                 queryClient.invalidateQueries({ queryKey: ["broker-accounts"] });
             } else {
-                alert(`Validation failed: ${data.error || "Unknown error"}`);
+                showNotice(`Validation failed: ${data.error || "Unknown error"}`);
             }
         },
         onError: (error: any) => {
-            alert(`Validation failed: ${error.message}`);
+            showNotice(`Validation failed: ${error.message}`);
         }
     });
 
@@ -185,22 +192,15 @@ export default function BrokerConnection() {
                 // If it's MT bridge, show details
                 if (data.platform) {
                     const msg = `Connection Successful!\n\nPlatform: ${data.platform}\nAccount: ${data.account}\nBal: ${data.balance} ${data.currency}\nEquity: ${data.details?.equity}`;
-                    alert(msg);
+                    showNotice(msg);
                 } else {
-                    alert("Connection Successful! You can now proceed to save.");
+                    showNotice("Connection Successful! You can now proceed to save.");
                 }
             } else {
-                alert(`Test failed: ${data.error}`);
+                showNotice(`Test failed: ${data.error}`);
             }
         },
-        onError: (e: any) => alert(`Test Error: ${e.message}`)
-    });
-
-    const disconnectMutation = useMutation({
-        mutationFn: api.disconnectBrokerAccount,
-        onSuccess: () => {
-            queryClient.invalidateQueries({ queryKey: ["broker-accounts"] });
-        }
+        onError: (e: any) => showNotice(`Test Error: ${e.message}`)
     });
 
     // --- MT Pairing Logic (Magic Link) ---
@@ -215,7 +215,7 @@ export default function BrokerConnection() {
             setStep("pairing");
         },
         onError: (err: any) => {
-            alert(err.message || "Failed to create pairing session");
+            showNotice(err.message || "Failed to create pairing session");
         }
     });
 
@@ -292,15 +292,33 @@ export default function BrokerConnection() {
 
 
     const handleDisconnect = (id: string) => {
-        if (confirm("Are you sure you want to disconnect this broker?")) {
-            disconnectMutation.mutate(id);
+        setPendingAccountAction({ type: "disconnect", id });
+    };
+
+    const confirmAccountAction = async () => {
+        if (!pendingAccountAction) return;
+        const { type, id } = pendingAccountAction;
+        setAccountActionBusy(true);
+        try {
+            if (type === "disconnect") {
+                await api.disconnectBrokerAccount(id);
+            } else {
+                await api.deleteBrokerAccount(id);
+            }
+            queryClient.invalidateQueries({ queryKey: ["broker-accounts"] });
+        } catch (e) {
+            const reason = e instanceof Error && e.message ? e.message : "Unknown error";
+            showNotice(`Failed to ${type === "disconnect" ? "disconnect" : "remove"} the account: ${reason}`);
+        } finally {
+            setAccountActionBusy(false);
+            setPendingAccountAction(null);
         }
     };
 
     const handleRevalidate = (id: string) => {
         api.validateBrokerConnection(id).then(() => {
             queryClient.invalidateQueries({ queryKey: ["broker-accounts"] });
-            alert("Re-validation triggered.");
+            showNotice("Re-validation triggered.");
         });
     };
 
@@ -310,16 +328,46 @@ export default function BrokerConnection() {
         setSelectedBrokerId(null);
         setAccountId(null);
         setCredentials({});
-        setEnvironment("live");
+        setEnvironment("demo");
     }
 
     // --- Render Scenarios ---
+
+    const noticeIsProblem = notice !== null && /fail|error|unable|invalid|expired/i.test(notice);
+    const overlays = (
+        <>
+            {notice !== null && (
+                <div
+                    role={noticeIsProblem ? "alert" : "status"}
+                    className={`fixed top-20 right-4 z-50 max-w-sm rounded-xl border px-4 py-3 text-sm shadow-2xl bg-card flex items-start gap-3 ${noticeIsProblem ? "border-red-500/40 text-red-500" : "border-green-500/40 text-foreground"}`}
+                >
+                    <span className="flex-1 whitespace-pre-line">{notice}</span>
+                    <button type="button" onClick={() => setNotice(null)} aria-label="Dismiss" className="shrink-0 hover:opacity-70">
+                        <X className="w-4 h-4" />
+                    </button>
+                </div>
+            )}
+            <ConfirmationDialog
+                isOpen={pendingAccountAction !== null}
+                onClose={() => { if (!accountActionBusy) setPendingAccountAction(null); }}
+                onConfirm={confirmAccountAction}
+                title={pendingAccountAction?.type === "delete" ? "Remove this account?" : "Disconnect this broker?"}
+                message={pendingAccountAction?.type === "delete"
+                    ? "The account will be permanently removed from CosmicForge. This cannot be undone. It does not close open positions or delete the API key on the exchange."
+                    : "Bots using this account will no longer be able to trade. Disconnecting does not close open positions on the exchange."}
+                confirmLabel={pendingAccountAction?.type === "delete" ? "Remove account" : "Disconnect"}
+                variant={pendingAccountAction?.type === "delete" ? "danger" : "warning"}
+                isLoading={accountActionBusy}
+            />
+        </>
+    );
 
     if (view === "list") {
         const hasAccounts = accountsQuery.data?.accounts && accountsQuery.data.accounts.length > 0;
 
         return (
             <div className="max-w-7xl mx-auto space-y-10 p-6" onClick={() => setActiveMenuId(null)}>
+                {overlays}
 
                 {/* Header Section */}
                 <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 pb-6 border-b border-border/40">
@@ -510,12 +558,7 @@ export default function BrokerConnection() {
 
                                                         {(account.status === 'disconnected' || account.status === 'draft' || account.status === 'restricted') && (
                                                             <button
-                                                                onClick={async () => {
-                                                                    if (confirm("Are you sure you want to permanently delete this account? This cannot be undone.")) {
-                                                                        await api.deleteBrokerAccount(account.id);
-                                                                        queryClient.invalidateQueries({ queryKey: ["broker-accounts"] });
-                                                                    }
-                                                                }}
+                                                                onClick={() => setPendingAccountAction({ type: "delete", id: account.id })}
                                                                 className="w-full text-left px-4 py-3 text-sm text-destructive hover:bg-destructive/5 transition-colors flex items-center gap-3 font-medium"
                                                             >
                                                                 <Trash2 className="w-4 h-4" /> Remove
@@ -655,7 +698,7 @@ export default function BrokerConnection() {
 
             const copySetupLink = () => {
                 navigator.clipboard.writeText(setupLink);
-                alert("Setup link copied! Paste it in the connector.");
+                showNotice("Setup link copied! Paste it in the connector.");
             };
 
             return (
@@ -829,12 +872,12 @@ export default function BrokerConnection() {
 
                         const data = await api.linkBroker("ibkr", config);
                         if (data.status === "connected") {
-                            alert("Connection Successful! TWS is reachable and accounts were found.");
+                            showNotice("Connection Successful! TWS is reachable and accounts were found.");
                         } else {
-                            alert(`Connection Failed: ${data.message}`);
+                            showNotice(`Connection Failed: ${data.message}`);
                         }
                     } catch (e: any) {
-                        alert(`Test Error: ${e.message}`);
+                        showNotice(`Test Error: ${e.message}`);
                     }
                 };
 
@@ -853,10 +896,10 @@ export default function BrokerConnection() {
                             queryClient.invalidateQueries({ queryKey: ["broker-accounts"] });
                             setStep("success");
                         } else {
-                            alert(`Connection Failed: ${data.message || "Unknown error"}`);
+                            showNotice(`Connection Failed: ${data.message || "Unknown error"}`);
                         }
                     } catch (e: any) {
-                        alert(`Error: ${e.message}`);
+                        showNotice(`Error: ${e.message}`);
                     }
                 };
 
@@ -1065,6 +1108,20 @@ export default function BrokerConnection() {
                         </button>}
                     </div>
 
+                    {/* API key safety notice */}
+                    <div role="note" className="bg-amber-500/10 border border-amber-500/30 rounded-xl p-4 flex gap-3 text-sm">
+                        <AlertTriangle className="w-5 h-5 text-amber-500 shrink-0" />
+                        <div>
+                            <p className="font-bold">Before you paste an API key</p>
+                            <ul className="list-disc ml-4 mt-1 space-y-1 text-muted-foreground">
+                                <li>Create a key with <b>trading permission only</b>.</li>
+                                <li><b>NEVER enable withdrawals</b> on a key you give to any third party, including us.</li>
+                                <li>Restrict the key to specific IP addresses where your exchange allows it.</li>
+                                <li>Use a DEMO / testnet key first. LIVE keys trade real money.</li>
+                            </ul>
+                        </div>
+                    </div>
+
                     <div className="space-y-5">
                         {selectedBroker.auth_fields.map((field: { name: string, label: string, type: string, required: boolean, options?: any[] }) => (
                             <div key={field.name} className="space-y-2">
@@ -1097,6 +1154,10 @@ export default function BrokerConnection() {
                                         className="flex h-12 w-full rounded-xl border border-input bg-card/50 px-4 py-3 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 transition-all font-mono"
                                         placeholder={`Paste your ${field.label} here`}
                                         spellCheck={false}
+                                        autoComplete="off"
+                                        autoCorrect="off"
+                                        autoCapitalize="off"
+                                        data-lpignore="true"
                                     />
                                 )}
                                 {(field as any).help && (
@@ -1136,7 +1197,7 @@ export default function BrokerConnection() {
                     <div className="pt-2">
                         <div className="flex items-center gap-2 mb-6 text-xs text-muted-foreground bg-muted/30 p-3 rounded-lg border border-border/40">
                             <Lock className="w-3 h-3" />
-                            Your credentials are encrypted with AES-256 before being stored.
+                            Your credentials are encrypted at rest.
                         </div>
 
                         <div className="flex gap-3">
@@ -1252,6 +1313,7 @@ export default function BrokerConnection() {
 
     return (
         <div className="min-h-[80vh] flex flex-col items-center justify-center p-6">
+            {overlays}
             <motion.div
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}

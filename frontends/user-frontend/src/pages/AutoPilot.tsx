@@ -1,8 +1,9 @@
 import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
-import { Zap, Shield, TrendingUp, Activity, Check, AlertTriangle, Play, Smartphone } from "lucide-react";
+import { Zap, Shield, TrendingUp, Activity, Check, AlertTriangle, Play } from "lucide-react";
 import { api } from "../api/client";
 import { useNavigate } from "react-router-dom";
+import { LiveTradingConfirmDialog } from "@/components/UI/LiveTradingConfirmDialog";
 
 export default function AutoPilot() {
     const navigate = useNavigate();
@@ -19,6 +20,10 @@ export default function AutoPilot() {
     const [dailyLossLimitPct, setDailyLossLimitPct] = useState<string>("");
     const [selectedBroker, setSelectedBroker] = useState<string>("");
     const [mode, setMode] = useState<"paper" | "live">("paper");
+    // Validation / server errors are shown inline next to the deploy button.
+    const [formError, setFormError] = useState<string | null>(null);
+    // LIVE (real-money) deployments require an explicit confirmation.
+    const [liveConfirmOpen, setLiveConfirmOpen] = useState(false);
 
     // Phase 7: Market & Forex
     const [marketType, setMarketType] = useState<"crypto" | "forex">("crypto");
@@ -74,7 +79,7 @@ export default function AutoPilot() {
         } catch (e) {
             console.error("Failed to load forex instruments", e);
             // Strict requirement: No hardcoded fallback
-            alert("Unable to load instruments from broker. Please ensure Gateway is running.");
+            setFormError("Unable to load instruments from the broker. Please ensure the gateway is running.");
             setForexPairs([]);
             setForexPairsSource("error");
         } finally {
@@ -97,37 +102,43 @@ export default function AutoPilot() {
         }
     }, [marketType, brokers, filteredBrokers, selectedBroker]);
 
-    const handleDeploy = async () => {
-        if (!selectedBroker) {
-            alert("Please select a broker account");
-            return;
-        }
+    const parseDailyLoss = (): number | null =>
+        dailyLossLimitPct.trim() === "" ? null : parseFloat(dailyLossLimitPct);
+
+    const validateForm = (): string | null => {
+        if (!selectedBroker) return "Please select a broker account";
         if (!allocationValue || isNaN(allocationValue) || allocationValue <= 0) {
-            alert("Please enter a valid allocation amount");
-            return;
+            return "Please enter a valid allocation amount";
         }
         if (!totalCapitalBudget || isNaN(totalCapitalBudget) || totalCapitalBudget <= 0) {
-            alert("Please enter a valid total capital budget");
-            return;
+            return "Please enter a valid total capital budget";
         }
         if (allocationType === "fixed_amount" && allocationValue > totalCapitalBudget) {
-            alert("Trade amount per position cannot exceed total capital budget");
-            return;
+            return "Trade amount per position cannot exceed total capital budget";
         }
         if (allocationType === "percent_balance" && allocationValue > 100) {
-            alert("Position allocation percentage cannot exceed 100%");
-            return;
+            return "Position allocation percentage cannot exceed 100%";
         }
-        const dailyLoss = dailyLossLimitPct.trim() === "" ? null : parseFloat(dailyLossLimitPct);
+        const dailyLoss = parseDailyLoss();
         if (dailyLoss !== null && (isNaN(dailyLoss) || dailyLoss <= 0)) {
-            alert("Daily loss limit must be a positive percentage, or empty to use the risk profile default");
-            return;
+            return "Daily loss limit must be a positive percentage, or empty to use the risk profile default";
         }
         if (marketType === "forex" && forexAllowlist.length === 0) {
-            alert("Please select at least one currency pair for Forex allowlist.");
+            return "Please select at least one currency pair for Forex allowlist.";
+        }
+        return null;
+    };
+
+    const handleDeploy = async () => {
+        const problem = validateForm();
+        if (problem) {
+            setFormError(problem);
+            setLiveConfirmOpen(false);
             return;
         }
+        const dailyLoss = parseDailyLoss();
 
+        setFormError(null);
         setLoading(true);
         try {
             // Map frontend risk mode to backend expected format
@@ -154,12 +165,26 @@ export default function AutoPilot() {
             });
             // Redirect to bots dashboard
             navigate("/dashboard/bots");
-        } catch (e: any) {
-            alert("Deployment failed: " + (e.response?.data?.detail || e.message));
+        } catch (e) {
+            setFormError("Deployment failed: " + (e instanceof Error && e.message ? e.message : "unknown error"));
         } finally {
             setLoading(false);
         }
     };
+
+    // Paper deploys immediately; LIVE opens the confirmation dialog first.
+    const handleDeployClick = () => {
+        const problem = validateForm();
+        setFormError(problem);
+        if (problem) return;
+        if (mode === "live") {
+            setLiveConfirmOpen(true);
+            return;
+        }
+        handleDeploy();
+    };
+
+    const selectedBrokerAccount = brokers.find(b => b.id === selectedBroker);
 
     const riskCards = [
         {
@@ -170,8 +195,7 @@ export default function AutoPilot() {
             bg: "bg-blue-400/10",
             border: "border-blue-400/20",
             activeBorder: "border-blue-400",
-            desc: "Low risk, steady growth. Focus on capital preservation.",
-            stats: { drawdown: "< 10%", return: "10-25% EST" }
+            desc: "Lowest-risk profile of the three: smaller exposure and tighter limits. Losses are still possible."
         },
         {
             id: "balanced",
@@ -181,8 +205,7 @@ export default function AutoPilot() {
             bg: "bg-primary/10",
             border: "border-primary/20",
             activeBorder: "border-primary",
-            desc: "Moderate risk for optimal growth. Balanced exposure.",
-            stats: { drawdown: "10-20%", return: "25-60% EST" }
+            desc: "Middle profile: exposure and limits between Conservative and Aggressive."
         },
         {
             id: "aggressive",
@@ -192,8 +215,7 @@ export default function AutoPilot() {
             bg: "bg-amber-400/10",
             border: "border-amber-400/20",
             activeBorder: "border-amber-400",
-            desc: "High risk, maximum potential. For risk-tolerant capital.",
-            stats: { drawdown: "20-35%", return: "60-150% EST" }
+            desc: "Highest-risk profile: larger exposure and wider limits. Larger and faster losses are possible."
         }
     ];
 
@@ -357,21 +379,13 @@ export default function AutoPilot() {
                                         <card.icon className="w-6 h-6" />
                                     </div>
                                     <h3 className="font-bold text-white mb-1">{card.title}</h3>
-                                    <p className="text-xs text-gray-400 mb-4 h-10">{card.desc}</p>
-
-                                    <div className="space-y-1 pt-3 border-t border-white/5">
-                                        <div className="flex justify-between text-xs">
-                                            <span className="text-gray-500">Drawdown</span>
-                                            <span className="text-gray-300 font-medium">{card.stats.drawdown}</span>
-                                        </div>
-                                        <div className="flex justify-between text-xs">
-                                            <span className="text-gray-500">Target</span>
-                                            <span className="text-primary font-bold">{card.stats.return}</span>
-                                        </div>
-                                    </div>
+                                    <p className="text-xs text-gray-400">{card.desc}</p>
                                 </motion.div>
                             ))}
                         </div>
+                        <p className="text-xs text-gray-500">
+                            Risk profiles change position sizing and limits only. None of them guarantees a result or caps your loss.
+                        </p>
                     </section>
 
                     {/* Allocation */}
@@ -523,8 +537,14 @@ export default function AutoPilot() {
                         </div>
 
                         <div className="pt-4">
+                            {formError && !liveConfirmOpen && (
+                                <div role="alert" className="mb-3 p-3 bg-red-500/10 border border-red-500/20 rounded-xl text-red-400 text-sm flex gap-2">
+                                    <AlertTriangle className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                                    <span>{formError}</span>
+                                </div>
+                            )}
                             <button
-                                onClick={handleDeploy}
+                                onClick={handleDeployClick}
                                 disabled={loading || !selectedBroker}
                                 className={`w-full py-4 rounded-xl font-bold text-lg flex items-center justify-center gap-2 transition-all shadow-lg hover:shadow-primary/25 disabled:opacity-50 disabled:cursor-not-allowed ${mode === 'live'
                                     ? "bg-gradient-to-r from-primary to-purple-600 text-white"
@@ -542,13 +562,39 @@ export default function AutoPilot() {
                             </button>
                             <p className="text-center text-xs text-gray-500 mt-3">
                                 {mode === 'live'
-                                    ? "Real capital will be used. Trade responsibly."
-                                    : "Zero risk simulation environment."}
+                                    ? "Real capital will be used and can be lost. You will be asked to confirm."
+                                    : "Simulated trading with virtual funds. Results do not predict live performance."}
                             </p>
                         </div>
                     </div>
                 </div>
             </div>
+
+            <LiveTradingConfirmDialog
+                isOpen={liveConfirmOpen}
+                onClose={() => { if (!loading) setLiveConfirmOpen(false); }}
+                onConfirm={handleDeploy}
+                title="Deploy LIVE bot?"
+                confirmLabel="Deploy live bot"
+                broker={selectedBrokerAccount?.broker_id || "unknown"}
+                account={selectedBrokerAccount?.label || selectedBrokerAccount?.name || selectedBroker}
+                environment={selectedBrokerAccount?.environment}
+                details={[
+                    { label: "Market", value: marketType.toUpperCase() },
+                    { label: "Risk mode", value: riskMode.toUpperCase() },
+                    { label: "Total capital budget", value: `${totalCapitalBudget} USDT` },
+                    {
+                        label: "Per position",
+                        value: allocationType === "fixed_amount" ? `${allocationValue} USDT` : `${allocationValue}% of balance`
+                    },
+                    {
+                        label: "Daily loss limit",
+                        value: dailyLossLimitPct.trim() === "" ? "Risk profile default" : `${dailyLossLimitPct}% (custom)`
+                    },
+                ]}
+                isLoading={loading}
+                error={formError}
+            />
         </div>
     );
 }

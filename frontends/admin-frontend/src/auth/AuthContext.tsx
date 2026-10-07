@@ -1,6 +1,7 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from "react";
 import { api, LoginRequest, RegisterRequest } from "@/api/client";
 import { jwtDecode } from "jwt-decode";
+import { AUTH_UNAUTHORIZED_EVENT, refreshAccessToken } from "@/api/http";
 
 interface AuthState {
     isAuthenticated: boolean;
@@ -64,18 +65,37 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                 const decoded: any = jwtDecode(token);
                 // Basic expiration check
                 if (decoded.exp * 1000 < Date.now()) {
-                    // Token expired, clear it
-                    localStorage.removeItem("admin_access_token");
-                    localStorage.removeItem("admin_refresh_token");
-                    localStorage.removeItem("admin_email");
-                    localStorage.removeItem("admin_name");
-                    setState({
-                        isAuthenticated: false,
-                        token: null,
-                        userEmail: null,
-                        userName: null,
-                        isAdmin: false,
-                        isLoading: false,
+                    // Access token expired: try the (rotating) refresh token before ending the session.
+                    refreshAccessToken(token).then((outcome) => {
+                        if (outcome.status === "refreshed") {
+                            setState({
+                                isAuthenticated: true,
+                                token: outcome.token,
+                                userEmail: localStorage.getItem("admin_email"),
+                                userName: localStorage.getItem("admin_name"),
+                                isAdmin: true,
+                                isLoading: false,
+                            });
+                            fetchProfile();
+                            return;
+                        }
+                        if (outcome.status === "rejected") {
+                            // Refresh token missing, expired or revoked: the session is over.
+                            localStorage.removeItem("admin_access_token");
+                            localStorage.removeItem("admin_refresh_token");
+                            localStorage.removeItem("admin_email");
+                            localStorage.removeItem("admin_name");
+                        }
+                        // "unavailable" (backend unreachable): keep the stored tokens so a
+                        // later reload can retry, but do not treat the admin as signed in.
+                        setState({
+                            isAuthenticated: false,
+                            token: null,
+                            userEmail: null,
+                            userName: null,
+                            isAdmin: false,
+                            isLoading: false,
+                        });
                     });
                 } else {
                     // Get cached data from localStorage
@@ -111,6 +131,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             // No token found
             setState(prev => ({ ...prev, isLoading: false }));
         }
+
+        // The HTTP layer (api/http.ts) clears the stored session and dispatches this
+        // event when the refresh token is rejected; the protected routes then
+        // redirect to /login.
+        const handleUnauthorized = () => {
+            setState({
+                isAuthenticated: false,
+                token: null,
+                userEmail: null,
+                userName: null,
+                isAdmin: false,
+                isLoading: false,
+            });
+        };
+        window.addEventListener(AUTH_UNAUTHORIZED_EVENT, handleUnauthorized);
+        return () => {
+            window.removeEventListener(AUTH_UNAUTHORIZED_EVENT, handleUnauthorized);
+        };
     }, []);
 
     const login = async (data: LoginRequest) => {

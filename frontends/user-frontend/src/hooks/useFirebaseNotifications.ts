@@ -109,7 +109,7 @@ export function useFirebaseNotifications(
             setToken(fcmToken);
 
             // Register with backend
-            const success = await registerFCMToken(userId, fcmToken);
+            const success = await registerFCMToken(fcmToken);
 
             if (!success) {
                 throw new Error('Failed to register token with backend');

@@ -22,7 +22,7 @@ export function TwoFASetup({ onComplete }: { onComplete: () => void }) {
             setSetupData(data);
             setStep("verify");
         } catch (err: any) {
-            setError("Failed to initialize 2FA setup");
+            setError(err?.message || "Failed to initialize 2FA setup");
         } finally {
             setLoading(false);
         }
@@ -63,6 +63,8 @@ export function TwoFASetup({ onComplete }: { onComplete: () => void }) {
                 <h3 className="text-xl font-bold text-[#1E1B4B]">Secure Your Account</h3>
                 <p className="text-sm text-gray-500 mt-1">Scan the QR code with your authenticator app</p>
             </div>
+
+            {!setupData && error && <p className="text-red-500 text-sm text-center">{error}</p>}
 
             {setupData && (
                 <div className="space-y-6">

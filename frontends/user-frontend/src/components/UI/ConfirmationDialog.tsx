@@ -1,4 +1,5 @@
 
+import type { ReactNode } from "react";
 import { AlertTriangle, X } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 
@@ -12,6 +13,10 @@ interface ConfirmationDialogProps {
     cancelLabel?: string;
     variant?: 'danger' | 'warning' | 'info';
     isLoading?: boolean;
+    /** Extra content rendered under the message (details, acknowledgement checkbox, errors). */
+    children?: ReactNode;
+    /** Keeps the confirm button disabled until the caller's own condition is met. */
+    confirmDisabled?: boolean;
 }
 
 export const ConfirmationDialog = ({
@@ -23,7 +28,9 @@ export const ConfirmationDialog = ({
     confirmLabel = "Confirm",
     cancelLabel = "Cancel",
     variant = "danger",
-    isLoading = false
+    isLoading = false,
+    children,
+    confirmDisabled = false
 }: ConfirmationDialogProps) => {
     if (!isOpen) return null;
 
@@ -57,7 +64,10 @@ export const ConfirmationDialog = ({
                     initial={{ opacity: 0, scale: 0.9 }}
                     animate={{ opacity: 1, scale: 1 }}
                     exit={{ opacity: 0, scale: 0.9 }}
-                    className="bg-card w-full max-w-md rounded-xl border border-border shadow-2xl overflow-hidden relative"
+                    role="dialog"
+                    aria-modal="true"
+                    aria-label={title}
+                    className="bg-card w-full max-w-md max-h-[90vh] overflow-y-auto rounded-xl border border-border shadow-2xl relative"
                 >
                     <button
                         onClick={onClose}
@@ -71,13 +81,15 @@ export const ConfirmationDialog = ({
                             <div className={`p-3 rounded-full shrink-0 ${styles.iconBg} ${styles.iconColor}`}>
                                 <AlertTriangle className="w-6 h-6" />
                             </div>
-                            <div>
+                            <div className="min-w-0 flex-1">
                                 <h3 className="text-xl font-bold mb-2">{title}</h3>
                                 <p className="text-muted-foreground text-sm leading-relaxed">
                                     {message}
                                 </p>
                             </div>
                         </div>
+
+                        {children && <div className="mt-4">{children}</div>}
 
                         <div className="flex gap-3 justify-end mt-8">
                             <button
@@ -89,7 +101,7 @@ export const ConfirmationDialog = ({
                             </button>
                             <button
                                 onClick={onConfirm}
-                                disabled={isLoading}
+                                disabled={isLoading || confirmDisabled}
                                 className={`px-4 py-2 text-sm font-bold rounded-lg transition-colors flex items-center gap-2 disabled:opacity-50 ${styles.buttonBg} ${styles.buttonText}`}
                             >
                                 {isLoading && <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />}

@@ -12,6 +12,8 @@ interface ImportMetaEnv {
     readonly VITE_USE_ADMIN_BACKEND_NEWS: string;
     readonly VITE_USE_ADMIN_BACKEND_PROFITABILITY: string;
     readonly VITE_USE_ADMIN_BACKEND_ML: string;
+    /** Optional: call bot-backend directly for the emergency API instead of the main backend proxy. */
+    readonly VITE_BOT_API_BASE?: string;
 }
 
 interface ImportMeta {

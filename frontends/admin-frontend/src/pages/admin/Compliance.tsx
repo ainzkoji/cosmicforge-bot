@@ -1,54 +1,71 @@
-import { AdminLayout } from "@/components/admin/layout/AdminLayout";
-import { AlertTriangle, Shield, FileText, Download, CheckCircle, Loader2, X, Check } from "lucide-react";
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { getPendingKYC, getAMLFlags } from "@/api/admin";
+import { AlertCircle, AlertTriangle, Eye, Loader2, RefreshCw, Shield, X } from "lucide-react";
+import { AdminLayout } from "@/components/admin/layout/AdminLayout";
 import { ExportButton } from "@/components/admin/common/ExportButton";
+import { KycCaseDialog } from "@/components/admin/compliance/KycCaseDialog";
+import { getAMLFlags } from "@/api/admin";
+import { KYC_QUEUE_QUERY_KEY, getKycQueue, kycStatusBadgeClass } from "@/api/kycReview";
+import type { KycDecisionResponse } from "@/api/kycReview";
+
+/** Row of GET /api/admin/compliance/aml-flags (open rows of the `aml_alerts` table). */
+interface AmlAlert {
+    id: string;
+    user_id: string;
+    email: string | null;
+    alert_type: string | null;
+    severity: string | null;
+    description: string | null;
+    status: string | null;
+    created_at: string | null;
+}
+
+const DECISION_LABELS: Record<string, string> = {
+    approved: "approved",
+    rejected: "rejected",
+    needs_resubmission: "sent back for resubmission",
+};
+
+function errorText(error: unknown): string {
+    return error instanceof Error && error.message ? error.message : "Request failed";
+}
+
+function formatDateTime(value: string | null | undefined): string {
+    if (!value) return "—";
+    const date = new Date(value);
+    return Number.isNaN(date.getTime()) ? value : date.toLocaleString();
+}
+
+function humanize(value: string | null | undefined): string {
+    return value ? value.replace(/_/g, " ") : "—";
+}
 
 export default function Compliance() {
-    // Fetch pending KYC submissions
-    const { data: kycData, isLoading: kycLoading } = useQuery({
-        queryKey: ["adminPendingKYC"],
-        queryFn: getPendingKYC,
+    const [reviewCaseId, setReviewCaseId] = useState<string | null>(null);
+    const [notice, setNotice] = useState<string | null>(null);
+
+    const kycQuery = useQuery({
+        queryKey: KYC_QUEUE_QUERY_KEY,
+        queryFn: ({ signal }) => getKycQueue(signal),
     });
 
-    // Fetch AML flags
-    const { data: amlData, isLoading: amlLoading } = useQuery({
+    const amlQuery = useQuery({
         queryKey: ["adminAMLFlags"],
         queryFn: getAMLFlags,
     });
 
-    const kycSubmissions = kycData?.submissions || [];
-    const amlFlags = amlData?.flags || [];
+    const kycSubmissions = kycQuery.data?.submissions ?? [];
+    const amlAlerts: AmlAlert[] = amlQuery.data?.flags ?? [];
 
-    const getRiskBadgeClass = (risk: string) => {
-        const lowerRisk = risk?.toLowerCase();
-        if (lowerRisk === "low") return "admin-badge-success";
-        if (lowerRisk === "medium") return "admin-badge-warning";
-        if (lowerRisk === "high") return "admin-badge-danger";
-        return "admin-badge-info";
+    const openReview = (caseId: string) => {
+        setNotice(null);
+        setReviewCaseId(caseId);
     };
 
-    const getStatusBadgeClass = (status: string) => {
-        const lowerStatus = status?.toLowerCase();
-        if (lowerStatus === "pending") return "admin-badge-warning";
-        if (lowerStatus === "under_review") return "admin-badge-info";
-        if (lowerStatus === "approved") return "admin-badge-success";
-        if (lowerStatus === "rejected") return "admin-badge-danger";
-        return "admin-badge-info";
+    const handleDecided = (response: KycDecisionResponse, applicant: string) => {
+        setReviewCaseId(null);
+        setNotice(`KYC case for ${applicant} was ${DECISION_LABELS[response.status] ?? response.status} (confirmed by the server).`);
     };
-
-    const formatDate = (dateStr: string) => {
-        try {
-            return new Date(dateStr).toLocaleDateString();
-        } catch {
-            return dateStr;
-        }
-    };
-
-    // Calculate compliance score (simplified)
-    const totalSubmissions = kycSubmissions.length + 100; // Adding baseline
-    const pendingCount = kycSubmissions.length;
-    const complianceScore = ((totalSubmissions - pendingCount) / totalSubmissions * 100).toFixed(1);
 
     return (
         <AdminLayout>
@@ -56,31 +73,41 @@ export default function Compliance() {
                 {/* Header */}
                 <div className="flex items-center justify-between">
                     <h1 className="text-3xl font-bold" style={{ color: 'var(--admin-text-primary)' }}>
-                        Compliance & Regulatory Reporting
+                        Compliance
                     </h1>
                     <div className="flex gap-3">
                         <ExportButton
-                            data={[...kycSubmissions, ...amlFlags]}
+                            data={[...kycSubmissions, ...amlAlerts]}
                             filename="compliance_data"
                             label="Export"
                         />
                     </div>
                 </div>
                 <p className="text-sm mt-1" style={{ color: 'var(--admin-text-secondary)' }}>
-                    Manage KYC verifications, AML monitoring, and compliance reports
+                    Review identity verification (KYC) cases. A submitted case is never approved automatically: it stays
+                    in this queue until an admin approves it, rejects it or sends it back.
                 </p>
 
+                {notice && (
+                    <div role="status" className="rounded-lg border border-green-500/30 bg-green-500/10 px-4 py-3 text-sm text-green-200 flex items-start justify-between gap-3">
+                        <span>{notice}</span>
+                        <button type="button" onClick={() => setNotice(null)} aria-label="Dismiss">
+                            <X className="w-4 h-4" />
+                        </button>
+                    </div>
+                )}
+
                 {/* Status Cards */}
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <div className="admin-card">
                         <div className="flex items-start justify-between mb-3">
                             <div>
-                                <div className="admin-metric-label mb-2">KYC Pending</div>
+                                <div className="admin-metric-label mb-2">KYC awaiting review</div>
                                 <div className="text-3xl font-bold" style={{ color: 'var(--admin-yellow)' }}>
-                                    {kycLoading ? '...' : kycSubmissions.length}
+                                    {kycQuery.isPending ? '...' : kycQuery.isError ? 'Unavailable' : kycSubmissions.length}
                                 </div>
                                 <p className="text-xs mt-1" style={{ color: 'var(--admin-text-muted)' }}>
-                                    Review Required
+                                    Submitted cases with no decision yet
                                 </p>
                             </div>
                             <div className="p-2 rounded-lg" style={{ background: 'rgba(245, 158, 11, 0.1)' }}>
@@ -92,12 +119,12 @@ export default function Compliance() {
                     <div className="admin-card">
                         <div className="flex items-start justify-between mb-3">
                             <div>
-                                <div className="admin-metric-label mb-2">AML Flags</div>
-                                <div className="text-3xl font-bold" style={{ color: 'var(--admin-red)' }}>
-                                    {amlLoading ? '...' : amlFlags.length}
+                                <div className="admin-metric-label mb-2">Open AML alerts</div>
+                                <div className="text-3xl font-bold" style={{ color: 'var(--admin-text-primary)' }}>
+                                    {amlQuery.isPending ? '...' : amlQuery.isError ? 'Unavailable' : amlAlerts.length}
                                 </div>
                                 <p className="text-xs mt-1" style={{ color: 'var(--admin-text-muted)' }}>
-                                    Urgent Action
+                                    Automated AML monitoring is not implemented
                                 </p>
                             </div>
                             <div className="p-2 rounded-lg" style={{ background: 'rgba(239, 68, 68, 0.1)' }}>
@@ -105,48 +132,55 @@ export default function Compliance() {
                             </div>
                         </div>
                     </div>
-
-                    <div className="admin-card">
-                        <div className="flex items-start justify-between mb-3">
-                            <div>
-                                <div className="admin-metric-label mb-2">Compliance Score</div>
-                                <div className="text-3xl font-bold" style={{ color: 'var(--admin-green)' }}>
-                                    {complianceScore}%
-                                </div>
-                                <p className="text-xs mt-1" style={{ color: 'var(--admin-text-muted)' }}>
-                                    {parseFloat(complianceScore) >= 95 ? 'Excellent' : 'Good'}
-                                </p>
-                            </div>
-                            <div className="p-2 rounded-lg" style={{ background: 'rgba(16, 185, 129, 0.1)' }}>
-                                <CheckCircle className="w-6 h-6" style={{ color: 'var(--admin-green)' }} />
-                            </div>
-                        </div>
-                    </div>
                 </div>
 
                 {/* KYC Verification Queue */}
                 <div className="admin-card">
-                    <h2 className="text-xl font-semibold mb-4" style={{ color: 'var(--admin-text-primary)' }}>
-                        Pending Verifications
-                    </h2>
-                    {kycLoading ? (
+                    <div className="flex items-center justify-between gap-4 mb-4">
+                        <h2 className="text-xl font-semibold" style={{ color: 'var(--admin-text-primary)' }}>
+                            KYC review queue
+                        </h2>
+                        <button
+                            type="button"
+                            className="admin-btn admin-btn-secondary text-sm flex items-center gap-2"
+                            onClick={() => kycQuery.refetch()}
+                            disabled={kycQuery.isFetching}
+                        >
+                            <RefreshCw className={`w-4 h-4 ${kycQuery.isFetching ? "animate-spin" : ""}`} />
+                            Refresh
+                        </button>
+                    </div>
+
+                    {kycQuery.isError && (
+                        <div role="alert" className="mb-4 rounded-lg border border-red-500/40 bg-red-500/10 px-4 py-3 text-sm text-red-200">
+                            <div className="flex items-start gap-2">
+                                <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />
+                                <div>
+                                    <div className="font-semibold">The KYC review queue could not be loaded.</div>
+                                    <div className="mt-1">{errorText(kycQuery.error)}</div>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {kycQuery.isPending ? (
                         <div className="flex items-center justify-center py-12">
                             <Loader2 className="w-8 h-8 animate-spin" style={{ color: 'var(--admin-blue)' }} />
                         </div>
-                    ) : (
+                    ) : kycQuery.isError ? null : (
                         <div className="overflow-x-auto">
                             <table className="admin-table">
                                 <thead>
                                     <tr>
-                                        <th>User</th>
-                                        <th>Submission Date</th>
-                                        <th>Risk Level</th>
+                                        <th>Applicant</th>
+                                        <th>Document</th>
+                                        <th>Submitted</th>
                                         <th>Status</th>
                                         <th>Actions</th>
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    {kycSubmissions.map((submission: any) => (
+                                    {kycSubmissions.map((submission) => (
                                         <tr key={submission.id}>
                                             <td className="font-medium">
                                                 <div>
@@ -158,39 +192,29 @@ export default function Compliance() {
                                                     )}
                                                 </div>
                                             </td>
-                                            <td>{formatDate(submission.submitted_at)}</td>
+                                            <td className="capitalize">{humanize(submission.document_type)}</td>
+                                            <td>{formatDateTime(submission.submitted_at)}</td>
                                             <td>
-                                                <span className={`admin-badge ${getRiskBadgeClass(submission.risk_level || 'low')}`}>
-                                                    {submission.risk_level || 'Low'}
+                                                <span className={`admin-badge ${kycStatusBadgeClass(submission.status)}`}>
+                                                    {humanize(submission.status)}
                                                 </span>
                                             </td>
                                             <td>
-                                                <span className={`admin-badge ${getStatusBadgeClass(submission.status)}`}>
-                                                    {submission.status?.replace('_', ' ')}
-                                                </span>
-                                            </td>
-                                            <td>
-                                                <div className="flex gap-2">
-                                                    <button
-                                                        className="admin-btn admin-btn-primary px-3 py-1 text-xs"
-                                                        title="Approve KYC"
-                                                    >
-                                                        <Check className="w-3 h-3" />
-                                                    </button>
-                                                    <button
-                                                        className="admin-btn admin-btn-danger px-3 py-1 text-xs"
-                                                        title="Reject KYC"
-                                                    >
-                                                        <X className="w-3 h-3" />
-                                                    </button>
-                                                </div>
+                                                <button
+                                                    type="button"
+                                                    className="admin-btn admin-btn-primary px-3 py-1 text-xs flex items-center gap-2"
+                                                    onClick={() => openReview(submission.id)}
+                                                >
+                                                    <Eye className="w-3 h-3" />
+                                                    Review
+                                                </button>
                                             </td>
                                         </tr>
                                     ))}
                                     {kycSubmissions.length === 0 && (
                                         <tr>
                                             <td colSpan={5} className="text-center py-8" style={{ color: 'var(--admin-text-muted)' }}>
-                                                No pending KYC submissions
+                                                No KYC cases are awaiting review
                                             </td>
                                         </tr>
                                     )}
@@ -202,110 +226,70 @@ export default function Compliance() {
 
                 {/* Bottom Grid */}
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                    {/* AML Monitoring */}
+                    {/* AML alerts */}
                     <div className="admin-card">
                         <h3 className="text-lg font-semibold mb-4" style={{ color: 'var(--admin-text-primary)' }}>
-                            AML Monitoring - Suspicious Activity Alerts
+                            AML alerts
                         </h3>
-                        {amlLoading ? (
+                        {amlQuery.isPending ? (
                             <div className="flex items-center justify-center py-8">
                                 <Loader2 className="w-6 h-6 animate-spin" style={{ color: 'var(--admin-blue)' }} />
                             </div>
+                        ) : amlQuery.isError ? (
+                            <div role="alert" className="rounded-lg border border-red-500/40 bg-red-500/10 px-4 py-3 text-sm text-red-200">
+                                AML alerts could not be loaded. {errorText(amlQuery.error)}
+                            </div>
                         ) : (
                             <div className="space-y-3">
-                                {amlFlags.slice(0, 3).map((flag: any) => (
-                                    <div key={flag.id} className="flex items-start gap-3 p-3 rounded-lg" style={{ background: 'var(--admin-bg-hover)' }}>
-                                        <div
-                                            className="w-2 h-2 mt-2 rounded-full"
-                                            style={{ background: flag.risk_score > 70 ? 'var(--admin-red)' : 'var(--admin-yellow)' }}
-                                        />
+                                {amlAlerts.map((alert) => (
+                                    <div key={alert.id} className="flex items-start gap-3 p-3 rounded-lg" style={{ background: 'var(--admin-bg-hover)' }}>
                                         <div className="flex-1">
-                                            <p className="text-sm font-medium" style={{ color: 'var(--admin-text-primary)' }}>
-                                                {flag.alert_type?.replace('_', ' ').toUpperCase()}
+                                            <p className="text-sm font-medium uppercase" style={{ color: 'var(--admin-text-primary)' }}>
+                                                {humanize(alert.alert_type)}
                                             </p>
                                             <p className="text-xs mt-1" style={{ color: 'var(--admin-text-muted)' }}>
-                                                User: {flag.email || flag.user_id}
+                                                User: {alert.email || alert.user_id} · {formatDateTime(alert.created_at)}
                                             </p>
-                                            {flag.details && (
+                                            {alert.description && (
                                                 <p className="text-xs mt-1" style={{ color: 'var(--admin-text-secondary)' }}>
-                                                    {flag.details}
+                                                    {alert.description}
                                                 </p>
                                             )}
                                         </div>
-                                        <span className="text-xs font-medium" style={{ color: 'var(--admin-red)' }}>
-                                            Risk: {flag.risk_score || 'N/A'}
+                                        <span className="text-xs font-medium" style={{ color: 'var(--admin-text-secondary)' }}>
+                                            Severity: {alert.severity || 'n/a'}
                                         </span>
                                     </div>
                                 ))}
-                                {amlFlags.length === 0 && (
-                                    <div className="text-center py-8" style={{ color: 'var(--admin-text-muted)' }}>
-                                        No AML alerts
+                                {amlAlerts.length === 0 && (
+                                    <div className="text-center py-8 text-sm" style={{ color: 'var(--admin-text-muted)' }}>
+                                        No AML alerts on record. The platform does not run automated transaction
+                                        monitoring yet, so nothing creates alerts; an empty list here is not evidence
+                                        that activity has been screened.
                                     </div>
-                                )}
-                                {amlFlags.length > 0 && (
-                                    <button className="admin-btn admin-btn-secondary w-full mt-3">
-                                        View All Alerts ({amlFlags.length})
-                                    </button>
                                 )}
                             </div>
                         )}
                     </div>
 
-                    {/* Regulatory Reports */}
+                    {/* Regulatory reports */}
                     <div className="admin-card">
                         <h3 className="text-lg font-semibold mb-4" style={{ color: 'var(--admin-text-primary)' }}>
-                            Regulatory Reports
+                            Regulatory reports
                         </h3>
-                        <div className="space-y-3">
-                            {[
-                                { name: "Monthly Transaction Report", type: "PDF", date: "Dec 2024" },
-                                { name: "KYC Compliance Summary", type: "Excel", date: "Q4 2024" },
-                                { name: "AML Activity Log", type: "PDF", date: "Dec 2024" },
-                                { name: "User Verification Stats", type: "Excel", date: "2024" }
-                            ].map((report, idx) => (
-                                <div key={idx} className="flex items-center justify-between p-3 rounded-lg" style={{ background: 'var(--admin-bg-hover)' }}>
-                                    <div className="flex items-center gap-3">
-                                        <FileText className="w-5 h-5" style={{ color: 'var(--admin-blue)' }} />
-                                        <div>
-                                            <p className="text-sm font-medium" style={{ color: 'var(--admin-text-primary)' }}>
-                                                {report.name}
-                                            </p>
-                                            <p className="text-xs" style={{ color: 'var(--admin-text-muted)' }}>
-                                                {report.type} • {report.date}
-                                            </p>
-                                        </div>
-                                    </div>
-                                    <button className="admin-btn admin-btn-secondary px-3 py-1 text-xs">
-                                        <Download className="w-3 h-3" />
-                                    </button>
-                                </div>
-                            ))}
+                        <div className="text-center py-8 text-sm" style={{ color: 'var(--admin-text-muted)' }}>
+                            No reports available. Regulatory report generation is not implemented. Use Export above
+                            to download the current review queue.
                         </div>
-                    </div>
-                </div>
-
-                {/* Audit Preparation Banner */}
-                <div className="admin-card" style={{ background: 'linear-gradient(to right, rgba(59, 130, 246, 0.1), rgba(59, 130, 246, 0.05))' }}>
-                    <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-4">
-                            <div className="p-3 rounded-lg" style={{ background: 'var(--admin-blue)' }}>
-                                <FileText className="w-6 h-6 text-white" />
-                            </div>
-                            <div>
-                                <p className="font-semibold" style={{ color: 'var(--admin-text-primary)' }}>
-                                    Next Regulatory Audit: February 2024
-                                </p>
-                                <p className="text-sm" style={{ color: 'var(--admin-text-secondary)' }}>
-                                    Prepare compliance documentation and reports
-                                </p>
-                            </div>
-                        </div>
-                        <button className="admin-btn admin-btn-primary">
-                            Prepare Report
-                        </button>
                     </div>
                 </div>
             </div>
+
+            <KycCaseDialog
+                caseId={reviewCaseId}
+                onClose={() => setReviewCaseId(null)}
+                onDecided={handleDecided}
+            />
         </AdminLayout>
     );
 }

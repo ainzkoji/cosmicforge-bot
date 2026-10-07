@@ -13,6 +13,7 @@ import {
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { listUsers, suspendUser, activateUser, getAdminDashboardStats } from "@/api/admin";
 import { ExportButton } from "@/components/admin/common/ExportButton";
+import Modal from "@/components/UI/Modal";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -193,12 +194,24 @@ export default function UserManagement() {
         queryFn: getAdminDashboardStats,
     });
 
+    // Suspend / activate goes through an in-page confirmation dialog.
+    const [pendingStatusChange, setPendingStatusChange] = useState<{ userId: string; action: "suspend" | "activate" } | null>(null);
+    const [statusChangeError, setStatusChangeError] = useState<string | null>(null);
+
+    const describeError = (err: unknown): string => {
+        const detail = (err as { response?: { data?: { detail?: unknown } } })?.response?.data?.detail;
+        if (typeof detail === "string" && detail) return detail;
+        return err instanceof Error && err.message ? err.message : "Request failed";
+    };
+
     const suspendMutation = useMutation({
         mutationFn: suspendUser,
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ["adminUsers"] });
             queryClient.invalidateQueries({ queryKey: ["adminDashboardStats"] });
+            setPendingStatusChange(null);
         },
+        onError: (err: Error) => setStatusChangeError(`Could not suspend the user: ${describeError(err)}`),
     });
 
     const activateMutation = useMutation({
@@ -206,21 +219,31 @@ export default function UserManagement() {
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ["adminUsers"] });
             queryClient.invalidateQueries({ queryKey: ["adminDashboardStats"] });
+            setPendingStatusChange(null);
         },
+        onError: (err: Error) => setStatusChangeError(`Could not activate the user: ${describeError(err)}`),
     });
+    const statusChangePending = suspendMutation.isPending || activateMutation.isPending;
 
     const users: any[] = usersData?.users || [];
 
     const handleToggleStatus = (userId: string, currentStatus: string) => {
-        const action = currentStatus === "suspended" ? "activate" : "suspend";
-        if (window.confirm(`Are you sure you want to ${action} this user?`)) {
-            if (currentStatus === "suspended") {
-                activateMutation.mutate(userId);
-            } else {
-                suspendMutation.mutate(userId);
-            }
+        setStatusChangeError(null);
+        setPendingStatusChange({ userId, action: currentStatus === "suspended" ? "activate" : "suspend" });
+    };
+
+    const confirmStatusChange = () => {
+        if (!pendingStatusChange) return;
+        setStatusChangeError(null);
+        if (pendingStatusChange.action === "activate") {
+            activateMutation.mutate(pendingStatusChange.userId);
+        } else {
+            suspendMutation.mutate(pendingStatusChange.userId);
         }
     };
+    const pendingStatusUser = pendingStatusChange
+        ? users.find((u) => u.id === pendingStatusChange.userId)
+        : undefined;
 
     // Client-side search + role filter + sort
     const filteredUsers = useMemo(() => {
@@ -555,6 +578,40 @@ export default function UserManagement() {
                 </div>
 
             </div>
+
+            <Modal isOpen={pendingStatusChange !== null} onClose={() => setPendingStatusChange(null)} className="max-w-lg">
+                <div className="border-b border-border px-6 py-4 text-lg font-semibold text-foreground">
+                    {pendingStatusChange?.action === "activate" ? "Activate user?" : "Suspend user?"}
+                </div>
+                <div className="space-y-4 px-6 py-6 text-sm text-foreground">
+                    <div>
+                        {pendingStatusChange?.action === "activate"
+                            ? "The account status will be set back to active."
+                            : "The account status will be set to suspended. This is not an emergency stop: it does not close the user's open positions. Use the Bot Monitor emergency controls for that."}
+                    </div>
+                    <div className="rounded-lg bg-muted/30 px-4 py-3 font-mono text-xs break-all">
+                        {pendingStatusUser?.email || pendingStatusChange?.userId}
+                    </div>
+                    {statusChangeError ? (
+                        <div role="alert" className="rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3 text-red-100">
+                            {statusChangeError}
+                        </div>
+                    ) : null}
+                </div>
+                <div className="flex items-center justify-end gap-3 border-t border-border px-6 py-4">
+                    <button type="button" className="admin-btn admin-btn-secondary" onClick={() => setPendingStatusChange(null)} disabled={statusChangePending}>
+                        Cancel
+                    </button>
+                    <button
+                        type="button"
+                        className={`admin-btn ${pendingStatusChange?.action === "activate" ? "admin-btn-primary" : "admin-btn-danger"}`}
+                        onClick={confirmStatusChange}
+                        disabled={statusChangePending}
+                    >
+                        {pendingStatusChange?.action === "activate" ? "Activate user" : "Suspend user"}
+                    </button>
+                </div>
+            </Modal>
         </AdminLayout>
     );
 }

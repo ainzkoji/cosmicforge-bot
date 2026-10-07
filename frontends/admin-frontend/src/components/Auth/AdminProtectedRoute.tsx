@@ -19,9 +19,9 @@ export function AdminProtectedRoute() {
         return <Navigate to="/login" replace />;
     }
 
-    // Check admin role
+    // A session without the admin role has nowhere to go in this app.
     if (!isAdmin) {
-        return <Navigate to="/dashboard" replace />;
+        return <Navigate to="/login" replace />;
     }
 
     return <Outlet />;

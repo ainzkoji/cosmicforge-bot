@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "@/auth/AuthContext";
+import { LoginError } from "@/api/client";
 import { Loader2, Eye, EyeOff } from "lucide-react";
 
 export default function Login() {
@@ -11,19 +12,39 @@ export default function Login() {
     const [email, setEmail] = useState("");
     const [password, setPassword] = useState("");
     const [showPassword, setShowPassword] = useState(false);
+    // Shown once the backend answers TOTP_REQUIRED (account has 2FA enabled).
+    const [totpRequired, setTotpRequired] = useState(false);
+    const [totpCode, setTotpCode] = useState("");
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         setLoading(true);
         setError(null);
         try {
-            const isAdmin = await login({ username: email, password });
+            const isAdmin = await login({
+                username: email,
+                password,
+                ...(totpRequired && totpCode ? { totp_code: totpCode } : {}),
+            });
             if (isAdmin) {
                 navigate("/admin");
             } else {
                 navigate("/dashboard");
             }
         } catch (err: any) {
+            const code = err instanceof LoginError ? err.code : null;
+            if (code === "TOTP_REQUIRED") {
+                // Password accepted; ask for the authenticator code and resubmit.
+                setTotpRequired(true);
+                setTotpCode("");
+                return;
+            }
+            if (code === "TOTP_INVALID") {
+                setTotpRequired(true);
+                setTotpCode("");
+                setError("That code is not valid. Enter the current 6-digit code from your authenticator app.");
+                return;
+            }
             console.error(err);
             if (err.message === "User not verified") {
                 navigate("/verify-email");
@@ -62,7 +83,7 @@ export default function Login() {
                             type="email"
                             required
                             value={email}
-                            onChange={(e) => setEmail(e.target.value)}
+                            onChange={(e) => { setEmail(e.target.value); setTotpRequired(false); setTotpCode(""); }}
                             className="w-full px-4 py-3 rounded-xl border border-gray-200 bg-gray-50 focus:bg-white focus:border-[#1E1B4B] focus:ring-2 focus:ring-[#1E1B4B]/20 outline-none transition-all text-gray-900 placeholder:text-gray-400"
                             placeholder="Enter your email"
                         />
@@ -90,6 +111,28 @@ export default function Login() {
                         </div>
                     </div>
 
+                    {/* Authenticator code (accounts with 2FA) */}
+                    {totpRequired && (
+                        <div>
+                            <label htmlFor="totp-code" className="block text-sm font-medium text-gray-700 mb-1.5">Authenticator code</label>
+                            <input
+                                id="totp-code"
+                                type="text"
+                                inputMode="numeric"
+                                autoComplete="one-time-code"
+                                pattern="[0-9]{6}"
+                                maxLength={6}
+                                required
+                                autoFocus
+                                value={totpCode}
+                                onChange={(e) => setTotpCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                                className="w-full px-4 py-3 rounded-xl border border-gray-200 bg-gray-50 focus:bg-white focus:border-[#1E1B4B] focus:ring-2 focus:ring-[#1E1B4B]/20 outline-none transition-all text-gray-900 placeholder:text-gray-400 text-center font-mono text-xl tracking-widest"
+                                placeholder="000000"
+                            />
+                            <p className="mt-1.5 text-xs text-gray-500">Enter the 6-digit code from your authenticator app.</p>
+                        </div>
+                    )}
+
                     {/* Forgot Password */}
                     <div className="text-right">
                         <Link to="/forgot-password" className="text-sm text-[#1E1B4B] hover:underline">Forgot Password?</Link>
@@ -98,10 +141,10 @@ export default function Login() {
                     {/* Submit Button */}
                     <button
                         type="submit"
-                        disabled={loading}
+                        disabled={loading || (totpRequired && totpCode.length !== 6)}
                         className="w-full py-3.5 rounded-xl bg-[#1E1B4B] text-white font-semibold hover:bg-[#2D2A5B] flex items-center justify-center gap-2 transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-[#1E1B4B]/30"
                     >
-                        {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : "Sign In"}
+                        {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : totpRequired ? "Verify & Sign In" : "Sign In"}
                     </button>
                 </form>
 

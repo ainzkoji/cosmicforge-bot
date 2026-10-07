@@ -1,4 +1,5 @@
 import { apiClient } from "./client";
+import { downloadAuthenticated } from "./http";
 
 export interface BacktestConfig {
     strategy_id: string;
@@ -113,11 +114,15 @@ export const BacktestAPI = {
         return response.data;
     },
 
-    getExportUrl: (runId: string, format: "csv" | "json" = "csv"): string => {
-        const baseUrl = apiClient.defaults.baseURL || "";
-        const token = localStorage.getItem("access_token");
-        // Check if baseUrl ends with slash to avoid double slash, though usually fine
-        const cleanBaseUrl = baseUrl.endsWith("/") ? baseUrl.slice(0, -1) : baseUrl;
-        return `${cleanBaseUrl}/api/v1/backtests/${runId}/export?format=${format}&token=${token}`;
+    /**
+     * Download the export through an authenticated request (Authorization
+     * header, never a token in the URL) and save it as a file.
+     */
+    downloadExport: async (runId: string, format: "csv" | "json" = "csv"): Promise<void> => {
+        const baseUrl = String(apiClient.defaults.baseURL || "").replace(/\/$/, "");
+        await downloadAuthenticated(
+            `${baseUrl}/api/v1/backtests/${encodeURIComponent(runId)}/export?format=${format}`,
+            `backtest_${runId}.${format}`,
+        );
     }
 };

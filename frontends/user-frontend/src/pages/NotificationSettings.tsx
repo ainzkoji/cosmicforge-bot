@@ -160,9 +160,13 @@ const NotificationSettings: React.FC = () => {
                                 try {
                                     const token = await initializeFirebaseMessaging();
                                     if (token) {
-                                        // Assume user ID is available in context or storage, or pass it if needed.
-                                        // For now we rely on the implementation where user ID might be extracted from token or context
-                                        // Start simple
+                                        // Register the device token for the logged-in user. The backend
+                                        // takes the user from the authenticated session, never from the client.
+                                        const registered = await registerFCMToken(token);
+                                        if (!registered) {
+                                            alert('Failed to enable push notifications. Please try again.');
+                                            return;
+                                        }
                                         alert('Push notifications enabled successfully!');
                                         loadSettings();
                                     } else {

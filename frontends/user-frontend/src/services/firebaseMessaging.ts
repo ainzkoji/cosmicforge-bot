@@ -9,8 +9,9 @@ import type { MessagePayload } from 'firebase/messaging';
 // Firebase SDK installed
 
 
+// The backend takes the owner of the token from the authenticated session
+// (Authorization header added by apiClient). No user id is sent by the client.
 interface FCMTokenRegistration {
-    userId: string;
     fcmToken: string;
     deviceId?: string;
     deviceName?: string;
@@ -66,16 +67,15 @@ export async function initializeFirebaseMessaging(): Promise<string | null> {
 }
 
 /**
- * Register FCM token with backend
+ * Register FCM token with backend for the logged-in user.
+ * Requires an authenticated session; the token is always attached to the caller.
  */
 export async function registerFCMToken(
-    userId: string,
     fcmToken: string,
     deviceName?: string
 ): Promise<boolean> {
     try {
         const payload: FCMTokenRegistration = {
-            userId,
             fcmToken,
             deviceName: deviceName || getBrowserDeviceName()
         };

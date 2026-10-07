@@ -2,40 +2,11 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider } from './auth/AuthContext';
 import { MarketingProvider } from './context/MarketingContext';
-import { ProtectedRoute } from './components/Auth/ProtectedRoute';
 import { AdminProtectedRoute } from './components/Auth/AdminProtectedRoute';
-import { DashboardLayout } from "./components/Layout/DashboardLayout";
-import { PublicLayout } from "./components/Layout/PublicLayout";
-import Home from '@/pages/Home';
 import Login from '@/pages/Login';
-import Welcome from '@/pages/Welcome';
 import VerifyEmail from '@/pages/VerifyEmail';
 import ForgotPassword from '@/pages/ForgotPassword';
 import ResetPassword from '@/pages/ResetPassword';
-import LandingPage from '@/pages/LandingPage';
-import Features from '@/pages/Features';
-import HowItWorks from '@/pages/HowItWorks';
-import Pricing from '@/pages/Pricing';
-import SecuritySettings from '@/pages/SecuritySettings';
-import Profile from '@/pages/Profile';
-import KYCIntro from '@/pages/KYCIntro';
-import KYCPersonalInfo from '@/pages/KYCPersonalInfo';
-import KYCIDUpload from '@/pages/KYCIDUpload';
-import KYCFaceVerification from '@/pages/KYCFaceVerification';
-import KYCStatus from '@/pages/KYCStatus';
-
-import BrokerConnection from '@/pages/BrokerConnection';
-import Analytics from '@/pages/Analytics';
-import SocialTrading from '@/pages/SocialTrading';
-import Academy from '@/pages/Academy';
-import Subscription from '@/pages/Subscription';
-import OnboardingWizard from '@/pages/OnboardingWizard';
-import MyBots from '@/pages/MyBots';
-import BotDetails from '@/pages/BotDetails';
-import EditBot from '@/pages/EditBot';
-import Support from '@/pages/Support';
-import DeveloperSettings from '@/pages/DeveloperSettings';
-import PaymentSuccess from '@/pages/PaymentSuccess';
 import AdminDashboard from '@/pages/admin/Dashboard';
 import UserManagement from '@/pages/admin/UserManagement';
 import RevenueAnalytics from '@/pages/admin/RevenueAnalytics';
@@ -63,6 +34,7 @@ import { NewsIntelligence } from '@/pages/admin/NewsIntelligence';
 import TradingView from '@/pages/admin/TradingView';
 import Signals from '@/pages/admin/Signals';
 import SignalPairs from '@/pages/admin/SignalPairs';
+import { ErrorBoundary } from '@/components/System/ErrorBoundary';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -76,63 +48,22 @@ const queryClient = new QueryClient({
 
 function App() {
   return (
+    <ErrorBoundary>
     <QueryClientProvider client={queryClient}>
       <BrowserRouter>
         <MarketingProvider>
           <AuthProvider>
             <Routes>
-              {/* Public Marketing Routes */}
-              <Route element={<PublicLayout />}>
-                <Route path="/" element={<LandingPage />} />
-                <Route path="/features" element={<Features />} />
-                <Route path="/how-it-works" element={<HowItWorks />} />
-                <Route path="/pricing" element={<Pricing />} />
-              </Route>
+              {/* The admin console serves no public marketing pages (the customer
+                  site lives in frontends/user-frontend). "/" goes to the admin
+                  dashboard, which redirects to /login when signed out. */}
+              <Route path="/" element={<Navigate to="/admin" replace />} />
 
-              {/* Auth Pages */}
-              <Route path="/welcome" element={<Welcome />} />
+              {/* Admin sign-in */}
               <Route path="/login" element={<Login />} />
               <Route path="/verify-email" element={<VerifyEmail />} />
               <Route path="/forgot-password" element={<ForgotPassword />} />
               <Route path="/reset-password" element={<ResetPassword />} />
-
-              {/* Protected Routes */}
-              <Route element={<ProtectedRoute />}>
-                {/* Onboarding (Fullscreen, no sidebar) */}
-                <Route path="/onboarding" element={<OnboardingWizard />} />
-                <Route path="/payment-success" element={<PaymentSuccess />} />
-
-                {/* Main Dashboard (With Sidebar) */}
-                <Route path="/dashboard" element={<DashboardLayout />}>
-                  <Route index element={<Home />} />
-
-                  {/* Core Features */}
-                  <Route path="bots" element={<MyBots />} />
-                  <Route path="bots/:id" element={<BotDetails />} />
-                  <Route path="bots/:id/edit" element={<EditBot />} />
-                  {/* Strategy routes removed */}
-                  <Route path="brokers" element={<BrokerConnection />} />
-                  <Route path="analytics" element={<Analytics />} />
-                  <Route path="social" element={<SocialTrading />} />
-                  <Route path="academy" element={<Academy />} />
-                  <Route path="subscription" element={<Subscription />} />
-
-                  {/* Settings & Profile */}
-                  <Route path="security" element={<SecuritySettings />} />
-                  <Route path="developer" element={<DeveloperSettings />} />
-                  <Route path="support" element={<Support />} />
-                  <Route path="profile" element={<Profile />} />
-
-                  {/* KYC Flow */}
-                  <Route path="kyc">
-                    <Route index element={<KYCIntro />} />
-                    <Route path="personal-info" element={<KYCPersonalInfo />} />
-                    <Route path="id-upload" element={<KYCIDUpload />} />
-                    <Route path="face-verification" element={<KYCFaceVerification />} />
-                    <Route path="status" element={<KYCStatus />} />
-                  </Route>
-                </Route>
-              </Route>
 
               {/* Sole owner of /admin/* routes.
                   Keep admin-only UI here and do not add new admin routes to user-frontend. */}
@@ -170,12 +101,9 @@ function App() {
                 <Route path="/admin/activity" element={<ActivityFeed />} />
               </Route>
 
-              {/* Legacy mixed-app note:
-                  this app still contains public/user pages today (for example LandingPage, Login,
-                  Home, BrokerConnection, Analytics, Academy, Subscription, MyBots, BotDetails,
-                  EditBot, Support, DeveloperSettings, Profile, and KYC flow pages).
-                  Those are later cleanup items and should not change the rule that admin-frontend
-                  is the sole future owner of /admin/*. */}
+              {/* The legacy end-user pages (/welcome, /onboarding, /payment-success and
+                  everything under /dashboard/*) were removed: they belong to
+                  frontends/user-frontend. Old links fall through to the fallback. */}
 
               {/* Fallback */}
               <Route path="*" element={<Navigate to="/" replace />} />
@@ -184,6 +112,7 @@ function App() {
         </MarketingProvider>
       </BrowserRouter>
     </QueryClientProvider>
+    </ErrorBoundary>
   );
 }
 

@@ -17,13 +17,10 @@ export default function Login() {
         setLoading(true);
         setError(null);
         try {
-            const isAdmin = await login({ username: email, password });
-            if (isAdmin) {
-                navigate("/admin");
-            } else {
-                navigate("/dashboard");
-            }
-        } catch (err: any) {
+            // Only admin accounts can sign in here; there is no end-user area in this app.
+            await login({ username: email, password });
+            navigate("/admin");
+        } catch (err) {
             console.error(err);
             setError("Invalid credentials. Please try again.");
         } finally {
@@ -41,7 +38,7 @@ export default function Login() {
 
                 {/* Title */}
                 <h1 className="text-2xl font-bold text-center text-[#1E1B4B] mb-2">Welcome Back!</h1>
-                <p className="text-center text-gray-500 text-sm mb-8">Sign in to continue trading</p>
+                <p className="text-center text-gray-500 text-sm mb-8">Sign in to the admin console</p>
 
                 <form onSubmit={handleSubmit} className="space-y-5">
                     {error && (
@@ -99,30 +96,6 @@ export default function Login() {
                         {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : "Sign In"}
                     </button>
                 </form>
-
-                {/* Divider */}
-                <div className="flex items-center my-6">
-                    <div className="flex-1 border-t border-gray-200" />
-                    <span className="px-4 text-sm text-gray-400">Or continue with</span>
-                    <div className="flex-1 border-t border-gray-200" />
-                </div>
-
-                {/* Social Login */}
-                <div className="flex gap-4">
-                    <button className="flex-1 py-3 rounded-xl border border-gray-200 bg-white hover:bg-gray-50 flex items-center justify-center gap-2 transition-colors">
-                        <img src="https://www.google.com/favicon.ico" alt="Google" className="w-5 h-5" />
-                        <span className="text-sm font-medium text-gray-700">Google</span>
-                    </button>
-                    <button className="flex-1 py-3 rounded-xl border border-gray-200 bg-white hover:bg-gray-50 flex items-center justify-center gap-2 transition-colors">
-                        <svg className="w-5 h-5" fill="#1877F2" viewBox="0 0 24 24">
-                            <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z" />
-                        </svg>
-                        <span className="text-sm font-medium text-gray-700">Facebook</span>
-                    </button>
-                </div>
-
-                {/* Sign Up Link */}
-
             </div>
         </div>
     );

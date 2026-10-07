@@ -1,6 +1,7 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from "react";
 import { api, LoginRequest, RegisterRequest } from "@/api/client";
 import { jwtDecode } from "jwt-decode";
+import { refreshAccessToken } from "@/api/http";
 
 interface AuthState {
     isAuthenticated: boolean;
@@ -56,17 +57,35 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                 const decoded: any = jwtDecode(token);
                 // Basic expiration check
                 if (decoded.exp * 1000 < Date.now()) {
-                    // Token expired, clear it
-                    localStorage.removeItem("access_token");
-                    localStorage.removeItem("refresh_token");
-                    localStorage.removeItem("user_email");
-                    localStorage.removeItem("user_name");
-                    setState({
-                        isAuthenticated: false,
-                        token: null,
-                        userEmail: null,
-                        userName: null,
-                        isLoading: false,
+                    // Access token expired: try the (rotating) refresh token before ending the session.
+                    refreshAccessToken(token).then((outcome) => {
+                        if (outcome.status === "refreshed") {
+                            setState({
+                                isAuthenticated: true,
+                                token: outcome.token,
+                                userEmail: localStorage.getItem("user_email"),
+                                userName: localStorage.getItem("user_name"),
+                                isLoading: false,
+                            });
+                            fetchProfile();
+                            return;
+                        }
+                        if (outcome.status === "rejected") {
+                            // Refresh token missing, expired or revoked: the session is over.
+                            localStorage.removeItem("access_token");
+                            localStorage.removeItem("refresh_token");
+                            localStorage.removeItem("user_email");
+                            localStorage.removeItem("user_name");
+                        }
+                        // "unavailable" (backend unreachable): keep the stored tokens so a
+                        // later reload can retry, but do not treat the user as signed in.
+                        setState({
+                            isAuthenticated: false,
+                            token: null,
+                            userEmail: null,
+                            userName: null,
+                            isLoading: false,
+                        });
                     });
                 } else {
                     // Get cached data from localStorage

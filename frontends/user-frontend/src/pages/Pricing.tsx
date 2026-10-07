@@ -82,7 +82,7 @@ export default function Pricing() {
                         Choose Your Plan
                     </h1>
                     <p className="text-xl text-gray-600 max-w-2xl mx-auto mb-8">
-                        Simple, transparent pricing that grows with you. Try any plan free for 14 days.
+                        Simple, transparent pricing that grows with you. Start on the free plan and upgrade when you're ready.
                     </p>
 
                     {/* Toggle */}
@@ -167,7 +167,7 @@ export default function Pricing() {
                                             : 'bg-[#1E1B4B] text-white hover:bg-[#2D2A5B]'
                                             }`}
                                     >
-                                        {plan.price === 0 && plan.name === "Enterprise" ? "Contact Sales" : (plan.price === 0 ? "Get Started Free" : "Start 14-Day Free Trial")}
+                                        {plan.price === 0 && plan.name === "Enterprise" ? "Contact Sales" : (plan.price === 0 ? "Get Started Free" : "Get Started")}
                                     </button>
                                 </div>
                             );
@@ -184,10 +184,10 @@ export default function Pricing() {
                     </h2>
                     <div className="space-y-4">
                         {[
-                            { q: "Can I switch plans anytime?", a: "Yes! You can upgrade or downgrade your plan at any time. Changes take effect immediately." },
-                            { q: "Is there a free trial?", a: "Yes, all paid plans come with a 14-day free trial. No credit card required to start." },
-                            { q: "What payment methods do you accept?", a: "We accept all major credit cards, PayPal, and cryptocurrency payments." },
-                            { q: "Can I cancel anytime?", a: "Absolutely. No long-term contracts. Cancel anytime with no questions asked." },
+                            { q: "Can I switch plans anytime?", a: "Yes. You can change your plan at any time from your subscription page." },
+                            { q: "Is there a free plan?", a: "Yes. The Star Gazer plan is free forever and needs no credit card. Paid plans are billed from the day you subscribe." },
+                            { q: "What payment methods do you accept?", a: "We accept major credit and debit cards. Payments are processed securely by Stripe." },
+                            { q: "Can I cancel anytime?", a: "Absolutely. No long-term contracts. Cancel anytime and keep access until the end of the period you paid for." },
                         ].map((faq, i) => (
                             <div key={i} className="bg-white rounded-xl p-6 border border-gray-200 shadow-sm">
                                 <h3 className="font-semibold text-[#1E1B4B] mb-2">{faq.q}</h3>

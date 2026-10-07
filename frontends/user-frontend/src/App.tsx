@@ -5,7 +5,6 @@ import { MarketingProvider } from '@/context/MarketingContext';
 import { ProtectedRoute } from '@/components/Auth/ProtectedRoute';
 import { DashboardLayout } from "@/components/Layout/DashboardLayout";
 import { PublicLayout } from "@/components/Layout/PublicLayout";
-import Home from '@/pages/Home';
 import Login from '@/pages/Login';
 import Welcome from '@/pages/Welcome';
 import VerifyEmail from '@/pages/VerifyEmail';
@@ -43,6 +42,10 @@ import Dashboard from '@/pages/Dashboard';
 import BacktestList from '@/pages/Backtesting/BacktestList';
 import CreateBacktest from '@/pages/Backtesting/CreateBacktest';
 import BacktestDetails from '@/pages/Backtesting/BacktestDetails';
+import RiskDisclosure from '@/pages/legal/RiskDisclosure';
+import Terms from '@/pages/legal/Terms';
+import Privacy from '@/pages/legal/Privacy';
+import { ErrorBoundary } from '@/components/System/ErrorBoundary';
 
 
 const queryClient = new QueryClient({
@@ -57,6 +60,7 @@ const queryClient = new QueryClient({
 
 function App() {
   return (
+    <ErrorBoundary>
     <QueryClientProvider client={queryClient}>
       <BrowserRouter>
         <MarketingProvider>
@@ -68,6 +72,9 @@ function App() {
                 <Route path="/features" element={<Features />} />
                 <Route path="/how-it-works" element={<HowItWorks />} />
                 <Route path="/pricing" element={<Pricing />} />
+                <Route path="/risk-disclosure" element={<RiskDisclosure />} />
+                <Route path="/terms" element={<Terms />} />
+                <Route path="/privacy" element={<Privacy />} />
                 <Route path="/login" element={<Login />} />
                 <Route path="/register" element={<Register />} />
                 <Route path="/verify-email" element={<VerifyEmail />} />
@@ -135,6 +142,7 @@ function App() {
         </MarketingProvider>
       </BrowserRouter>
     </QueryClientProvider>
+    </ErrorBoundary>
   );
 }
 

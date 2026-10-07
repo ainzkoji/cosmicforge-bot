@@ -55,12 +55,14 @@ export default function KYCStatus() {
 
     if (!statusData) return null;
 
-    const { case_status, checklist, can_submit } = statusData;
+    const { case_status, checklist, can_submit, rejection_reason } = statusData;
 
     // Check if we are fully approved
     const isApproved = case_status === "approved";
     const isSubmitted = case_status === "submitted" || case_status === "under_review";
     const isRejected = case_status === "rejected";
+    // A reviewer asked for corrections: the user fixes the flagged step(s) and submits again
+    const needsResubmission = case_status === "needs_resubmission";
 
     return (
         <div className="min-h-screen bg-gray-50 py-12 px-4">
@@ -143,15 +145,24 @@ export default function KYCStatus() {
                     <h1 className="text-3xl font-bold text-gray-900 mb-3">
                         {isApproved ? "Verification Complete" :
                             isRejected ? "Verification Failed" :
-                                isSubmitted ? "Verification Submitted" : "Verification In Progress"}
+                                needsResubmission ? "Changes Requested" :
+                                    isSubmitted ? "Verification Submitted" : "Verification In Progress"}
                     </h1>
 
                     <p className="text-gray-600 mb-8">
                         {isApproved ? "Your identity has been successfully verified. You now have full access." :
                             isRejected ? "There were issues with your verification. Please check the details below." :
-                                isSubmitted ? "Your documents are being reviewed. This usually takes 1-2 business days." :
-                                    "Please complete all remaining steps to finish your verification."}
+                                needsResubmission ? "Our team needs you to correct your submission. Please check the details below, update the affected step and submit again." :
+                                    isSubmitted ? "Your documents are being reviewed by our team. This usually takes 1-2 business days. Live trading stays locked until your verification is approved." :
+                                        "Please complete all remaining steps, then submit your verification for review."}
                     </p>
+
+                    {(isRejected || needsResubmission) && rejection_reason && (
+                        <div className="mb-6 p-4 bg-red-50 text-red-700 rounded-xl text-sm text-left">
+                            <p className="font-semibold mb-1">Reviewer note</p>
+                            <p>{rejection_reason}</p>
+                        </div>
+                    )}
 
                     {/* Status Timeline / Checklist */}
                     <div className="bg-gray-50 rounded-xl p-6 mb-6 text-left">
@@ -171,23 +182,25 @@ export default function KYCStatus() {
                                             {step.label}
                                         </p>
                                         <p className="text-sm text-gray-500">
-                                            {step.is_complete ? "Completed" : "Pending"}
+                                            {step.is_complete
+                                                ? (step.awaiting_review && !isApproved ? "Submitted - awaiting review" : "Completed")
+                                                : "Pending"}
                                         </p>
                                     </div>
-                                    {!step.is_complete && step.step !== 'face_verification' && (
+                                    {(!step.is_complete || isRejected || needsResubmission) && step.step !== 'face_verification' && (
                                         <Link
                                             to={step.step === 'personal_info' ? '/kyc/personal-info' : '/kyc/id-upload'}
                                             className="text-sm text-[#1E1B4B] hover:underline"
                                         >
-                                            Start
+                                            {step.is_complete ? "Update" : "Start"}
                                         </Link>
                                     )}
-                                    {!step.is_complete && step.step === 'face_verification' && (
+                                    {(!step.is_complete || isRejected || needsResubmission) && step.step === 'face_verification' && (
                                         <Link
                                             to="/kyc/face-verification"
                                             className="text-sm text-[#1E1B4B] hover:underline"
                                         >
-                                            Start
+                                            {step.is_complete ? "Update" : "Start"}
                                         </Link>
                                     )}
                                 </div>
@@ -223,7 +236,7 @@ export default function KYCStatus() {
                                 </>
                             ) : (
                                 <>
-                                    Submit for Review
+                                    {isRejected || needsResubmission ? "Submit Again for Review" : "Submit for Review"}
                                     <ArrowRight className="w-5 h-5" />
                                 </>
                             )}

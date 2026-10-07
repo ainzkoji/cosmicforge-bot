@@ -11,6 +11,7 @@ import {
 import { useAuth } from "@/auth/AuthContext";
 import { motion, AnimatePresence } from "framer-motion";
 import { NotificationBell } from "../Dashboard/NotificationBell";
+import { TradingModeBanner } from "./TradingModeBanner";
 
 export function DashboardLayout() {
     const [isSidebarOpen, setSidebarOpen] = useState(true);
@@ -253,6 +254,11 @@ export function DashboardLayout() {
                         <NotificationBell />
                     </div>
                 </header>
+
+                {/* Persistent LIVE vs Demo/Paper indicator */}
+                <div className="sticky top-16 z-30 bg-[#0F1218]">
+                    <TradingModeBanner />
+                </div>
 
                 {/* Page Content */}
                 <main className="flex-1 overflow-y-auto p-6 md:p-8 scroll-smooth">

@@ -3,6 +3,7 @@ import { DollarSign, ArrowUpRight, PieChart, TrendingUp, Activity, Loader2, Down
 import { useQuery } from '@tanstack/react-query';
 import { EquityCurve } from '@/components/analytics/EquityCurve';
 import { api } from '@/api/client';
+import { apiFetch } from '@/api/http';
 
 interface AnalyticsOverviewProps {
     timeframe: string;
@@ -21,12 +22,7 @@ export function AnalyticsOverview({ timeframe }: AnalyticsOverviewProps) {
         setIsExporting(true);
         setExportMenuOpen(false);
         try {
-            const token = localStorage.getItem('access_token');
-            const response = await fetch(`/api/analytics/export/pdf?timeframe=${timeframe}`, {
-                headers: {
-                    'Authorization': `Bearer ${token}`
-                }
-            });
+            const response = await apiFetch(`/api/analytics/export/pdf?timeframe=${timeframe}`);
 
             if (!response.ok) throw new Error('Export failed');
 

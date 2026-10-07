@@ -1,6 +1,7 @@
 import { Link, Outlet, useLocation } from "react-router-dom";
 import { useMarketing } from "@/context/MarketingContext";
 import { useEffect } from "react";
+import { RiskNotice } from "@/components/Legal/RiskNotice";
 
 export function PublicLayout() {
     const { trackEvent } = useMarketing();
@@ -40,13 +41,13 @@ export function PublicLayout() {
 
             {/* Footer */}
             <footer className="bg-[#1E1B4B] text-white py-12 px-6">
-                <div className="max-w-7xl mx-auto grid md:grid-cols-4 gap-8">
+                <div className="max-w-7xl mx-auto grid md:grid-cols-3 gap-8">
                     <div>
                         <div className="flex items-center gap-2 mb-4">
                             <img src="/src/assets/logo.png" alt="CosmicForge" className="h-8 w-8 brightness-0 invert" />
                             <span className="font-bold">CosmicForge Stratos</span>
                         </div>
-                        <p className="text-gray-400 text-sm">AI-powered crypto trading platform for the modern investor.</p>
+                        <p className="text-gray-400 text-sm">Automated trading tools for your own exchange account.</p>
                     </div>
                     <div>
                         <h4 className="font-semibold mb-4">Product</h4>
@@ -57,22 +58,18 @@ export function PublicLayout() {
                         </ul>
                     </div>
                     <div>
-                        <h4 className="font-semibold mb-4">Company</h4>
-                        <ul className="space-y-2 text-gray-400 text-sm">
-                            <li><a href="#" className="hover:text-white">About</a></li>
-                            <li><a href="#" className="hover:text-white">Blog</a></li>
-                            <li><a href="#" className="hover:text-white">Careers</a></li>
-                        </ul>
-                    </div>
-                    <div>
                         <h4 className="font-semibold mb-4">Legal</h4>
                         <ul className="space-y-2 text-gray-400 text-sm">
-                            <li><a href="#" className="hover:text-white">Privacy Policy</a></li>
-                            <li><a href="#" className="hover:text-white">Terms of Service</a></li>
+                            <li><Link to="/risk-disclosure" className="hover:text-white">Risk Disclosure</Link></li>
+                            <li><Link to="/terms" className="hover:text-white">Terms of Service</Link></li>
+                            <li><Link to="/privacy" className="hover:text-white">Privacy Policy</Link></li>
                         </ul>
                     </div>
                 </div>
-                <div className="max-w-7xl mx-auto mt-12 pt-8 border-t border-white/10 text-center text-gray-400 text-sm">
+                <div className="max-w-7xl mx-auto mt-12 pt-8 border-t border-white/10">
+                    <RiskNotice className="text-gray-400" />
+                </div>
+                <div className="max-w-7xl mx-auto mt-8 text-center text-gray-400 text-sm">
                     © 2026 CosmicForge Stratos. All rights reserved.
                 </div>
             </footer>

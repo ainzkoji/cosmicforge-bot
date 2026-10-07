@@ -30,7 +30,7 @@ export function RiskToleranceStep({ onNext, isLoading, defaultValue }: RiskToler
                 <RiskCard
                     value="low"
                     title="Low Risk (Conservative)"
-                    description="Max drawdown ~5%. Capital preservation is the priority. Small position sizes."
+                    description="Smaller position sizes and tighter limits. Capital preservation is the priority; losses are still possible."
                     icon={Anchor}
                     color="text-emerald-400"
                     accentColor="emerald"
@@ -41,7 +41,7 @@ export function RiskToleranceStep({ onNext, isLoading, defaultValue }: RiskToler
                 <RiskCard
                     value="medium"
                     title="Medium Risk (Balanced)"
-                    description="Max drawdown ~15%. Balanced approach aiming for steady growth with moderate volatility."
+                    description="Middle setting between Conservative and Aggressive, with moderate position sizes and limits."
                     icon={TrendingUp}
                     color="text-blue-400"
                     accentColor="blue"
@@ -52,7 +52,7 @@ export function RiskToleranceStep({ onNext, isLoading, defaultValue }: RiskToler
                 <RiskCard
                     value="high"
                     title="High Risk (Aggressive)"
-                    description="Max drawdown ~30%. Targeting high returns. Significant volatility expected."
+                    description="Larger position sizes and wider limits. Expect significant swings and the possibility of large losses."
                     icon={AlertTriangle}
                     color="text-rose-400"
                     accentColor="rose"
