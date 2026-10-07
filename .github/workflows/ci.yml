@@ -22,6 +22,8 @@ env:
   APP_ENV: TEST
   COSMICFORGE_TEST_MODE: "1"
   DATABASE_ROLE: test
+  ENVIRONMENT_NAME: test
+  PYTHONPATH: ${{ github.workspace }}/.github/scripts
   LIVE_ORDER_SUBMISSION_ENABLED: "false"
   EXECUTION_MODE: paper
   BINANCE_API_KEY: mock_ci_key
@@ -75,7 +77,7 @@ jobs:
     - name: Point tests at a throwaway database
       run: echo "DATABASE_URL=sqlite:///$RUNNER_TEMP/cosmicforge-ci-bot.db" >> "$GITHUB_ENV"
     - name: Run tests
-      run: python -m pytest backends/bot-backend/tests -q --tb=short -p no:cacheprovider --junitxml="$RUNNER_TEMP/bot.xml"
+      run: python -m pytest backends/bot-backend/tests -q --tb=short -p no:cacheprovider -p ci_quarantine --junitxml="$RUNNER_TEMP/bot.xml"
     - name: Post failure summary to the pull request
       if: failure() && github.event_name == 'pull_request'
       env:
@@ -105,7 +107,7 @@ jobs:
       run: echo "DATABASE_URL=sqlite:///$RUNNER_TEMP/cosmicforge-ci-user.db" >> "$GITHUB_ENV"
     - name: Run tests
       working-directory: backends/user-backend
-      run: python -m pytest tests -q --tb=short -p no:cacheprovider --junitxml="$RUNNER_TEMP/user.xml"
+      run: python -m pytest tests -q --tb=short -p no:cacheprovider -p ci_quarantine --junitxml="$RUNNER_TEMP/user.xml"
     - name: Post failure summary to the pull request
       if: failure() && github.event_name == 'pull_request'
       env:
@@ -137,15 +139,15 @@ jobs:
       run: echo "DATABASE_URL=sqlite:///$RUNNER_TEMP/cosmicforge-ci-root.db" >> "$GITHUB_ENV"
     - name: Admin backend tests
       if: always()
-      run: python -m pytest backends/admin-backend/tests -q --tb=short -p no:cacheprovider --junitxml="$RUNNER_TEMP/admin.xml"
+      run: python -m pytest backends/admin-backend/tests -q --tb=short -p no:cacheprovider -p ci_quarantine --junitxml="$RUNNER_TEMP/admin.xml"
     - name: Shared library tests
       if: always()
-      run: python -m pytest backends/shared/tests -q --tb=short -p no:cacheprovider --junitxml="$RUNNER_TEMP/shared.xml"
+      run: python -m pytest backends/shared/tests -q --tb=short -p no:cacheprovider -p ci_quarantine --junitxml="$RUNNER_TEMP/shared.xml"
     # tests/integration needs both backends running on localhost and is not
     # part of the default run; see tests/integration/README.md.
     - name: Root unit tests
       if: always()
-      run: python -m pytest tests -q --tb=short -p no:cacheprovider --ignore=tests/integration --junitxml="$RUNNER_TEMP/root.xml"
+      run: python -m pytest tests -q --tb=short -p no:cacheprovider -p ci_quarantine --ignore=tests/integration --junitxml="$RUNNER_TEMP/root.xml"
     - name: Post failure summary to the pull request
       if: failure() && github.event_name == 'pull_request'
       env:
