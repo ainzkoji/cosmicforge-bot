@@ -597,3 +597,37 @@ def test_the_observation_reads_the_real_lease_scheduler_and_disk(monkeypatch):
             conn.execute("DELETE FROM runtime_ownership WHERE runtime_owner_id=?", (lease.runtime_owner_id,))
         loop.close()
         supervisor_module.reset_for_tests()
+
+
+# ── Readiness over HTTP ──────────────────────────────────────────────────────
+
+
+def test_health_is_a_readiness_probe_only_when_asked(monkeypatch):
+    """The same public route answers both questions; no new one is exposed."""
+    from unittest.mock import patch
+
+    from fastapi.testclient import TestClient
+
+    from app.core.config import settings
+
+    with patch.object(settings, "DATABASE_URL", "sqlite:///" + DB().path):
+        import app.main as main_module
+    client = TestClient(main_module.app)               # no context manager: startup tasks do not run
+
+    # Not a supervised production runtime: nothing to be unready about.
+    assert client.get("/health").status_code == 200
+    assert client.get("/health?ready=1").status_code == 200
+
+    monkeypatch.setattr(type(settings), "production", property(lambda self: True))
+    monkeypatch.setattr(main_module, "_runtime_liveness",
+                        lambda: {"state": "FAILING", "faults": ["RUNNER_LOOP_EXITED"], "warnings": []})
+    alive = client.get("/health")
+    assert alive.status_code == 200 and alive.json()["status"] == "degraded"       # the web server is up
+    unready = client.get("/health?ready=1")
+    assert unready.status_code == 503 and unready.json()["runtime"]["faults"] == ["RUNNER_LOOP_EXITED"]
+    assert set(unready.json()["trading"]) >= {"auto_trading_enabled_accounts", "execution_portfolio_states",
+                                              "latest_decision", "broker_sync_max_age_seconds"}
+
+    monkeypatch.setattr(main_module, "_runtime_liveness", lambda: {"state": "HEALTHY", "faults": [], "warnings": []})
+    assert client.get("/health?ready=1").status_code == 200
+    assert not [r.path for r in main_module.app.routes if getattr(r, "path", "").startswith("/health/")]

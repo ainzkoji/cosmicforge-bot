@@ -2956,23 +2956,17 @@ def _runtime_liveness() -> dict:
             "process_started_at": PROCESS_STARTED_AT}
 
 
-@app.get("/health/runtime")
-async def health_runtime():
-    """Readiness of the TRADING RUNTIME, as an HTTP status a monitor can act on.
-
-    200 only while the supervisor finds the scheduler healthy; 503 while it is
-    starting, stopping or failing. ``/health`` stays 200 for as long as the web
-    server answers, which is a different question.
-    """
-    from fastapi.responses import JSONResponse
-
-    liveness = _runtime_liveness()
-    healthy = liveness["state"] in ("HEALTHY", "UNSUPERVISED")
-    return JSONResponse(liveness, status_code=200 if healthy else 503)
-
-
 @app.get("/health")
-async def health():
+async def health(ready: bool = False):
+    """Health of the backend. ``?ready=1`` turns it into a readiness probe.
+
+    Without the flag this answers 200 for as long as the web server does,
+    which says nothing about trading. With it the status is 200 only while the
+    supervisor finds the trading scheduler healthy, and 503 while it is
+    starting, stopping or failing -- something an uptime monitor can act on
+    without parsing the body. It is deliberately the same public route, not a
+    new one: only ``/``, ``/health`` and ``/cati`` are unauthenticated here.
+    """
     production_health = {}
     if settings.production:
         from app.trading_intelligence.integration.production_runtime import health_summary, operations_summary
@@ -2998,7 +2992,7 @@ async def health():
         "adaptive_daily_risk_enabled": bool(settings.ADAPTIVE_DAILY_RISK_ENABLED),
         "daily_loss_limit_source": "PER_BOT_EFFECTIVE_POLICY",
     }
-    return {
+    body = {
         "status": "ok",
         **production_health,
         "components": component_state,
@@ -3031,6 +3025,13 @@ async def health():
         },
         "tradingview_runtime_fingerprint": _phase6_runtime_fingerprint(),
     }
+    state = (production_health.get("runtime") or {}).get("state", "UNSUPERVISED")
+    if ready and state not in ("HEALTHY", "UNSUPERVISED"):
+        from fastapi.encoders import jsonable_encoder
+        from fastapi.responses import JSONResponse
+
+        return JSONResponse(jsonable_encoder(body), status_code=503)
+    return body
 
 
 def _settings_public_dict() -> Dict[str, Any]:

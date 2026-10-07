@@ -259,7 +259,7 @@ journalctl -u cosmicforge-trading -b -p warning      # this boot, warnings and w
 journalctl -u cosmicforge-trading | grep -E 'RUNTIME_SUPERVISOR|RUNTIME_OWNERSHIP|RUNTIME_SHUTDOWN'
 journalctl -u cosmicforge-trading | grep CATI_RESIDUAL_PROSPECTIVE     # hourly decisions
 
-curl -s http://127.0.0.1:9000/health/runtime         # 200 only while the scheduler is healthy
+curl -s -o /dev/null -w '%{http_code}\n' 'http://127.0.0.1:9000/health?ready=1'   # 200 only while the scheduler is healthy
 python3 /opt/cosmicforge/cosmicforge-bot/scripts/vps_health_check.py   # exit 0 / 1 / 2
 ```
 
@@ -296,9 +296,9 @@ echo '*/5 * * * * cosmicforge /opt/cosmicforge/cosmicforge-bot/backends/venv/bin
 journalctl -t cosmicforge-health -n 5 --no-pager
 ```
 
-For alerting from outside, have an uptime monitor fetch `/health/runtime`
+For alerting from outside, have an uptime monitor fetch `/health?ready=1`
 through the proxy from an allowed address: it returns 503 unless the trading
-scheduler is healthy.
+scheduler is healthy (plain `/health` answers 200 whenever the web server is up).
 
 ## 5. Database: safety, backup, restore
 
