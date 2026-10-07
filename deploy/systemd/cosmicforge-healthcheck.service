@@ -1,0 +1,49 @@
+# Asks the trading runtime, every two minutes, whether it can actually trade.
+# Triggered by cosmicforge-healthcheck.timer.
+#
+# systemd already restarts a process that exits, and WatchdogSec= catches a
+# frozen supervisor loop. This covers what neither sees: the process is up and
+# sending keep-alives, but the broker is not synced, no hourly decision was
+# made, the disk is nearly full, or the API no longer answers.
+#
+# scripts/vps_health_check.py exits 0 healthy, 1 degraded, 2 unhealthy.
+# Status 2 fails this unit, and OnFailure= sends the alert with the check's
+# own output (the FAIL lines) as the log excerpt.
+#
+# Run by hand:  sudo systemctl start cosmicforge-healthcheck; journalctl -u cosmicforge-healthcheck -n 25 --no-pager
+#
+# A check running ON the server cannot report that the server is gone. An
+# external uptime monitor is still required: docs/VPS_TRADING_DEPLOYMENT.md, section 10.
+
+[Unit]
+Description=CosmicForge trading runtime health check
+Documentation=file:///opt/cosmicforge/cosmicforge-bot/docs/VPS_TRADING_DEPLOYMENT.md
+# Ordering only (no Requires=): while the runtime is still starting -- it
+# reports ready only once it holds the lease -- a check waits for that start
+# instead of reporting the closed port as an outage.
+After=cosmicforge-trading.service
+OnFailure=cosmicforge-alert@%n.service
+
+[Service]
+Type=oneshot
+User=cosmicforge
+Group=cosmicforge
+WorkingDirectory=/opt/cosmicforge/cosmicforge-bot
+# Standard library only, so the system interpreter is enough.
+ExecStart=/usr/bin/python3 -u scripts/vps_health_check.py --url http://127.0.0.1:9000 --timeout 15
+# DEGRADED (status 1: starting or stopping, kill switch engaged, disk getting
+# low, market-data back-off) is recorded in the journal but does not page.
+# Remove this line to be alerted for it as well.
+SuccessExitStatus=1
+TimeoutStartSec=60
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+SyslogIdentifier=cosmicforge-healthcheck

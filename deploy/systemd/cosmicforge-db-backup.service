@@ -7,6 +7,8 @@
 [Unit]
 Description=CosmicForge trading database backup
 Documentation=file:///opt/cosmicforge/cosmicforge-bot/docs/VPS_TRADING_DEPLOYMENT.md
+# Any non-zero exit (could not copy, failed verification, retention) alerts.
+OnFailure=cosmicforge-alert@%n.service
 
 [Service]
 Type=oneshot

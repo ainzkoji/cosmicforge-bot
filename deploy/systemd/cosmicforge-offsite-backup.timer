@@ -1,0 +1,21 @@
+# Daily off-site copy of the database backup.
+# The local backup starts at 03:30 UTC (cosmicforge-db-backup.timer) and takes
+# about ten minutes for the current database. This starts an hour later, again
+# at :30 so that no CATI decision window (:00 to :15) is open, and the service
+# is ordered After= the local backup in case that one is still running.
+#
+# Install:  sudo cp deploy/systemd/cosmicforge-offsite-backup.* /etc/systemd/system/
+#           sudo systemctl daemon-reload && sudo systemctl enable --now cosmicforge-offsite-backup.timer
+# Inspect:  systemctl list-timers cosmicforge-offsite-backup.timer
+
+[Unit]
+Description=Daily CosmicForge off-site database backup
+
+[Timer]
+OnCalendar=*-*-* 04:30:00 UTC
+# A server that was off at 04:30 uploads when it comes back.
+Persistent=true
+RandomizedDelaySec=120
+
+[Install]
+WantedBy=timers.target

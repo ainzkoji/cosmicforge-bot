@@ -1,0 +1,49 @@
+# Encrypts the newest verified database backup and copies it off this server.
+# Triggered by cosmicforge-offsite-backup.timer, one hour after the local
+# backup (cosmicforge-db-backup.timer, 03:30 UTC).
+#
+# Backups that stay on the database's own disk do not survive losing the disk,
+# the server or the hosting account. scripts/offsite_backup.py refuses to
+# upload unencrypted, verifies the remote copy, and exits non-zero on any
+# failure -- which fails this unit and sends an alert.
+#
+# Settings:     /etc/cosmicforge/offsite-backup.env   (deploy/offsite-backup.env.example)
+# Tools:        sudo apt-get install -y age rclone      (or gnupg / rsync)
+# Dry run:      sudo -H -u cosmicforge python3 scripts/offsite_backup.py --dry-run
+# Run by hand:  sudo systemctl start cosmicforge-offsite-backup && journalctl -u cosmicforge-offsite-backup -n 20
+
+[Unit]
+Description=CosmicForge off-site database backup
+Documentation=file:///opt/cosmicforge/cosmicforge-bot/docs/VPS_TRADING_DEPLOYMENT.md
+Wants=network-online.target
+# If the local backup is still being written, wait for it instead of
+# uploading yesterday's file.
+After=network-online.target cosmicforge-db-backup.service
+OnFailure=cosmicforge-alert@%n.service
+
+[Service]
+Type=oneshot
+# The service user: it owns the backup directory, the rclone configuration
+# (~/.config/rclone under /opt/cosmicforge) and the SSH key rsync uses.
+User=cosmicforge
+Group=cosmicforge
+WorkingDirectory=/opt/cosmicforge/cosmicforge-bot
+# Destination and encryption recipient; no credentials (mode 0640
+# root:cosmicforge). Without it the script fails with "no destination".
+EnvironmentFile=-/etc/cosmicforge/offsite-backup.env
+ExecStart=/usr/bin/python3 -u scripts/offsite_backup.py
+# Encryption and upload must not compete with the trading loop.
+Nice=10
+IOSchedulingClass=idle
+TimeoutStartSec=8h
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+SyslogIdentifier=cosmicforge-offsite-backup

@@ -1,0 +1,19 @@
+# Runs cosmicforge-healthcheck.service every two minutes.
+#
+# Install:  sudo cp deploy/systemd/cosmicforge-healthcheck.* /etc/systemd/system/
+#           sudo systemctl daemon-reload && sudo systemctl enable --now cosmicforge-healthcheck.timer
+# Inspect:  systemctl list-timers cosmicforge-healthcheck.timer
+# Planned maintenance (a stopped runtime is reported as unhealthy):
+#           sudo systemctl stop cosmicforge-healthcheck.timer    ...work...    sudo systemctl start cosmicforge-healthcheck.timer
+
+[Unit]
+Description=CosmicForge trading runtime health check, every 2 minutes
+
+[Timer]
+# Every even minute. A check that falls into the runtime's start-up waits for
+# it (After= in the service) rather than reporting an outage.
+OnCalendar=*:0/2
+AccuracySec=15s
+
+[Install]
+WantedBy=timers.target

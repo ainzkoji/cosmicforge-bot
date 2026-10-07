@@ -1,0 +1,81 @@
+# CosmicForge admin backend -- the READ-ONLY reporting API of the admin
+# console (dashboard, revenue, bot monitor, signals, events, news, ML and
+# profitability views). Admin logins and every admin action are served by the
+# user backend; this service only reads the shared database.
+#
+# Port 8100 is ADMIN_BACKEND_PORT in backends/admin-backend/app/core/config.py.
+#
+# Install:   cd /opt/cosmicforge/cosmicforge-bot
+#            # no requirements file of its own: fastapi, pydantic-settings and
+#            # python-jose come with the user backend's requirements
+#            sudo -u cosmicforge backends/venv/bin/pip install -r backends/user-backend/requirements.txt -c deploy/constraints.txt
+#            sudo -u cosmicforge cp backends/admin-backend/.env.example backends/admin-backend/.env
+#            sudo chmod 600 backends/admin-backend/.env     # then set DATABASE_URL and SECRET_KEY (see the guide)
+#            sudo cp deploy/systemd/cosmicforge-admin-backend.service 'deploy/systemd/cosmicforge-alert@.service' /etc/systemd/system/
+#            sudo systemctl daemon-reload && sudo systemctl enable --now cosmicforge-admin-backend
+# Verify:    curl -s http://127.0.0.1:8100/health      # "status":"ok"
+# Guide:     docs/VPS_TRADING_DEPLOYMENT.md, section 10
+
+[Unit]
+Description=CosmicForge admin backend (read-only admin reporting API)
+Documentation=file:///opt/cosmicforge/cosmicforge-bot/docs/VPS_TRADING_DEPLOYMENT.md
+Wants=network-online.target
+After=network-online.target
+# Keep restarting; see cosmicforge-trading.service for why OnFailure= alone
+# would then never fire and ExecStopPost= sends the alert.
+StartLimitIntervalSec=0
+OnFailure=cosmicforge-alert@%n.service
+
+[Service]
+Type=simple
+User=cosmicforge
+Group=cosmicforge
+WorkingDirectory=/opt/cosmicforge/cosmicforge-bot/backends/admin-backend
+
+Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONUTF8=1
+# Unlike the other two backends this one does not add the shared library to
+# its own import path.
+Environment=PYTHONPATH=/opt/cosmicforge/cosmicforge-bot/backends/shared
+# Configuration and secrets are read by the application from
+# backends/admin-backend/.env (mode 600, owned by the service user). This
+# OPTIONAL file overrides it; systemd syntax, mode 0640 root:cosmicforge.
+EnvironmentFile=-/etc/cosmicforge/admin-backend.env
+
+# Bound to loopback: reached only through the admin server block of
+# deploy/nginx/cosmicforge-app.conf. One worker: it serves a handful of
+# administrators and nothing here needs more.
+ExecStart=/opt/cosmicforge/cosmicforge-bot/backends/venv/bin/python -u -X utf8 -m uvicorn app.main:app \
+    --host 127.0.0.1 --port 8100 --workers 1 --proxy-headers --forwarded-allow-ips 127.0.0.1 \
+    --log-level info --timeout-graceful-shutdown 10
+
+Restart=on-failure
+RestartSec=5
+TimeoutStartSec=60
+
+KillSignal=SIGTERM
+KillMode=mixed
+TimeoutStopSec=30
+
+# Alert on every unclean end (see cosmicforge-trading.service).
+ExecStopPost=-+/bin/sh -c '[ "$$SERVICE_RESULT" = success ] || exec systemctl --no-block start cosmicforge-alert@%n.service'
+
+# Least privilege, as for the trading backend.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+UMask=0077
+LimitNOFILE=65536
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=cosmicforge-admin-backend
+
+[Install]
+WantedBy=multi-user.target

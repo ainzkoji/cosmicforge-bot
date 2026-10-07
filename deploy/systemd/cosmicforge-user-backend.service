@@ -1,0 +1,91 @@
+# CosmicForge user backend -- accounts, sessions, billing, KYC and the API the
+# web application talks to. It forwards trading requests to the trading
+# backend on 127.0.0.1:9000 and is itself reached only through nginx
+# (deploy/nginx/cosmicforge-app.conf).
+#
+# Install:   cd /opt/cosmicforge/cosmicforge-bot
+#            sudo -u cosmicforge backends/venv/bin/pip install -r backends/user-backend/requirements.txt -c deploy/constraints.txt
+#            sudo cp deploy/systemd/cosmicforge-user-backend.service 'deploy/systemd/cosmicforge-alert@.service' /etc/systemd/system/
+#            sudo systemctl daemon-reload && sudo systemctl enable --now cosmicforge-user-backend
+# Verify:    curl -s http://127.0.0.1:8000/health      # "status":"healthy"
+# Guide:     docs/VPS_TRADING_DEPLOYMENT.md, section 10
+#
+# ONE worker, deliberately. The login and KYC limits are stored in the
+# database and would be correct with several, but the application is not
+# otherwise safe to fork:
+#   * importing app.main runs the schema migrations and the first-admin
+#     bootstrap ("no admin yet -> create one"); every worker would run both at
+#     the same moment against the same SQLite file;
+#   * the broker-health and exchange-data caches live in the process, and a
+#     change invalidates only the cache of the worker that served it.
+# One async worker is ample for this API. Do not add --reload.
+
+[Unit]
+Description=CosmicForge user backend (accounts, billing, KYC, application API)
+Documentation=file:///opt/cosmicforge/cosmicforge-bot/docs/VPS_TRADING_DEPLOYMENT.md
+# It sends email, calls Stripe and proxies to the trading backend. It does NOT
+# require the trading service: the web application stays up (and says so)
+# while the runtime restarts.
+Wants=network-online.target
+After=network-online.target
+# Keep restarting; see cosmicforge-trading.service for why OnFailure= alone
+# would then never fire and ExecStopPost= sends the alert.
+StartLimitIntervalSec=0
+OnFailure=cosmicforge-alert@%n.service
+
+[Service]
+Type=simple
+User=cosmicforge
+Group=cosmicforge
+WorkingDirectory=/opt/cosmicforge/cosmicforge-bot/backends/user-backend
+
+Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONUTF8=1
+# Configuration and secrets are read by the application itself from
+# backends/user-backend/.env (mode 600, owned by the service user), exactly as
+# the trading backend reads its own. This OPTIONAL file is for values an
+# operator prefers to keep outside the checkout; a variable set here overrides
+# the same key in .env. systemd syntax: KEY=value, no "export", no comment
+# after a value. Mode 0640 root:cosmicforge.
+EnvironmentFile=-/etc/cosmicforge/user-backend.env
+
+# Bound to loopback: nginx is the only way in. --forwarded-allow-ips makes the
+# client address nginx passes (X-Forwarded-For) the request's address, which
+# the per-address login limits need; nobody but the local proxy is believed.
+ExecStart=/opt/cosmicforge/cosmicforge-bot/backends/venv/bin/python -u -X utf8 -m uvicorn app.main:app \
+    --host 127.0.0.1 --port 8000 --workers 1 --proxy-headers --forwarded-allow-ips 127.0.0.1 \
+    --log-level info --timeout-graceful-shutdown 20
+
+Restart=on-failure
+RestartSec=5
+TimeoutStartSec=120
+
+# Open event streams are closed after the 20 s grace period above.
+KillSignal=SIGTERM
+KillMode=mixed
+TimeoutStopSec=40
+
+# Alert on every unclean end (see cosmicforge-trading.service).
+ExecStopPost=-+/bin/sh -c '[ "$$SERVICE_RESULT" = success ] || exec systemctl --no-block start cosmicforge-alert@%n.service'
+
+# Least privilege, as for the trading backend. The repository (/opt) and the
+# data directory (/var/lib) stay writable for the service user: the encrypted
+# KYC documents are written to KYC_UPLOAD_DIR.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+UMask=0077
+LimitNOFILE=65536
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=cosmicforge-user-backend
+
+[Install]
+WantedBy=multi-user.target

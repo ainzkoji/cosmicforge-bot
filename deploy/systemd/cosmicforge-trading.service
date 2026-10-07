@@ -1,6 +1,6 @@
 # CosmicForge trading backend -- the ONE canonical CATI production runtime.
 #
-# Install:   sudo cp deploy/systemd/cosmicforge-trading.service /etc/systemd/system/
+# Install:   sudo cp deploy/systemd/cosmicforge-trading.service 'deploy/systemd/cosmicforge-alert@.service' /etc/systemd/system/
 #            sudo systemctl daemon-reload && sudo systemctl enable --now cosmicforge-trading
 # Guide:     docs/VPS_TRADING_DEPLOYMENT.md
 #
@@ -17,6 +17,13 @@ Wants=network-online.target
 After=network-online.target time-sync.target
 # Never give up restarting: an outage at boot must not leave the bot down.
 StartLimitIntervalSec=0
+# Tell a human (cosmicforge-alert@.service, scripts/notify_failure.py).
+# OnFailure= fires only when the unit ends in the "failed" state, and a
+# service with Restart= reaches that state only once its start limit is hit --
+# which the line above disables. So with this unit as shipped OnFailure= is a
+# backstop (it fires if Restart= or the start limit is ever changed); the
+# alert for each crash is sent by ExecStopPost= below.
+OnFailure=cosmicforge-alert@%n.service
 
 [Service]
 # READY=1 is sent by the runtime supervisor once this process HOLDS THE LEASE
@@ -54,6 +61,15 @@ WatchdogSec=180
 KillSignal=SIGTERM
 KillMode=mixed
 TimeoutStopSec=120
+
+# Alert on every unclean end, including the ones systemd repairs by itself:
+# crash, supervisor exit (status 70), watchdog kill, OOM, start or stop
+# timeout. $SERVICE_RESULT is "success" only for a clean stop (systemctl stop,
+# restart, deploy), which sends nothing. "+" runs this one fixed command as
+# root, because the service user may not start units; "-" means a missing
+# alert unit never affects the trading service. Repeats are limited by the
+# alert unit's cooldown (one message per 15 minutes).
+ExecStopPost=-+/bin/sh -c '[ "$$SERVICE_RESULT" = success ] || exec systemctl --no-block start cosmicforge-alert@%n.service'
 
 # Least privilege. The repository (/opt) and the data directory (/var/lib)
 # stay writable for the service user; the rest of the system does not.

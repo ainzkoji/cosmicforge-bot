@@ -1,0 +1,61 @@
+# Sends one failure alert for the unit named by the instance:
+#   cosmicforge-alert@cosmicforge-trading.service.service  ->  "cosmicforge-trading.service failed"
+#
+# Never enabled or started by hand in normal operation. Other units pull it in:
+#   OnFailure=cosmicforge-alert@%n.service         when a unit ends in the "failed" state
+#   ExecStopPost=... start cosmicforge-alert@%n     when an auto-restarting service dies
+#                                                   (see cosmicforge-trading.service for why)
+#
+# Install:  sudo cp 'deploy/systemd/cosmicforge-alert@.service' /etc/systemd/system/
+#           sudo install -d -m 0750 -o root -g cosmicforge /etc/cosmicforge
+#           sudo install -m 0640 -o root -g cosmicforge deploy/alerts.env.example /etc/cosmicforge/alerts.env
+#           sudoedit /etc/cosmicforge/alerts.env        # set at least one channel
+#           sudo systemctl daemon-reload
+# Test:     sudo systemctl start cosmicforge-alert@test.service     # a message must arrive
+#           journalctl -u 'cosmicforge-alert@*' -n 20 --no-pager    # [ALERT] ... delivered=...
+# Guide:    docs/VPS_TRADING_DEPLOYMENT.md, section 10
+
+[Unit]
+Description=CosmicForge failure alert for %i
+Documentation=file:///opt/cosmicforge/cosmicforge-bot/docs/VPS_TRADING_DEPLOYMENT.md
+# The channels are remote. An alert that cannot be sent is logged, not retried.
+Wants=network-online.target
+After=network-online.target
+# Deliberately no OnFailure= here: an alert about a failed alert would loop.
+
+[Service]
+Type=oneshot
+User=cosmicforge
+Group=cosmicforge
+# Lets the script read the failed unit's last journal lines. Nothing else in
+# the deployment runs with this group.
+SupplementaryGroups=systemd-journal
+WorkingDirectory=/opt/cosmicforge/cosmicforge-bot
+# Webhook URL, bot token, SMTP password (mode 0640 root:cosmicforge). The "-"
+# keeps the unit startable before the file exists; the script then logs that
+# no channel is configured.
+EnvironmentFile=-/etc/cosmicforge/alerts.env
+# The system interpreter, not the virtualenv: the script needs only the
+# standard library, and a broken virtualenv is one of the failures it reports.
+# --cooldown: a crash loop restarts every 10 s and the health check runs every
+# 2 minutes; without it one outage would page continuously. One alert per unit
+# per 15 minutes, remembered in the state directory below.
+ExecStart=/usr/bin/python3 -u scripts/notify_failure.py %i --cooldown 900
+StateDirectory=cosmicforge-alert
+StateDirectoryMode=0700
+TimeoutStartSec=120
+
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+UMask=0077
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=cosmicforge-alert

@@ -196,16 +196,28 @@ Never commit the `.env`, never paste the key into chat or a ticket, and keep an
 offline copy: without it the stored credentials are unrecoverable and the
 broker account must be reconnected.
 
-**`SECRET_KEY` and `ENGINE_API_KEY`** have insecure built-in defaults. Trading
-does not depend on them, but anything that can reach the API does. Before
-putting the API behind a public proxy (section 7), set both to long random
-values (`openssl rand -hex 32`) and set the same values in the user-backend.
+**`SECRET_KEY`** signs and verifies every API token, and it is the only thing
+that authenticates one service to another: the user-backend calls the trading
+backend with the signed-in user's own JWT, or — for the admin emergency
+controls — with a short-lived service JWT it signs with `SECRET_KEY`. The real
+requirements are therefore:
+
+* the trading backend listens on `127.0.0.1` only (the systemd unit binds it
+  there; port 9000 is never opened), and
+* the trading backend, the user-backend and the admin-backend share **one**
+  strong `SECRET_KEY` (`python -c "import secrets; print(secrets.token_urlsafe(48))"`).
+  In production each of them refuses to start with a missing, default or short one.
+
+**`ENGINE_API_KEY` / `X-ENGINE-KEY` and `SERVICE_AUTH_TOKEN` protect nothing.**
+The user-backend sends the `X-ENGINE-KEY` header, but no endpoint of the trading
+backend checks it, and nothing reads `SERVICE_AUTH_TOKEN`. Do not count either
+as a control when deciding what may reach port 9000.
 
 ## 3. Install and start the service
 
 ```bash
 cd /opt/cosmicforge/cosmicforge-bot
-sudo cp deploy/systemd/cosmicforge-trading.service /etc/systemd/system/
+sudo cp deploy/systemd/cosmicforge-trading.service 'deploy/systemd/cosmicforge-alert@.service' /etc/systemd/system/
 sudo cp deploy/systemd/cosmicforge-db-backup.service deploy/systemd/cosmicforge-db-backup.timer /etc/systemd/system/
 sudo mkdir -p /etc/systemd/journald.conf.d
 sudo cp deploy/systemd/journald-cosmicforge.conf /etc/systemd/journald.conf.d/cosmicforge.conf
@@ -220,6 +232,10 @@ sudo systemctl start cosmicforge-trading
 `systemctl start` returns when the runtime reports **ready**, and ready means
 "this process holds the database lease and the CATI production task is
 running" — not merely "the port is open". Allow up to a minute.
+
+The units send a failure alert through `cosmicforge-alert@.service`. Until its
+channels are configured (section 10.1) a failure is only written to the
+journal: do that next.
 
 ### 3.1 Verify
 
@@ -287,18 +303,20 @@ sudo -u cosmicforge sqlite3 -readonly /var/lib/cosmicforge/cosmicforge.db \
 
 The process being active is not the test; `vps_health_check.py` is. Exit status
 0 is healthy, 1 needs attention, 2 means the runtime cannot trade or cannot be
-reached. A minimal local check every five minutes that leaves a trace in the
-journal:
+reached. `cosmicforge-healthcheck.timer` runs it every two minutes and sends an
+alert when it reports 2 (section 10.2). It replaces the cron line earlier
+versions of this guide installed: `sudo rm -f /etc/cron.d/cosmicforge-health`.
 
 ```bash
-echo '*/5 * * * * cosmicforge /opt/cosmicforge/cosmicforge-bot/backends/venv/bin/python /opt/cosmicforge/cosmicforge-bot/scripts/vps_health_check.py --json | logger -t cosmicforge-health' \
-  | sudo tee /etc/cron.d/cosmicforge-health
-journalctl -t cosmicforge-health -n 5 --no-pager
+systemctl list-timers cosmicforge-healthcheck.timer
+journalctl -u cosmicforge-healthcheck -n 25 --no-pager
 ```
 
-For alerting from outside, have an uptime monitor fetch `/health?ready=1`
-through the proxy from an allowed address: it returns 503 unless the trading
-scheduler is healthy (plain `/health` answers 200 whenever the web server is up).
+A check that runs on the server cannot report that the server is gone. An
+uptime monitor **outside** it is still required; section 10.2 shows how to
+give one a readiness URL that answers 200 only while the trading scheduler is
+healthy (the backend's `/health?ready=1`; plain `/health` answers 200 whenever
+the web server is up).
 
 ## 5. Database: safety, backup, restore
 
@@ -343,11 +361,9 @@ self-contained file with a SHA-256 manifest, and the newest seven are retained.
 A non-zero exit (2 could not copy, 3 failed verification, 4 retention) shows in
 `systemctl status cosmicforge-db-backup`.
 
-Backups on the same disk do not survive the disk. Copy them off the server:
-
-```bash
-rsync -a --remove-source-files /var/backups/cosmicforge/ BACKUP_HOST:/srv/cosmicforge-backups/   # example
-```
+Backups on the same disk do not survive the disk, the server or the hosting
+account. `cosmicforge-offsite-backup.timer` encrypts the newest verified backup
+and uploads it every night: set it up as described in section 10.3.
 
 ### Restore
 
@@ -446,7 +462,8 @@ forward again.
 Trading needs no inbound connection. Install a proxy only if the user
 interface or the user-backend must reach this API from elsewhere.
 
-1. Set non-default `SECRET_KEY` and `ENGINE_API_KEY` (section 2.3) and restart.
+1. Confirm the three services share one strong `SECRET_KEY` (section 2.3). It
+   is what authenticates every request; `ENGINE_API_KEY` does not.
 2. Point a DNS name at the server, then follow the header of
    `deploy/nginx/cosmicforge.conf` (certificate first, then the site).
 3. `sudo ufw allow 'Nginx Full'`.
@@ -504,5 +521,289 @@ sudo -u cosmicforge sqlite3 -readonly /var/lib/cosmicforge/cosmicforge.db \
   symbol is a very large mover therefore produce no trade by design.
 * **Closing positions on shutdown.** A stop never flattens; protection is native
   to the exchange and survives the process.
-* **Off-site backups and external alerting.** The pieces are here (section 4 and
-  5); where they are sent is yours to choose.
+* **Where alerts and off-site backups are sent.** The units and scripts are
+  here (section 10), but they do nothing until you give them a channel, a
+  destination and an encryption key. The external uptime monitor is a service
+  you choose; nothing on this server can replace it.
+
+## 10. Alerting, off-site backups and the web application
+
+Sections 1 to 9 keep the trading runtime alive. This section makes sure a
+person finds out when that fails (10.1, 10.2), that the database survives the
+loss of the server (10.3), and adds the deployment of the rest of the product:
+the user backend, the admin backend and the two frontends (10.4). Do 10.1 to
+10.3 on every server that trades; 10.4 only where the web application runs.
+
+All commands are run from the checkout:
+
+```bash
+cd /opt/cosmicforge/cosmicforge-bot
+sudo install -d -m 0750 -o root -g cosmicforge /etc/cosmicforge     # settings files of this section
+```
+
+| File on the server | Template | Read by |
+| --- | --- | --- |
+| `/etc/cosmicforge/alerts.env` | `deploy/alerts.env.example` | `cosmicforge-alert@.service` |
+| `/etc/cosmicforge/offsite-backup.env` | `deploy/offsite-backup.env.example` | `cosmicforge-offsite-backup.service` |
+| `backends/user-backend/.env` | `backends/user-backend/.env.example` | the user backend |
+| `backends/admin-backend/.env` | `backends/admin-backend/.env.example` | the admin backend |
+
+The two files in `/etc/cosmicforge` are plain `KEY=value` lines (no `export`,
+no comment after a value), mode `0640 root:cosmicforge`.
+
+### 10.1 Failure alerts
+
+`scripts/notify_failure.py` sends a short message — unit, host, time (UTC),
+the unit's state and its last 20 journal lines — to every channel configured in
+`alerts.env`: a Slack- or Discord-compatible webhook, Telegram, and/or email.
+The message never contains a configuration value, and anything in the log
+lines that looks like a key, token or password is masked.
+
+```bash
+sudo install -m 0640 -o root -g cosmicforge deploy/alerts.env.example /etc/cosmicforge/alerts.env
+sudoedit /etc/cosmicforge/alerts.env                    # set at least one channel
+
+sudo cp 'deploy/systemd/cosmicforge-alert@.service' /etc/systemd/system/
+sudo cp deploy/systemd/cosmicforge-trading.service deploy/systemd/cosmicforge-db-backup.service /etc/systemd/system/
+sudo systemctl daemon-reload                            # no restart of the runtime is needed
+```
+
+Test it, in this order:
+
+```bash
+# 1. The channels themselves. Exit status 0 and a message on every channel;
+#    1 means a channel is missing or failed (the reason is printed, without secrets).
+sudo -u cosmicforge python3 scripts/notify_failure.py --test
+
+# 2. The unit systemd will start. A message "test failed" must arrive.
+sudo systemctl start cosmicforge-alert@test.service
+journalctl -u 'cosmicforge-alert@*' -n 10 --no-pager   # [ALERT] unit=test delivered=...
+
+# 3. The real path (optional; this is acceptance test B of section 8).
+sudo systemctl kill -s SIGKILL cosmicforge-trading      # an alert arrives within seconds; systemd restarts the runtime
+```
+
+How it is wired, and what to expect:
+
+* `OnFailure=cosmicforge-alert@%n.service` is set on every unit of this
+  deployment. It fires when a unit ends in the *failed* state — which is how
+  the backup, off-site and health-check jobs report.
+* A service that systemd restarts automatically never reaches that state, so
+  the three long-running services also start the alert from `ExecStopPost=`
+  whenever they end for any reason other than a clean stop: crash, supervisor
+  exit (status 70), watchdog kill, out-of-memory, start or stop timeout.
+  `systemctl stop` and `restart` send nothing.
+* One alert per unit per 15 minutes (`--cooldown 900` in the alert unit); a
+  crash loop does not send a message every ten seconds. To be told again at
+  once after fixing something: `sudo rm /var/lib/cosmicforge-alert/*.last-alert`.
+* If a channel is down the alert unit still succeeds and logs
+  `channel=... FAILED`. Nothing watches the alert path itself, which is one
+  more reason for the external monitor in 10.2.
+
+### 10.2 Health check every two minutes, and the monitor outside
+
+```bash
+sudo cp deploy/systemd/cosmicforge-healthcheck.service deploy/systemd/cosmicforge-healthcheck.timer /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now cosmicforge-healthcheck.timer
+sudo rm -f /etc/cron.d/cosmicforge-health               # the cron line of earlier versions of this guide
+
+sudo systemctl start cosmicforge-healthcheck; journalctl -u cosmicforge-healthcheck -n 25 --no-pager   # VERDICT HEALTHY
+```
+
+The timer runs `scripts/vps_health_check.py`. `UNHEALTHY` (exit status 2: the
+API does not answer, the lease is stale, the broker is not synced, no hourly
+decision, under 1 GB of disk, the LIVE gate is on) fails the unit and sends an
+alert containing the failing checks. `DEGRADED` (status 1) is recorded in the
+journal but does not page; remove `SuccessExitStatus=1` from the unit if you
+want it to. A stopped runtime is unhealthy, so pause the timer for planned
+work: `sudo systemctl stop cosmicforge-healthcheck.timer`, and `start` it after.
+
+**An external probe is still required.** Everything above runs on the server:
+if the server is powered off, loses its network, or cannot reach your alert
+channel, it says nothing. Use any uptime monitor that fetches a URL from
+outside and alerts on a non-200 answer or a timeout.
+
+By default nginx answers `/health` only to the server itself, and the health
+report must not be public. To give the monitor a readiness URL, uncomment the
+`location = /health/ready` and `location = /_cosmicforge_ready` blocks in
+`/etc/nginx/sites-available/cosmicforge.conf` (they follow the `/health` line
+of `deploy/nginx/cosmicforge.conf`), replace `203.0.113.10` with the monitor's
+published probe addresses, and reload:
+
+```bash
+sudo nginx -t && sudo systemctl reload nginx
+curl -s -o /dev/null -w '%{http_code}\n' https://trading.example.com/health/ready   # from elsewhere: 403
+```
+
+Point the monitor at `https://<host>/health/ready`. From its addresses the
+answer is 200 while the backend's `/health?ready=1` is 200, and 500 while the
+runtime is starting, stopping, failing or not answering; only the status code
+leaves the server. Confirm it once by stopping the runtime and watching the
+monitor turn red. (If only the web application's site is installed, put the
+same two blocks into the customer `server` block of `cosmicforge-app.conf` and
+write `cosmicforge_trading_backend` instead of `cosmicforge_backend`.)
+
+### 10.3 Off-site backups
+
+`scripts/offsite_backup.py` takes the newest backup that
+`cosmicforge-db-backup` produced and verified, checks it against its SHA-256
+manifest, encrypts it, uploads it and verifies the remote copy. It refuses to
+upload unencrypted: the database holds broker credentials and identity data.
+
+```bash
+sudo apt-get install -y age rclone                      # or: gnupg and/or rsync
+
+# Encryption key: generate it on ANOTHER machine and keep the private key
+# there (and in a second safe place). Only the public key comes to the server.
+#   age-keygen -o cosmicforge-backup.key     ->  "Public key: age1..."
+
+sudo install -m 0640 -o root -g cosmicforge deploy/offsite-backup.env.example /etc/cosmicforge/offsite-backup.env
+sudoedit /etc/cosmicforge/offsite-backup.env            # BACKUP_RCLONE_REMOTE and/or BACKUP_RSYNC_TARGET, BACKUP_ENCRYPTION_RECIPIENT
+sudo -H -u cosmicforge rclone config                    # define the remote named in BACKUP_RCLONE_REMOTE
+
+sudo -H -u cosmicforge python3 scripts/offsite_backup.py --dry-run     # selects and verifies, prints the commands, sends nothing
+
+sudo cp deploy/systemd/cosmicforge-offsite-backup.service deploy/systemd/cosmicforge-offsite-backup.timer /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now cosmicforge-offsite-backup.timer           # daily 04:30 UTC, one hour after the local backup
+sudo systemctl start cosmicforge-offsite-backup                        # run one now
+journalctl -u cosmicforge-offsite-backup -n 20 --no-pager              # [OFFSITE_BACKUP] OK destination=... verified=yes
+```
+
+Give the storage key write access to that one bucket and nothing else, and set
+retention there (lifecycle rule or object lock): the job never deletes a remote
+file, so a compromised server cannot erase the copies. A failed run — no fresh
+local backup, checksum mismatch, encryption, upload or verification — exits
+non-zero and sends an alert. The job covers the database only; if the user
+backend stores KYC documents (`KYC_UPLOAD_DIR`), copy that directory off the
+server as well, together with an offline copy of `KYC_ENCRYPTION_KEY`,
+`BROKER_SECRET_KEY` and `CREDENTIAL_KEY`, without which a restored database
+cannot be read.
+
+**Restore drill, every quarter.** A backup nobody has restored is a hope. On a
+machine that is *not* the server, with the private key:
+
+```bash
+rclone copy REMOTE:PATH/cosmicforge-YYYYMMDDTHHMMSSZ.db.gz.age .       # the newest one, and its manifest:
+rclone copy REMOTE:PATH/cosmicforge-YYYYMMDDTHHMMSSZ.db.gz.json .
+age --decrypt -i cosmicforge-backup.key -o drill.db.gz cosmicforge-*.db.gz.age     # gpg: gpg --output drill.db.gz --decrypt FILE.gpg
+sha256sum drill.db.gz; grep sha256 cosmicforge-*.db.gz.json            # the two values must be identical
+gunzip -c drill.db.gz > drill.db
+sqlite3 drill.db 'PRAGMA quick_check;'                                 # must print: ok
+sqlite3 drill.db "SELECT datetime(MAX(observed_at)/1000,'unixepoch') FROM cati_execution_evaluations;"   # close to the backup time
+shred -u drill.db drill.db.gz 2>/dev/null || rm -f drill.db drill.db.gz
+```
+
+These are the first steps of the real restore in section 5 (which continues
+with stopping the service and replacing the file). Write down the date, the
+backup's name and the result; if any step fails, treat it as an outage of the
+backup system, not as a failed exercise.
+
+### 10.4 The web application
+
+Three more pieces, all on this server, all reached only through nginx:
+
+| Unit / site | What | Listens on |
+| --- | --- | --- |
+| `cosmicforge-user-backend.service` | accounts, sessions, billing, KYC, the API of both frontends | `127.0.0.1:8000` |
+| `cosmicforge-admin-backend.service` | read-only reporting API of the admin console | `127.0.0.1:8100` |
+| `deploy/nginx/cosmicforge-app.conf` | the two built frontends and the proxy in front of both backends | 80, 443 |
+
+**Environment.** Each backend reads its own `.env` (mode 600, owned by
+`cosmicforge`); start from its `.env.example`, which already carries the
+production profile, and set at least:
+
+| Key | user-backend | admin-backend |
+| --- | --- | --- |
+| `DATABASE_URL` | `sqlite:////var/lib/cosmicforge/cosmicforge.db` — the same file as the trading backend | the same |
+| `SECRET_KEY` | the same value as the trading backend (section 2.3) | the same |
+| `CREDENTIAL_KEY`, `BROKER_SECRET_KEY`, `KYC_ENCRYPTION_KEY`, `KYC_URL_SECRET` | required; `BROKER_SECRET_KEY` equal to the trading backend's | — |
+| `ENGINE_URL` | `http://127.0.0.1:9000` | — |
+| `FRONTEND_URL` | `https://APP.DOMAIN` | — |
+| `SMTP_HOST`, `SMTP_USER`, `SMTP_PASSWORD` | required (verification and reset codes) | — |
+| `KYC_UPLOAD_DIR` | a private directory outside the checkout, e.g. `/var/lib/cosmicforge/kyc_uploads` | — |
+| `STRIPE_*`, `TELEGRAM_WEBHOOK_SECRET` | see `deploy/env.production.example`, sections D and G | — |
+
+The user backend writes its own tables (accounts, sessions, KYC, billing) to
+the same SQLite file as the trading runtime. That is supported on one host —
+WAL mode, a 10 s busy timeout, and a busy database is answered with HTTP 503 —
+and only there: never point a backend on another machine at this file.
+
+```bash
+sudo -u cosmicforge backends/venv/bin/pip install -r backends/user-backend/requirements.txt -c deploy/constraints.txt
+sudo -u cosmicforge install -m 600 backends/user-backend/.env.example  backends/user-backend/.env     # then edit
+sudo -u cosmicforge install -m 600 backends/admin-backend/.env.example backends/admin-backend/.env    # then edit
+sudo -u cosmicforge install -d -m 700 /var/lib/cosmicforge/kyc_uploads
+
+sudo cp deploy/systemd/cosmicforge-user-backend.service deploy/systemd/cosmicforge-admin-backend.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now cosmicforge-user-backend cosmicforge-admin-backend
+curl -s http://127.0.0.1:8000/health; echo              # "status":"healthy","database_reachable":true
+curl -s http://127.0.0.1:8100/health; echo              # "status":"ok"
+```
+
+Both run one uvicorn worker bound to loopback, with the same restrictions as
+the trading unit, and both alert on a crash (10.1). The user backend stays at
+one worker on purpose: the reasons are in the unit file.
+
+**Frontends and nginx.** The header of `deploy/nginx/cosmicforge-app.conf` has
+the exact build and install commands. In short: build both frontends with the
+public addresses compiled in, copy `dist/` to `/var/www/cosmicforge/{app,admin}`
+(nginx is not given access to the checkout), obtain the certificate, enable
+the site. What the file does:
+
+* serves each frontend as a single-page application; the customer build's
+  second entry (`cati.html`) is served as a file;
+* proxies `/api/`, `/kyc/` and `/public/` to the user backend; on the admin
+  host additionally `/admin-api/` to the admin backend (both backends answer
+  under `/api/admin/`, so the console is built with
+  `VITE_ADMIN_API_BASE=https://ADMIN.DOMAIN/admin-api`);
+* does not publish the admin API on the customer host, so that the
+  `allow <office-ip>; deny all;` lines in the admin `server` block — uncomment
+  them — really restrict it;
+* keeps the event stream (`/api/v1/events/stream`) unbuffered and open for an
+  hour, and out of the access log (its token is in the query string);
+* allows 11 MB request bodies on the KYC upload path only (the backend enforces
+  10 MB), 2 MB elsewhere;
+* limits credential endpoints to 30 requests a minute per address in addition
+  to the backend's own limits, and the API to 20 a second;
+* sends HSTS, `nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy` and a
+  Content-Security-Policy whose few non-`'self'` entries are each explained in
+  the file.
+
+Check it from outside:
+
+```bash
+curl -sI https://APP.DOMAIN/ | grep -iE 'strict-transport|content-security|x-frame'    # all three present
+curl -s  https://APP.DOMAIN/api/v1/auth/me; echo                                       # 401 JSON from the user backend
+curl -s -o /dev/null -w '%{http_code}\n' https://APP.DOMAIN/api/admin/users            # 404: admin API is not on this host
+curl -s -o /dev/null -w '%{http_code}\n' https://APP.DOMAIN/dashboard/bots             # 200: client-side route
+curl -s -o /dev/null -w '%{http_code}\n' https://ADMIN.DOMAIN/                         # 403 from an address not listed, once allow/deny is active
+```
+
+Then sign in through the browser and watch its console once: a
+Content-Security-Policy violation there means the application loads something
+the policy does not list.
+
+To update the frontends, rebuild and repeat the two `rsync` commands. To update
+the backends, follow section 6.1 and restart `cosmicforge-user-backend` and
+`cosmicforge-admin-backend` as well.
+
+### 10.5 What pages you
+
+| What happened | Noticed by | Alert names | Within |
+| --- | --- | --- | --- |
+| Trading process crashed, was killed by the watchdog or the kernel, exited with status 70, or timed out starting or stopping | systemd (`ExecStopPost=`) | `cosmicforge-trading.service` | seconds |
+| Runtime is up but cannot trade: API not answering, lease stale, broker not synced, no hourly decision, disk nearly full, LIVE gate on | `cosmicforge-healthcheck.timer` | `cosmicforge-healthcheck.service` | 2 minutes |
+| User backend or admin backend crashed | systemd (`ExecStopPost=`) | `cosmicforge-user-backend.service` / `cosmicforge-admin-backend.service` | seconds |
+| Local database backup failed | `OnFailure=` | `cosmicforge-db-backup.service` | at the 03:30 UTC run |
+| Off-site copy failed, or there was no fresh local backup to send | `OnFailure=` | `cosmicforge-offsite-backup.service` | at the 04:30 UTC run |
+| Server down, network gone, nginx down, alert channel unreachable from the server | the **external** monitor only | — | the monitor's interval |
+
+Not paged: `DEGRADED` health (kill switch engaged, disk getting low, start-up),
+a clean `systemctl stop`, a repeat of the same unit's alert within 15 minutes,
+and a venue outage shorter than the health check's limits (`broker_sync` fails
+after 180 s without a sync). Look at
+`journalctl -u 'cosmicforge-alert@*' --since '7 days ago'` now and then: a
+`FAILED` there is an alert that reached nobody.
