@@ -91,5 +91,5 @@ server that is down cannot report itself.
   reserved holdout say otherwise.
 - Terms of Service and Privacy Policy are placeholders that need a lawyer.
 - The database is still one SQLite file and the engine one serial loop.
-- Tests listed in `.github/known_test_failures.txt` were failing before these
+- Tests listed in `.github/known-test-failures.list` were failing before these
   changes and run as expected failures. Fix or delete them and remove the lines.

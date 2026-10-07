@@ -1,7 +1,7 @@
 """pytest plugin: run known pre-existing failures as non-strict xfail.
 
 Loaded in CI with ``-p ci_quarantine``. The list lives in
-``.github/known_test_failures.txt`` (junit ``classname::name`` per line).
+``.github/known-test-failures.list`` (junit ``classname::name`` per line).
 A listed test that fails is reported as xfailed; one that now passes is
 reported as xpassed (remove its line). Anything not listed fails CI as usual.
 """
@@ -11,7 +11,7 @@ from pathlib import Path
 
 import pytest
 
-_LIST = Path(__file__).resolve().parents[1] / "known_test_failures.txt"
+_LIST = Path(__file__).resolve().parents[1] / "known-test-failures.list"
 
 
 def _known() -> set[str]:
@@ -34,4 +34,4 @@ def pytest_collection_modifyitems(config, items):
         return
     for item in items:
         if _junit_id(item.nodeid) in known:
-            item.add_marker(pytest.mark.xfail(reason="known pre-existing failure (see .github/known_test_failures.txt)", strict=False))
+            item.add_marker(pytest.mark.xfail(reason="known pre-existing failure (see .github/known-test-failures.list)", strict=False))
