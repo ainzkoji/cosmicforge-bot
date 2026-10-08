@@ -206,3 +206,32 @@ def test_ownership_and_admin_authority_on_the_handlers(measured, monkeypatch):
     payload = json.dumps(cati_account.bot_status(bot.id, user=owner, service=service, _perm="x"), default=str)
     for secret in ("api_key", "api_secret", "mock_ci_key", "hashed_password"):
         assert secret not in payload
+
+
+def test_a_fill_recorded_outside_the_cycle_still_gets_its_equity_snapshot(measured, monkeypatch):
+    """Seen on the connected demo account: the certification close was reconciled
+    outside the runtime cycle, so the exit fill never reached the cycle's history
+    and got no snapshot. The wallet moving now makes the recorder look it up."""
+    import time as _time
+    m = measured
+    waiting_for_signal(monkeypatch)
+    account_recorder._last_wallet.clear()
+    m.cycle("first")
+    account = m.h.account["id"]
+    before = [r for r in account_recorder.series(m.h.db, account) if r["reason"] == "FILL"]
+    now = int(_time.time() * 1000)
+    with m.h.db.connect() as c:
+        c.execute("INSERT INTO cati_production_fills VALUES(?,?,?,?,?)", (account, "old-1", "o-old", "ADAUSDT", json.dumps({"id": "old-1", "time": now - 86_400_000})))
+        c.execute("INSERT INTO cati_production_fills VALUES(?,?,?,?,?)", (account, "new-1", "o-new", "ADAUSDT", json.dumps({"id": "new-1", "time": now})))
+    m.cycle("wallet_unchanged")                                             # nothing moved: the table is not consulted
+    assert [r for r in account_recorder.series(m.h.db, account) if r["reason"] == "FILL"] == before
+    real = account_recorder.equity_from_document                              # the exchange now reports a moved wallet
+    monkeypatch.setattr(account_recorder, "equity_from_document",
+                        lambda document: {**real(document), "equity": 4990.0, "wallet": 4990.0, "available": 4990.0})
+    m.cycle("wallet_moved")
+    m.cycle("again")
+    after = [r for r in account_recorder.series(m.h.db, account) if r["reason"] == "FILL"]
+    assert len(after) == len(before) + 1 and after[-1]["equity"] == 4990.0   # the recent fill once; the day-old one never
+    with m.h.db.connect() as c:
+        keys = [r[0] for r in c.execute("SELECT dedupe_key FROM account_equity_snapshots WHERE reason='FILL'")]
+    assert any(k.endswith(":new-1") for k in keys) and not any(k.endswith(":old-1") for k in keys)

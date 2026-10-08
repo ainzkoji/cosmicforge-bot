@@ -21,6 +21,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import sqlite3
 import time
 from typing import Any, Dict, Iterable, List, Optional
 
@@ -106,10 +107,23 @@ def record_cycle(db, account: Dict[str, Any], document: Dict[str, Any], now_ms: 
         written["hourly"] = _insert(db, user_id=account.get("user_id"), account_id=account["id"], bot_instance_id=bot_instance_id,
                                     observed_at=observed, figures=figures, source="ENGINE_CYCLE", freshness_ms=freshness,
                                     reason="HOURLY", dedupe_key=f"hourly:{account['id']}:{hour}")
-        for fill in fills:
+        recorded = list(fills)
+        # A fill recorded outside this cycle's own history (an operator close, the
+        # certification harness, a close finished just before a restart) is in the
+        # fills table but not in ``fills``. The wallet moving is the cheap signal
+        # that one may exist: only then is the table consulted, so an idle cycle
+        # costs nothing extra. Seen on the connected demo account: the entry got
+        # its snapshot, the exit did not.
+        wallet = figures.get("wallet")
+        if _last_wallet.get(account["id"], object()) != wallet:
+            recorded += _recent_fills(db, account["id"])
+            _last_wallet[account["id"]] = wallet
+        seen = set()
+        for fill in recorded:
             fill_id = fill.get("id")
-            if fill_id is None:
+            if fill_id is None or (fill.get("symbol"), str(fill_id)) in seen:
                 continue
+            seen.add((fill.get("symbol"), str(fill_id)))
             if _insert(db, user_id=account.get("user_id"), account_id=account["id"], bot_instance_id=bot_instance_id,
                        observed_at=observed, figures=figures, source="ENGINE_CYCLE", freshness_ms=freshness, reason="FILL",
                        dedupe_key=f"fill:{account['id']}:{fill.get('symbol')}:{fill_id}"):
@@ -117,6 +131,37 @@ def record_cycle(db, account: Dict[str, Any], document: Dict[str, Any], now_ms: 
     except Exception:  # the recorder must never interrupt the cycle
         logger.exception("[ACCOUNT_RECORDER] equity snapshot could not be recorded for account %s", account.get("id"))
     return written
+
+
+#: wallet balance at the last recorded cycle, per account (process memory only)
+_last_wallet: Dict[str, Any] = {}
+RECENT_FILLS = 20
+#: a fill may be recorded a little before the cycle whose snapshot precedes it
+FILL_LOOKBACK_MS = 60_000
+
+
+def _recent_fills(db, account_id: str) -> List[Dict[str, Any]]:
+    """Recorded fills of the account that happened since its last snapshot and
+    have none of their own. An older fill is never given today's equity."""
+    try:
+        with db.connect() as c:
+            last = c.execute(f"SELECT MAX(observed_at) FROM {TABLE} WHERE broker_account_id=?", (account_id,)).fetchone()[0]
+            rows = c.execute(
+                "SELECT f.trade_id, f.symbol, f.document FROM cati_production_fills f WHERE f.account_id=? AND NOT EXISTS ("
+                f"SELECT 1 FROM {TABLE} s WHERE s.dedupe_key = 'fill:' || f.account_id || ':' || f.symbol || ':' || f.trade_id) "
+                "ORDER BY f.rowid DESC LIMIT ?", (account_id, RECENT_FILLS)).fetchall()
+    except sqlite3.OperationalError:
+        return []                                             # no fills table yet: nothing to record
+    since = (int(last) if last is not None else int(time.time() * 1000) - HOUR_MS) - FILL_LOOKBACK_MS
+    out = []
+    for trade_id, symbol, document in rows:
+        try:
+            filled_at = int(json.loads(document).get("time") or 0)
+        except Exception:
+            filled_at = 0
+        if filled_at >= since:
+            out.append({"id": trade_id, "symbol": symbol})
+    return out
 
 
 def record_deployment(db, *, user_id: str, account_id: str, bot_instance_id: str, figures: Dict[str, Any], now_ms: int) -> bool:
