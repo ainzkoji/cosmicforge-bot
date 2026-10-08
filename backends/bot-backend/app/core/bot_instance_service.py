@@ -104,7 +104,19 @@ class BotInstanceService:
         # Section F — product safety: user-capital readiness gate.
         # Live/user-capital activation must be explicitly approved and backed by
         # proven paper-mode performance (see app.product_safety.readiness_gate).
-        if str(request.mode).lower() == "live":
+        # Step 1.3: the gate protects USER CAPITAL, i.e. a LIVE broker account.
+        # A broker-executed bot on a DEMO account ("live" mode = real broker
+        # orders, demo money) is never blocked by it; the account's environment
+        # is read from the broker account row, never from the request.
+        with self.db.connect() as conn:
+            account_row = conn.execute("SELECT environment FROM broker_accounts WHERE id = ?",
+                                       (request.broker_account_id,)).fetchone()
+        try:
+            from shared_lib.broker.environment import normalize_environment
+            account_env = normalize_environment((account_row["environment"] if account_row else None) or "live").value
+        except ValueError:
+            account_env = "live"
+        if str(request.mode).lower() == "live" and account_env == "live":
             from app.product_safety.readiness_gate import assert_user_capital_activation_allowed, UserCapitalReadinessError
             try:
                 assert_user_capital_activation_allowed(db=self.db, bot_instance_id=instance_id)

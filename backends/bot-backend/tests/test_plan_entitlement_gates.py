@@ -66,15 +66,17 @@ def give_plan(db: DB, user_id: str, plan_id: str = "plan_pro", *, status: str = 
 
 
 def add_bot_row(db: DB, bot_id: str, user_id: str, *, mode: str = "paper", status: str = "active") -> None:
+    # One occupying bot per broker account is a database invariant (Step 1.2),
+    # so every bot of these plan-limit tests sits on its own account.
     now = datetime.now(timezone.utc).isoformat()
     with db.connect() as conn:
         conn.execute(
             """
             INSERT INTO bot_instances (id, user_id, broker_account_id, market_type, strategy_id, mode, status,
                                        created_at, updated_at)
-            VALUES (?, ?, 'acc-1', 'CRYPTO', 'cati', ?, ?, ?, ?)
+            VALUES (?, ?, ?, 'CRYPTO', 'cati', ?, ?, ?, ?)
             """,
-            (bot_id, user_id, mode, status, now, now),
+            (bot_id, user_id, f"acc-{bot_id}", mode, status, now, now),
         )
 
 

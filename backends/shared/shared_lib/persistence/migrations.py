@@ -1,8 +1,13 @@
+import logging
+
 from shared_lib.persistence.db import DB
 from shared_lib.persistence.event_news_mode import ensure_event_news_mode_schema
 from shared_lib.persistence.signals import ensure_signals_schema
 from shared_lib.persistence.tradingview import ensure_tradingview_schema
 
+
+
+logger = logging.getLogger(__name__)
 
 def _add_column_if_missing(conn, table: str, col: str, col_type: str):
     rows = conn.execute(f"PRAGMA table_info({table})").fetchall()
@@ -851,6 +856,26 @@ def migrate(db_path: str | DB = None):
         _add_column_if_missing(conn, "bot_instances", "environment", "TEXT")
         _add_column_if_missing(conn, "bot_instances", "stopped_reason", "TEXT")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_bot_instances_deploy_request ON bot_instances(deploy_request_id)")
+        # Consent at deployment (identity + version), referenced from the bot row.
+        conn.execute("""CREATE TABLE IF NOT EXISTS deployment_consents (
+            consent_id TEXT PRIMARY KEY, user_id TEXT NOT NULL, bot_instance_id TEXT NOT NULL,
+            broker_account_id TEXT NOT NULL, risk_level TEXT NOT NULL, risk_profile_version TEXT NOT NULL,
+            consent_version TEXT NOT NULL, acknowledged_at TEXT NOT NULL, request_id TEXT NOT NULL,
+            preview_json TEXT NOT NULL)""")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_deployment_consents_bot ON deployment_consents(bot_instance_id)")
+        # One occupying (active or paused) bot per broker account, as a database
+        # invariant. A populated legacy database may already violate it: then
+        # the index is not created (the deploy service still serialises on the
+        # write lock) and the violation is logged for the operator to resolve.
+        duplicates = conn.execute(
+            "SELECT broker_account_id, COUNT(*) FROM bot_instances WHERE status IN ('active','paused') "
+            "GROUP BY broker_account_id HAVING COUNT(*) > 1").fetchall()
+        if duplicates:
+            logger.warning("bot_instances: %d broker account(s) carry more than one active/paused bot; "
+                           "ux_bot_instances_one_occupying_per_account not created", len(duplicates))
+        else:
+            conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS ux_bot_instances_one_occupying_per_account "
+                         "ON bot_instances(broker_account_id) WHERE status IN ('active','paused')")
 
         # 23b) Bot Daily/Symbol State (Multi-user persistence)
         conn.execute("""

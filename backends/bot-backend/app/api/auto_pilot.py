@@ -121,6 +121,61 @@ class AutoPilotStatus(BaseModel):
 _MIN_TRADE_AMOUNT = 50.0
 
 
+# ── Step 1.2 / 1.3: preview and deploy on the shared versioned contract ─────
+from shared_lib.deployment.contract import DeploymentRequest as StepOneDeploymentRequest  # noqa: E402
+
+
+@router.post("/preview")
+def preview_deployment(
+    body: StepOneDeploymentRequest,
+    user: dict = Depends(get_current_active_user),
+    service = Depends(get_bot_instance_service),
+    _perm: str = Depends(require_permission("bot:read")),
+):
+    """What deploying this budget at this risk level means in money, and what
+    blocks it. Reads only the server's own records (and, when the engine has
+    no fresh snapshot of the account, one authoritative exchange read). The
+    client's numbers are never trusted."""
+    from app.core.deployment_service import preview
+    return preview(service.db, user["id"], body)
+
+
+@router.post("/deployments", status_code=201)
+def create_deployment(
+    body: StepOneDeploymentRequest,
+    user: dict = Depends(get_current_active_user),
+    service = Depends(get_bot_instance_service),
+    _perm: str = Depends(require_permission("strategy:execute")),
+):
+    """Deploy on the Step 1 contract: revalidates everything the preview showed
+    against the current account state, enforces one occupying bot per account
+    under the write lock (409 ACCOUNT_ALREADY_HAS_BOT), records the consent and
+    the request identity, and derives the environment from the broker account.
+    A repeated request with the same request_id returns the same deployment
+    (200) instead of a second bot."""
+    from fastapi.responses import JSONResponse
+    from app.core.deployment_service import DeploymentRefused, deploy
+    try:
+        result = deploy(service.db, user["id"], body, service=service)
+    except DeploymentRefused as refused:
+        raise HTTPException(status_code=refused.status, detail=refused.body)
+    if result.get("idempotent_replay"):
+        return JSONResponse(status_code=200, content=result)
+    return result
+
+
+@router.get("/bots")
+def list_bots(
+    user: dict = Depends(get_current_active_user),
+    service = Depends(get_bot_instance_service),
+    _perm: str = Depends(require_permission("bot:read")),
+):
+    """Every bot of the user in the Step 1 payload (exchange, environment, risk
+    level, budget, money, status, stopped_reason)."""
+    from app.core.deployment_service import bot_payload
+    return [bot_payload(service.db, bot) for bot in service.get_user_bot_instances(user["id"]) if bot.strategy_id == "cati"]
+
+
 @router.post("/deploy", response_model=AutoPilotDeploymentResponse)
 def deploy_auto_pilot(
     request: DeployAutoPilotRequest,
