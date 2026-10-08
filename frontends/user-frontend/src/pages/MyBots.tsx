@@ -58,6 +58,15 @@ export default function MyBots() {
         ? bots.find((b) => b.id === liveStartId) ?? null
         : null;
 
+    // The engine's own view of the CATI deployments (status, environment, budget).
+    // A failure here leaves the rows without it; it is never guessed.
+    const { data: catiBots = [] } = useQuery({
+        queryKey: ['autoPilotBots'],
+        queryFn: api.getAutoPilotBots,
+        refetchInterval: 10000,
+    });
+    const catiById = new Map(catiBots.map((b) => [b.id, b]));
+
     // Fetch Brokers (for badges)
     const { data: brokersData } = useQuery({
         queryKey: ["broker-accounts"],
@@ -328,6 +337,7 @@ export default function MyBots() {
                         <BotInstanceRow
                             key={bot.id}
                             bot={bot}
+                            cati={catiById.get(bot.id)}
                             brokers={brokerAccounts}
                             onStart={handleStart}
                             onPause={(id) => pauseMutation.mutate(id)}

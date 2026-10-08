@@ -8,6 +8,8 @@ import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { CopyableId } from '../UI/CopyableId';
 import { isPaperMode, tradingModeLabel } from '@/utils/tradingMode';
+import { botStatusView, formatUsdt } from '@/lib/deployment';
+import type { CatiBot } from '@/lib/deployment';
 
 interface BotInstanceRowProps {
     bot: BotInstance;
@@ -18,9 +20,11 @@ interface BotInstanceRowProps {
     onViewLogs: (id: string) => void;
     isProcessing?: boolean;
     brokers?: any[]; // List of broker accounts for lookup
+    /** The engine's own view of this bot (status, environment, budget), when it is a CATI deployment. */
+    cati?: CatiBot;
 }
 
-export const BotInstanceRow = ({ bot, onStart, onPause, onStop, onDelete, onViewLogs, isProcessing = false, brokers = [] }: BotInstanceRowProps) => {
+export const BotInstanceRow = ({ bot, onStart, onPause, onStop, onDelete, onViewLogs, isProcessing = false, brokers = [], cati }: BotInstanceRowProps) => {
     useState(false);
     const engineStatus = useQuery({
         queryKey: ['botEngineStatus', bot.id],
@@ -51,12 +55,28 @@ export const BotInstanceRow = ({ bot, onStart, onPause, onStop, onDelete, onView
                     <div className="flex flex-col gap-1">
                         <StatusBadge status={bot.status} />
                         <BotHealthBadge status={bot.bot_health_status} />
+                        {cati && (
+                            <span
+                                title={botStatusView(cati.status).description}
+                                className="text-[10px] font-semibold uppercase tracking-wide text-gray-400 border border-white/10 rounded-full px-2 py-0.5 text-center"
+                            >
+                                Engine: {botStatusView(cati.status).label}
+                            </span>
+                        )}
                     </div>
 
                     <div className="min-w-0">
                         <Link to={`/dashboard/bots/${bot.id}`} className="font-bold text-lg hover:text-primary transition-colors flex items-center gap-2 truncate">
                             {bot.strategy_id === 'cati' ? 'CATI' : `CATI (historical strategy: ${bot.strategy_id})`}
                         </Link>
+                        {cati && (
+                            <div className="text-xs text-gray-400 mt-1">
+                                {cati.environment ?? "environment unknown"} · {cati.risk_level}
+                                {cati.budget?.type === "fixed_amount" ? ` · budget ${formatUsdt(cati.budget.value)}` : ""}
+                                {cati.budget?.type === "percent_balance" ? ` · budget ${cati.budget.value} % of balance` : ""}
+                                {cati.stopped_reason ? ` · ${cati.stopped_reason}` : ""}
+                            </div>
+                        )}
                         <div className="flex items-center gap-3 mt-1.5 mb-1">
                             <CopyableId id={bot.id} label="Bot ID" />
                             <CopyableId id={bot.broker_account_id} label="Broker ID" maxLength={8} />

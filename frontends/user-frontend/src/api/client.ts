@@ -3,6 +3,8 @@
 // ... (Rest of the client.ts content, rewritten to include new methods)
 
 import axios from "axios";
+import { DeploymentRefusedError, parseRefusal } from "../lib/deployment";
+import type { CatiBot, DeploymentPreview, DeploymentRequestBody } from "../lib/deployment";
 import { AUTH_UNAUTHORIZED_EVENT, apiFetch, clearSession, getAccessToken, isRefreshableUrl, refreshAccessToken } from "./http";
 
 const API_BASE = import.meta.env.VITE_API_BASE || "http://localhost:8000";
@@ -709,6 +711,16 @@ function errorDetail(detail: unknown, fallback: string): string {
     if (Array.isArray(detail)) return detail.map((d: any) => d?.msg ?? JSON.stringify(d)).join('; ');
     const d = detail as Record<string, unknown>;
     return String(d.message ?? d.reason ?? JSON.stringify(detail));
+}
+
+/** GET on the CATI read model; a failure is an error, never an empty success. */
+async function catiGet(url: string): Promise<any> {
+    const response = await apiFetch(url, { headers: { 'Authorization': `Bearer ${localStorage.getItem('access_token')}` } });
+    if (!response.ok) {
+        const error = await response.json().catch(() => ({ detail: null }));
+        throw new Error(errorDetail(error.detail, `The engine did not answer (HTTP ${response.status})`));
+    }
+    return response.json();
 }
 
 /** Why a 2FA setup/verify/disable call failed, so the UI can say what to do next. */
@@ -1930,6 +1942,60 @@ export const api = {
     },
 
 
+
+    // --- Step 1 deployment contract (preview and deploy share one schema) ---
+    /** What the backend will enforce for this request: money view, blockers, consent text. */
+    previewDeployment: async (body: DeploymentRequestBody, signal?: AbortSignal): Promise<DeploymentPreview> => {
+        const response = await apiFetch(`${API_BASE}/api/v1/auto-pilot/preview`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('access_token')}` },
+            body: JSON.stringify(body),
+            signal,
+        });
+        const payload = await response.json().catch(() => null);
+        if (!response.ok) {
+            const refusal = parseRefusal(payload);
+            throw new DeploymentRefusedError(refusal.message, response.status, refusal.blockers, refusal.preview);
+        }
+        return payload as DeploymentPreview;
+    },
+
+    /** Deploy on the Step 1 contract. The same request_id always yields the same bot. */
+    deployBot: async (body: DeploymentRequestBody): Promise<{ bot: CatiBot; idempotent_replay: boolean }> => {
+        const response = await apiFetch(`${API_BASE}/api/v1/auto-pilot/deploy`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('access_token')}` },
+            body: JSON.stringify(body),
+        });
+        const payload = await response.json().catch(() => null);
+        if (!response.ok) {
+            const refusal = parseRefusal(payload);
+            throw new DeploymentRefusedError(refusal.message, response.status, refusal.blockers, refusal.preview);
+        }
+        return payload;
+    },
+
+    getAutoPilotBots: async (): Promise<CatiBot[]> => {
+        const response = await apiFetch(`${API_BASE}/api/v1/auto-pilot/bots`, {
+            headers: { 'Authorization': `Bearer ${localStorage.getItem('access_token')}` }
+        });
+        if (!response.ok) {
+            const error = await response.json().catch(() => ({ detail: 'Failed to load bots' }));
+            throw new Error(errorDetail(error.detail, 'Failed to load bots'));
+        }
+        return response.json();
+    },
+
+    // --- CATI account read model (the engine's own persisted records) ---
+    getCatiBotStatus: async (botId: string): Promise<any> => catiGet(`${API_BASE}/api/v1/cati/bots/${botId}/status`),
+    getCatiBotPositions: async (botId: string): Promise<{ bot_id: string; positions: any[] }> =>
+        catiGet(`${API_BASE}/api/v1/cati/bots/${botId}/positions`),
+    getCatiBotTrades: async (botId: string, page = 1, pageSize = 20): Promise<any> =>
+        catiGet(`${API_BASE}/api/v1/cati/bots/${botId}/trades?page=${page}&page_size=${pageSize}`),
+    getCatiBotSummary: async (botId: string): Promise<any> => catiGet(`${API_BASE}/api/v1/cati/bots/${botId}/summary`),
+    getCatiBotEquity: async (botId: string): Promise<any> => catiGet(`${API_BASE}/api/v1/cati/bots/${botId}/equity`),
+    getCatiBotEvents: async (botId: string, limit = 30): Promise<{ bot_id: string; events: any[] }> =>
+        catiGet(`${API_BASE}/api/v1/cati/bots/${botId}/events?limit=${limit}`),
 
     getBotEngineStatus: async (instanceId: string): Promise<{
         engine: string; cati_runtime_active: boolean; cati_entry_authority: string;

@@ -2,12 +2,22 @@ import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import { Zap, Shield, TrendingUp, Activity, Check, AlertTriangle, Play } from "lucide-react";
 import { api } from "../api/client";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
+import { CatiDeployment } from "@/components/AutoPilot/CatiDeployment";
+import { decimalText, riskLevelFromAppetite } from "@/lib/deployment";
 import { LiveTradingConfirmDialog } from "@/components/UI/LiveTradingConfirmDialog";
 import { isPaperMode } from "@/utils/tradingMode";
 
 export default function AutoPilot() {
     const navigate = useNavigate();
+    // Onboarding hands over a suggested risk level / budget / account in the URL.
+    // They only pre-fill the form: nothing is deployed until the user confirms.
+    const [searchParams] = useSearchParams();
+    const prefill = {
+        riskLevel: searchParams.get("risk") ? riskLevelFromAppetite(searchParams.get("risk")) : undefined,
+        budgetValue: decimalText(searchParams.get("budget") ?? "") ?? undefined,
+        brokerAccountId: searchParams.get("account") ?? undefined,
+    };
     const [loading, setLoading] = useState(false);
     const [brokers, setBrokers] = useState<any[]>([]);
 
@@ -241,37 +251,41 @@ export default function AutoPilot() {
                     Auto Pilot
                 </h1>
                 <p className="text-gray-400 max-w-2xl">
-                    Configure CATI, the sole trading engine. CATI observes markets while new entries remain blocked until governance permits demo or live execution. Auto Trading and Auto Capital Routing are independent controls.
+                    Deploy CATI, the trading engine, on a connected exchange account. Choose a risk level and a budget; the engine sizes every position from them and places its own protective stop on the exchange.
                 </p>
             </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                {/* Left Column: Configuration */}
-                <div className="lg:col-span-2 space-y-8">
+            {/* 0. Market Selection */}
+            <section className="bg-[#0B0E14] border border-white/5 rounded-2xl p-6 space-y-4">
+                <h2 className="text-lg font-semibold text-white flex items-center gap-2">
+                    <span className="w-6 h-6 rounded-full bg-white/5 flex items-center justify-center text-xs font-bold text-gray-400">1</span>
+                    Select Market
+                </h2>
+                <div className="grid grid-cols-2 gap-4">
+                    <div
+                        onClick={() => setMarketType("crypto")}
+                        className={`cursor-pointer p-4 rounded-xl border transition-all text-center ${marketType === "crypto" ? "bg-blue-500/10 border-blue-500 text-white" : "bg-[#0F1218] border-white/5 text-gray-400 hover:border-white/10"}`}
+                    >
+                        <div className="font-bold">Crypto</div>
+                        <div className="text-xs mt-1 opacity-70">Binance, Bybit, etc.</div>
+                    </div>
+                    <div
+                        onClick={() => setMarketType("forex")}
+                        className={`cursor-pointer p-4 rounded-xl border transition-all text-center ${marketType === "forex" ? "bg-blue-500/10 border-blue-500 text-white" : "bg-[#0F1218] border-white/5 text-gray-400 hover:border-white/10"}`}
+                    >
+                        <div className="font-bold">Forex & CFDs</div>
+                        <div className="text-xs mt-1 opacity-70">OANDA, IBKR, etc.</div>
+                    </div>
+                </div>
+            </section>
 
-                    {/* 0. Market Selection */}
-                    <section className="bg-[#0B0E14] border border-white/5 rounded-2xl p-6 space-y-4">
-                        <h2 className="text-lg font-semibold text-white flex items-center gap-2">
-                            <span className="w-6 h-6 rounded-full bg-white/5 flex items-center justify-center text-xs font-bold text-gray-400">1</span>
-                            Select Market
-                        </h2>
-                        <div className="grid grid-cols-2 gap-4">
-                            <div
-                                onClick={() => setMarketType("crypto")}
-                                className={`cursor-pointer p-4 rounded-xl border transition-all text-center ${marketType === "crypto" ? "bg-blue-500/10 border-blue-500 text-white" : "bg-[#0F1218] border-white/5 text-gray-400 hover:border-white/10"}`}
-                            >
-                                <div className="font-bold">Crypto</div>
-                                <div className="text-xs mt-1 opacity-70">Binance, Bybit, etc.</div>
-                            </div>
-                            <div
-                                onClick={() => setMarketType("forex")}
-                                className={`cursor-pointer p-4 rounded-xl border transition-all text-center ${marketType === "forex" ? "bg-blue-500/10 border-blue-500 text-white" : "bg-[#0F1218] border-white/5 text-gray-400 hover:border-white/10"}`}
-                            >
-                                <div className="font-bold">Forex & CFDs</div>
-                                <div className="text-xs mt-1 opacity-70">OANDA, IBKR, etc.</div>
-                            </div>
-                        </div>
-                    </section>
+            {marketType === "crypto" ? (
+                /* Crypto deploys on the Step 1 contract: account, risk level, budget, backend preview. */
+                <CatiDeployment accounts={filteredBrokers} initial={prefill} />
+            ) : (
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                {/* Left Column: Configuration (legacy forex deployment) */}
+                <div className="lg:col-span-2 space-y-8">
 
                     {/* 1. Broker Selection */}
                     <section className="bg-[#0B0E14] border border-white/5 rounded-2xl p-6 space-y-4">
@@ -572,6 +586,7 @@ export default function AutoPilot() {
                     </div>
                 </div>
             </div>
+            )}
 
             <LiveTradingConfirmDialog
                 isOpen={liveConfirmOpen}

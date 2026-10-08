@@ -21,6 +21,7 @@ import { ConfirmationDialog } from "@/components/UI/ConfirmationDialog";
 import { LiveTradingConfirmDialog } from "@/components/UI/LiveTradingConfirmDialog";
 import { CopyableId } from "@/components/UI/CopyableId";
 import { isPaperMode, tradingModeLabel } from "@/utils/tradingMode";
+import { CatiBotPanel } from "@/components/BotInstance/CatiBotPanel";
 
 function errorMessage(err: unknown, fallback: string): string {
     return err instanceof Error && err.message ? err.message : fallback;
@@ -227,6 +228,9 @@ export default function BotDetails() {
                     </button>
                 </div>
             )}
+
+            {/* What the engine itself reports for this bot (Step 1.9) */}
+            {bot.strategy_id === "cati" && <CatiBotPanel botId={bot.id} />}
 
             {/* Overview Stats */}
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
