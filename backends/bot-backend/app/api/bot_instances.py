@@ -361,6 +361,18 @@ def update_bot_instance(
         raise HTTPException(status_code=422, detail=str(exc))
 
 
+def _on_demo_account(db, broker_account_id) -> bool:
+    """True only when the broker account row says DEMO. Missing, unreadable or
+    unrecognised is not demo: the live-trading gate then applies."""
+    try:
+        from shared_lib.broker.environment import normalize_environment
+        with db.connect() as conn:
+            row = conn.execute("SELECT environment FROM broker_accounts WHERE id = ?", (broker_account_id,)).fetchone()
+        return bool(row) and bool(row[0]) and normalize_environment(row[0]).value.upper() == "DEMO"
+    except Exception:
+        return False
+
+
 @router.post("/bot-instances/{instance_id}/start", response_model=BotInstance)
 def start_bot_instance(
     instance_id: str,
@@ -377,8 +389,11 @@ def start_bot_instance(
 
     # Plan gate: starting/resuming a LIVE bot needs the live_trading entitlement
     # as it stands now (the plan may have been downgraded since the bot was
-    # created). Paper/demo bots are never subject to it.
-    if is_live_mode(instance.mode):
+    # created). Paper/demo bots are never subject to it. Step 1.5: a
+    # broker-executed bot on a DEMO exchange account ("live" mode, demo money)
+    # is a demo bot; the environment is the broker account's, and an account
+    # that cannot be read is treated as live (the gate stays closed).
+    if is_live_mode(instance.mode) and not _on_demo_account(service.db, instance.broker_account_id):
         require_live_trading(service.db, user["id"], "start live bots")
 
     try:

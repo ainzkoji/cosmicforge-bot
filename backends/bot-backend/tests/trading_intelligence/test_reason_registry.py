@@ -109,3 +109,12 @@ def test_an_unknown_code_is_never_described_as_fine():
 ])
 def test_severities_of_the_codes_customers_see_most(code, severity):
     assert registry.describe(code)["severity"] == severity
+
+
+def test_an_unexpected_failure_class_is_reported_as_a_fault_in_words():
+    for name in ("ValueError", "TimeoutError", "ConnectionError", "OperationalError", "ReadTimeout"):
+        entry = registry.describe(name)
+        assert entry["severity"] == registry.ATTENTION and name in entry["message"] and "No new order was sent" in entry["message"]
+    # An upper-case code that merely ends like one is still an unmapped engine code.
+    assert registry.describe("SOME_NEW_ERROR")["severity"] == registry.UNKNOWN
+    assert registry.describe("not an identifier Error")["severity"] == registry.UNKNOWN

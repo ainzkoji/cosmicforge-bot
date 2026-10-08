@@ -175,7 +175,14 @@ def describe(code: Optional[str]) -> Dict[str, Any]:
         return {"code": None, "severity": UNKNOWN, "message": "No reason was recorded.", "action": ""}
     entry = _R.get(str(code))
     if entry is None:
-        return {"code": str(code), "severity": UNKNOWN, "message": f"Unrecognised engine code {code}.",
+        text = str(code)
+        if text.isidentifier() and not text.isupper() and text.endswith(("Error", "Exception", "Timeout", "Failure")):
+            # The engine recorded the class of an unexpected failure (never its
+            # text, which could carry request details). It is a fault, said plainly.
+            return {"code": text, "severity": ATTENTION,
+                    "message": f"The engine could not complete this account's evaluation ({text}). No new order was sent.",
+                    "action": "It is retried on the next cycle. If it persists, contact support with this code."}
+        return {"code": text, "severity": UNKNOWN, "message": f"Unrecognised engine code {code}.",
                 "action": "Operator review: this code has no customer-facing mapping yet."}
     return dict(entry)
 
