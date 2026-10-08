@@ -5,7 +5,9 @@ Documented baseline: `main` at `9fb120f` (7 October 2026). This register is upda
 closes; no task is marked PASS on code presence alone.
 
 > **Status, 8 October 2026: STEP 1 — IMPLEMENTATION COMPLETE / CONDITIONAL CLOSURE.** Implementation PASS; external
-> certification DEFERRED; overall CONDITIONALLY CLOSED — EXTERNAL GATES OPEN; remote CI PENDING — PUSH PERMISSION.
+> certification DEFERRED; overall CONDITIONALLY CLOSED — EXTERNAL GATES OPEN. Remote CI FAILED on `44a909c` (one real
+> Linux defect in 1.0c and one older flaky test); the fix is in `2de0398` and `e7ea228`, and CI on it is PENDING.
+> See "First remote CI run and the Linux fix" at the end of this file.
 > The original clean-server end-to-end closing test has not been passed. The open gates are in the
 > "Carry-forward register" at the end of this file.
 
@@ -159,6 +161,10 @@ schema statements belong to that second handle, not to the cycle.
   lineage always runs first and is unaffected (paused/stopped bots with positions are maintained, tested).
 
 ## 1.0c — Database connection and schema optimization
+
+> **Correction, 9 October 2026.** The schema-statement figures in this section were measured on Windows. On Linux
+> the once-per-database memo did not hold until commit `2de0398` (CI measured 23 schema statements per cycle).
+> See "First remote CI run and the Linux fix" at the end of this file.
 
 - `DB.scope()` (shared library): one connection per thread-local scope; every inner `with db.connect()` keeps its
   own commit-on-success / rollback-on-raise, so each existing atomic unit stays atomic and no transaction spans the
@@ -763,3 +769,92 @@ finding about stop distances. GIT-01 should be closed first so that Step 2 start
 ## Exact next action
 
 The project owner runs `git push origin main`, then the CI result for the pushed commit is recorded under GIT-01.
+
+---
+
+# First remote CI run and the Linux fix (8–9 October 2026)
+
+This section supersedes the "REMOTE CI: PENDING — PUSH PERMISSION" lines above and corrects the 1.0c result.
+
+| | Outcome |
+|---|---|
+| Push | done by the project owner: `origin/main` at `44a909c` |
+| **Remote CI on `44a909c`** | **FAILED** — run `37850389156`; 5 of 6 jobs passed, the bot-backend test job failed with 9 tests |
+| Fix | commits `2de0398` and `e7ea228` on local `main` (2 ahead of `origin/main`) |
+| **Remote CI on the fix** | **PENDING — NOT PUSHED.** No Linux run has seen the fix yet |
+| Step 1 implementation | PASS locally at `e7ea228`. **The earlier "PASS" at `44a909c` was wrong in one respect on Linux (1.0c, below).** It is confirmed for Linux only when CI is green on the fix |
+
+## CI result on `44a909c`
+
+| Job | Result |
+|---|---|
+| Python lint | pass |
+| User backend tests | pass |
+| Admin backend, shared library and root tests | pass |
+| User frontend (lint, test, build) | pass |
+| Admin frontend (lint, test, build) | pass |
+| Bot backend tests | **fail**: 9 failed, 5,292 passed, 10 skipped, 108 xfailed |
+
+The last green CI run (`9fb120f`, run `37668858256`) had 5,086 passed, 10 skipped, 108 xfailed and no failure in the
+same job.
+
+## Cause 1 — a real defect in 1.0c, on Linux only (7 tests)
+
+`production_schema.ensure` decides "this database is already initialised" from the file's identity, and the identity
+was built from `st_ctime`. That is the creation time on Windows and the time of the last inode change on Linux, where
+it moves with every write. On Linux the key never matched twice, so the whole production schema ran again on every
+call.
+
+* Measured by the failed CI job on Linux: **23 schema statements in an account cycle** where the budget is 0
+  (scenario "account without a bot"). Connections per cycle (1) and exchange request weight were not affected.
+* **The 1.0c figures in this document ("16 → 0", "24 → 0" schema statements) were measured on the Windows
+  workstation and were not true on Linux until `2de0398`.** The engine was correct on Linux, only slower than claimed.
+* Not seen locally because every local run is on Windows. Not seen in the real demo certification for the same reason.
+
+Fix (`2de0398`): the key is `(path, device, inode)` plus the creation time where the platform reports one. Linux
+reports none, so two further signals cover a database recreated at the same path that gets its inode back: a file
+smaller than when last seen is treated as another file, and a statement failing with "no such table" drops the memo
+so the next cycle creates the schema. Only `os.stat` is used; the database file is never opened for this, because
+closing any descriptor of it would drop the POSIX locks SQLite holds.
+
+Failing tests: `test_production_storage_lifecycle.py` (2) and `test_runtime_cost_budget.py` (5).
+
+## Cause 2 — an older clock-dependent test, not a regression (2 tests)
+
+`test_runtime_consolidation.py::test_run_cycle_owns_kill_switch_handling` and
+`::test_run_cycle_owns_daily_close_handling` built the runner's risk day from the machine's date. The runner's day is
+"today" in `ADAPTIVE_DAILY_RISK_TIMEZONE` (Europe/Rome). On a UTC machine the two differ between 22:00 and 24:00 UTC,
+the test takes the day-rollover branch on a half-built runner and fails. The CI job ran these tests at 22:14 UTC.
+
+Reproduced on unchanged code and unchanged tests by moving the risk timezone so that its date differs from the
+machine's: the same `AttributeError` at `runner.py:1941`. The baseline CI run passed because it ran at 18:42 UTC. The
+tests now take the day from the runner and run in three timezones that between them always include one whose date
+differs from the machine's. The runner itself was not changed.
+
+## Verification of the fix
+
+| Check | Result |
+|---|---|
+| The nine failing tests | pass (they are now 13 with the timezone parametrisation) |
+| Five suites, pristine export of `2de0398`, native file semantics | bot-backend 5,309 passed, 0 failed, 11 skipped, 106 xfailed, 2 xpassed; user-backend 478 passed; shared 96 passed; admin 88 passed, 6 xfailed; root 4 passed, 3 xfailed. No new failure against the `9fb120f` baseline |
+| The whole bot-backend suite with Linux file semantics emulated in the worst case (change time moves on every write, no creation time, a recreated file always gets its inode back) | 5,309 passed, 0 failed |
+| Mutation check: the original `st_ctime` key restored | the new tests fail on Windows with the same `assert 23 <= 0` that the Linux job reported |
+| New permanent tests | `test_production_storage_lifecycle.py` (+5: file key under Linux and Windows semantics, schema runs once while the database is written, recreated database with a reused inode, missing-table recovery, failed evaluation heals); `test_runtime_cost_budget.py` (+1: the cycle budget under Linux file semantics) |
+
+The emulation is strong evidence, not a Linux run. Only CI on the pushed fix closes this.
+
+## Register updates
+
+| ID | Severity | Status |
+|---|---|---|
+| **GIT-01** | medium | `44a909c` pushed; CI failed as above. Open until `e7ea228` (or later) is pushed and its CI run is green; record the run id here |
+| **LNX-01** (new) | medium | Every local verification in this document ran on Windows. Linux behaviour is evidenced only by CI, and by nothing at all for what CI does not exercise (systemd, nginx, a long-running engine). Mitigation in place: tests that emulate Linux file identity. Closed by EXT-02 (a Linux staging server) |
+
+## Readiness
+
+Ready to push. Step 2 should start from a commit on which CI is green.
+
+## Exact next action
+
+The project owner runs `git push origin main` (two commits plus this record), then the CI result is recorded under
+GIT-01.
