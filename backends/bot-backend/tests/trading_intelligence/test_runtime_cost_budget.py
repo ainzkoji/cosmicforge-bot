@@ -268,3 +268,25 @@ def test_several_idle_accounts_cost_their_discovery_reads_each(measured):
     m.h.account = base
     m.results["several_accounts_total"] = {"weight": total, "accounts": 3}
     budget(m.results, "several_accounts_total", weight=30)
+
+
+# ── the same budget under Linux file semantics ──────────────────────────────
+
+from test_production_storage_lifecycle import linux_identity  # noqa: E402,F401  (fixture)
+
+
+def test_the_budget_holds_with_linux_file_semantics(linux_identity, measured, monkeypatch):
+    """The first CI run of this work on Linux measured 23 schema statements in
+    every account cycle where these tests assert 0: the once-per-database memo
+    was keyed on a timestamp that is stable on Windows and moves with every
+    write on Linux. Here the process sees files as Linux reports them, so the
+    budget is guarded on a Windows workstation as well."""
+    m = measured
+    waiting_for_signal(monkeypatch)
+    m.cycle("warm_up")
+    for label in ("linux_idle_1", "linux_idle_2", "linux_idle_3"):
+        out = m.cycle(label)                             # each cycle writes, which moves the Linux change time
+        assert out["execution"]["evaluation_scope"] == "FULL"
+        budget(m.results, label, weight=55, connections=1, schema=0)
+        assert m.results[label]["schema_statements"] == 0 and m.results[label]["connections_opened"] == 1
+
