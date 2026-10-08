@@ -153,7 +153,8 @@ def test_deploy_persists_ownership_configuration_environment_and_consent(db):
     stored = service(db).get_bot_instance(bot["id"])
     assert stored.user_id == ALICE and stored.allocation_type == "risk_based" and stored.allocation_value == 0.5
     assert stored.capital_allocation == 1000.0 and stored.capital_allocation_type == "fixed_amount"
-    assert stored.environment == "DEMO" and stored.mode == "live" and stored.status == "active"
+    assert not hasattr(stored, "environment")                 # always read from the broker account (bot["environment"] above)
+    assert stored.mode == "live" and stored.status == "active"
     assert stored.daily_loss_limit_pct == 0.02 and stored.max_position_usdt == 200.0
     assert stored.deploy_request_id == "req-0000-0001" and stored.risk_acknowledged_at
     with db.connect() as c:

@@ -117,7 +117,6 @@ class BotInstance:
     max_position_usdt: Optional[float] = None          # optional user cap on one position's notional
     risk_acknowledged_at: Optional[str] = None         # durable consent timestamp of the deployment
     deploy_request_id: Optional[str] = None            # idempotency identity of the deploy request
-    environment: Optional[str] = None                  # DEMO / LIVE, derived from the broker account at deploy
     stopped_reason: Optional[str] = None
     bot_health_reason_code: Optional[str] = None
     bot_health_recommended_action: Optional[str] = None
@@ -178,7 +177,6 @@ class BotInstance:
             max_position_usdt=d.get("max_position_usdt"),
             risk_acknowledged_at=d.get("risk_acknowledged_at"),
             deploy_request_id=d.get("deploy_request_id"),
-            environment=d.get("environment"),
             stopped_reason=d.get("stopped_reason"),
         )
     
@@ -314,7 +312,6 @@ class CreateBotInstanceRequest:
     max_position_usdt: Optional[float] = None
     risk_acknowledged_at: Optional[str] = None
     deploy_request_id: Optional[str] = None
-    environment: Optional[str] = None
 
     def validate(self) -> List[str]:
         """Validate the request data."""

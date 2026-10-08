@@ -853,7 +853,6 @@ def migrate(db_path: str | DB = None):
         _add_column_if_missing(conn, "bot_instances", "max_position_usdt", "REAL")
         _add_column_if_missing(conn, "bot_instances", "risk_acknowledged_at", "TEXT")
         _add_column_if_missing(conn, "bot_instances", "deploy_request_id", "TEXT")
-        _add_column_if_missing(conn, "bot_instances", "environment", "TEXT")
         _add_column_if_missing(conn, "bot_instances", "stopped_reason", "TEXT")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_bot_instances_deploy_request ON bot_instances(deploy_request_id)")
         # Consent at deployment (identity + version), referenced from the bot row.
@@ -871,6 +870,18 @@ def migrate(db_path: str | DB = None):
             source TEXT NOT NULL, freshness_ms INTEGER, reason TEXT NOT NULL, dedupe_key TEXT NOT NULL UNIQUE)""")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_account_equity_snapshots_account_time "
                      "ON account_equity_snapshots(broker_account_id, observed_at)")
+        # Customer events and their delivery outbox (Step 1.8, app.observability.user_events).
+        conn.execute("""CREATE TABLE IF NOT EXISTS user_events (
+            event_id TEXT PRIMARY KEY, event_type TEXT NOT NULL, at INTEGER NOT NULL, user_id TEXT NOT NULL,
+            bot_id TEXT, broker_account_id TEXT, environment TEXT, payload_json TEXT NOT NULL, created_at TEXT NOT NULL)""")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_user_events_user_at ON user_events(user_id, at)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_user_events_bot_at ON user_events(bot_id, at)")
+        conn.execute("""CREATE TABLE IF NOT EXISTS notification_outbox (
+            outbox_id TEXT PRIMARY KEY, event_id TEXT NOT NULL, user_id TEXT NOT NULL, channel TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'pending', attempts INTEGER NOT NULL DEFAULT 0, next_attempt_at INTEGER NOT NULL,
+            last_error TEXT, created_at INTEGER NOT NULL, delivered_at INTEGER, recipient TEXT,
+            dedupe_key TEXT NOT NULL UNIQUE)""")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_notification_outbox_due ON notification_outbox(status, next_attempt_at)")
         conn.execute("""CREATE TABLE IF NOT EXISTS account_equity_daily (
             broker_account_id TEXT NOT NULL, day TEXT NOT NULL, asset TEXT NOT NULL DEFAULT 'USDT',
             open REAL NOT NULL, high REAL NOT NULL, low REAL NOT NULL, close REAL NOT NULL,

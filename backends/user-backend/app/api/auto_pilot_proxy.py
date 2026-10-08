@@ -103,12 +103,35 @@ async def list_bots(request: Request, user: dict = Depends(get_current_active_us
 
 
 @router.post("/deploy")
+async def deploy(request: Request, user: dict = Depends(get_current_active_user)):
+    """Customer-facing deploy path shared by two contracts.
+
+    * the Step 1 contract (``broker_account_id``, ``budget``, ``risk_level``,
+      ``advanced``, ``risk_acknowledged``, ``request_id``) is validated against the
+      shared versioned schema and forwarded to ``/api/v1/auto-pilot/deployments``;
+    * the legacy body (``broker_account_ids``, ``risk_mode``, ``allocation`` ...)
+      keeps its existing validation and handler (``deploy_auto_pilot``).
+    """
+    step_one = await _step_one_body(request)
+    if step_one is not None:
+        _assert_account_owned(user, step_one.broker_account_id)
+        return await proxy_request(request, "/api/v1/auto-pilot/deployments", method="POST",
+                                   params={"user_id": user["id"]}, json_body=step_one.model_dump(mode="json"), timeout=60.0)
+    try:
+        body = DeployAutoPilotRequest.model_validate(await request.json())
+    except Exception as exc:  # pydantic.ValidationError
+        detail = exc.errors() if hasattr(exc, "errors") else str(exc)
+        raise HTTPException(status_code=422, detail=detail)
+    return await deploy_auto_pilot(request, body, user)
+
+
 async def deploy_auto_pilot(
     request: Request,
-    user: dict = Depends(get_current_active_user)
+    body: DeployAutoPilotRequest,
+    user: dict,
 ):
     """
-    Proxy endpoint: Forward Auto Pilot deployment request to bot-backend.
+    Legacy contract: forward an Auto Pilot deployment request to bot-backend.
 
     Two contracts share this customer-facing path:
 
@@ -123,17 +146,6 @@ async def deploy_auto_pilot(
     - allocation -> flat params for backend
     - Injects decrypted credentials for all broker accounts.
     """
-    step_one = await _step_one_body(request)
-    if step_one is not None:
-        _assert_account_owned(user, step_one.broker_account_id)
-        return await proxy_request(request, "/api/v1/auto-pilot/deployments", method="POST",
-                                   params={"user_id": user["id"]}, json_body=step_one.model_dump(mode="json"), timeout=60.0)
-    try:
-        body = DeployAutoPilotRequest.model_validate(await request.json())
-    except Exception as exc:  # pydantic.ValidationError
-        detail = exc.errors() if hasattr(exc, "errors") else str(exc)
-        raise HTTPException(status_code=422, detail=detail)
-
     # Map risk_mode to backend risk_level
     risk_map = {
         "conservative": "conservative",

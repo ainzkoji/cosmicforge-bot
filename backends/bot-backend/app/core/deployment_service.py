@@ -330,8 +330,7 @@ def deploy(db, user_id: str, request: C.DeploymentRequest, *, service=None, now_
         daily_loss_limit_pct=float(Decimal(daily) / 100) if daily is not None else None,
         risk_profile_version=profile.version,
         max_position_usdt=float(Decimal(request.advanced.max_position_usdt)) if request.advanced.max_position_usdt else None,
-        risk_acknowledged_at=utc_now_iso(), deploy_request_id=request.request_id,
-        environment=evaluation["environment"])
+        risk_acknowledged_at=utc_now_iso(), deploy_request_id=request.request_id)
     acknowledged_at = create.risk_acknowledged_at
 
     # Atomic invariant: one occupying bot per account. The write lock is taken
@@ -420,8 +419,8 @@ def bot_payload(db, instance) -> Dict[str, Any]:
         account = c.execute("SELECT broker_id, environment, label FROM broker_accounts WHERE id=?",
                             (instance.broker_account_id,)).fetchone()
     broker = (account["broker_id"] if account else "unknown")
-    environment = getattr(instance, "environment", None) or (
-        normalize_environment(account["environment"] or "live").value.upper() if account else None)
+    # Always the broker account's environment: a bot has none of its own.
+    environment = normalize_environment(account["environment"] or "live").value.upper() if account else None
     risk_based = str(getattr(instance, "allocation_type", "") or "").lower() == "risk_based"
     money = None
     budget = None

@@ -260,9 +260,15 @@ def account_risk(db, account, client, positions, orders, bots, now, *, account_s
         realized = min(realized, account_realized - cert_pnl)
         loss = max(0., -realized - unrealized)
         limit = basis * policy["pct"] if policy else None
-        latched = bool(state["loss_latched"]) or (limit is not None and loss >= limit)
+        already_latched = bool(state["loss_latched"])
+        latched = already_latched or (limit is not None and loss >= limit)
         if latched:
             c.execute("UPDATE cati_production_daily_risk SET loss_latched=1 WHERE account_id=? AND day=?", (account["id"], day))
+    if latched and not already_latched:
+        _account_event(db, account, bots, 'DAILY_LOSS_PAUSE', ('daily_loss', account["id"], day), {
+            "risk_date": day, "loss_usdt": loss, "limit_usdt": limit, "opening_wallet": basis,
+            "message": f"Daily loss limit reached ({loss:.2f} of {limit:.2f} USDT): no new entries until tomorrow; "
+                       f"open positions keep their protection."}, now)
     if any(not math.isfinite(float(p["positionAmt"])) for p in positions):
         raise ValueError("BROKER_POSITION_EXPOSURE_UNAVAILABLE")
     active = [p for p in positions if abs(float(p["positionAmt"])) > 0]
@@ -901,12 +907,23 @@ def _process_account(db, account, client, snapshot, *, now_ms=None, boundary_fac
                       controls[p+"_drawdown_pct"] >= controls["max_"+p+"_drawdown_pct"]), None))
             why = eligibility(row, now)
             result["eligibility"] = {"eligible": why is None, "reason": why}
+            blocked_by = None
             if not result["auto_trading"]["enabled"]:
                 result.update(reason=result["auto_trading"]["reason"], execution_permission="BLOCKED_ACCOUNT")
+                blocked_by = result["reason"]
             elif control_reason:
                 result.update(reason=control_reason, execution_permission="BLOCKED_RISK")
+                blocked_by = control_reason
             elif result["risk"]["reason"]:
                 result.update(reason=result["risk"]["reason"], execution_permission="BLOCKED_RISK")
+                blocked_by = result["reason"]
+            if blocked_by and why is None and row:
+                # A qualifying decision was open and something stopped the entry: one
+                # event per account, decision and reason (naturally aggregated), rate
+                # limited per account for external channels by the outbox.
+                _account_event(db, account, bots, 'ENTRY_BLOCKED', ('entry_blocked', account["id"], row["decision_id"], blocked_by), {
+                    "decision_id": row["decision_id"], "symbol": row.get("selected_symbol"), "side": row.get("side"),
+                    "reason": blocked_by, "message": f"A qualifying signal for {row.get('selected_symbol')} was not taken: {blocked_by}."}, now)
             elif any(r["status"] == "STILL_UNKNOWN" for r in result["recovery"]):
                 result.update(reason="ACCOUNT_SUBMIT_OUTCOME_UNRESOLVED", execution_permission="BLOCKED_RISK")
             elif result['execution_portfolio']['active']:
@@ -1110,6 +1127,31 @@ def reconcile_executions(db, boundary, client, now):
     return history
 
 
+def _user_event(db, plan, event_type, identity_parts, payload, now):
+    """Emit a customer event for ``plan``'s bot after the state it describes was
+    committed. Never raises; never on the order path."""
+    try:
+        from app.observability import user_events
+        user_events.emit(db, event_type, event_id=user_events.event_id_for(event_type, *identity_parts),
+                         user_id=plan.user_id, bot_id=plan.bot_instance_id, broker_account_id=plan.broker_account_id,
+                         environment=plan.environment, payload=payload, now_ms=now)
+    except Exception:
+        logger.debug("[USER_EVENTS] %s not emitted", event_type, exc_info=True)
+
+
+def _account_event(db, account, bots, event_type, identity_parts, payload, now):
+    """Emit a customer event for the account's single active bot (or none)."""
+    try:
+        from app.observability import user_events
+        bot = bots[0] if len(bots) == 1 else None
+        user_events.emit(db, event_type, event_id=user_events.event_id_for(event_type, *identity_parts),
+                         user_id=(bot or {}).get("user_id") or account.get("user_id"), bot_id=(bot or {}).get("id"),
+                         broker_account_id=account["id"], environment=normalize_environment(account.get("environment") or "live").value.upper(),
+                         payload=payload, now_ms=now)
+    except Exception:
+        logger.debug("[USER_EVENTS] %s not emitted", event_type, exc_info=True)
+
+
 def _reconcile_attempt(db, boundary, client, now, plans, attempts, account, attempt, plan, payload, history):
     """Order/fill/protection truth of ONE persisted attempt (see reconcile_executions).
 
@@ -1188,6 +1230,27 @@ def _reconcile_attempt(db, boundary, client, now, plans, attempts, account, atte
                         side=plan.side,quantity=position.quantity)
             else:
                 item["protection"] = order_submission_gate(plan.environment)["reason"]
+        if order.answered and order.executed_qty > 0 and fills:
+            # The entry fills are durably recorded above (INSERT OR IGNORE committed):
+            # tell the customer once per trade plan. Never before the record exists.
+            _user_event(db, plan, 'ENTRY_FILLED', ('entry', plan.trade_plan_id), {
+                "symbol": symbol, "side": plan.side, "quantity": order.executed_qty, "entry_price": entry_avg,
+                "trade_plan_id": plan.trade_plan_id, "stop_price": plan.structural_invalidation_price,
+                "protection": item["protection"].get("state") if isinstance(item.get("protection"), dict) else item.get("protection"),
+                "message": f"Entry filled: {plan.side} {order.executed_qty:g} {symbol} at {entry_avg:g}" if entry_avg else
+                           f"Entry filled: {plan.side} {order.executed_qty:g} {symbol}"}, now)
+            if isinstance(item.get("protection"), dict) and item["protection"].get("state") == protection_state.ABSENT:
+                _user_event(db, plan, 'POSITION_UNPROTECTED', ('unprotected', plan.trade_plan_id, item["protection"].get("reason")), {
+                    "symbol": symbol, "trade_plan_id": plan.trade_plan_id, "state": protection_state.ABSENT,
+                    "reason": item["protection"].get("reason"), "fail_safe_close": bool(item.get("fail_safe_close")),
+                    "message": f"{symbol}: the exchange confirmed the protective stop is gone; the fail-safe close was sent."}, now)
+            elif isinstance(item.get("protection_uncertainty"), dict) and item["protection_uncertainty"].get("alerted"):
+                _user_event(db, plan, 'POSITION_UNPROTECTED', ('unprotected', plan.trade_plan_id, 'UNKNOWN',
+                                                              item["protection_uncertainty"].get("first_seen_at")), {
+                    "symbol": symbol, "trade_plan_id": plan.trade_plan_id, "state": protection_state.UNKNOWN,
+                    "reason": item["protection_uncertainty"].get("reason"), "cycles": item["protection_uncertainty"].get("cycles"),
+                    "message": f"{symbol}: exchange-side protection could not be verified for several cycles; the position is kept "
+                               f"and re-verified, and the operator has been alerted."}, now)
         if position.answered and position.quantity == 0:
             # Flat at the venue: there is no protection to be uncertain about.
             protection_state.clear(db, account, symbol)
@@ -1224,6 +1287,16 @@ def _reconcile_attempt(db, boundary, client, now, plans, attempts, account, atte
                     reason_codes=tuple(base.reason_codes)+('BROKER_CONFIRMED_FLAT_AND_EXIT_FILL',)),len(records))
                 boundary._resolve(plan,'CONSUMED',now,'BROKER_CONFIRMED_ENTRY_AND_CLOSE')
                 item.update(lifecycle='CLOSED',exit_fills=exits)
+                # The exit fills and the POSITION_CLOSED attempt state are committed above.
+                realized = sum(float(f.get('realizedPnl', 0) or 0) for f in exits)
+                fees = sum(float(f.get('commission', 0) or 0) for f in fills + exits)
+                exit_qty = sum(float(f.get('qty', 0) or 0) for f in exits)
+                exit_avg = (sum(float(f['price'])*float(f['qty']) for f in exits)/exit_qty) if exit_qty else None
+                _user_event(db, plan, 'EXIT_FILLED', ('exit', plan.trade_plan_id), {
+                    "symbol": symbol, "side": plan.side, "quantity": exit_qty, "exit_price": exit_avg, "entry_price": entry_avg,
+                    "realized_pnl_gross": realized, "fees": fees, "trade_plan_id": plan.trade_plan_id,
+                    "message": f"Exit filled: {symbol} closed at {exit_avg:g}; realized {realized:+.4f} USDT before fees" if exit_avg
+                               else f"Exit filled: {symbol} closed"}, now)
         history.append(item)
         if unknown is not None:
             raise ValueError(protection_state.STATE_UNKNOWN) from unknown

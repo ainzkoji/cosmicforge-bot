@@ -151,7 +151,6 @@ class BotInstanceService:
             max_position_usdt=request.max_position_usdt,
             risk_acknowledged_at=request.risk_acknowledged_at,
             deploy_request_id=request.deploy_request_id,
-            environment=request.environment,
         )
         
         # For Auto Pilot, config_id and risk_profile_id are None (internal config)
@@ -174,8 +173,8 @@ class BotInstanceService:
                     capital_allocation, capital_allocation_type,
                     last_run_at, last_error, total_trades, active_positions, universe_mode,
                     daily_loss_limit_pct,
-                    risk_profile_version, max_position_usdt, risk_acknowledged_at, deploy_request_id, environment
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    risk_profile_version, max_position_usdt, risk_acknowledged_at, deploy_request_id
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     instance.id, instance.user_id, instance.broker_account_id, instance.market_type, 
@@ -189,7 +188,7 @@ class BotInstanceService:
                     instance.last_run_at, instance.last_error, instance.total_trades, instance.active_positions,
                     instance.universe_mode, instance.daily_loss_limit_pct,
                     instance.risk_profile_version, instance.max_position_usdt, instance.risk_acknowledged_at,
-                    instance.deploy_request_id, instance.environment,
+                    instance.deploy_request_id,
                 )
             )
             
@@ -632,8 +631,9 @@ class BotInstanceService:
             from shared_lib.broker.auto_trading import set_authorization
             set_authorization(conn, account_id=instance.broker_account_id, user_id=instance.user_id,
                               bot_instance_id=instance_id, enabled=True, now=now)
-        
+
         logger.info(f"Started bot instance {instance_id}")
+        self._lifecycle_event(instance, "BOT_RESUMED", now)
         return self.get_bot_instance(instance_id)
     
     def pause_bot_instance(self, instance_id: str) -> BotInstance:
@@ -663,8 +663,9 @@ class BotInstanceService:
             from shared_lib.broker.auto_trading import set_authorization
             set_authorization(conn, account_id=instance.broker_account_id, user_id=instance.user_id,
                               bot_instance_id=instance_id, enabled=False, now=now)
-        
+
         logger.info(f"Paused bot instance {instance_id}")
+        self._lifecycle_event(instance, "BOT_PAUSED", now)
         return self.get_bot_instance(instance_id)
     
     def stop_bot_instance(self, instance_id: str) -> BotInstance:
@@ -688,12 +689,34 @@ class BotInstanceService:
         
         with self.db.connect() as conn:
             conn.execute(
-                "UPDATE bot_instances SET status = 'stopped', stopped_at = ?, updated_at = ? WHERE id = ?",
+                "UPDATE bot_instances SET status = 'stopped', stopped_at = ?, updated_at = ?, stopped_reason = COALESCE(stopped_reason, 'USER_STOP') WHERE id = ?",
                 (now, now, instance_id)
             )
-        
+
         logger.info(f"Stopped bot instance {instance_id}")
+        self._lifecycle_event(instance, "BOT_STOPPED", now)
         return self.get_bot_instance(instance_id)
+
+    def _account_environment(self, broker_account_id: str) -> Optional[str]:
+        """DEMO / LIVE as recorded on the broker account (a bot has no environment of its own)."""
+        from shared_lib.broker.environment import normalize_environment
+        with self.db.connect() as conn:
+            row = conn.execute("SELECT environment FROM broker_accounts WHERE id = ?", (broker_account_id,)).fetchone()
+        return normalize_environment((row[0] if row else None) or "live").value.upper() if row else None
+
+    def _lifecycle_event(self, instance, event_type: str, now: str) -> None:
+        """Customer event for a committed status change (Step 1.8). Never raises."""
+        try:
+            from app.observability import user_events
+            user_events.emit(self.db, event_type, event_id=user_events.event_id_for(event_type, instance.id, now),
+                             user_id=instance.user_id, bot_id=instance.id, broker_account_id=instance.broker_account_id,
+                             environment=self._account_environment(instance.broker_account_id),
+                             payload={"status": {"BOT_RESUMED": "running", "BOT_PAUSED": "paused", "BOT_STOPPED": "stopped"}[event_type],
+                                      "message": {"BOT_RESUMED": "Your bot is running again.",
+                                                  "BOT_PAUSED": "Your bot is paused: no new entries; open positions stay protected.",
+                                                  "BOT_STOPPED": "Your bot is stopped; it stays stopped until you start it again."}[event_type]})
+        except Exception:
+            logger.debug("lifecycle event %s not emitted for %s", event_type, instance.id, exc_info=True)
     
     def delete_bot_instance(self, instance_id: str):
         """

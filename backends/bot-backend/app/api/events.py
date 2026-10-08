@@ -37,12 +37,22 @@ logger = logging.getLogger(__name__)
 # public by omission.
 router = APIRouter(tags=["Events"], dependencies=[Depends(get_current_user_id)])
 
-# Analytics-relevant events that trigger UI updates
+# Analytics-relevant events that trigger UI updates, plus the customer-facing
+# production events of Step 1.8 (app.observability.user_events). Each is
+# owner-filtered below like every other event.
 ANALYTICS_EVENTS = {
     EventType.POSITION_OPENED,
     EventType.POSITION_CLOSED,
     EventType.TP1_HIT,
     EventType.ADD_FILLED,
+    EventType.ENTRY_FILLED,
+    EventType.EXIT_FILLED,
+    EventType.POSITION_UNPROTECTED,
+    EventType.BOT_PAUSED,
+    EventType.BOT_RESUMED,
+    EventType.BOT_STOPPED,
+    EventType.DAILY_LOSS_PAUSE,
+    EventType.ENTRY_BLOCKED,
 }
 
 

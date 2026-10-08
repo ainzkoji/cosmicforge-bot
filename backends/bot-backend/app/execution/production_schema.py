@@ -72,6 +72,11 @@ def ensure(db, *, force: bool = False) -> bool:
             protection_state(c)
             from app.trading_intelligence.integration.income_ledger import initialize as income
             income(c)
+            # The cycle's own recorders: created here once, never inside a cycle.
+            from app.observability.account_recorder import initialize as equity_history
+            equity_history(c)
+            from app.observability.user_events import initialize as user_events
+            user_events(c)
         _READY[key] = True
     return True
 

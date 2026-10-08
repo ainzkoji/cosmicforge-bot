@@ -28,7 +28,7 @@ BOT_BACKEND_ROUTES = {
     "/api/v1/monitoring/system/health", "/api/v1/monitoring/system/metrics", "/api/v1/monitoring/bots/overview",
     "/api/v1/monitoring/activity/events", "/api/v1/cati/runtime/status", "/api/v1/cati/bots/{id}/status",
     "/api/v1/cati/bots/{id}/positions", "/api/v1/cati/bots/{id}/trades", "/api/v1/cati/bots/{id}/summary",
-    "/api/v1/cati/bots/{id}/equity", "/api/v1/auto-pilot/deploy", "/api/v1/auto-pilot/deployments",
+    "/api/v1/cati/bots/{id}/equity", "/api/v1/cati/bots/{id}/events", "/api/v1/auto-pilot/deploy", "/api/v1/auto-pilot/deployments",
     "/api/v1/auto-pilot/preview", "/api/v1/auto-pilot/bots", "/api/v1/forex/instruments",
 }
 
@@ -112,7 +112,7 @@ def test_a_connection_failure_is_a_502(monkeypatch):
 # ── cati read model ─────────────────────────────────────────────────────────
 
 @pytest.mark.parametrize("path", ["/runtime/status", "/bots/bot-1/status", "/bots/bot-1/positions", "/bots/bot-1/trades",
-                                  "/bots/bot-1/summary", "/bots/bot-1/equity"])
+                                  "/bots/bot-1/summary", "/bots/bot-1/equity", "/bots/bot-1/events"])
 def test_cati_routes_resolve_and_keep_query_and_token(upstream, path):
     c = client(cati_proxy.router)
     response = c.get(f"/api/v1/cati{path}", params={"page": 2}, headers={"Authorization": "Bearer user-token"})

@@ -99,6 +99,15 @@ def bot_equity(bot_id: str, since: Optional[int] = Query(None), until: Optional[
     return {"bot_id": bot_id, **_equity(service, _owned_bot(service, bot_id, user), since, until, limit)}
 
 
+@router.get("/{bot_id}/events")
+def bot_events(bot_id: str, limit: int = Query(50, ge=1, le=200), user: dict = Depends(get_current_active_user),
+               service: BotInstanceService = Depends(get_bot_instance_service), _perm: str = Depends(require_permission("bot:read"))):
+    """The bot's recent customer events (Step 1.8), owner-scoped."""
+    from app.observability import user_events
+    instance = _owned_bot(service, bot_id, user)
+    return {"bot_id": instance.id, "events": user_events.recent(service.db, user_id=user["id"], bot_id=instance.id, limit=limit)}
+
+
 # ── administrator routes (explicit admin authority) ─────────────────────────
 
 @admin_router.get("/{bot_id}/status")

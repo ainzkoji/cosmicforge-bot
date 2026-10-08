@@ -77,6 +77,15 @@ class EventType(Enum):
     EXCHANGE_ERROR = "EXCHANGE_ERROR"
     DATA_ERROR = "DATA_ERROR"
     INTERNAL_ERROR = "INTERNAL_ERROR"
+    # Customer-facing production events (Step 1.8, app.observability.user_events)
+    ENTRY_FILLED = "ENTRY_FILLED"
+    EXIT_FILLED = "EXIT_FILLED"
+    POSITION_UNPROTECTED = "POSITION_UNPROTECTED"
+    BOT_PAUSED = "BOT_PAUSED"
+    BOT_RESUMED = "BOT_RESUMED"
+    BOT_STOPPED = "BOT_STOPPED"
+    DAILY_LOSS_PAUSE = "DAILY_LOSS_PAUSE"
+    ENTRY_BLOCKED = "ENTRY_BLOCKED"
 
 
 @dataclass
@@ -213,29 +222,27 @@ class EventStore:
         if event.cycle_id is None:
             event.cycle_id = generate_cycle_id()
         
+        # Step 1.8 repair: the canonical ``events`` table (shared_lib.persistence.db /
+        # migrations) has ``timestamp_utc`` / ``details_json`` and no ``event_id``, while
+        # the table this store creates itself has ``event_id`` / ``ts`` / ``payload_json``.
+        # The INSERT used to name columns from both shapes and failed on either. Write
+        # the columns the table actually has.
         conn = sqlite3.connect(self._db_path)
         try:
-            conn.execute("""
-                INSERT INTO events (
-                    event_id, run_id, trade_id, cycle_id, ts, timestamp_utc,
-                    event_type, level, symbol, timeframe, strategy, mode,
-                    payload_json
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """, (
-                event.event_id,
-                event.run_id,
-                event.trade_id,
-                event.cycle_id,
-                event.ts,
-                event.ts, # Write to legacy column too
-                event.event_type.value,
-                event.level.value,
-                event.symbol,
-                event.timeframe,
-                event.strategy,
-                event.mode,
-                json.dumps(event.payload),
-            ))
+            columns = {row[1] for row in conn.execute("PRAGMA table_info(events)").fetchall()}
+            values = {
+                "event_id": event.event_id, "run_id": event.run_id, "trade_id": event.trade_id,
+                "cycle_id": event.cycle_id, "ts": event.ts, "timestamp_utc": event.ts,
+                "event_type": event.event_type.value, "level": event.level.value, "symbol": event.symbol,
+                "timeframe": event.timeframe, "strategy": event.strategy, "mode": event.mode,
+                "payload_json": json.dumps(event.payload), "details_json": json.dumps(event.payload),
+                "action": event.event_type.value,
+            }
+            row = {k: v for k, v in values.items() if k in columns}
+            conn.execute(
+                f"INSERT INTO events ({', '.join(row)}) VALUES ({', '.join('?' for _ in row)})",
+                tuple(row.values()),
+            )
             conn.commit()
         finally:
             conn.close()

@@ -49,6 +49,17 @@ class NotificationWorker:
         return await asyncio.to_thread(self._process_batch_sync)
 
     def _process_batch_sync(self) -> int:
+        delivered = 0
+        try:
+            # Step 1.8: the durable user-event outbox (bounded retry inside).
+            from app.observability import user_events
+            counts = user_events.deliver_pending(self.db)
+            delivered = counts["sent"] + counts["retried"] + counts["failed"]
+        except Exception as exc:  # the legacy jobs below must still run
+            logger.error(f"NotificationWorker: outbox delivery failed: {exc}")
+        return self._process_legacy_jobs() + delivered
+
+    def _process_legacy_jobs(self) -> int:
         claim_token = str(uuid.uuid4())
         now = utc_now_iso()
         

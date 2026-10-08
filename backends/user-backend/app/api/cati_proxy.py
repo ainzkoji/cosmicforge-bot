@@ -47,4 +47,9 @@ async def bot_equity(request: Request, bot_id: str, user: dict = Depends(get_cur
     return await proxy_request(request, f"/api/v1/cati/bots/{bot_id}/equity")
 
 
+@router.get("/bots/{bot_id}/events")
+async def bot_events(request: Request, bot_id: str, user: dict = Depends(get_current_active_user)):
+    return await proxy_request(request, f"/api/v1/cati/bots/{bot_id}/events")
+
+
 __all__ = ["router"]
