@@ -14,7 +14,7 @@ import { Activity, AlertTriangle, Check, Info, Loader2, Play, RefreshCw, Shield,
 import { api } from "@/api/client";
 import {
     DeploymentRefusedError, ageLabel, buildDeploymentRequest, formFingerprint, formatPct, formatUsdt, isStale, newRequestId,
-    validateForm,
+    typicalPositionView, validateForm,
 } from "@/lib/deployment";
 import type { Blocker, BudgetType, DeploymentForm, DeploymentPreview, RiskLevel } from "@/lib/deployment";
 
@@ -408,15 +408,14 @@ export function CatiDeployment({ accounts, initial }: Props) {
                                     <Row label="Drawdown: bot stops" hint={formatPct(money.drawdown_stop_pct)} value={formatUsdt(money.drawdown_stop_threshold)} />
                                     <Row label="Positions at once" value={`up to ${money.max_positions}`} />
                                     <Row label="Leverage" hint="set by the engine" value={`up to ${money.leverage_ceiling}x`} />
-                                    {preview.typical_position?.typical ? (
-                                        <Row
-                                            label="Typical position"
-                                            hint="from the engine's recent stop distances"
-                                            value={preview.typical_position.typical.approved
-                                                ? formatUsdt(preview.typical_position.typical.notional_usdt) : "below exchange minimum"}
-                                        />
-                                    ) : (
-                                        <Row label="Typical position" hint="not enough engine history yet" value="not estimated" />
+                                    <Row label="Typical position" hint={typicalPositionView(preview).hint} value={typicalPositionView(preview).value} />
+                                    {(preview.stop_distance_assumptions?.decisions_outside_engine_stop_limit ?? 0) > 0 && (
+                                        <p className="text-xs text-gray-500 py-2 border-b border-white/5">
+                                            {preview.stop_distance_assumptions?.decisions_outside_engine_stop_limit} of the engine's last{" "}
+                                            {preview.stop_distance_assumptions?.decisions_recorded} recorded signals had a stop wider than the{" "}
+                                            {formatPct(preview.stop_distance_assumptions?.engine_stop_limit_pct)} maximum and would not have
+                                            been traded.
+                                        </p>
                                     )}
                                     {preview.minimum_deployable_budget && (
                                         <Row label="Minimum budget for this level" value={formatUsdt(preview.minimum_deployable_budget)} />

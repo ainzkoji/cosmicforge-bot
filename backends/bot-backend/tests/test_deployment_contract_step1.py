@@ -318,3 +318,55 @@ def test_legacy_deploy_contract_is_unchanged(db, monkeypatch):
     [bot] = out.instances
     assert bot.allocation_type == "fixed_amount" and bot.allocation_value == 120.0 and bot.risk_level == "balanced"
     assert bot.mode == "paper" and bot.risk_profile_version is None       # legacy bots are not migrated into the new model
+
+
+# ── closure: what the connected demo account showed ─────────────────────────
+
+def test_the_minimum_notional_is_the_typical_instruments_not_the_single_largest(db, monkeypatch):
+    """On the real Binance demo venue 735 of 741 instruments list 5 USDT and one lists 100."""
+    from app.exchange import instruments
+    listed = [SimpleNamespace(min_notional=5.0)] * 735 + [SimpleNamespace(min_notional=20.0)] * 2 + [
+        SimpleNamespace(min_notional=50.0)] * 2 + [SimpleNamespace(min_notional=100.0), SimpleNamespace(min_notional=0.001),
+                                                   SimpleNamespace(min_notional=None), SimpleNamespace(min_notional=0)]
+    monkeypatch.setattr(instruments.InstrumentCatalog, "list", lambda self, venue, environment: listed)
+    account = svc.load_account(db, ALICE, "demo-a")
+    minimums = svc.exchange_minimum_notionals(db, account)
+    assert minimums["typical"] == Decimal("5.0") and minimums["largest"] == Decimal("100.0") and minimums["source"] == "INSTRUMENT_CATALOG"
+    assert svc.exchange_minimum_notional(db, account) == Decimal("5.0")
+    out = svc.preview(db, ALICE, request(budget={"type": "fixed_amount", "value": "400"}, advanced={}), account_state_reader=balance())
+    assert out["exchange_minimum_notional"] == "5.0" and out["exchange_minimum_notional_largest"] == "100.0"
+    assert out["minimum_deployable_budget"] == "187.50"                     # 5 * 15 % / 0.40 %
+    assert C.BUDGET_TOO_SMALL_FOR_LEVEL not in [b["code"] for b in out["blockers"]]
+    small = svc.preview(db, ALICE, request(budget={"type": "fixed_amount", "value": "150"}, advanced={}), account_state_reader=balance())
+    assert C.BUDGET_TOO_SMALL_FOR_LEVEL in [b["code"] for b in small["blockers"]]
+    monkeypatch.setattr(instruments.InstrumentCatalog, "list", lambda self, venue, environment: [])
+    assert svc.exchange_minimum_notionals(db, account)["source"] == "DEFAULT"
+
+
+def _decisions(db, distances_pct):
+    with db.connect() as c:
+        c.execute("CREATE TABLE IF NOT EXISTS cati_residual_decisions (decision_id TEXT PRIMARY KEY, decision_time INTEGER, "
+                  "selected_symbol TEXT, entry_reference REAL, stop REAL)")
+        c.execute("DELETE FROM cati_residual_decisions")
+        for i, pct in enumerate(distances_pct):
+            c.execute("INSERT INTO cati_residual_decisions VALUES (?,?,?,?,?)", (f"d{i}", i, "ADAUSDT", 100.0, 100.0 - pct))
+
+
+def test_stop_assumptions_count_only_stops_the_engine_would_trade(db):
+    """The frozen strategy's recorded stops on the real database run from 7 % to 41 %;
+    the engine refuses anything wider than its 15 % maximum."""
+    assert svc.engine_stop_limit_pct() == Decimal("15")
+    _decisions(db, [7, 10, 12, 14] * 5 + [21, 29, 36, 41] * 14)             # 20 tradable, 56 not
+    a = svc.stop_distance_assumptions(db)
+    assert a["source"] == "FROZEN_STRATEGY_DECISIONS" and a["decisions"] == 20 and a["decisions_recorded"] == 76
+    assert a["decisions_outside_engine_stop_limit"] == 56 and a["widest_pct"] <= Decimal("15") and a["typical_pct"] <= Decimal("15")
+    _decisions(db, [7, 10, 12] * 6 + [21, 29, 36, 41] * 14)                 # 18 tradable: no typical range is claimed
+    b = svc.stop_distance_assumptions(db)
+    assert b["source"] == "SYSTEM_MAXIMUM_STOP" and b["typical_pct"] is None and b["widest_pct"] == Decimal("15")
+    assert b["decisions"] == 18 and b["decisions_outside_engine_stop_limit"] == 56
+    out = svc.preview(db, ALICE, request(advanced={}), account_state_reader=balance())
+    assert out["typical_position"] is None and out["typical_position_note"] == "STOP_DISTANCE_ASSUMPTION_REQUIRED"
+    assert out["stop_distance_assumptions"]["decisions_outside_engine_stop_limit"] == 56
+    _decisions(db, [3, 5, 8] * 10)
+    c = svc.preview(db, ALICE, request(advanced={}), account_state_reader=balance())
+    assert c["typical_position"]["typical"]["approved"] is True and c["stop_distance_assumptions"]["decisions_outside_engine_stop_limit"] == 0

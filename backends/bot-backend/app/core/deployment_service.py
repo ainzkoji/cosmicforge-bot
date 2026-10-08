@@ -126,38 +126,68 @@ def occupying_bot(db, account_id: str) -> Optional[Dict[str, Any]]:
     return dict(row) if row else None
 
 
-def exchange_minimum_notional(db, account: Dict[str, Any]) -> Decimal:
-    """The venue's minimum order notional (largest over the catalog's listed instruments), or the default."""
+def exchange_minimum_notionals(db, account: Dict[str, Any]) -> Dict[str, Any]:
+    """The venue's minimum order notional as the catalog lists it: the value that
+    applies to the typical instrument (the median) and the largest one. On the
+    connected Binance demo venue 735 of 741 instruments list 5 USDT and one lists
+    100; taking the largest for every instrument overstated the budget a customer
+    needs twentyfold. The per-order check at execution time still uses each
+    instrument's own minimum."""
+    fallback = {"typical": DEFAULT_MIN_NOTIONAL, "largest": DEFAULT_MIN_NOTIONAL, "instruments": 0, "source": "DEFAULT"}
     try:
         from app.exchange.catalog_refresh import VENUE_KEY
         from app.exchange.instruments import InstrumentCatalog
         venue = VENUE_KEY.get(str(account["broker_id"]).lower())
         if venue is None:
-            return DEFAULT_MIN_NOTIONAL
+            return fallback
         environment = normalize_environment(account["environment"] or "live").value.upper()
-        values = [Decimal(str(i.min_notional)) for i in InstrumentCatalog(db).list(venue, environment)
-                  if getattr(i, "min_notional", None)]
-        return max(values) if values else DEFAULT_MIN_NOTIONAL
+        values = sorted(Decimal(str(i.min_notional)) for i in InstrumentCatalog(db).list(venue, environment)
+                        if getattr(i, "min_notional", None) and Decimal(str(i.min_notional)) > 0)
+        if not values:
+            return fallback
+        # upper median: never below what half of the instruments require
+        return {"typical": values[len(values) // 2], "largest": values[-1], "instruments": len(values), "source": "INSTRUMENT_CATALOG"}
     except Exception:
-        return DEFAULT_MIN_NOTIONAL
+        return fallback
+
+
+def exchange_minimum_notional(db, account: Dict[str, Any]) -> Decimal:
+    """The minimum order notional of the typical listed instrument, or the default."""
+    return exchange_minimum_notionals(db, account)["typical"]
+
+
+def engine_stop_limit_pct() -> Decimal:
+    """The engine's absolute maximum stop distance, in percent (SystemLimits)."""
+    try:
+        from app.risk.system_limits import SystemLimits
+        return Decimal(str(SystemLimits().max_stop_loss_pct)) * 100
+    except Exception:
+        return DEFAULT_WIDEST_STOP_PCT
 
 
 def stop_distance_assumptions(db) -> Dict[str, Any]:
     """Tightest / typical / widest structural stop of the frozen strategy's own
-    decisions, in percent, when enough decisions exist. Otherwise the system
-    maximum stop is the widest and no typical range is claimed."""
+    decisions, in percent, counting only decisions the engine would trade: a
+    stop wider than the engine's maximum is refused at execution, so it says
+    nothing about a position the customer could hold. With fewer than 20 such
+    decisions the engine's maximum stop is the widest and no typical range is
+    claimed. How many recorded decisions fall outside the limit is reported,
+    never hidden."""
+    limit = engine_stop_limit_pct()
     with db.connect() as c:
         if not c.execute("SELECT 1 FROM sqlite_master WHERE name='cati_residual_decisions'").fetchone():
             rows = []
         else:
             rows = c.execute("SELECT entry_reference, stop FROM cati_residual_decisions WHERE selected_symbol IS NOT NULL "
                              "AND entry_reference > 0 AND stop > 0 ORDER BY decision_time DESC LIMIT 500").fetchall()
-    distances = sorted(abs(Decimal(str(r[0])) - Decimal(str(r[1]))) / Decimal(str(r[0])) * 100 for r in rows)
+    every = [abs(Decimal(str(r[0])) - Decimal(str(r[1]))) / Decimal(str(r[0])) * 100 for r in rows]
+    distances = sorted(d for d in every if d <= limit)
+    scope = {"decisions": len(distances), "decisions_recorded": len(every),
+             "decisions_outside_engine_stop_limit": len(every) - len(distances), "engine_stop_limit_pct": limit}
     if len(distances) < 20:
-        return {"source": "SYSTEM_MAXIMUM_STOP", "decisions": len(distances), "tightest_pct": None, "typical_pct": None,
-                "widest_pct": DEFAULT_WIDEST_STOP_PCT}
+        return {"source": "SYSTEM_MAXIMUM_STOP", **scope, "tightest_pct": None, "typical_pct": None, "widest_pct": limit}
     q = lambda p: distances[min(len(distances) - 1, int(p * (len(distances) - 1)))]
-    return {"source": "FROZEN_STRATEGY_DECISIONS", "decisions": len(distances),
+    return {"source": "FROZEN_STRATEGY_DECISIONS", **scope,
             "tightest_pct": q(0.10).quantize(Decimal("0.01")), "typical_pct": q(0.50).quantize(Decimal("0.01")),
             "widest_pct": q(0.90).quantize(Decimal("0.01"))}
 
@@ -217,13 +247,16 @@ def evaluate(db, user_id: str, request: C.DeploymentRequest, *, now_ms: Optional
     if budget is not None:
         money = risk_levels.money_view(request.risk_level, budget)
         assumptions = stop_distance_assumptions(db)
-        min_notional = exchange_minimum_notional(db, account)
+        minimums = exchange_minimum_notionals(db, account)
+        min_notional = minimums["typical"]
         minimum_budget = risk_levels.minimum_deployable_budget(request.risk_level, exchange_min_notional=min_notional,
                                                                widest_stop_distance_pct=assumptions["widest_pct"])
         out.update(effective_budget=str(budget), budget={"type": request.budget.type, "value": request.budget.value},
                    risk_profile=profile.as_dict(), money=risk_levels.as_json(money),
                    minimum_deployable_budget=str(minimum_budget),
-                   exchange_minimum_notional=str(min_notional), stop_distance_assumptions=risk_levels.as_json(assumptions),
+                   exchange_minimum_notional=str(min_notional),
+                   exchange_minimum_notional_largest=str(minimums["largest"]),
+                   stop_distance_assumptions=risk_levels.as_json(assumptions),
                    ceiling_conflict={"system_per_trade_risk_ceiling_pct": str(risk_levels.SYSTEM_PER_TRADE_RISK_CEILING_PCT),
                                      "ceiling_applied": money["ceiling_applied"],
                                      "note": "The engine applies the stricter 0.4 % per-trade ceiling until the project owner "
@@ -454,5 +487,6 @@ def bot_payload(db, instance) -> Dict[str, Any]:
 
 
 __all__ = ["DeploymentRefused", "SUPPORTED_BROKERS", "OCCUPYING_STATUSES", "CONSENT_TABLE", "ensure_schema", "load_account",
+           "exchange_minimum_notionals", "exchange_minimum_notional", "engine_stop_limit_pct",
            "persisted_account_state", "exchange_account_state", "default_account_state_reader", "occupying_bot",
            "stop_distance_assumptions", "evaluate", "preview", "deploy", "bot_status", "bot_payload"]

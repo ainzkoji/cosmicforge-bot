@@ -72,6 +72,11 @@ export interface DeploymentPreview {
     money?: MoneyView;
     minimum_deployable_budget?: string;
     exchange_minimum_notional?: string;
+    exchange_minimum_notional_largest?: string;
+    stop_distance_assumptions?: {
+        source: string; decisions: number; decisions_recorded?: number; decisions_outside_engine_stop_limit?: number;
+        engine_stop_limit_pct?: string; tightest_pct: string | null; typical_pct: string | null; widest_pct: string;
+    };
     typical_position?: Record<string, { notional_usdt: string; margin_usdt: string; leverage: string; approved: boolean; reason: string | null }> | null;
     typical_position_note?: string;
     ceiling_conflict?: { system_per_trade_risk_ceiling_pct: string; ceiling_applied: boolean; note: string } | null;
@@ -239,6 +244,15 @@ export function protectionView(state: string | null | undefined): { label: strin
         case "UNCONFIRMED": return { label: "Not yet confirmed", tone: "attention" };
         default: return { label: "Could not be verified", tone: "attention" };
     }
+}
+
+/** How the typical position of a preview is worded: a figure only when the engine approved one. */
+export function typicalPositionView(preview: DeploymentPreview): { value: string; hint: string } {
+    const typical = preview.typical_position?.typical;
+    if (!typical) return { value: "not estimated", hint: "not enough engine history yet" };
+    if (typical.approved) return { value: formatUsdt(typical.notional_usdt), hint: "from the engine's recent stop distances" };
+    if (typical.reason === "RISK_SIZE_BELOW_EXCHANGE_MINIMUM") return { value: "below exchange minimum", hint: "at the engine's typical stop distance" };
+    return { value: "not estimated", hint: typical.reason ? `engine: ${typical.reason}` : "the engine could not size it" };
 }
 
 /** Data older than this is shown as stale, never as current. */

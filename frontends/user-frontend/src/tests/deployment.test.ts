@@ -6,7 +6,7 @@ import { join } from "node:path";
 import {
     DEPLOYMENT_SCHEMA_VERSION, ageLabel, botStatusView, buildDeploymentRequest, decimalText, formFingerprint, formatPct,
     deploymentPrefillPath, formatUsdt, isStale, newRequestId, parseRefusal, protectionView, riskLevelFromAppetite, severityTone,
-    validateForm,
+    typicalPositionView, validateForm,
 } from "../lib/deployment.ts";
 import type { DeploymentForm } from "../lib/deployment.ts";
 
@@ -145,3 +145,17 @@ test("the deployment screen has no leverage or environment control and goes thro
         assert.ok(client.includes(path), path);
     }
 });
+
+test("a typical position is a figure only when the engine approved one", () => {
+    const base = { schema_version: "v", request_id: "r", broker_account_id: "a", evaluated_at: 1, blockers: [], requirements: [], can_deploy: true };
+    const sized = (approved: boolean, reason: string | null) =>
+        ({ ...base, typical_position: { typical: { notional_usdt: "62.5", margin_usdt: "62.5", leverage: "1", approved, reason } } });
+    assert.equal(typicalPositionView(sized(true, null)).value, "62.50 USDT");
+    assert.equal(typicalPositionView(sized(false, "RISK_SIZE_BELOW_EXCHANGE_MINIMUM")).value, "below exchange minimum");
+    // any other refusal is not an exchange-minimum problem and is not described as one
+    const invalid = typicalPositionView(sized(false, "RISK_SIZE_STOP_DISTANCE_INVALID"));
+    assert.equal(invalid.value, "not estimated");
+    assert.ok(invalid.hint.includes("RISK_SIZE_STOP_DISTANCE_INVALID"));
+    assert.equal(typicalPositionView({ ...base, typical_position: null }).value, "not estimated");
+});
+
