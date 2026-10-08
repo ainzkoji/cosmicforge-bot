@@ -34,21 +34,24 @@ set of failing test ids against the baseline run, never by the absolute count.
 | ID | Task | Status | Commit |
 |---|---|---|---|
 | 1.0a | Protection read safety | PASS (unit/integration) | `b86c0760` |
-| 1.0b | Request-weight optimization | PASS (measured, see below) | see below |
-| 1.0c | Database churn reduction | PASS (measured, see below) | see below |
-| 1.0d | Runtime and collector tests | PASS | see below |
-| 1.0e | Executor hazard removal | PASS | see below |
-| 1.1 | Risk-profile source of truth | PASS (library + tests); ceiling conflict BLOCKED pending owner approval | see below |
-| 1.2 | Deployment contract | NOT STARTED | |
-| 1.3 | Broker-derived environment | NOT STARTED | |
-| 1.4 | Risk-based execution sizing | PASS (unit + boundary integration) | see below |
-| 1.5 | Billing enforcement and operator grants | NOT STARTED | |
-| 1.6 | Engine read model | NOT STARTED | |
-| 1.7 | API/proxy repairs | NOT STARTED | |
-| 1.8 | Production notifications | NOT STARTED | |
-| 1.9 | Customer portal screens | NOT STARTED | |
-| 1.10 | Onboarding wizard | NOT STARTED | |
-| 1.11 | Fresh-install guide | NOT STARTED | |
+| 1.0b | Request-weight optimization | PASS (measured) | `ff03e8d0` |
+| 1.0c | Database churn reduction | PASS (measured) | `ff03e8d0` |
+| 1.0d | Runtime and collector tests | PASS | `ab15a552` |
+| 1.0e | Executor hazard removal | PASS | `0e53c27d`, `179de7bc` |
+| 1.1 | Risk-profile source of truth | PASS (library and tests). The 0.4 % ceiling conflict is BLOCKED on the owner's decision | `a0a778f8` |
+| 1.2 | Deployment contract | PASS (handlers and tests; synthetic exchange). Not run against a Binance demo account | `c4727c69` |
+| 1.3 | Broker-derived environment | PASS (tests). A bot has no environment of its own | `c4727c69`, `829d4e27` |
+| 1.4 | Risk-based execution sizing | PASS (unit and boundary integration) | `4a5294a6` |
+| 1.5 | Billing enforcement and operator grants | PASS (tests) | `5ec23aa9`, `e6959aa3` |
+| 1.6 | Engine read model | PASS (tests on the certification broker fake) | `eb39b587` |
+| 1.7 | API/proxy repairs | PASS (tests; proxy to engine exercised locally) | `d3f4d2c9` |
+| 1.8 | Production notifications | PARTIAL: events, outbox, retry, in-app and SSE tested; no email, Telegram or push message was sent through a real provider | `829d4e27` |
+| 1.9 | Customer portal screens | PARTIAL: type-check, lint, build, unit tests; signed-in browser check of the dashboard, Auto Pilot and bot list on a scratch database. The deploy and bot-detail screens were not seen with a deployable account | `2b24889e`, `6766240` |
+| 1.10 | Onboarding wizard | PASS (API tests with the wizard's exact requests; run through the two live services locally) | `94199bf1` |
+| 1.11 | Fresh-install guide | PARTIAL: written and rehearsed on Windows; never executed on a Linux server | `b93e9eaa` |
+
+**Step 1 overall: PARTIAL.** It cannot be marked COMPLETE: the Binance demo certification, real notification delivery
+and the clean-server install were not executed (no demo credentials, no mail provider, no server). See "Closing test".
 
 ## 1.0a — Protection read safety
 
@@ -280,3 +283,240 @@ Not covered yet: concurrent reservations (the existing reservation store tests c
 specific test is pending with 1.2's concurrent-deploy test), and the open-risk input (`open_risk_usdt`) is 0 in the
 production path because the frozen portfolio admits one position (`max_open_positions = 1`); the cap is implemented
 and unit-tested for the multi-position case.
+
+## 1.5 — Billing enforcement and operator grants
+
+Commit `5ec23aa9` (and `e6959aa3` for the resume gate). Closed 8 October 2026.
+
+* `BILLING_ENFORCED` (default `false`) in `shared_lib/billing/enforcement.py`, read by both backends. While it is false
+  the plan gates in `bot-backend/app/core/plan_gate.py` and the user backend's broker-account limit block nothing.
+* Operator grants in `shared_lib/billing/operator_grants.py` (`billing_operator_grants`): time-limited, audited,
+  distinguishable from Stripe (`source: operator_grant`), not overwritten by a Stripe webhook while active (the event is
+  deferred), revocable. Admin-only routes in `user-backend/app/api/admin_billing.py`.
+* Defect found later by the closing rehearsal and fixed: with enforcement on, resuming a bot on a DEMO exchange account
+  demanded the live-trading entitlement. The start route now applies that gate only to bots on a LIVE account.
+
+Tests: `user-backend/tests/test_billing_enforcement_and_grants.py` (13), `bot-backend/tests/test_plan_entitlement_gates.py`
+(run with enforcement on), `test_step1_closing_synthetic.py::test_a_demo_bot_can_be_resumed_...`.
+
+## 1.2 and 1.3 — Deployment contract and broker-derived environment
+
+Commit `c4727c69`. Closed 8 October 2026.
+
+* `shared_lib/deployment/contract.py`: versioned request (`2026-10-08.v1`), decimal strings, unknown fields rejected,
+  `request_id` for idempotency, blocker codes with message and action, consent text and version.
+* `bot-backend/app/core/deployment_service.py`: one `evaluate` used by preview and deploy; deploy re-checks under
+  `BEGIN IMMEDIATE`, writes the consent row, returns the same bot for a repeated `request_id`, 409 for a second bot on
+  the account. Routes `POST /api/v1/auto-pilot/preview`, `POST /deployments`, `GET /bots`; the user backend forwards
+  both the new and the legacy body from `POST /api/v1/auto-pilot/deploy`.
+* The environment is read from `broker_accounts.environment` everywhere. A live account is refused
+  (`LIVE_NOT_AVAILABLE`). The full regression run showed that this step had first put an `environment` field and
+  column on the bot itself, against `test_11_the_bot_has_no_environment_of_its_own`; both were removed in `829d4e27`.
+* One bot per account is enforced by the deploy transaction, not by a unique index: accounts with two active bots are a
+  state the engine models and reports, and existing fixtures rely on it.
+
+Tests: `bot-backend/tests/test_deployment_contract_step1.py` (16), `user-backend/tests/test_step1_proxies.py`,
+`test_step1_closing_synthetic.py`, `test_step1_security.py`.
+
+Not verified: a deployment against a real Binance demo account (no credentials were available).
+
+## 1.6 — Engine read model
+
+Commit `eb39b587`. Closed 8 October 2026.
+
+* `bot-backend/app/core/cati_read_model.py` reads only what the engine persisted: status (stale after 120 s, never shown
+  as running), eligibility with a registry reason, positions with the exchange-side protection state (unknown is never
+  shown as confirmed), trades (gross realized, fees, funding, net = realized − fees + funding), summary windows, equity.
+* `app/observability/account_recorder.py`: hourly and on-fill equity snapshots, 90-day retention with daily roll-ups.
+* `app/trading_intelligence/integration/reason_registry.py`: about 128 engine codes with message, action and severity.
+  An unmapped code is reported as such. The class name of an unexpected failure is described as a fault in words.
+* Owner routes `/api/v1/cati/bots/{id}/status|positions|trades|summary|equity|events` (404 for anyone else) and admin
+  routes under `/api/v1/admin/cati/bots`.
+
+Tests: `test_cati_read_model.py` (10), `test_reason_registry.py` (12 with parametrisation).
+
+## 1.7 — API and proxy repairs
+
+Commit `d3f4d2c9`. Closed 8 October 2026.
+
+* The monitoring proxy now targets routes the engine serves and requires an administrator, as the engine does.
+* The forex instruments proxy no longer sends credentials in a request body; the engine resolves the caller's own.
+* Five proxies read the engine address from one place. The portal's CATI panel and SSE hook use the one API base.
+* Three client functions for routes no backend serves were removed.
+
+Tests: `user-backend/tests/test_step1_proxies.py`, `frontends/user-frontend/src/tests/apiRoutes.test.ts`. Seen working
+locally: the dashboard's CATI panel loaded the engine status through the user backend.
+
+Known and left as found: the customer dashboard asks the admin-only `bots-overview` route for "active bots" and shows
+0 when refused; `reports.ts` calls seven `/api/v1/reports/...` paths that no proxy serves (removal review, Batch 4).
+
+## 1.8 — Customer events and notifications
+
+Commit `829d4e27`. PARTIAL.
+
+* `app/observability/user_events.py`: eight event types, emitted after the state change is committed, idempotent on a
+  deterministic id, never raising into the trade path. Tables `user_events` and `notification_outbox`.
+* In-app alert and SSE at emit time; email, Telegram and push from the notification worker with bounded backoff (eight
+  attempts). A row is never marked sent unless the channel accepted it. `ENTRY_BLOCKED` is one event per account,
+  decision and reason, and at most one external message per account per hour.
+* `EventStore.emit` was writing a column set that matched neither shape of the `events` table and failed on both.
+
+Tests: `test_user_events.py` (26): duplicate emission, restart replay, retry and exhaustion, channel selection, rate
+limit, database and bus outage, secret stripping, SSE ownership, lifecycle events after commit, fills across restarts,
+protection alert only after the bound, daily loss pause once.
+
+Not verified: delivery through a real SMTP server, Telegram bot or push provider.
+
+## 1.9 — Customer portal
+
+Commits `2b24889e`, `6766240`. PARTIAL.
+
+* Auto Pilot (crypto) deploys on the shared contract and shows the backend's preview. No leverage input, no paper/live
+  switch. Deploy needs a current, non-stale preview and the acknowledgement; one request id per intent.
+* Bot detail shows the engine's status, eligibility reason, stop state, trades, results and activity, each with
+  loading, error, empty and stale states. My Bots shows the engine status, environment and budget.
+* `src/lib/deployment.ts` holds the pure logic with unit tests.
+
+Checks: `tsc -b` clean; eslint 0 errors (212 warnings in the whole project, existing convention); `vite build`;
+`npm test` 40 pass.
+
+Browser check on 8 October 2026 (local build, the two real services, a scratch database, a synthetic account without
+credentials): sign-in works; the dashboard renders; Auto Pilot lists the account, shows the pre-filled form and the
+backend's blocker with its action, and keeps Deploy disabled; the bot list shows its empty state. This found and fixed
+a crash of the dashboard for any account with no equity reading (`6766240`).
+
+Not verified: the preview with a readable balance, a successful deploy, and the bot-detail panel with live data.
+
+## 1.10 — Onboarding
+
+Commit `94199bf1`. Closed 8 October 2026.
+
+The wizard and the service used different step names and payload keys, so every step after the welcome screen was
+rejected. The wizard's names are now canonical, the earlier ones are aliases, saving a step returns the next state, the
+risk appetite maps to a profile through the shared library, and completion returns a deployment prefill. Onboarding
+deploys nothing.
+
+Tests: `user-backend/tests/test_onboarding_step1.py` (24 with parametrisation), two frontend tests. Run through the two
+live services locally: five steps accepted in order, completion returned `balanced` and budget `1000`.
+
+## 1.11 — Fresh-install guide
+
+Commit `b93e9eaa`. PARTIAL.
+
+`docs/INSTALL_SINGLE_SERVER.md` covers the 25 required topics and the runtime states. Its section 26 lists what was
+executed. On Windows, from a pristine export and an empty database: the migration (twice), a production-profile start
+of the user backend and of the trading backend, the administrator bootstrap, 401 on unauthenticated routes, backup and
+restore, the frontend build. Nothing was executed on a Linux server: no systemd, nginx, TLS, SMTP or exchange step.
+
+## Migrations and security (Sections 19 and 20)
+
+Commit `c649285a`.
+
+| Schema change | Where |
+|---|---|
+| `bot_instances`: `risk_profile_version`, `max_position_usdt`, `risk_acknowledged_at`, `deploy_request_id`, `stopped_reason`; index on `deploy_request_id` | `migrations.py` |
+| `deployment_consents` | `migrations.py` |
+| `account_equity_snapshots`, `account_equity_daily` | `migrations.py`, also the once-per-database production schema |
+| `user_events`, `notification_outbox` | `migrations.py`, also the once-per-database production schema |
+| `billing_operator_grants` | created by the grants module on first use |
+| `cati_production_protection_uncertainty`, `cati_account_income`, `cati_account_income_cursor` | production schema (Phase A) |
+
+All additive. Recovery from a bad deployment is to run the previous code on the same file.
+
+`shared/tests/test_step1_migrations.py` (7): clean database, populated database from before Step 1, repeated and
+interrupted migration, constraints, `foreign_key_check` and `integrity_check`, owner scoping, no environment on a bot.
+
+`test_step1_security.py` (14 with parametrisation): every Step 1 route requires a user or admin authority; the request
+cannot carry environment, owner, consent time, leverage or keys; consent is written by the server only for an
+acknowledged deploy; no credential appears in any portal response. Isolation between two customers on the new routes
+and controls is in `test_step1_closing_synthetic.py`; SSE ownership in `test_user_events.py`. Withdrawal permission,
+mandatory keys and 2FA are covered by their existing suites, which still pass.
+
+Operator action outstanding: administrator passwords that exist in Git history must be rotated by the authorised
+operator. Observation: the user backend serves `/docs` in the production profile (not published by the nginx site).
+
+## Closing test (Section 21)
+
+No Binance demo credentials, mail provider or server were available. Nothing below was run against a real exchange.
+
+| Scenario | Status | Evidence and what is missing |
+|---|---|---|
+| A Account creation | PARTIAL | Registration, sign-in and onboarding ran through the live services locally. Email verification was not: the address was marked verified directly in the scratch database. No paid plan was needed |
+| B Exchange connection | BLOCKED | No Binance demo credentials |
+| C Deployment preview | PARTIAL | Synthetic: the preview equals the shared risk library (Balanced, 1000 USDT: 4.00 USDT risk per trade under the 0.4 % ceiling). Through the live services the preview was refused with `ACCOUNT_NOT_CONNECTED` for an account without credentials, as it should be |
+| D Deployment | PARTIAL | Synthetic: ownership, consent, DEMO environment, engine discovery, 409 on a second bot, same bot on a repeated request. Not on a real demo account |
+| E CATI execution | PARTIAL (synthetic only) | The real runtime cycle discovered and evaluated the deployed bot on a fake exchange and waited for a signal. Order, stop and read-back mechanics are covered on the certification broker fake. **No order was observed on the Binance demo exchange: pending** |
+| F Customer visibility | PARTIAL | Read model verified against engine records in tests; dashboard, Auto Pilot and bot list seen in a browser. Not compared with exchange records |
+| G Notifications | PARTIAL | Events, no duplicates, no cross-user delivery and retry after transport failure are tested. No message left through a real channel |
+| H Bot controls | PASS (synthetic) | Pause, maintenance of an open position while paused, resume, stop, restart with the bot still stopped |
+| I Admin controls | PARTIAL | Existing kill-switch and flatten suites pass; a customer token gets 401 on the admin routes (seen live). No operator drill was run by hand |
+| J Resilience | PASS (tests) | Exchange timeout, failed stop read, restart with a protected position, database interruption, notification outage, repeated deployment, duplicate cycle, stale heartbeat. "Kill switch during an evaluation" is covered only as kill switch before the evaluation |
+| K Clean-install repeatability | BLOCKED | No server. Windows rehearsal only (1.11) |
+
+## Performance, final measurement
+
+Same fixtures and method as Phase A (`test_runtime_cost_budget.py`), measured again at the final commit. Request weight
+is unchanged from Phase A. Database statements rose slightly because Steps 1.6 and 1.8 record equity and events in
+the cycle; connections and schema statements did not.
+
+| Scenario | Weight before / after | Connections before / after | Schema statements before / after | Statements before / Phase A / final |
+|---|---|---|---|---|
+| Account without a bot | 116 / 10 | 13 / 1 | 16 / 0 | 86 / 30 / 33 |
+| Idle running bot | 116 / 51 | 27 / 1 | 24 / 0 | 157 / 72 / 75 |
+| Idle running bot, income refresh due | 116 / 81 | 27 / 1 | 24 / 0 | 157 / 72 / 75 |
+| Protected position | 130 / 93 | 34 / 1 | 25 / 0 | 199 / 93 / 102 |
+| Pending close | 149 / 84 | 45 / 1 | 25 / 0 | 268 / 128 / 148 |
+| Failed stop read | 72 / 61 | 26 / 1 | 24 / 1 | 150 / 44 / 53 |
+| Restart with a position | 130 / 93 | 38 / 7 | 31 / 6 | 227 / 128 / 137 |
+| Three idle accounts | 348 / 30 | 39 / 3 | 48 / 0 | 258 / 90 / 99 |
+
+Evaluation time on the fake exchange fell from 80–290 ms to 9–39 ms in Phase A. The final run measured 14–49 ms, but
+it shared the machine with a full test run, so that figure is not comparable and no claim is made from it. Loop
+cadence, the hourly collector, no false liquidation on a failed stop read, discovery of a new bot and no duplicate
+orders are covered by `test_production_loop.py` and `test_protection_read_safety.py`.
+
+## Removal batches (Section 24): reviewed, nothing deleted
+
+| Batch | Finding | Readiness |
+|---|---|---|
+| 2 Backtest engine and portal pages | `app/backtest/` (2,195 lines), `api/backtesting.py`, the user proxy, six `backtest_*` tables, three portal pages. Creation already answers 409; list, detail and export are live. `main.py` imports and starts `BacktestWorker`; both routers are registered; `App.tsx` has three routes and a nav link; two tests import it | Blocked by that wiring and by the audit document's intent to keep historical read and export |
+| 3 Shadow-trade subsystem | `app/shadow/` (2,088 lines), `api/shadow_routes.py` (10 routes), two tables. Off by default. Referenced by the router registration, a guarded hook in `runner/multi_runner.py` and the auth-hardening tests. Not referenced by the CATI production runtime or either frontend | Blocked by the registration, the hook and the tests; otherwise callerless in this repository |
+| 4 Callerless routers | No dead router module in the engine. Seven user-proxy routes have no frontend caller (three monitoring, three analytics, risk templates). Several engine admin prefixes have no caller in this repository | The seven proxy routes are ready on repository evidence, pending confirmation that nothing external calls them. The engine admin prefixes are blocked by unknown operator callers |
+
+Batch 1 was not redone. Batches 7 and 8 were not touched.
+
+## Unresolved decisions
+
+1. **The 0.4 % per-trade ceiling.** The approved profiles say 0.5 % (Balanced) and 0.75 % (Aggressive). The engine's
+   ceiling is 0.4 %. The code applies the stricter value, the preview says so, and nothing widens it. Until the owner
+   decides, Balanced and Aggressive risk the same per trade and differ only in their other limits.
+2. **Push to `origin/main`.** The work is committed on local `main` (the owner's standing instruction is to work on
+   `main`). It has not been pushed: the Step 1 instructions ask for approval and CI evidence before anything reaches
+   `main` on the remote.
+3. **Rotation of administrator passwords present in Git history** (operator).
+4. **Removal batches 2 to 4**: whether to proceed, given the blockers above.
+
+## Final regression gate (code commit `179de7bc`, 8 October 2026)
+
+Run from a pristine `git archive` export of the commit with the CI commands and the quarantine plugin, and compared by
+failing test id with the baseline run of `9fb120f`. The quarantine list is unchanged at 125 lines.
+
+| Suite | Baseline | Final | New failures |
+|---|---|---|---|
+| bot-backend | 5,086 passed, 5 failed, 5 skipped, 106 xfailed, 2 xpassed | 5,294 passed, 0 failed, 11 skipped, 106 xfailed, 2 xpassed | 0 |
+| user-backend | 409 tests, 0 failed | 469 tests, 0 failed | 0 |
+| shared | 38 passed | 74 passed | 0 |
+| admin-backend | 88 passed, 6 xfailed | 88 passed, 6 xfailed | 0 |
+| root | 4 passed, 3 xfailed | 4 passed, 3 xfailed | 0 |
+
+* The five baseline failures do not fail now, but that is not a Step 1 fix: three of them assert the operator's private
+  `.env` and are skipped where it is absent, as in this export; the other two pass here. All five depend on that file.
+* One test was removed on purpose: `test_flip_closes_old_side_before_new_side_proceeds` asserted the position flip that
+  1.0e forbids. Its replacement asserts the refusal.
+* An intermediate run (commit `eb39b587`) found four regressions, all fixed before this gate: the bot-level
+  environment, schema statements inside a cycle, the legacy deploy proxy signature (two tests). A run of `829d4e27`
+  found one more, a 1.0e test that depended on the operator `.env` (`179de7bc`).
+* Frontend, after the last frontend commit `6766240`: `tsc -b` clean, eslint 0 errors, `vite build` succeeds,
+  `npm test` 40 pass. The admin frontend was not changed and not rebuilt.
+* Not run: `tests/integration` (needs both backends running; excluded from CI), browser end-to-end automation (none
+  exists in the repository), the Binance demo certification flow.
