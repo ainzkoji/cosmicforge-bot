@@ -258,6 +258,25 @@ export function ageLabel(observedAtMs: number | null | undefined, nowMs: number)
     return `${Math.round(seconds / 86_400)} d ago`;
 }
 
+export interface DeploymentPrefill {
+    risk_level?: string | null;
+    budget_type?: string | null;
+    budget_value?: string | null;
+}
+
+/**
+ * Where onboarding sends the user next: the deployment screen with the form
+ * pre-filled. It is only a link; nothing is deployed until the user confirms there.
+ */
+export function deploymentPrefillPath(prefill: DeploymentPrefill | null | undefined): string {
+    const params: string[] = [];
+    if (prefill?.risk_level) params.push(`risk=${encodeURIComponent(riskLevelFromAppetite(prefill.risk_level))}`);
+    if (prefill?.budget_type === "fixed_amount" && prefill.budget_value && decimalText(prefill.budget_value)) {
+        params.push(`budget=${encodeURIComponent(decimalText(prefill.budget_value) as string)}`);
+    }
+    return `/dashboard/auto-pilot${params.length ? `?${params.join("&")}` : ""}`;
+}
+
 /** Onboarding risk appetite -> risk level (unknown answers fall to the lowest-risk profile). */
 export function riskLevelFromAppetite(appetite: string | null | undefined): RiskLevel {
     switch (String(appetite || "").trim().toLowerCase()) {

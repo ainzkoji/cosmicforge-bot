@@ -1,4 +1,5 @@
 import json
+import math
 from datetime import datetime, timezone
 from typing import Dict, Any, List, Optional, Tuple
 
@@ -14,6 +15,105 @@ from app.schemas.onboarding import (
 
 def utc_now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+# ── steps (Step 1.10) ───────────────────────────────────────────────────────
+# One vocabulary for the wizard and the service. Before this, the portal sent
+# ``experience_level`` / ``risk_tolerance`` / ``strategy_preference`` /
+# ``capital_allocation`` while the service accepted ``experience`` / ``risk`` /
+# ``strategy`` / ``allocation`` and different payload keys, so every step after
+# the welcome screen was rejected.
+STEP_ORDER = ("welcome", "experience_level", "risk_tolerance", "strategy_preference", "capital_allocation", "summary")
+STEP_ALIASES = {"experience": "experience_level", "risk": "risk_tolerance", "strategy": "strategy_preference",
+                "allocation": "capital_allocation"}
+
+
+def canonical_step(step: Optional[str]) -> str:
+    name = STEP_ALIASES.get(str(step or ""), str(step or ""))
+    if name not in STEP_ORDER:
+        raise ValueError(f"Unknown step {step}")
+    return name
+
+
+def next_step(step: str) -> str:
+    index = STEP_ORDER.index(canonical_step(step))
+    return STEP_ORDER[min(index + 1, len(STEP_ORDER) - 1)]
+
+
+def risk_level_for(tolerance: Optional[str]) -> str:
+    """The risk profile an onboarding risk appetite maps to (the one shared
+    library; an unknown or missing answer maps to the lowest-risk profile)."""
+    from shared_lib import risk_levels
+    try:
+        return risk_levels.normalize_level(tolerance)
+    except Exception:
+        return risk_levels.normalize_level("conservative")
+
+
+def _positive_number(value: Any, name: str) -> float:
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        raise ValueError(f"{name} must be a number")
+    if not math.isfinite(number) or number <= 0:
+        raise ValueError(f"{name} must be a finite number greater than zero")
+    return number
+
+
+def normalise_step(step: str, raw_data: Dict[str, Any], saved: Dict[str, Any]) -> Dict[str, Any]:
+    """Validate one step's answers and return them under the stored keys."""
+    raw = dict(raw_data or {})
+    if step == "welcome":
+        WelcomeData(**raw)
+        return {}
+    if step == "experience_level":
+        return {"experience_level": ExperienceData(**raw).experience_level}
+    if step == "risk_tolerance":
+        tolerance = RiskData(**raw).risk_tolerance
+        return {"risk_tolerance": tolerance, "risk_level": risk_level_for(tolerance)}
+    if step == "strategy_preference":
+        strategy_id = raw.get("strategy_id") or raw.get("strategy_preference")
+        req = StrategySelectionData(strategy_id=strategy_id, strategy_version=raw.get("strategy_version") or "latest")
+        validate_strategy_choice(req.strategy_id)
+        return {"strategy_id": req.strategy_id, "strategy_preference": req.strategy_id}
+    if step == "capital_allocation":
+        if "allocation_value" in raw or "capital_allocation" in raw or "allocation_type" in raw:
+            kind = str(raw.get("allocation_type") or "fixed_amount")
+            value = _positive_number(raw.get("allocation_value"), "allocation_value")
+            budget = _positive_number(raw["capital_allocation"], "capital_allocation") if raw.get("capital_allocation") is not None else None
+        else:                                               # the earlier {amount, type} shape
+            req = AllocationData(**raw)
+            kind, value = req.type, _positive_number(req.amount, "amount")
+            budget = value if req.type == "fixed_amount" else None
+        if kind in ("percentage", "percent_balance"):
+            model, kind = "percentage", "percent_balance"
+            if value > 100:
+                raise ValueError("A percentage allocation cannot exceed 100")
+        elif kind == "fixed_amount":
+            model = "fixed_amount"
+            if budget is not None and value > budget:
+                raise ValueError("The amount per trade cannot exceed the total budget")
+        else:
+            raise ValueError(f"Unknown allocation type {kind}")
+        validate_allocation(value, model, saved.get("risk_tolerance", "low"))  # type: ignore[arg-type]
+        return {"capital_allocation": budget, "allocation_type": kind, "allocation_model": model, "allocation_value": value,
+                "amount": value, "type": model}
+    return {}                                               # summary
+
+
+def deployment_prefill(data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """Risk level and budget for the deployment screen, from the answers given.
+    None until the risk appetite is known. Never a deployment by itself."""
+    if not data.get("risk_tolerance"):
+        return None
+    from shared_lib import risk_levels
+    budget = data.get("capital_allocation")
+    out: Dict[str, Any] = {"risk_level": risk_level_for(data.get("risk_tolerance")),
+                           "risk_profile_version": risk_levels.RISK_PROFILE_VERSION, "budget_type": None, "budget_value": None}
+    if budget is not None:
+        text = f"{float(budget):.8f}".rstrip("0").rstrip(".")
+        out.update(budget_type="fixed_amount", budget_value=text)
+    return out
 
 # ============================================================================
 # 1. Strategy Catalog & Validation
@@ -131,51 +231,42 @@ def get_onboarding_state(user_id: str) -> Dict[str, Any]:
                 "status": "not_started",
                 "current_step": "welcome",
                 "data": {},
-                "recommended_setup": None
+                "recommended_setup": None,
+                "steps_completed": [],
+                "deployment_prefill": None,
             }
-            
+
         data = dict(row)
+        answers = json.loads(data["data_json"]) if data["data_json"] else {}
+        try:
+            current = canonical_step(data["current_step"])
+        except ValueError:
+            current = "welcome"
         return {
             "status": data["status"],
-            "current_step": data["current_step"],
-            "data": json.loads(data["data_json"]) if data["data_json"] else {},
+            "current_step": current,
+            "data": answers,
             "recommended_setup": json.loads(data["recommended_defaults"]) if data["recommended_defaults"] else None,
-            "last_updated": data["updated_at"]
+            "last_updated": data["updated_at"],
+            "steps_completed": list(STEP_ORDER[:STEP_ORDER.index(current)]),
+            "deployment_prefill": deployment_prefill(answers),
         }
 
-def update_onboarding_step(user_id: str, step: str, raw_data: Dict[str, Any]) -> None:
-    # 1. Validation & Schema Enforcement
+def update_onboarding_step(user_id: str, step: str, raw_data: Dict[str, Any]) -> Dict[str, Any]:
+    """Validate and save one step; returns the new state, whose ``current_step``
+    is the step the wizard shows next."""
+    current = get_onboarding_state(user_id)
+    # 1. Validation & Schema Enforcement (previous answers are needed for the limits)
     try:
-        if step == "welcome":
-            WelcomeData(**raw_data)
-        elif step == "experience":
-            ExperienceData(**raw_data)
-        elif step == "risk":
-            RiskData(**raw_data)
-        elif step == "strategy":
-            req = StrategySelectionData(**raw_data)
-            validate_strategy_choice(req.strategy_id)
-        elif step == "allocation":
-            # Need previous answers to validate limits!
-            current_state = get_onboarding_state(user_id)
-            saved_data = current_state["data"]
-            risk_tol = saved_data.get("risk_tolerance", "low") # Default low if missing
-            
-            req = AllocationData(**raw_data)
-            validate_allocation(req.amount, req.type, risk_tol) # type: ignore
-        elif step == "summary":
-            pass
-        else:
-            raise ValueError(f"Unknown step {step}")
-            
+        step = canonical_step(step)
+        answers = normalise_step(step, raw_data, current["data"])
     except Exception as e:
         raise ValueError(f"Invalid data for step {step}: {str(e)}")
 
     # 2. Persistence
     db = DB()
-    current = get_onboarding_state(user_id)
     merged_data = current["data"]
-    merged_data.update(raw_data)
+    merged_data.update(answers)
     
     # If starting, set status
     new_status = 'in_progress'
@@ -194,8 +285,9 @@ def update_onboarding_step(user_id: str, step: str, raw_data: Dict[str, Any]) ->
                 updated_at = ? 
             WHERE user_id = ?
             """,
-            (step, json.dumps(merged_data), new_status, utc_now_iso(), user_id)
+            (next_step(step), json.dumps(merged_data), new_status, utc_now_iso(), user_id)
         )
+    return get_onboarding_state(user_id)
 
 def complete_onboarding(user_id: str) -> BotSetupBlueprint:
     """
@@ -210,8 +302,8 @@ def complete_onboarding(user_id: str) -> BotSetupBlueprint:
         exp_level: ExperienceLevel = data.get("experience_level", "beginner")
         risk_tol: RiskTolerance = data.get("risk_tolerance", "low")
         strat_id = data.get("strategy_id", "cati")
-        alloc_amt = data.get("amount", 100.0)
-        alloc_type: AllocationModel = data.get("type", "fixed_amount")
+        alloc_amt = data.get("allocation_value", data.get("amount", 100.0))
+        alloc_type: AllocationModel = data.get("allocation_model", data.get("type", "fixed_amount"))
     except KeyError:
         raise ValueError("Incomplete onboarding data. Cannot finalize.")
 
@@ -222,6 +314,11 @@ def complete_onboarding(user_id: str) -> BotSetupBlueprint:
     # b. Risk Policy (Clamped)
     base_policy = get_risk_preset(risk_tol)
     clamped_policy = clamp_risk_policy(base_policy, exp_level)
+    # The onboarding preset may never advertise more leverage than the risk
+    # profile the deployment will actually use (tightening only).
+    from shared_lib import risk_levels
+    profile = risk_levels.get_profile(risk_level_for(risk_tol))
+    clamped_policy.max_leverage = min(clamped_policy.max_leverage, int(profile.leverage_ceiling))
     
     # c. Blueprint
     blueprint = BotSetupBlueprint(
@@ -230,7 +327,10 @@ def complete_onboarding(user_id: str) -> BotSetupBlueprint:
         risk_policy=clamped_policy,
         allocation_usdt=alloc_amt if alloc_type == "fixed_amount" else 0.0, # Placeholder
         allocation_type=alloc_type,
-        allocation_value=alloc_amt
+        allocation_value=alloc_amt,
+        risk_level=profile.level,
+        # Pre-fills the deployment screen. Completing onboarding deploys nothing.
+        deployment_prefill=deployment_prefill(data),
     )
     
     # 3. Save

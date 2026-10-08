@@ -5,7 +5,8 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import {
     DEPLOYMENT_SCHEMA_VERSION, ageLabel, botStatusView, buildDeploymentRequest, decimalText, formFingerprint, formatPct,
-    formatUsdt, isStale, newRequestId, parseRefusal, protectionView, riskLevelFromAppetite, severityTone, validateForm,
+    deploymentPrefillPath, formatUsdt, isStale, newRequestId, parseRefusal, protectionView, riskLevelFromAppetite, severityTone,
+    validateForm,
 } from "../lib/deployment.ts";
 import type { DeploymentForm } from "../lib/deployment.ts";
 
@@ -108,6 +109,27 @@ test("onboarding risk appetite maps to a profile and unknown answers stay conser
     assert.equal(riskLevelFromAppetite("conservative"), "conservative");
     assert.equal(riskLevelFromAppetite(""), "conservative");
     assert.equal(riskLevelFromAppetite(null), "conservative");
+});
+
+test("onboarding hands over a pre-filled deployment link and nothing else", () => {
+    assert.equal(deploymentPrefillPath({ risk_level: "balanced", budget_type: "fixed_amount", budget_value: "1000" }),
+        "/dashboard/auto-pilot?risk=balanced&budget=1000");
+    assert.equal(deploymentPrefillPath({ risk_level: "high", budget_type: null, budget_value: null }), "/dashboard/auto-pilot?risk=aggressive");
+    assert.equal(deploymentPrefillPath({ risk_level: "low", budget_type: "percent_balance", budget_value: "25" }), "/dashboard/auto-pilot?risk=conservative");
+    assert.equal(deploymentPrefillPath({ risk_level: "balanced", budget_type: "fixed_amount", budget_value: "1e9" }), "/dashboard/auto-pilot?risk=balanced");
+    assert.equal(deploymentPrefillPath(null), "/dashboard/auto-pilot");
+});
+
+test("the wizard submits the step names the service accepts and never deploys", () => {
+    const wizard = src("pages/OnboardingWizard.tsx");
+    for (const step of ["welcome", "experience_level", "risk_tolerance", "strategy_preference", "capital_allocation", "summary"]) {
+        assert.ok(wizard.includes(`'${step}'`), step);
+    }
+    for (const file of ["pages/OnboardingWizard.tsx", "components/onboarding/SummaryStep.tsx", "api/onboarding.ts"]) {
+        const text = src(file);
+        assert.equal(/deployBot|deployAutoPilot|auto-pilot\/deploy/.test(text), false, file);
+    }
+    assert.ok(wizard.includes("deploymentPrefillPath"));
 });
 
 test("the deployment screen has no leverage or environment control and goes through the shared client", () => {

@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { motion, AnimatePresence } from 'framer-motion';
 import { onboardingApi } from '../api/onboarding';
+import { deploymentPrefillPath } from '../lib/deployment';
 
 // Step Components
 import { WelcomeStep } from '../components/onboarding/WelcomeStep';
@@ -16,6 +17,8 @@ export default function OnboardingWizard() {
     const navigate = useNavigate();
     const queryClient = useQueryClient();
     const [currentStep, setCurrentStep] = useState<string>('loading');
+    // A step the service refused is shown to the user, not only logged.
+    const [stepError, setStepError] = useState<string | null>(null);
 
     // Fetch initial state
     const { data: onboardingState, isLoading: isStateLoading } = useQuery({
@@ -44,16 +47,18 @@ export default function OnboardingWizard() {
     // Mutation for submitting steps
     const submitStepMutation = useMutation({
         mutationFn: onboardingApi.submitStep,
+        onMutate: () => setStepError(null),
         onSuccess: (data) => {
-            // Update local state and invalidate query
+            // The service answers with the new state; current_step is the step to show next.
             queryClient.setQueryData(['onboardingState'], data);
             if (data.current_step) {
                 setCurrentStep(data.current_step);
             }
         },
-        onError: (error) => {
-            console.error("Failed to submit step:", error);
-            // Could add toast notification here
+        onError: (error: any) => {
+            const detail = error?.response?.data?.detail;
+            setStepError(typeof detail === 'string' && detail ? detail
+                : error instanceof Error && error.message ? error.message : 'This step could not be saved. Please try again.');
         }
     });
 
@@ -65,12 +70,17 @@ export default function OnboardingWizard() {
         submitStepMutation.mutate({ step: stepName, data });
     };
 
+    // Finishing the wizard saves the answers and opens the deployment screen
+    // pre-filled with them. Nothing is deployed here: the user reviews the
+    // backend preview and confirms there.
     const handleComplete = async () => {
+        setStepError(null);
         try {
-            await onboardingApi.complete();
-            navigate('/dashboard');
-        } catch (e) {
-            console.error("Failed to complete:", e);
+            const blueprint = await onboardingApi.complete();
+            navigate(deploymentPrefillPath(blueprint.deployment_prefill ?? onboardingState?.deployment_prefill));
+        } catch (e: any) {
+            const detail = e?.response?.data?.detail;
+            setStepError(typeof detail === 'string' && detail ? detail : 'Setup could not be completed. Please try again.');
         }
     };
 
@@ -150,6 +160,11 @@ export default function OnboardingWizard() {
                 </div>
 
                 <div className="relative z-10 w-full max-w-5xl">
+                    {stepError && (
+                        <div role="alert" className="mb-6 max-w-lg mx-auto p-3 bg-red-500/10 border border-red-500/20 rounded-xl text-red-300 text-sm text-center">
+                            {stepError}
+                        </div>
+                    )}
                     <AnimatePresence mode="wait">
                         <motion.div
                             key={currentStep}

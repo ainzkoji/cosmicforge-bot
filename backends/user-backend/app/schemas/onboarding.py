@@ -37,6 +37,15 @@ class RiskPolicyPreset(BaseModel):
     max_open_positions: int
     drawdown_limit_pct: float
     
+class DeploymentPrefill(BaseModel):
+    """What onboarding hands to the deployment screen. It only pre-fills the
+    form: onboarding never deploys anything (Step 1.10)."""
+    risk_level: Literal["conservative", "balanced", "aggressive"]
+    risk_profile_version: str
+    budget_type: Optional[Literal["fixed_amount", "percent_balance"]] = None
+    budget_value: Optional[str] = None
+
+
 class BotSetupBlueprint(BaseModel):
     strategy_id: str
     strategy_name: str
@@ -44,6 +53,8 @@ class BotSetupBlueprint(BaseModel):
     allocation_usdt: float  # Estimated if percentage
     allocation_type: AllocationModel
     allocation_value: float
+    risk_level: Optional[str] = None
+    deployment_prefill: Optional[DeploymentPrefill] = None
     
 # --- API Requests/Responses ---
 
@@ -56,6 +67,11 @@ class OnboardingStepData(BaseModel):
     capital_allocation: Optional[float] = None
     capital_currency: Optional[str] = "USDT"
     allocation_model: Optional[AllocationModel] = None
+    # What the wizard's own steps read back (Step 1.10)
+    strategy_id: Optional[str] = None
+    allocation_type: Optional[Literal["fixed_amount", "percent_balance"]] = None
+    allocation_value: Optional[float] = None
+    risk_level: Optional[str] = None
 
 class OnboardingStateResponse(BaseModel):
     status: str
@@ -63,10 +79,14 @@ class OnboardingStateResponse(BaseModel):
     data: Optional[OnboardingStepData]
     recommended_setup: Optional[BotSetupBlueprint] = None
     last_updated: Optional[str] = None
+    steps_completed: List[str] = []
+    deployment_prefill: Optional[DeploymentPrefill] = None
 
 class SaveStepRequest(BaseModel):
-    # Step name determines validation in service layer
-    step: Literal["welcome", "experience", "risk", "strategy", "allocation", "summary"]
+    # Step name determines validation in service layer. The wizard's own step
+    # names are canonical; the earlier short names remain accepted aliases.
+    step: Literal["welcome", "experience_level", "risk_tolerance", "strategy_preference", "capital_allocation", "summary",
+                  "experience", "risk", "strategy", "allocation"]
     data: Dict[str, Any]
 
 class StrategyItem(BaseModel):

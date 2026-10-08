@@ -29,15 +29,16 @@ async def save_step(
 ):
     """
     Save answers for a specific step.
-    Validates data against strict schemas for that step.
+    Validates data against strict schemas for that step and returns the new
+    onboarding state: ``current_step`` is the step to show next.
     """
     try:
-        onboarding_service.update_onboarding_step(
-            current_user["id"], 
-            req.step, 
+        state = onboarding_service.update_onboarding_step(
+            current_user["id"],
+            req.step,
             req.data
         )
-        return {"status": "saved", "step": req.step}
+        return {**state, "saved": True, "step": onboarding_service.canonical_step(req.step)}
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 

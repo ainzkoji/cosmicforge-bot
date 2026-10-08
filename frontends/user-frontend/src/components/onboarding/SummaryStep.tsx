@@ -24,10 +24,11 @@ export function SummaryStep({ onComplete, isLoading, onboardingState }: SummaryS
                     <CheckCircle2 className="w-10 h-10 text-green-500" />
                 </div>
                 <h2 className="text-3xl font-bold text-white">
-                    Setup Complete!
+                    Almost there
                 </h2>
                 <p className="text-gray-400">
-                    Here is a summary of your configuration.
+                    Here is a summary of your answers. Nothing has been deployed: on the next screen you choose the exchange
+                    account, see exactly what the risk level means in money, and confirm.
                 </p>
             </div>
 
@@ -35,10 +36,12 @@ export function SummaryStep({ onComplete, isLoading, onboardingState }: SummaryS
             <div className="bg-white/5 border border-white/10 rounded-2xl overflow-hidden divide-y divide-white/10">
                 <SummaryItem label="Experience Level" value={choiceData.experience_level} />
                 <SummaryItem label="Risk Tolerance" value={choiceData.risk_tolerance} />
-                <SummaryItem label="Strategy" value={choiceData.strategy_preference} />
+                <SummaryItem label="Suggested risk level" value={onboardingState?.deployment_prefill?.risk_level ?? choiceData.risk_level} />
+                <SummaryItem label="Engine" value={choiceData.strategy_preference ?? choiceData.strategy_id} />
                 <SummaryItem
-                    label="Capital Allocation"
-                    value={`${choiceData.capital_allocation} ${choiceData.allocation_model === 'percentage' ? '%' : 'USDT'}`}
+                    label="Budget"
+                    value={choiceData.capital_allocation !== null && choiceData.capital_allocation !== undefined
+                        ? `${choiceData.capital_allocation} USDT` : 'Set on the next screen'}
                 />
             </div>
 
@@ -78,7 +81,7 @@ export function SummaryStep({ onComplete, isLoading, onboardingState }: SummaryS
             >
                 {isLoading ? <span className="animate-pulse">Finalizing...</span> : (
                     <>
-                        Go to Dashboard <ArrowRight className="w-5 h-5" />
+                        Review and deploy <ArrowRight className="w-5 h-5" />
                     </>
                 )}
             </button>
