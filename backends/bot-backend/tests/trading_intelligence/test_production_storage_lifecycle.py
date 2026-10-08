@@ -132,3 +132,124 @@ def test_the_runtime_evaluates_each_account_on_one_scoped_connection(db, monkeyp
     finally:
         shared_db.instrument(False)
     assert getattr(db._local(), "conn", None) is None
+
+
+# ── file identity across platforms (found by Linux CI, 8 October 2026) ──────
+# The first version keyed the memo on st_ctime, which is the creation time on
+# Windows and the last-change time on Linux. On Linux the key moved with every
+# write, the memo never matched, and the whole schema ran on every call. The
+# tests below emulate the Linux view of a file so that a Windows run guards it too.
+
+def _stat(*, ino=11, dev=3, size=4096, ctime=1, birth=None):
+    from types import SimpleNamespace
+    st = SimpleNamespace(st_dev=dev, st_ino=ino, st_size=size, st_ctime_ns=ctime)
+    if birth is not None:
+        st.st_birthtime_ns = birth
+    return st
+
+
+def test_the_file_key_does_not_move_when_a_linux_file_is_written():
+    key = production_schema.file_key
+    # Linux: st_ctime moves with every write and there is no creation time.
+    assert key("p", _stat(ctime=1, size=4096), windows=False) == key("p", _stat(ctime=999, size=65536), windows=False)
+    assert production_schema.birth_ns(_stat(ctime=5), windows=False) is None
+    # Windows: st_ctime is the creation time, so a recreated file is another file.
+    assert key("p", _stat(ctime=1), windows=True) == key("p", _stat(ctime=1, size=65536), windows=True)
+    assert key("p", _stat(ctime=1), windows=True) != key("p", _stat(ctime=2), windows=True)
+    # A reported creation time is used wherever it exists, and never st_ctime instead of it.
+    assert key("p", _stat(ctime=1, birth=7), windows=False) == key("p", _stat(ctime=50, birth=7), windows=False)
+    assert key("p", _stat(ctime=1, birth=7), windows=False) != key("p", _stat(ctime=1, birth=8), windows=False)
+    assert key("p", _stat(ctime=1, birth=7), windows=True) == key("p", _stat(ctime=2, birth=7), windows=True)
+    # Another inode, device or path is another file.
+    base = key("p", _stat(), windows=False)
+    assert base != key("p", _stat(ino=12), windows=False) != key("p", _stat(dev=4), windows=False)
+    assert base != key("q", _stat(), windows=False)
+
+
+@pytest.fixture
+def linux_identity(monkeypatch):
+    """Make this process see database files the way Linux reports them: the
+    change time moves on every write, there is no creation time, and (worst
+    case) a file recreated at a path gets the same inode back."""
+    original = production_schema._identity
+    state = {"size": None}
+
+    def linux_stat(path):
+        from types import SimpleNamespace
+        real = os.stat(path)
+        return SimpleNamespace(st_dev=7, st_ino=42, st_ctime_ns=real.st_mtime_ns,
+                               st_size=real.st_size if state["size"] is None else state["size"])
+    monkeypatch.setattr(production_schema, "_identity", lambda db: original(db, stat=linux_stat, windows=False))
+    return state
+
+
+def test_on_linux_the_schema_still_runs_once_while_the_database_is_written(db, linux_identity):
+    assert production_schema.ensure(db) is True
+    shared_db.instrument(True)
+    try:
+        for i in range(5):
+            with db.connect() as c:                             # every write moves the Linux change time
+                c.execute("INSERT INTO cati_production_daily_risk VALUES(?,?,?,0)", (f"a{i}", "2026-10-08", 1000))
+            shared_db.METRICS.reset()
+            assert production_schema.ensure(db) is False
+            production.initialize(db)
+            runtime.initialize(db)
+            assert shared_db.METRICS.schema_statements == 0 and shared_db.METRICS.connections_opened == 0
+    finally:
+        shared_db.instrument(False)
+
+
+def test_on_linux_a_recreated_database_that_got_its_inode_back_is_initialised_again(tmp_path, linux_identity):
+    production_schema.forget()
+    path = str(tmp_path / "reused.db")
+    first = DB(path)
+    production_schema.ensure(first)
+    with first.connect() as c:
+        c.execute("INSERT INTO cati_production_daily_risk VALUES('a','2026-10-08',1000,0)")
+    assert production_schema.ensure(first) is False
+    for suffix in ("", "-wal", "-shm"):
+        if os.path.exists(path + suffix):
+            os.remove(path + suffix)
+    second = DB(path)
+    with second.connect() as c:                                 # the new, smaller file now exists at the old path
+        c.execute("CREATE TABLE marker (x)")
+    assert production_schema.ensure(second) is True             # same path, device and inode: the size gave it away
+    assert TABLES <= tables(second)
+
+
+def test_a_missing_table_drops_the_memo_when_nothing_else_could_tell(tmp_path, linux_identity):
+    production_schema.forget()
+    path = str(tmp_path / "stale.db")
+    db = DB(path)
+    production_schema.ensure(db)
+    linux_identity["size"] = os.stat(path).st_size              # same inode AND not smaller: the memo cannot know
+    with db.connect() as c:
+        c.execute("DROP TABLE cati_production_state")           # what a replaced file looks like to a statement
+    assert production_schema.ensure(db) is False
+    assert production_schema.missing_table(db, ValueError("ACCOUNT_SUBMIT_OUTCOME_UNRESOLVED")) is False
+    assert production_schema.missing_table(db, sqlite3.OperationalError("database is locked")) is False
+    assert production_schema.ensure(db) is False                # neither of those is a reason to rebuild
+    with pytest.raises(sqlite3.OperationalError) as failure:
+        with db.connect() as c:
+            c.execute("SELECT 1 FROM cati_production_state")
+    assert production_schema.missing_table(db, failure.value) is True
+    assert production_schema.ensure(db) is True
+    assert TABLES <= tables(db)
+
+
+def test_a_failed_evaluation_on_a_missing_table_heals_on_the_next_cycle(db, monkeypatch, linux_identity):
+    from unittest.mock import Mock
+    production_schema.ensure(db)
+    linux_identity["size"] = os.stat(db.path).st_size
+
+    def lost(*a, **k):
+        raise sqlite3.OperationalError("no such table: cati_production_daily_risk")
+    monkeypatch.setattr(production, "_process_account", lost)
+    with pytest.raises(sqlite3.OperationalError) as failure:    # the evaluation is recorded, then the failure surfaces
+        production.process_account(db, {"id": "acct", "user_id": "u", "broker_id": "binance", "environment": "DEMO"},
+                                   Mock(), {"positions": [], "orders": []})
+    result = failure.value.production_evaluation
+    assert result["stage"] == "EVALUATION_FAILED" and result["reason"] == "OperationalError"
+    assert result["execution_permission"] == "BLOCKED_ACCOUNT"  # the failed cycle sent nothing
+    assert production_schema.ensure(db) is True                 # and the next one starts from a complete schema
+

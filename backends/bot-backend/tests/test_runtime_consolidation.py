@@ -176,15 +176,27 @@ def test_readiness_approval_is_explicit_and_invalidated_by_policy_change(tmp_pat
     assert active_readiness_approval(db=db, bot_instance_id="bot-1") is None
 
 
-def test_run_cycle_owns_kill_switch_handling():
+# The runner's risk day is "today" in ADAPTIVE_DAILY_RISK_TIMEZONE (Europe/Rome by
+# default). These two tests used the machine's own date instead, so on a UTC
+# machine they took the day-rollover branch (and failed on the half-built
+# runner) whenever they ran between 22:00 and 24:00 UTC -- on any commit. They
+# now ask the runner for its day, and run in three timezones that between them
+# always include one whose date differs from the machine's.
+RISK_DAY_TIMEZONES = ("Europe/Rome", "Pacific/Kiritimati", "Pacific/Pago_Pago")
+
+
+@pytest.mark.parametrize("risk_timezone", RISK_DAY_TIMEZONES)
+def test_run_cycle_owns_kill_switch_handling(monkeypatch, risk_timezone):
+    from app.runner import runner as runner_module
     from app.runner.runner import PaperRunner
 
+    monkeypatch.setattr(runner_module.settings, "ADAPTIVE_DAILY_RISK_TIMEZONE", risk_timezone)
     runner = PaperRunner.__new__(PaperRunner)
     runner._cycle_lock = threading.Lock()
     runner._closed_symbols_this_cycle = set()
     runner._reconciliation_done = True
     runner.live_trades_this_cycle = 0
-    runner.daily = SimpleNamespace(day=date.today(), kill=True)
+    runner.daily = SimpleNamespace(day=runner._today(), kill=True)
     runner.activate_kill_switch = MagicMock()
 
     result = runner.run_cycle()
@@ -194,9 +206,12 @@ def test_run_cycle_owns_kill_switch_handling():
     assert result["reason"] == "KILL_SWITCH_ACTIVE"
 
 
-def test_run_cycle_owns_daily_close_handling(tmp_path):
+@pytest.mark.parametrize("risk_timezone", RISK_DAY_TIMEZONES)
+def test_run_cycle_owns_daily_close_handling(tmp_path, monkeypatch, risk_timezone):
+    from app.runner import runner as runner_module
     from app.runner.runner import PaperRunner
 
+    monkeypatch.setattr(runner_module.settings, "ADAPTIVE_DAILY_RISK_TIMEZONE", risk_timezone)
     path = str(tmp_path / "cycle.db")
     db = DB(path)
     migrate(path)
@@ -205,7 +220,7 @@ def test_run_cycle_owns_daily_close_handling(tmp_path):
     runner._closed_symbols_this_cycle = set()
     runner._reconciliation_done = True
     runner.live_trades_this_cycle = 0
-    runner.daily = SimpleNamespace(day=date.today(), kill=False)
+    runner.daily = SimpleNamespace(day=runner._today(), kill=False)
     runner._run_daily_close_from_cycle = MagicMock(return_value=1)
     runner.trade_symbols = []
     runner._run_dynamic_universe_shadow_diagnostics = MagicMock(return_value={"status": "disabled"})

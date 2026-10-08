@@ -489,6 +489,8 @@ def process_account(db, account, client, snapshot, *, now_ms=None, boundary_fact
                          boundary_factory=boundary_factory, evaluation=result)
     except Exception as exc:
         failure = exc
+        from app.execution import production_schema
+        production_schema.missing_table(db, exc)     # a replaced database is initialised again on the next cycle
         code = getattr(exc, 'reason_code', None)
         if not code and isinstance(exc, ValueError) and str(exc).replace('_','').isalnum() and str(exc).upper() == str(exc):
             code = str(exc)

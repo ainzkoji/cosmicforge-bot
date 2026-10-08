@@ -205,6 +205,8 @@ def sync_account(db, account, *, factory=build_client_from_auth, execute=False):
         # current metadata). A local gate says nothing about the client.
         if client_doubt(exc):
             invalidate_client(account["id"])
+        from app.execution import production_schema
+        production_schema.missing_table(db, exc)     # a replaced database is initialised again on the next cycle
         raise
 
 
