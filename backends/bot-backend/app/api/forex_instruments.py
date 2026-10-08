@@ -145,8 +145,7 @@ def fetch_oanda_instruments(
         List of ForexInstrument objects
     """
     try:
-        # Import OANDA client (assumes it exists)
-        from app.exchange.oanda_client import OandaClient
+        from app.exchange.oanda.client import OandaClient
         
         # Create client with credentials
         client = OandaClient(
@@ -200,18 +199,20 @@ def fetch_ibkr_instruments(
         List of ForexInstrument objects
     """
     try:
+        from urllib.parse import urlparse
         from app.exchange.ibkr.adapter import IBKRAdapter
-        
-        # IBKR Adapter requires gateway URL and account ID
-        # Credentials from user-backend: {"account_id": "...", "gateway_url": "...", ...}
-        gateway_url = credentials.get("gateway_url", "https://localhost:5000/v1/api")
+
+        # The adapter speaks to TWS / Gateway by host and port; a stored
+        # gateway URL is translated instead of being passed as a keyword the
+        # adapter never accepted (TypeError before Step 1.7).
+        gateway_url = credentials.get("gateway_url") or "http://127.0.0.1:4001"
+        parsed = urlparse(gateway_url if "://" in gateway_url else f"http://{gateway_url}")
         account_id = credentials.get("account_id")
-        
-        # Initialize Adapter (Adapter handles session)
         adapter = IBKRAdapter(
-            base_url=gateway_url,
+            host=parsed.hostname or "127.0.0.1",
+            port=int(parsed.port or credentials.get("port") or 4001),
+            client_id=int(credentials.get("client_id") or 1),
             account_id=account_id,
-            verify_ssl=False
         )
         
         # Fetch instruments using standardized adapter interface
@@ -247,7 +248,6 @@ def get_forex_instruments(
     broker_id: str = Query(default="oanda", description="Broker ID"),
     broker_account_id: Optional[str] = Query(default=None, description="Broker account ID for live fetch"),
     environment: str = Query(default="practice", description="practice or live"),
-    broker_credentials_map: Optional[Dict[str, Any]] = None,  # Injected by user-backend proxy
     user_id: str = Depends(get_current_user_id),
 ):
     """
@@ -257,8 +257,10 @@ def get_forex_instruments(
     1. If broker_account_id + credentials provided: fetch from broker API (cached 1h)
     2. Else: return fallback from settings.FOREX_SYMBOLS
     
-    Requires an authenticated user: the route accepts broker credentials and
-    makes outbound broker calls with them.
+    Requires an authenticated user. Credentials are never accepted from the
+    request: when a broker account is named, they are resolved here through the
+    canonical resolver, which also enforces that the account belongs to the
+    caller (Step 1.7).
 
     Returns:
         ForexInstrumentsResponse with instruments list and source indicator
@@ -273,10 +275,20 @@ def get_forex_instruments(
     if cached:
         return cached
     
-    # If broker account and credentials provided, fetch from broker
-    if broker_account_id and broker_credentials_map:
-        credentials = broker_credentials_map.get(broker_account_id)
-        
+    # A named broker account: resolve the caller's own credentials server-side.
+    credentials = None
+    if broker_account_id:
+        try:
+            from shared_lib.broker import resolve_broker_auth
+            from shared_lib.persistence.db import DB
+            auth = resolve_broker_auth(broker_account_id, user_id, DB())
+            credentials = {"api_key": auth.api_key, "api_secret": auth.api_secret, "account_id": auth.account_id,
+                           "environment": auth.environment.value, **dict(auth.extra or {})}
+        except Exception as exc:
+            logger.warning("forex instruments: credentials for account %s not resolved for user %s: %s",
+                           broker_account_id, user_id, type(exc).__name__)
+            credentials = None
+    if broker_account_id and credentials:
         if credentials:
             try:
                 instruments = []

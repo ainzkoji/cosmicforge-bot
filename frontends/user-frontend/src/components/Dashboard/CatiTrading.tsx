@@ -24,10 +24,9 @@ type State = {
 const display = (value: unknown) => value == null ? '—' : typeof value === 'object' ? JSON.stringify(value) : String(value);
 
 export function CatiTrading() {
+  // Through the user backend (its /api/v1/cati proxy), never the engine directly (Step 1.7).
   const query = useQuery<State>({ queryKey: ['cati-production'], queryFn: async () =>
-    (await apiClient.get('/api/v1/cati/runtime/status', {
-      baseURL: import.meta.env.VITE_CATI_API_BASE || 'http://localhost:9000',
-    })).data, refetchInterval: 5000 });
+    (await apiClient.get('/api/v1/cati/runtime/status')).data, refetchInterval: 5000 });
   const state = query.data;
   return <section className="mb-6 rounded-xl border border-slate-700 bg-slate-900 p-5 text-slate-100" aria-label="CATI production trading">
     <div className="flex flex-wrap items-center justify-between gap-2">

@@ -1085,24 +1085,8 @@ export const api = {
         return res.json();
     },
 
-    getTraces: async (limit = 20): Promise<TraceListResponse> => {
-        const res = await apiFetch(`${API_BASE}/api/v1/monitoring/traces?limit=${limit}`);
-        if (!res.ok) throw new Error("Failed to fetch traces");
-        return res.json();
-    },
-
-    getTrace: async (traceId: string): Promise<any> => {
-        const res = await apiFetch(`${API_BASE}/api/v1/monitoring/trace/${traceId}`);
-        if (!res.ok) throw new Error("Failed to fetch trace");
-        const data = await res.json();
-        return data.found ? data.trace : null;
-    },
-
-    getViolations: async (limit = 20): Promise<{ violations: Violation[] }> => {
-        const res = await apiFetch(`${API_BASE}/api/v1/monitoring/violations?limit=${limit}`);
-        if (!res.ok) throw new Error("Failed to fetch violations");
-        return res.json();
-    },
+    // getTraces / getTrace / getViolations were removed in Step 1.7: no backend
+    // served their monitoring paths and nothing in the portal called them.
 
     // --- KYC ---
     // All KYC calls go through apiFetch so an access token that expires
@@ -1952,7 +1936,7 @@ export const api = {
         runtime_process: 'RUNNING' | 'STOPPED' | 'STALE'; cati_managed_instance: boolean;
         phase: string | null; observe_mode: boolean; reason: string;
     }> => {
-        const res = await apiFetch(`${API_BASE}/api/bot-instances/${instanceId}/engine-status`, {
+        const res = await apiFetch(`${API_BASE}/api/v1/bot-instances/${instanceId}/engine-status`, {
             headers: { 'Authorization': `Bearer ${localStorage.getItem('access_token')}` }
         });
         if (!res.ok) throw new Error("CATI status unavailable");

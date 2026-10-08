@@ -60,11 +60,12 @@ async def get_forex_instruments(
             
     query_params["broker_id"] = target_broker_id
     
-    # Proxy to bot-backend
+    # Proxy to bot-backend. Secrets are NOT forwarded (and a GET carries no
+    # body anyway): the bot backend resolves the caller's credentials itself
+    # through the canonical resolver when broker_account_id is named.
     return await proxy_request(
         request,
         "/api/v1/forex/instruments",
         params=query_params,
-        json_body={"broker_credentials_map": credentials_map} if credentials_map else None,
         method="GET"
     )

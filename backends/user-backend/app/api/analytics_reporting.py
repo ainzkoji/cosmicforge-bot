@@ -16,7 +16,7 @@ from app.core.config import settings
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/analytics", tags=["Analytics"])
-BOT_BACKEND_URL = getattr(settings, 'BOT_BACKEND_URL', 'http://127.0.0.1:9000')
+from app.api.proxy_utils import BOT_BACKEND_BASE_URL as BOT_BACKEND_URL  # one source: the BOT_BACKEND_URL environment variable (Step 1.7)
 
 
 def _shape_overview_response(raw: dict) -> dict:

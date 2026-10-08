@@ -6,7 +6,8 @@
 import { useEffect } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+// The same base every other call uses (the previous variable name was never defined).
+const API_BASE_URL = import.meta.env.VITE_API_BASE || 'http://localhost:8000';
 
 /**
  * Hook to establish SSE connection for real-time analytics updates.

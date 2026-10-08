@@ -17,7 +17,7 @@ router = APIRouter()
 logger = logging.getLogger(__name__)
 
 # Bot-backend service URL (internal service-to-service)
-BOT_BACKEND_URL = getattr(settings, 'BOT_BACKEND_URL', 'http://127.0.0.1:9000')
+from app.api.proxy_utils import BOT_BACKEND_BASE_URL as BOT_BACKEND_URL  # one source: the BOT_BACKEND_URL environment variable (Step 1.7)
 
 
 @router.get("/stream")
