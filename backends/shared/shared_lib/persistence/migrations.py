@@ -843,6 +843,15 @@ def migrate(db_path: str | DB = None):
         _add_column_if_missing(conn, "bot_instances", "bot_health_updated_at", "TEXT")
         _add_column_if_missing(conn, "bot_instances", "last_warning", "TEXT")
 
+        # Section H Step 1 — risk-based deployments (additive; legacy rows keep NULLs).
+        _add_column_if_missing(conn, "bot_instances", "risk_profile_version", "TEXT")
+        _add_column_if_missing(conn, "bot_instances", "max_position_usdt", "REAL")
+        _add_column_if_missing(conn, "bot_instances", "risk_acknowledged_at", "TEXT")
+        _add_column_if_missing(conn, "bot_instances", "deploy_request_id", "TEXT")
+        _add_column_if_missing(conn, "bot_instances", "environment", "TEXT")
+        _add_column_if_missing(conn, "bot_instances", "stopped_reason", "TEXT")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_bot_instances_deploy_request ON bot_instances(deploy_request_id)")
+
         # 23b) Bot Daily/Symbol State (Multi-user persistence)
         conn.execute("""
             CREATE TABLE IF NOT EXISTS bot_daily_state (

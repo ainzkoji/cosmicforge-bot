@@ -330,6 +330,10 @@ class TradingOrchestrator:
         cost_rates = kwargs.pop("entry_cost_rates", None)
         order_book = kwargs.pop("order_book", None)
         broker_max_leverage = kwargs.pop("broker_max_leverage", None)
+        instrument_filters = kwargs.pop("instrument_filters", None) or {}
+        signal_strength = kwargs.pop("signal_strength", 1)
+        open_risk_usdt = kwargs.pop("open_risk_usdt", 0)
+        system_max_notional_usdt = kwargs.pop("system_max_notional_usdt", None)
         # Frozen residual plans: the next-open reference is evidence, and live
         # validity is judged from current-price economics below.
         validation = validate_trade_plan_for_submission(
@@ -397,6 +401,37 @@ class TradingOrchestrator:
             result["reason"] = leverage_resolution.reason
             return rejected((leverage_resolution.reason,), RiskRejectionFamily.SIZING.value)
         kwargs["resolved_leverage"] = leverage_resolution.leverage
+        # Step 1.4 -- risk-based deployments: ONE sizing formula (budget x risk /
+        # stop distance), every cap applied as a ceiling, blocked below the
+        # exchange minimum. The result enters the existing hard-risk chain as
+        # this trade's margin; Layer A/B/C, the preflight and the capital ledger
+        # still run unchanged and can only shrink or reject it.
+        policy = getattr(self, "effective_policy", None)
+        if policy is not None and str(getattr(policy, "position_allocation_type", "") or "").lower() == "risk_based":
+            from app.trading_intelligence.execution.risk_sizing import effective_budget, size_risk_based
+            try:
+                budget = effective_budget(budget_type=getattr(policy, "capital_allocation_type", "fixed_amount"),
+                                          budget_value=policy.capital_budget, account_equity=current_equity)
+                sizing = size_risk_based(
+                    budget_usdt=budget, risk_fraction=policy.risk_per_trade, stop_distance_fraction=stop_distance,
+                    price=price, leverage=leverage_resolution.leverage,
+                    leverage_ceiling=getattr(policy, "leverage_ceiling", None) or policy.max_leverage,
+                    signal_strength=signal_strength, max_position_usdt=getattr(policy, "max_position_usdt", None),
+                    free_margin_usdt=margin_available, open_risk_usdt=open_risk_usdt,
+                    max_open_risk_fraction=getattr(policy, "max_open_risk_fraction", None),
+                    system_max_notional_usdt=system_max_notional_usdt,
+                    min_notional=instrument_filters.get("min_notional"), qty_step=instrument_filters.get("qty_step"),
+                    min_qty=instrument_filters.get("min_qty"), max_qty=instrument_filters.get("max_qty"),
+                    contract_multiplier=instrument_filters.get("contract_multiplier") or 1)
+            except ValueError as exc:
+                result["reason"] = str(exc).split(":")[0]
+                return rejected((str(exc),), RiskRejectionFamily.SIZING.value)
+            result["details"]["risk_based_sizing"] = sizing.evidence()
+            if not sizing.approved:
+                result["reason"] = sizing.reason
+                return rejected((sizing.reason,), RiskRejectionFamily.SIZING.value)
+            kwargs["resolved_leverage"] = sizing.leverage
+            kwargs["risk_based_sizing"] = sizing
         if atr is None:
             from app.policy.policy_engine import calculate_atr
 
@@ -696,8 +731,11 @@ class TradingOrchestrator:
             max_leverage=self._get_max_leverage_for_symbols(),
             min_notional=5.0,
             max_notional=effective_equity * self._get_max_leverage_for_symbols(),
-            trade_amount_mode="fixed" if (self.validated_config.use_fixed_size and self.validated_config.fixed_size_usdt) else "atr_risk",
-            trade_amount_value=self.validated_config.fixed_size_usdt if self.validated_config.use_fixed_size else 0.0,
+            # A risk-based deployment's sized margin enters here as THIS trade's fixed margin.
+            trade_amount_mode="fixed" if (kwargs.get("risk_based_sizing") is not None or
+                                          (self.validated_config.use_fixed_size and self.validated_config.fixed_size_usdt)) else "atr_risk",
+            trade_amount_value=(float(kwargs["risk_based_sizing"].margin_usdt) if kwargs.get("risk_based_sizing") is not None
+                                else (self.validated_config.fixed_size_usdt if self.validated_config.use_fixed_size else 0.0)),
             execution_mode="live" if not self.validated_config.paper_mode else "paper",
             confidence_already_approved=True,
             now_ms=int(time.time() * 1000),

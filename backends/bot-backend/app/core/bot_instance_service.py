@@ -135,6 +135,11 @@ class BotInstanceService:
             capital_allocation=request.capital_allocation,
             capital_allocation_type=request.capital_allocation_type,
             daily_loss_limit_pct=request.daily_loss_limit_pct,
+            risk_profile_version=request.risk_profile_version,
+            max_position_usdt=request.max_position_usdt,
+            risk_acknowledged_at=request.risk_acknowledged_at,
+            deploy_request_id=request.deploy_request_id,
+            environment=request.environment,
         )
         
         # For Auto Pilot, config_id and risk_profile_id are None (internal config)
@@ -156,8 +161,9 @@ class BotInstanceService:
                     mode, status, created_at, updated_at, started_at, stopped_at,
                     capital_allocation, capital_allocation_type,
                     last_run_at, last_error, total_trades, active_positions, universe_mode,
-                    daily_loss_limit_pct
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    daily_loss_limit_pct,
+                    risk_profile_version, max_position_usdt, risk_acknowledged_at, deploy_request_id, environment
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     instance.id, instance.user_id, instance.broker_account_id, instance.market_type, 
@@ -170,6 +176,8 @@ class BotInstanceService:
                     instance.capital_allocation, instance.capital_allocation_type,
                     instance.last_run_at, instance.last_error, instance.total_trades, instance.active_positions,
                     instance.universe_mode, instance.daily_loss_limit_pct,
+                    instance.risk_profile_version, instance.max_position_usdt, instance.risk_acknowledged_at,
+                    instance.deploy_request_id, instance.environment,
                 )
             )
             

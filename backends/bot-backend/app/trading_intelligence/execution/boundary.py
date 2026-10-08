@@ -259,6 +259,7 @@ class CATIExecutionBoundary:
 
         reservation = self.reservations.get(plan.portfolio_reservation_id)
         t0 = time.perf_counter()
+        risk_kwargs = {**risk_kwargs, "instrument_filters": self._instrument_filters(plan)}
         risk_result = self.orchestrator.process_trade_plan(
             plan, now_ms=now, market_reference=market_reference, broker_health=broker_health,
             reservation_state=reservation, venue_capabilities=venue_capabilities, klines=list(klines or ()),
@@ -429,6 +430,16 @@ class CATIExecutionBoundary:
                          "broker_order_id": entry.broker_order_id, "position_id": position_id})
         return BoundaryResult(outcome, plan.trade_plan_id, entry.reason_codes, risk_decision=risk, attempt=attempt,
                               reservation_status=self._res_status(plan))
+
+    def _instrument_filters(self, plan: TradePlan) -> dict:
+        """The CURRENT venue quantity filters of the plan's instrument, for risk-based sizing."""
+        record = getattr(self.preflight, "_record", None)
+        rec = record(plan.instrument_key.venue_symbol.upper()) if callable(record) else None
+        ins = (rec or {}).get("instrument") if isinstance(rec, dict) else None
+        if ins is None:
+            return {}
+        return {name: getattr(ins, name, None) for name in ("min_notional", "qty_step", "min_qty", "max_qty",
+                                                             "contract_multiplier")}
 
     def reconcile_submit_unknown(self, plan: TradePlan, *, now_ms: Optional[int] = None) -> BoundaryResult:
         """Resolve a SUBMIT_UNKNOWN attempt from BROKER truth only: order query

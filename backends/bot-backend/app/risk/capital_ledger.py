@@ -606,6 +606,11 @@ def per_trade_allocation_margin(
     if kind in {"percent_balance", "percent_equity", "percent"}:
         capital = float(capital_allocation or 0.0)
         return capital * value / 100.0 if capital > 0 else 0.0
+    if kind == "risk_based":
+        # The risk-derived size (execution.risk_sizing) is the authoritative
+        # ceiling and already honours the user's max position; the ledger's
+        # per-trade allocation can therefore be the whole budget.
+        return float(capital_allocation or 0.0)
     return 0.0
 
 

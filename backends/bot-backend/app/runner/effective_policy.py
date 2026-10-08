@@ -169,6 +169,11 @@ class EffectiveBotPolicy:
     resolved_at: str = ""
     clamp_warnings: Tuple[str, ...] = field(default_factory=tuple)
     clamps: Tuple[Mapping[str, Any], ...] = field(default_factory=tuple)
+    # Step 1 risk-based deployments (None for legacy fixed_amount / percent_balance bots)
+    risk_profile_version: str | None = None
+    max_position_usdt: float | None = None
+    max_open_risk_fraction: float | None = None
+    leverage_ceiling: float | None = None
 
     def runtime_payload(self) -> dict[str, Any]:
         data = asdict(self)
@@ -205,7 +210,10 @@ def resolve_effective_bot_policy(
 
     allocation_type = str(getattr(instance, "allocation_type", "") or "").lower()
     allocation_value = float(getattr(instance, "allocation_value", 0.0) or 0.0)
-    if allocation_type not in {"fixed_amount", "percent_balance"} or allocation_value <= 0:
+    # risk_based: the position is sized from budget x risk / stop distance at
+    # execution (execution.risk_sizing); allocation_value records the per-trade
+    # risk percent for the row and is not a margin.
+    if allocation_type not in {"fixed_amount", "percent_balance", "risk_based"} or allocation_value <= 0:
         raise EffectivePolicyError("INVALID_POSITION_ALLOCATION", "A valid position allocation is required")
     if allocation_type == "fixed_amount" and allocation_value > capital_budget:
         raise EffectivePolicyError(
@@ -360,6 +368,12 @@ def resolve_effective_bot_policy(
         news_mode="disabled" if not bool(getattr(settings, "NEWS_TRADING_ENABLED", False)) else "advisory",
         external_signal_mode=external_mode, resolved_at=datetime.now(timezone.utc).isoformat(),
         clamp_warnings=tuple(warnings), clamps=tuple(clamps),
+        risk_profile_version=getattr(instance, "risk_profile_version", None),
+        max_position_usdt=(float(getattr(instance, "max_position_usdt", None))
+                           if getattr(instance, "max_position_usdt", None) else None),
+        max_open_risk_fraction=(float(risk_params["max_open_risk_fraction"])
+                                if risk_params.get("max_open_risk_fraction") else None),
+        leverage_ceiling=(float(risk_params["leverage_ceiling"]) if risk_params.get("leverage_ceiling") else None),
     )
     for _name, _value in (
         ("risk_per_trade", effective_risk),

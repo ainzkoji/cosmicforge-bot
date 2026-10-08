@@ -108,6 +108,17 @@ class BotInstance:
     # Section F — user-facing bot health (product safety)
     bot_health_status: str = BotHealthStatus.UNKNOWN
     bot_health_message: Optional[str] = None
+
+    # Step 1 risk-based deployments (allocation_type == "risk_based"). The risk
+    # level and the profile VERSION it was previewed with are persisted together;
+    # legacy fixed_amount / percent_balance bots leave these None and are never
+    # migrated into the new model.
+    risk_profile_version: Optional[str] = None
+    max_position_usdt: Optional[float] = None          # optional user cap on one position's notional
+    risk_acknowledged_at: Optional[str] = None         # durable consent timestamp of the deployment
+    deploy_request_id: Optional[str] = None            # idempotency identity of the deploy request
+    environment: Optional[str] = None                  # DEMO / LIVE, derived from the broker account at deploy
+    stopped_reason: Optional[str] = None
     bot_health_reason_code: Optional[str] = None
     bot_health_recommended_action: Optional[str] = None
     bot_health_updated_at: Optional[str] = None
@@ -163,6 +174,12 @@ class BotInstance:
             bot_health_recommended_action=d.get("bot_health_recommended_action"),
             bot_health_updated_at=d.get("bot_health_updated_at"),
             last_warning=d.get("last_warning"),
+            risk_profile_version=d.get("risk_profile_version"),
+            max_position_usdt=d.get("max_position_usdt"),
+            risk_acknowledged_at=d.get("risk_acknowledged_at"),
+            deploy_request_id=d.get("deploy_request_id"),
+            environment=d.get("environment"),
+            stopped_reason=d.get("stopped_reason"),
         )
     
     def to_db_dict(self) -> Dict[str, Any]:
@@ -292,7 +309,13 @@ class CreateBotInstanceRequest:
     capital_allocation_type: str = "fixed_amount"
     universe_mode: Optional[str] = None
     daily_loss_limit_pct: Optional[float] = None
-    
+    # Step 1 risk-based deployments
+    risk_profile_version: Optional[str] = None
+    max_position_usdt: Optional[float] = None
+    risk_acknowledged_at: Optional[str] = None
+    deploy_request_id: Optional[str] = None
+    environment: Optional[str] = None
+
     def validate(self) -> List[str]:
         """Validate the request data."""
         errors = []
@@ -319,12 +342,21 @@ class CreateBotInstanceRequest:
         if not self.timeframes or len(self.timeframes) == 0:
             errors.append("At least one timeframe is required")
         
-        if self.allocation_type not in ["percent_balance", "fixed_amount"]:
-            errors.append("allocation_type must be percent_balance or fixed_amount")
-        
+        if self.allocation_type not in ["percent_balance", "fixed_amount", "risk_based"]:
+            errors.append("allocation_type must be percent_balance, fixed_amount or risk_based")
+
         if self.allocation_type == "percent_balance":
             if self.allocation_value <= 0 or self.allocation_value > 100:
                 errors.append("allocation_value must be between 0 and 100 for percent_balance")
+        elif self.allocation_type == "risk_based":
+            # The value is the per-trade risk in percent of the budget (informative;
+            # the engine derives it from the versioned risk profile).
+            if self.allocation_value <= 0 or self.allocation_value > 5:
+                errors.append("allocation_value must be the per-trade risk percent (0 < value <= 5) for risk_based")
+            if not self.risk_profile_version:
+                errors.append("risk_profile_version is required for risk_based")
+            if self.max_position_usdt is not None and self.max_position_usdt <= 0:
+                errors.append("max_position_usdt must be positive when given")
         else:
             if self.allocation_value <= 0:
                 errors.append("allocation_value must be positive for fixed_amount")
