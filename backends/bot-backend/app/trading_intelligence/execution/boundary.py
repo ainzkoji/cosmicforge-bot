@@ -484,9 +484,18 @@ class CATIExecutionBoundary:
                         stop_price=plan.structural_invalidation_price,
                         target_price=(plan.target_zones[0].price_high if plan.side == "LONG"
                                       else plan.target_zones[0].price_low) if plan.target_zones else None)
-                except Exception:
+                except Exception as exc:
                     if settings.production:
-                        self.adapter.submit_exit(sym,side=plan.side,quantity=float(pos.quantity))
+                        # Only PROVEN absence of the stop closes the recovered
+                        # position. A read the venue did not answer leaves it
+                        # protected-or-unknown: it is kept, and the maintenance
+                        # cycle retries the verification (protection_state).
+                        from app.execution import protection_state
+                        if protection_state.failure_state(exc) == protection_state.ABSENT:
+                            self.adapter.submit_exit(sym,side=plan.side,quantity=float(pos.quantity))
+                        else:
+                            protection_state.record_unknown(self._db, plan.broker_account_id, sym, plan.trade_plan_id,
+                                                            protection_state.reason_code(exc), now)
                     raise
             self.attempts.append(resolved, len(rows))
             self._resolve(plan, "CONSUMED", now, "BROKER_CONFIRMED_ENTRY")

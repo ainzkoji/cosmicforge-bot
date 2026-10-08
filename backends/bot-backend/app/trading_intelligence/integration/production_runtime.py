@@ -305,9 +305,17 @@ def status(db, *, user_id=None):
                     "execution_permission": "BLOCKED_ACCOUNT" if gate["enabled"] else
                         "BLOCKED_"+account["environment"]+"_ORDER_GATE",
                     "reason": "AWAITING_FIRST_BROKER_SYNC" if gate["enabled"] else gate["reason"]})
+    # Positions whose exchange-side protection could not be verified (Step 1.0a):
+    # preserved, retried every cycle, and shown rather than hidden.
+    from app.execution.protection_state import uncertain_positions
+    uncertain = 0
+    for state in states:
+        state["protection_uncertain"] = uncertain_positions(db, state["account_id"])
+        uncertain += len(state["protection_uncertain"])
     return {"configuration": settings.configuration_matrix(), "strategy": FAMILY, "registry_hash": REGISTRY_HASH,
             "status": "EXECUTION_ACCOUNTS_PRESENT" if accounts else "BROKER_ACCOUNT_REQUIRED",
             "accounts": states, "broker_execution_scope": "ACCOUNT_SCOPED",
+            "protection_uncertain_positions": uncertain,
             "demo_order_submission_enabled": settings.DEMO_ORDER_SUBMISSION_ENABLED,
             "live_order_submission_enabled": settings.LIVE_ORDER_SUBMISSION_ENABLED,
             "cati_mode": "LIVE", "trading": "ACTIVE",

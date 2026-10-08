@@ -695,8 +695,18 @@ class BinanceFuturesClient:
             result = self._signed_get("/fapi/v1/openAlgoOrders", {"symbol": symbol.upper()})
             # Response is {"algoOrders": [...]} or a list depending on API version
             if isinstance(result, dict):
-                result = result.get("algoOrders", result.get("orders", []))
-            return result if isinstance(result, list) else []
+                if "algoOrders" in result:
+                    result = result["algoOrders"]
+                elif "orders" in result:
+                    result = result["orders"]
+            if isinstance(result, list):
+                return result
+            # A body without the order list is not an empty order list. With
+            # raise_on_error the caller verifies protection and must never read
+            # a malformed answer as "no protection".
+            if raise_on_error:
+                raise ValueError("ALGO_ORDERS_RESPONSE_MALFORMED")
+            return []
         except Exception as e:
             _log.warning(f"[ALGO_ORDERS] {symbol}: get_algo_orders failed: {e}")
             if raise_on_error:

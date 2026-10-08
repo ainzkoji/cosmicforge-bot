@@ -230,7 +230,10 @@ def test_a_close_timeout_while_handling_a_venue_error_stays_unknown(broker):
 def test_a_real_rejection_of_a_close_sent_from_an_error_handler_is_still_recognised(broker):
     h, state = broker
     cert.run(h.db, h.account["id"], "close-in-handler-rejected", action="hold")
-    h.client.place_protection.side_effect = TimeoutError("protection read timed out")
+    # The fail-safe close is sent from inside the protection step's ``except``
+    # block. Only PROVEN absence of the stop gets there (Step 1.0a): a read the
+    # venue did not answer keeps the position instead.
+    h.client.place_protection.side_effect = ValueError("PROTECTION_CONFIRMED_ABSENT")
     h.client._signed_post.side_effect = RuntimeError(REJECTED)
     with pytest.raises(RuntimeError, match="-4164"):
         reconcile(h, h.now)
@@ -564,7 +567,9 @@ def test_unknown_protection_leg_waits_for_the_window_then_retries_bounded(leg_cl
             place_native_protection(c.client, c.request)
         assert c.client._signed_post.call_count == attempt + 1
     c.clock[0] += WINDOW
-    with pytest.raises(ValueError, match="PROTECTION_SUBMIT_OUTCOME_UNKNOWN"):
+    # Every attempt the venue could have received is proven absent by its own
+    # reads: that is CONFIRMED absence (the caller's fail-safe close applies).
+    with pytest.raises(ValueError, match="PROTECTION_LEG_ATTEMPTS_EXHAUSTED"):
         place_native_protection(c.client, c.request)        # exhausted: fail closed + alert
     assert c.client._signed_post.call_count == MAX_PROTECTION_ATTEMPTS
     ids = leg_ids(c)
@@ -578,9 +583,39 @@ def test_acknowledged_protection_leg_that_vanished_is_never_recreated(leg_client
     assert place_native_protection(c.client, c.request).status == "success"
     c.book.clear()                                          # triggered or cancelled at the venue
     c.clock[0] += 10 * WINDOW
-    with pytest.raises(ValueError, match="PROTECTION_SUBMIT_OUTCOME_UNKNOWN"):
+    # Two successful reads without the acknowledged leg: CONFIRMED absent,
+    # never recreated (the caller's fail-safe close decides).
+    with pytest.raises(ValueError, match="PROTECTION_CONFIRMED_ABSENT"):
         place_native_protection(c.client, c.request)
     assert c.client._signed_post.call_count == 2
+    assert c.client.get_algo_orders.call_count >= 2
+
+
+def test_an_acknowledged_leg_missing_from_one_read_is_confirmed_by_a_second(leg_client):
+    c = leg_client
+    c.client._signed_post.side_effect = c.create
+    assert place_native_protection(c.client, c.request).status == "success"
+    legs = list(c.book)
+    answers = iter([[], legs])                               # propagation lag, then the full list
+    c.client.get_algo_orders.side_effect = lambda *a, **k: list(next(answers, legs))
+    assert place_native_protection(c.client, c.request).status == "success"
+    assert c.client._signed_post.call_count == 2            # nothing recreated
+
+
+def test_a_failed_read_of_the_legs_is_unavailable_not_absent(leg_client):
+    c = leg_client
+    c.client._signed_post.side_effect = c.create
+    assert place_native_protection(c.client, c.request).status == "success"
+    for failure in (TimeoutError("read timed out"), ConnectionResetError(), RuntimeError("Binance HTTP 503: {}"),
+                    RuntimeError('Binance HTTP 429: {"code":-1003,"msg":"Too many requests."}')):
+        c.client.get_algo_orders.side_effect = failure
+        with pytest.raises(ValueError, match="PROTECTION_READ_UNAVAILABLE"):
+            place_native_protection(c.client, c.request)
+    c.client.get_algo_orders.side_effect = lambda *a, **k: {"code": 200}   # a body without the list
+    with pytest.raises(ValueError, match="PROTECTION_READ_UNAVAILABLE"):
+        place_native_protection(c.client, c.request)
+    assert c.client._signed_post.call_count == 2            # never recreated on a failed read
+    assert alerts(c.db) == []
 
 
 def test_flat_cleanup_resolves_an_unanswered_leg_only_after_the_window(leg_client):

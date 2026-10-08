@@ -108,6 +108,8 @@ def initialize(db):
         """)
         from .production_evidence import initialize as initialize_evaluations
         initialize_evaluations(c)
+        from app.execution.protection_state import initialize as initialize_protection_state
+        initialize_protection_state(c)
 
 
 def latest_decision(db):
@@ -1059,7 +1061,19 @@ def reconcile_executions(db, boundary, client, now):
 
 
 def _reconcile_attempt(db, boundary, client, now, plans, attempts, account, attempt, plan, payload, history):
-    """Order/fill/protection truth of ONE persisted attempt (see reconcile_executions)."""
+    """Order/fill/protection truth of ONE persisted attempt (see reconcile_executions).
+
+    Protection is verified every cycle. Its outcome is one of three states
+    (``app.execution.protection_state``): CONFIRMED (normal maintenance),
+    ABSENT (the venue proved the stop is not there: the durable reduce-only
+    fail-safe close runs) or UNKNOWN (the venue did not answer: the position is
+    preserved, the uncertainty is recorded and retried next cycle, and the
+    account fails closed for new entries by raising PROTECTION_STATE_UNKNOWN
+    after the item is recorded). A failed read is never converted into
+    confirmed absence."""
+    from app.execution import protection_state
+    symbol = plan.instrument_key.venue_symbol
+    unknown = None
     if True:  # body kept at its original indentation so the change stays reviewable
         order = boundary.adapter.query_order(plan.instrument_key.venue_symbol,
             broker_order_id=payload.get("broker_order_id"), client_order_id=payload.get("client_order_id"))
@@ -1099,17 +1113,34 @@ def _reconcile_attempt(db, boundary, client, now, plans, attempts, account, atte
                     item["protection"] = boundary.adapter.submit_protection(plan.instrument_key.venue_symbol,
                         side=plan.side, quantity=min(position.quantity, order.executed_qty),
                         stop_price=plan.structural_invalidation_price, target_price=plan.target_zones[0].price_high)
+                    if isinstance(item["protection"], dict):
+                        item["protection"]["state"] = protection_state.CONFIRMED
+                    protection_state.clear(db, account, symbol)
                 except Exception as exc:
-                    item["protection"] = {"status": "UNCONFIRMED", "reason": type(exc).__name__}
-                    # An acknowledged live entry without proven native protection
-                    # uses the same durable reduce-only fail-safe close.
-                    item['fail_safe_close'] = boundary.adapter.submit_exit(plan.instrument_key.venue_symbol,
-                        side=plan.side,quantity=position.quantity)
+                    item["protection"] = protection_state.describe(exc)
+                    if item["protection"]["state"] == protection_state.ABSENT:
+                        # The venue PROVED the stop is not there and cannot be
+                        # created: an acknowledged entry without native protection
+                        # uses the same durable reduce-only fail-safe close.
+                        protection_state.clear(db, account, symbol)
+                        item['fail_safe_close'] = boundary.adapter.submit_exit(plan.instrument_key.venue_symbol,
+                            side=plan.side,quantity=position.quantity)
+                    else:
+                        # The venue did not answer: a failed read is not absence.
+                        # Keep the position, remember the doubt, retry next cycle,
+                        # alert the operator once the bound is reached, and fail
+                        # the account closed for new entries (raised below).
+                        item['protection_uncertainty'] = protection_state.record_unknown(
+                            db, account, symbol, plan.trade_plan_id, item["protection"]["reason"], now)
+                        unknown = exc
                 if now >= plan.decision_time + 1 + plan.expected_holding_time_ms:
                     item['horizon_close'] = boundary.adapter.submit_exit(plan.instrument_key.venue_symbol,
                         side=plan.side,quantity=position.quantity)
             else:
                 item["protection"] = order_submission_gate(plan.environment)["reason"]
+        if position.answered and position.quantity == 0:
+            # Flat at the venue: there is no protection to be uncertain about.
+            protection_state.clear(db, account, symbol)
         if order.answered and order.executed_qty > 0 and position.answered and position.quantity == 0:
             # A historical FILLED entry + flat snapshot alone can be eventual
             # consistency. Require an acknowledged close or actual exit fills.
@@ -1144,3 +1175,5 @@ def _reconcile_attempt(db, boundary, client, now, plans, attempts, account, atte
                 boundary._resolve(plan,'CONSUMED',now,'BROKER_CONFIRMED_ENTRY_AND_CLOSE')
                 item.update(lifecycle='CLOSED',exit_fills=exits)
         history.append(item)
+        if unknown is not None:
+            raise ValueError(protection_state.STATE_UNKNOWN) from unknown

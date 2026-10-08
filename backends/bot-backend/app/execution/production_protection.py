@@ -29,6 +29,30 @@ from .production_close import ABSENT_RESOLUTION_MS, attempt_client_id, operator_
 MAX_PROTECTION_ATTEMPTS = 3
 
 
+class _AcknowledgedLegMissing(Exception):
+    """Internal signal: a leg the venue acknowledged is not in ONE successful
+    read of the open list. ``place_native_protection`` confirms with a second
+    read before calling the protection absent."""
+
+    def __init__(self, client_id):
+        super().__init__(client_id)
+        self.client_id = client_id
+
+
+def open_protection_legs(client, symbol):
+    """The venue's open conditional orders for ``symbol``, or
+    ``PROTECTION_READ_UNAVAILABLE`` (state UNKNOWN) when the venue did not
+    answer with a list: a transport failure, 5xx, rate limit or malformed body
+    is never read as "no protection"."""
+    try:
+        orders = client.get_algo_orders(symbol, raise_on_error=True)
+    except Exception as exc:
+        raise ValueError("PROTECTION_READ_UNAVAILABLE") from exc
+    if not isinstance(orders, list):
+        raise ValueError("PROTECTION_READ_UNAVAILABLE")
+    return orders
+
+
 def _leg_ids(base):
     return [attempt_client_id(base, n) for n in range(MAX_PROTECTION_ATTEMPTS)]
 
@@ -70,10 +94,13 @@ def _next_leg_attempt(db, account, symbol, candidates, now):
         if response.get("_rejected") or response.get("_absent"):
             continue
         # Acknowledged by the venue and no longer open: never blindly recreated.
-        raise ValueError("PROTECTION_SUBMIT_OUTCOME_UNKNOWN")
+        # One read is not proof; the caller confirms with a second read.
+        raise _AcknowledgedLegMissing(cid)
+    # Every attempt the venue could have received is proven absent by its own
+    # successful reads: protection is CONFIRMED absent and cannot be created.
     operator_alert(db, account, symbol, candidates[0], {"leg_client_ids": list(candidates),
                    "reason": "PROTECTION_LEG_ATTEMPTS_EXHAUSTED"})
-    raise ValueError("PROTECTION_SUBMIT_OUTCOME_UNKNOWN")
+    raise ValueError("PROTECTION_LEG_ATTEMPTS_EXHAUSTED")
 
 
 def place_native_protection(client, request):
@@ -113,10 +140,10 @@ def place_native_protection(client, request):
         if not identity:
             raise ValueError("PROTECTION_ENTRY_LINEAGE_REQUIRED")
         candidates = _leg_ids("CFP" + sha256((account + identity + json.dumps(params, sort_keys=True)).encode()).hexdigest()[:28])
-        # Every replay reads broker truth before considering any CREATE.
-        orders = client.get_algo_orders(request.symbol, raise_on_error=True)
-        if not isinstance(orders, list):
-            raise ValueError("PROTECTION_READ_BACK_UNAVAILABLE")
+        # Every replay reads broker truth before considering any CREATE. A read
+        # the venue did not answer is PROTECTION_READ_UNAVAILABLE (unknown),
+        # never an empty list.
+        orders = open_protection_legs(client, request.symbol)
         found = next((o for o in orders if o.get("clientAlgoId") in candidates), None)
         if found is not None and (str(found.get("symbol")) != request.symbol or found.get("side") != exit_side
                 or found.get("type", found.get("orderType")) != kind
@@ -126,7 +153,24 @@ def place_native_protection(client, request):
         now = int(time.time() * 1000)
         # No attempt of this leg is open: the first id never used, or -- only
         # when every earlier attempt is proven absent -- the next retry id.
-        cid = found["clientAlgoId"] if found is not None else _next_leg_attempt(db, account, request.symbol, candidates, now)
+        if found is not None:
+            cid = found["clientAlgoId"]
+        else:
+            try:
+                cid = _next_leg_attempt(db, account, request.symbol, candidates, now)
+            except _AcknowledgedLegMissing as missing:
+                # The venue acknowledged this leg and one read no longer lists
+                # it. A second successful read is the confirmation: still
+                # missing means triggered or cancelled at the venue -- the
+                # protection is CONFIRMED absent and is never recreated here;
+                # the caller's fail-safe close decides. Present after all
+                # (propagation) means it is the live leg.
+                getattr(client, '_production_protection_readback_sleep', time.sleep)(1)
+                again = open_protection_legs(client, request.symbol)
+                found = next((o for o in again if o.get("clientAlgoId") == missing.client_id), None)
+                if found is None:
+                    raise ValueError("PROTECTION_CONFIRMED_ABSENT") from None
+                cid = found["clientAlgoId"]
         params["clientAlgoId"] = cid
         expected.append((leg, cid, kind, normalized))
         if found is None:
@@ -170,9 +214,7 @@ def place_native_protection(client, request):
     for delay in (0, 1, 1, 2, 2):
         if delay:
             getattr(client,'_production_protection_readback_sleep',time.sleep)(delay)
-        confirmed = client.get_algo_orders(request.symbol, raise_on_error=True)
-        if not isinstance(confirmed, list):
-            raise ValueError("PROTECTION_READ_BACK_UNAVAILABLE")
+        confirmed = open_protection_legs(client, request.symbol)
         if all(any(o.get('clientAlgoId') == cid for o in confirmed) for _,cid,_,_ in expected):
             break
     for leg, cid, kind, price in expected:
@@ -206,7 +248,7 @@ def cancel_flat_protection(client, identity):
         symbol = params['symbol']
         if float(client.get_position_amt(symbol)) != 0:
             raise ValueError('PROTECTION_CANCEL_REQUIRES_FLAT_POSITION')
-        orders = client.get_algo_orders(symbol,raise_on_error=True)
+        orders = open_protection_legs(client, symbol)
         found = next((o for o in orders if o.get('clientAlgoId') == cid),None)
         response = json.loads(row['response']) if row['response'] else None
         if found:
@@ -217,7 +259,7 @@ def cancel_flat_protection(client, identity):
                 c.execute('UPDATE cati_production_protection SET response=? WHERE account_id=? AND client_id=?',
                           (json.dumps(response),account,cid))
             client._signed_delete('/fapi/v1/algoOrder',params={'symbol':symbol,'algoId':found['algoId']})
-            if any(o.get('clientAlgoId')==cid for o in client.get_algo_orders(symbol,raise_on_error=True)):
+            if any(o.get('clientAlgoId')==cid for o in open_protection_legs(client, symbol)):
                 raise ValueError('PROTECTION_CANCEL_READ_BACK_UNCONFIRMED')
         elif response is None:
             # An unacknowledged CREATE may still appear later. No false release

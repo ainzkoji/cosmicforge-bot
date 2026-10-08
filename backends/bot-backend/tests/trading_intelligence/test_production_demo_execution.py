@@ -138,7 +138,7 @@ def test_demo_native_protection_is_account_scoped_close_only(demo):
     assert place_native_protection(demo.client,req).status=='success'
     assert demo.client._signed_post.call_count==2
     book.clear()  # Missing acknowledged legs must not be blindly recreated.
-    with pytest.raises(ValueError, match="OUTCOME_UNKNOWN"):
+    with pytest.raises(ValueError, match="PROTECTION_CONFIRMED_ABSENT"):   # two reads agree: proven gone
         place_native_protection(demo.client, req)
     assert demo.client._signed_post.call_count == 2
 
