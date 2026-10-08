@@ -55,7 +55,10 @@ from shared_lib.core.security.redaction import install_log_redaction
 assert_broker_encryption_configured()
 install_log_redaction()
 
-app = FastAPI(title="CosmicForge API", version="1.0.0")
+# /docs, /redoc and /openapi.json enumerate the whole API: a production process
+# serves them only when API_DOCS_ENABLED=true is set explicitly.
+from shared_lib.core.http_surface import browser_origins, docs_kwargs
+app = FastAPI(title="CosmicForge API", version="1.0.0", **docs_kwargs(settings))
 runtime_logger = logging.getLogger("cosmicforge.runtime")
 
 
@@ -133,13 +136,12 @@ async def add_security_headers(request, call_next):
 # CORS Middleware for frontend
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:5173",
-        "http://127.0.0.1:5173",
-        "http://localhost:4173",
-        "http://127.0.0.1:4173",
-        getattr(settings, 'FRONTEND_URL', "http://localhost:5173")
-    ],
+    # The portal's configured public address (FRONTEND_URL / PUBLIC_APP_URL /
+    # CORS_ALLOWED_ORIGINS, read from the environment the .env was loaded into);
+    # the development origins only outside production. FRONTEND_URL used to be
+    # looked up on the settings object, where it is not declared, so a
+    # configured address was silently ignored.
+    allow_origins=browser_origins(settings),
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

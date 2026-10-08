@@ -391,3 +391,32 @@ async def proxy_sharpe_ratio(
         except httpx.HTTPError as e:
             logger.error(f"Failed to proxy Sharpe ratio: {e}")
             raise HTTPException(status_code=500, detail=str(e))
+
+
+# ============================================================================
+# Routes the engine serves and the portal's reports page calls (Step 1 closure)
+# ============================================================================
+# These seven had no proxy, so the portal received 404 for them. They forward
+# the caller's own token and query string; the engine scopes every figure to
+# that user and its status code is passed through unchanged (an engine error is
+# never turned into an empty success).
+from fastapi import Request  # noqa: E402
+from app.api.proxy_utils import proxy_request  # noqa: E402
+
+PASSTHROUGH_ROUTES = (
+    "/stats/win-rate", "/stats/best-worst", "/stats/by-symbol", "/stats/time-series",
+    "/drawdown/periods", "/benchmark/available", "/benchmark/comparison",
+)
+
+
+def _passthrough(path: str):
+    async def handler(request: Request, user: dict = Depends(get_current_active_user)):
+        return await proxy_request(request, f"/api/v1/reports{path}", timeout=30.0)
+    handler.__name__ = "proxy_" + path.strip("/").replace("/", "_").replace("-", "_")
+    handler.__doc__ = f"Proxy: GET /api/v1/reports{path} on the engine, for the signed-in user."
+    return handler
+
+
+for _path in PASSTHROUGH_ROUTES:
+    router.add_api_route(_path, _passthrough(_path), methods=["GET"])
+

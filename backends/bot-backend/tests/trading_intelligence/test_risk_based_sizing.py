@@ -200,3 +200,43 @@ def test_a_user_maximum_position_binds_through_the_boundary(tmp_path):
     out = h.run()
     assert out.status == B.EXECUTED, out.reason_codes
     assert float(h.seen["orders"][0].qty) == pytest.approx(0.4, rel=2e-3)
+
+
+@pytest.mark.parametrize("level,approved_pct,effective_pct", [("conservative", "0.25", "0.25"), ("balanced", "0.50", "0.40"),
+                                                              ("aggressive", "0.75", "0.40")])
+def test_the_per_trade_ceiling_is_one_value_in_the_engine_the_library_and_the_preview(level, approved_pct, effective_pct):
+    """Step 1 closure, risk-ceiling conflict: the approved profiles say 0.25 / 0.50 /
+    0.75 %, the engine's ceiling is 0.40 %. Until the owner approves a change, every
+    path applies the stricter value and the preview shows exactly what the engine uses."""
+    from decimal import Decimal
+    from app.risk.system_limits import SystemLimits
+    from app.runner.effective_policy import resolve_effective_bot_policy
+    from shared_lib import risk_levels
+    limits = SystemLimits()
+    # 1. one ceiling: the engine's limit and the library's constant are the same number
+    assert Decimal(str(limits.max_risk_per_trade_ceiling)) * 100 == risk_levels.SYSTEM_PER_TRADE_RISK_CEILING_PCT == Decimal("0.40")
+    profile = risk_levels.get_profile(level)
+    assert profile.per_trade_risk_pct == Decimal(approved_pct)                      # the approved value is not altered
+    # 2. the engine's resolved policy (what sizing reads)
+    instance = SimpleNamespace(id="bot-c", user_id="u", broker_account_id="acct", market_type="CRYPTO", strategy_id="cati",
+                               strategy_version="1", risk_level=level, risk_profile_version=None, allocation_type="risk_based",
+                               allocation_value=float(profile.per_trade_risk_pct), capital_allocation=1000.0,
+                               capital_allocation_type="fixed_amount", symbols=["ADAUSDT"], timeframes=["15m"],
+                               universe_mode="ALLOWLIST", mode="live", daily_loss_limit_pct=None, max_position_usdt=None)
+    policy = resolve_effective_bot_policy(instance=instance, broker_environment="demo",
+                                          risk_params=risk_profile_params.risk_based_params(instance))
+    assert Decimal(str(policy.risk_per_trade)) * 100 == Decimal(effective_pct)
+    assert Decimal(str(policy.requested_risk_per_trade)) * 100 == Decimal(approved_pct)
+    # 3. the library and the preview say the same, and never claim the wider value
+    assert risk_levels.effective_per_trade_risk_pct(profile) == Decimal(effective_pct)
+    money = risk_levels.money_view(level, "1000")
+    assert money["effective_per_trade_risk_pct"] == Decimal(effective_pct) and money["per_trade_risk_pct"] == Decimal(approved_pct)
+    assert money["risk_per_trade"] == Decimal("1000") * Decimal(effective_pct) / 100
+    assert money["ceiling_applied"] is (approved_pct != effective_pct)
+    # 4. the size the engine would take loses no more than that at its stop
+    sized = rs.size_risk_based(budget_usdt=1000, risk_fraction=policy.risk_per_trade, stop_distance_fraction=0.02, price=100,
+                                        leverage=1, leverage_ceiling=policy.leverage_ceiling, max_position_usdt=None,
+                                        free_margin_usdt=1000, open_risk_usdt=0, max_open_risk_fraction=policy.max_open_risk_fraction,
+                                        system_max_notional_usdt=None, min_notional=5, qty_step=0.001, min_qty=0.001, max_qty=None,
+                                        contract_multiplier=1)
+    assert sized.approved and float(sized.quantity) * 100 * 0.02 <= float(money["risk_per_trade"]) + 1e-9

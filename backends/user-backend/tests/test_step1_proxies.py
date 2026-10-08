@@ -17,7 +17,7 @@ ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT / "backends" / "shared"))
 sys.path.insert(0, str(ROOT / "backends" / "user-backend"))
 
-from app.api import auto_pilot_proxy, cati_proxy, forex_proxy, monitoring_proxy, proxy_utils  # noqa: E402
+from app.api import auto_pilot_proxy, cati_proxy, forex_proxy, monitoring_proxy, proxy_utils, reports_proxy  # noqa: E402
 from app.api.auth import get_current_active_user  # noqa: E402
 
 USER = {"id": "alice", "email": "alice@example.test", "role": "user", "is_verified": True}
@@ -174,6 +174,48 @@ def test_forex_instruments_proxy_forwards_the_account_id_not_the_credentials(ups
     assert upstream_path(call).split("?")[0] == "/api/v1/forex/instruments"
     assert call.get("json") is None and "SECRET-KEY" not in json.dumps(call, default=str)
     assert call["params"]["broker_account_id"] == "acct-1" and call["params"]["broker_id"] == "oanda"
+
+
+# -- reports: the seven routes the portal calls and the engine serves --------
+
+#: GET routes of bot-backend/app/api/reports.py (prefix /api/v1/reports)
+ENGINE_REPORT_ROUTES = {"/stats/win-rate", "/stats/best-worst", "/stats/by-symbol", "/stats/time-series", "/drawdown/periods",
+                        "/benchmark/available", "/benchmark/comparison"}
+
+
+@pytest.mark.parametrize("path", sorted(reports_proxy.PASSTHROUGH_ROUTES))
+def test_report_routes_forward_the_callers_token_and_query(upstream, path):
+    assert path in ENGINE_REPORT_ROUTES
+    c = client(reports_proxy.router, prefix="/api/v1/reports")
+    response = c.get(f"/api/v1/reports{path}", params={"days": 30, "broker_account_id": "acct-1"},
+                     headers={"Authorization": "Bearer user-token"})
+    assert response.status_code == 200, response.text
+    [call] = upstream.calls
+    assert upstream_path(call).split("?")[0] == f"/api/v1/reports{path}"
+    assert call["headers"]["Authorization"] == "Bearer user-token"
+    assert str(call["params"]["days"]) == "30" and call["params"]["broker_account_id"] == "acct-1"
+    assert "user_id" not in call["params"]                      # the engine scopes by the token, never by a parameter
+
+
+def test_report_routes_require_a_user_and_pass_engine_errors_through(monkeypatch):
+    app = FastAPI()
+    app.include_router(reports_proxy.router, prefix="/api/v1/reports")
+    for path in reports_proxy.PASSTHROUGH_ROUTES:
+        assert TestClient(app).get(f"/api/v1/reports{path}").status_code == 401, path
+    fake = FakeUpstream(status_code=403, body={"detail": "Not authorized for this account"})
+    monkeypatch.setattr(proxy_utils, "_proxy_client", fake)
+    monkeypatch.setattr(proxy_utils, "BOT_BACKEND_BASE_URL", "http://bot.test")
+    c = client(reports_proxy.router, prefix="/api/v1/reports")
+    response = c.get("/api/v1/reports/stats/win-rate", params={"broker_account_id": "someone-elses"}, headers={"Authorization": "Bearer t"})
+    assert response.status_code == 403 and response.json()["detail"] == "Not authorized for this account"
+
+
+def test_every_report_path_the_portal_calls_has_a_route():
+    import re
+    source = (ROOT / "frontends" / "user-frontend" / "src" / "api" / "reports.ts").read_text(encoding="utf-8")
+    called = set(re.findall(r'"/api/v1/reports(/[a-z\-/]+)"', source))        # the exact, parameterless paths
+    served = {route.path for route in reports_proxy.router.routes}
+    assert called and called <= served, sorted(called - served)
 
 
 def test_every_proxy_reads_the_bot_backend_url_from_one_place():

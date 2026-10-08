@@ -1049,37 +1049,9 @@ export const api = {
         return res.json();
     },
 
-    getDashboard: async (): Promise<DashboardStats> => {
-        const headers = { 'Authorization': `Bearer ${localStorage.getItem('access_token')}` };
-
-        try {
-            const [botsRes, pfRes] = await Promise.all([
-                apiFetch(`${API_BASE}/api/v1/monitoring/bots-overview`, { headers }),
-                apiFetch(`${API_BASE}/api/portfolio/summary`, { headers })
-            ]);
-
-            if (botsRes.status === 401 || pfRes.status === 401) throw new Error("Unauthorized");
-
-            const botsData = botsRes.ok ? await botsRes.json() : {};
-            const pfData = pfRes.ok ? await pfRes.json() : {};
-
-            return {
-                total_balance: pfData.summary?.total_portfolio_value || 0,
-                active_bots: botsData.active_bots || 0,
-                profit_24h: botsData.total_pnl_24h || 0,
-                win_rate: botsData.success_rate || 0
-            };
-        } catch (error) {
-            console.error("Dashboard fetch error:", error);
-            // Return empty stats on error to prevent crash
-            return {
-                total_balance: 0,
-                active_bots: 0,
-                profit_24h: 0,
-                win_rate: 0
-            };
-        }
-    },
+    // getDashboard was removed at the Step 1 closure: nothing called it, and it asked the
+    // admin-only /api/v1/monitoring/bots-overview for "active bots", reporting 0 to a customer
+    // when refused. The dashboard's count comes from /api/portfolio/summary (the user's own bots).
 
     getPortfolioSummary: async (): Promise<PortfolioSummaryResponse> => {
         const res = await apiFetch(`${API_BASE}/api/portfolio/summary`, {

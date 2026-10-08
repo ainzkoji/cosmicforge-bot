@@ -25,7 +25,9 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("cosmicforge.admin_backend")
 
 
-app = FastAPI(title="CosmicForge Admin Backend", version="0.1.0")
+from app.core.config import settings
+from shared_lib.core.http_surface import docs_kwargs  # no /docs in production unless API_DOCS_ENABLED=true
+app = FastAPI(title="CosmicForge Admin Backend", version="0.1.0", **docs_kwargs(settings))
 
 configure_cors(app)
 
