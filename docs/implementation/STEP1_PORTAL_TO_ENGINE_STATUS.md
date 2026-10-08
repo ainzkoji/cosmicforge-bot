@@ -4,6 +4,11 @@ Authority: CosmicForge Master Plan A to Z (8 October 2026), Section H Step 1.0a�
 Documented baseline: `main` at `9fb120f` (7 October 2026). This register is updated as each task
 closes; no task is marked PASS on code presence alone.
 
+> **Status, 8 October 2026: STEP 1 — IMPLEMENTATION COMPLETE / CONDITIONAL CLOSURE.** Implementation PASS; external
+> certification DEFERRED; overall CONDITIONALLY CLOSED — EXTERNAL GATES OPEN; remote CI PENDING — PUSH PERMISSION.
+> The original clean-server end-to-end closing test has not been passed. The open gates are in the
+> "Carry-forward register" at the end of this file.
+
 ## Baseline report (8 October 2026)
 
 | Item | Finding |
@@ -674,3 +679,87 @@ Each is a separate change to make once its prerequisites are confirmed by the ow
 4. One real email, Telegram and push delivery.
 5. The install guide on a Linux server.
 6. Decision on the 0.40 % ceiling. Decision on the removal batches.
+
+---
+
+# Conditional closure (8 October 2026)
+
+| | Outcome |
+|---|---|
+| **STEP 1 IMPLEMENTATION** | **PASS** — all sixteen work items are implemented and every locally verifiable requirement passes |
+| **STEP 1 EXTERNAL CERTIFICATION** | **DEFERRED** — see the gates below |
+| **STEP 1 OVERALL** | **CONDITIONALLY CLOSED — EXTERNAL GATES OPEN** |
+| **REMOTE CI** | **PENDING — PUSH PERMISSION** |
+
+**Step 1 has not passed the original clean-server end-to-end closing test.** Scenarios A, B, C, D, E, F, G, H and I of
+that test keep the statuses recorded in "Closing test, final status" above; none of them is upgraded by this closure.
+No external test is marked PASS without execution evidence.
+
+## Baseline verified for this closure
+
+| Check | Result |
+|---|---|
+| Branch and commit | `main` at `699e2fd`; working tree clean |
+| Commits retained | all 24 since `9fb120fa`; 24 ahead of `origin/main`, 0 behind; no force push attempted |
+| Sixteen work items | present (register at the top of this file; artefacts checked on disk) |
+| Regression | no new failure against the `9fb120f` baseline (run on `794cee8`; only documentation changed after it) |
+| Quarantine list | 125 lines, unchanged |
+| Demo certification evidence | preserved: certification `step1-closure-20261008-a` `COMPLETED` in `cati_demo_certifications`, its result file, the verified backup in `backups/step1_closure/` |
+| Earlier evidence | the 5 October certification, the 122 recorded research decisions and the audit baseline are untouched |
+| Live trading | `LIVE_ORDER_SUBMISSION_ENABLED=false` in all three environment files; never changed in any commit; no live order submitted |
+| Connected account | one Binance demo account, credential version 2, one credential row; nothing rotated, exported or printed; no service running |
+
+## Tasks passing locally
+
+1.0a, 1.0b, 1.0c, 1.0d, 1.0e, 1.1, 1.2, 1.3, 1.4, 1.5, 1.6, 1.7, 1.10: PASS.
+
+1.8, 1.9 and 1.11 pass every local requirement (code, tests, and for 1.9 and 1.11 a local rehearsal). The part of each
+that needs something outside this workstation is carried by EXT-01, OWN-01 and EXT-02 below.
+
+## Carry-forward register
+
+Severity: **high** blocks real customers or real money; **medium** blocks a certification claim; **low** is hygiene.
+
+### Deferred external gates
+
+| ID | Requirement | Completed implementation | Evidence | Deferred test | Blocking dependency | Target phase | Revalidation trigger |
+|---|---|---|---|---|---|---|---|
+| **EXT-01** | External notifications: SMTP, Telegram and push delivery (1.8, scenarios A and G) | event generation, durable outbox, bounded retry, idempotency, per-user isolation, in-app and SSE delivery | `test_user_events.py` (26); in-app delivery of `ENTRY_FILLED` and `EXIT_FILLED` on the real demo account | one real message per channel; retry after a real transport failure; email verification of a new account without a bypass | no provider credentials exist (`SMTP_HOST`, `SMTP_USER`, `SMTP_PASSWORD`, Telegram bot token, push credentials) | before the first external customer; at the latest Step 4 launch preparation | provider credentials and configuration become available |
+| **EXT-02** | Linux deployment: fresh install, systemd, nginx, TLS, supervision, backup and restore (1.11, scenarios I and K) | `docs/INSTALL_SINGLE_SERVER.md`, the systemd units and nginx site in `deploy/` | Windows rehearsal from a pristine export and an empty database: migration, production-profile start of the user and trading backends, administrator bootstrap, 401 on unauthenticated routes, backup and restore, both frontend builds | every Linux-only step listed in section 26 of the guide | no Linux server is accessible | when a staging server exists; before any production deployment | a Linux staging server becomes available |
+| **CATI-01** | Strategy-driven trading: natural, governance-authorised CATI decisions producing demo orders (scenario E) | execution boundary, risk sizing, exchange-side protection, durable state, restart and reconciliation | Binance demo order through the isolated operator harness, reconciled to the cent (closure pass above) | a natural strategy decision reaching the exchange and its full lifecycle | strategy certification. On 8 October 2026, 55 of the 74 recorded decisions carried a stop wider than the engine's 15 % maximum and would be refused | Step 2 (research certification) and Step 3 (activation) | a strategy family is certified and authorised to trade |
+
+CATI-01 must not be closed by bypassing governance or by manipulating a decision to force an order.
+
+### Other checks that could not be certified now
+
+| ID | Severity | Requirement | Completed implementation | Evidence | Deferred test or unresolved issue | Blocking dependency | Owner | Revalidation trigger |
+|---|---|---|---|---|---|---|---|---|
+| **OWN-01** | medium | Signed-in owner deployment and portal checks (scenarios B, C, D, F) | deployment screen, bot status panel, read model, proxies | synthetic end-to-end rehearsal; backend preview on the real account with every money value equal to the library; read model equal to the exchange; browser check of the portal on a scratch database | the owner signs in, stops the legacy bot on the demo account, deploys a risk-based bot from the portal and reads its pages | the owner's own session (their password is not available to an operator, by design) | account owner | the owner is available for a 30-minute session |
+| **ADM-01** | medium | Authenticated administrator controls: kill switch and flatten drill (scenarios H and I) | emergency routes, audit, proxy, flatten on the fail-safe close path | existing emergency suites pass; on the running engine every emergency route answered 401 without a token and for a forged token | the drill on the demo account as a signed-in administrator, with the audit record checked | an administrator session; depends on SEC-01 | operator | SEC-01 done |
+| **SEC-01** | **high** | Application secrets on this workstation | the services refuse to start in production on default, placeholder or short secrets (verified live) | found on 8 October 2026: no usable `SECRET_KEY` in any of the three environment files, no `CREDENTIAL_KEY`, no mail settings | **the services cannot be started in production as configured.** The certification run used a throwaway key in the process only | operator action: `docs/AUDIT_FIXES_OPERATOR_CHECKLIST.md`, section 1 | operator | before the next start of any service |
+| **SEC-02** | **high** | Administrator passwords that are in Git history | the scripts that held them are deleted | operator checklist, section 2 | rotation of every administrator password | operator action | operator | immediately; before any exposure of the admin console |
+| **SEC-03** | low | Withdrawal permission of the connected key | keys with withdrawal permission are refused where the venue reports it | the demo venue has no restrictions endpoint: recorded as unverified, never as absent | inspect on a venue that reports it | a live-capable key (not Step 1) | operator | first connection of a live account |
+| **RISK-01** | medium (decision) | Per-trade risk ceiling: 0.40 % in the engine against 0.50 % and 0.75 % approved | one ceiling applied in the engine limit, the resolved policy, the library and the preview | `test_the_per_trade_ceiling_is_one_value_...` for all three levels; preview on the real account | none: the behaviour is consistent. The **decision** whether to widen is open; until then Balanced and Aggressive risk the same per trade | owner approval | project owner | an explicit decision |
+| **INT-01** | low | 24 failing tests in `tests/integration` | — | identical 24 failures on the baseline and on the final code (same test identities) | they expect routes that have not existed since before the baseline; rewrite against the current route inventory or delete | none | engineering | Section I removal work, or the next change to the route inventory |
+| **GIT-01** | medium | Remote integration | 24 commits on local `main`, fast-forward of `origin/main` | local gates above | **REMOTE CI: PENDING — PUSH PERMISSION.** `git push origin main` was refused by the session's permission system; CI has never run on this work | a push by the owner, or a permission rule | project owner | the push; then read the CI result and record it here |
+| **REM-01** | low (decision) | Removal batches 2, 3 and 4 | dependency review | "Removal batches 2 to 4" above | nothing deleted; the batch prerequisites are defined in the master plan, which is not in the repository | owner confirmation of prerequisites | project owner | the decision |
+
+Security isolation and rollback are **not** deferred: tenant isolation on every Step 1 route, SSE ownership, the
+request's inability to carry server-decided fields, additive migrations and the repeated and interrupted migration
+paths all pass locally (`test_step1_security.py`, `test_step1_closing_synthetic.py`, `test_user_events.py`,
+`test_step1_migrations.py`), and a restart of the engine with an open, protected demo position was verified on the
+real exchange.
+
+## Unresolved local blockers
+
+No locally testable safety-critical or core functional requirement fails. SEC-01 and SEC-02 are high-severity operator
+actions, not code defects: until SEC-01 is done no service starts in production on this workstation.
+
+## Readiness for Step 2
+
+Step 2 (research certification) can begin: it does not depend on the open gates. It should start from the CATI-01
+finding about stop distances. GIT-01 should be closed first so that Step 2 starts from a commit that CI has seen.
+
+## Exact next action
+
+The project owner runs `git push origin main`, then the CI result for the pushed commit is recorded under GIT-01.
