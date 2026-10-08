@@ -176,7 +176,10 @@ def test_a_local_gate_keeps_the_cached_client_and_a_broker_failure_rebuilds_it(c
     with cycle_db.connect() as c:
         import json
         state = json.loads(c.execute("SELECT document FROM cati_production_state").fetchone()[0])
-    assert state["execution"]["reason"] == "CANONICAL_RUNTIME_LEASE_REQUIRED"
+    # With the demo order gate off (no operator .env) the gate's own reason is
+    # reported and the engine's reason is kept beside it; either way it is recorded.
+    execution = state["execution"]
+    assert "CANONICAL_RUNTIME_LEASE_REQUIRED" in (execution["reason"], execution.get("block_reason_before_order_gate"))
     built[0].position_risk.side_effect = TimeoutError("read timed out")
     with pytest.raises(TimeoutError):
         runtime.sync_account(cycle_db, account, factory=factory, execute=True)
