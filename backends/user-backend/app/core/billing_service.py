@@ -745,6 +745,7 @@ def get_user_subscription(user_id: str, *, persist: bool = False) -> Dict[str, A
     state = plan_entitlements.get_effective_plan(db, user_id, persist=persist)
     plan = get_plan_by_id(state["plan_id"]) or get_plan_by_id(FREE_PLAN_ID)
 
+    from shared_lib.billing.enforcement import billing_enforced
     return {
         "plan": plan.dict(),
         "status": state["status"],  # the free plan is always "active"
@@ -753,6 +754,11 @@ def get_user_subscription(user_id: str, *, persist: bool = False) -> Dict[str, A
         "grace_period_end": state["grace_period_end"],
         "entitlements": dict(state["limits"]),
         "usage": _usage(db, user_id),
+        # Step 1.5: whether the entitlements above gate anything, and where the
+        # plan comes from (Stripe, an operator grant, or the free default).
+        "billing_enforced": billing_enforced(),
+        "source": "operator_grant" if state.get("provider") == "operator" and state.get("is_paid")
+                  else ("stripe" if state.get("provider") == "stripe" and state.get("is_paid") else "free"),
     }
 
 

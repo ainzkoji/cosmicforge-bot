@@ -255,10 +255,12 @@ def create_broker_account_draft(user_id: str, broker_id: str, market_type: str, 
         broker_info = get_broker_details(broker_id)
         label = f"{broker_info['name'] if broker_info else broker_id} Account"
 
-    # Enforce Entitlements
+    # Enforce Entitlements (Step 1.5: only while BILLING_ENFORCED is true; a
+    # customer without a paid plan may connect an eligible demo account otherwise)
     from app.core import billing_service
+    from shared_lib.billing.enforcement import billing_enforced
     sub = billing_service.get_user_subscription(user_id)
-    max_brokers = sub["entitlements"].get("max_brokers", 1)
+    max_brokers = sub["entitlements"].get("max_brokers", 1) if billing_enforced() else float("inf")
     
     # Check for existing DRAFT for this broker (resume flow of existing draft)
     with db.connect() as conn:

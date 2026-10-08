@@ -42,6 +42,9 @@ class ProductionSettings(BaseSettings):
     FALLBACK_ENGINE_ENABLED: bool = False
     LIVE_ORDER_SUBMISSION_ENABLED: bool = False
     DEMO_ORDER_SUBMISSION_ENABLED: bool = False
+    #: Step 1.5: subscription entitlements gate operations only when true. The
+    #: Stripe integration stays installed either way (shared_lib.billing.enforcement).
+    BILLING_ENFORCED: bool = False
 
     @model_validator(mode="after")
     def validate_production_profile(self):

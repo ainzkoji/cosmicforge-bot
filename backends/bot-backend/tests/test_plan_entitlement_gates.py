@@ -19,6 +19,13 @@ from types import SimpleNamespace
 from unittest.mock import Mock
 
 import pytest
+
+
+@pytest.fixture(autouse=True)
+def _billing_enforced(monkeypatch):
+    """These tests assert the entitlement rules WITH billing enforced (Step 1.5:
+    BILLING_ENFORCED defaults to false and then the gates refuse nothing)."""
+    monkeypatch.setenv("BILLING_ENFORCED", "true")
 from fastapi import BackgroundTasks, HTTPException
 
 from app.api import auto_pilot, bot_instances

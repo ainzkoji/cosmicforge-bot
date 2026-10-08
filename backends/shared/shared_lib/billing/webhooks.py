@@ -286,10 +286,20 @@ def _get_subscription(conn, user_id: str) -> Optional[Dict[str, Any]]:
     return _fetch_dict(conn, "SELECT * FROM subscriptions WHERE user_id = ?", (user_id,))
 
 
-def _save_subscription(conn, user_id: str, now_iso: str, **fields: Any) -> None:
+def _save_subscription(conn, user_id: str, now_iso: str, **fields: Any) -> bool:
+    """Write the user's subscription row. Returns False when the write was
+    deferred because an operator grant is active (Step 1.5): the grant is
+    recorded with the attempted fields and the row is left untouched."""
     unknown = set(fields) - _SUBSCRIPTION_COLUMNS
     if unknown:
         raise ValueError(f"unknown subscription columns: {sorted(unknown)}")
+    from shared_lib.billing import operator_grants
+    active = operator_grants.active_grant(conn, user_id, parse_ts(now_iso))
+    if active is not None:
+        operator_grants.defer_event(conn, active, {"at": now_iso, "fields": fields})
+        log.warning("stripe write for user %s deferred: operator grant %s is active until %s",
+                    user_id, active["grant_id"], active["expires_at"])
+        return False
     exists = conn.execute("SELECT 1 FROM subscriptions WHERE user_id = ?", (user_id,)).fetchone()
     if exists:
         cols = sorted(fields)
@@ -298,7 +308,7 @@ def _save_subscription(conn, user_id: str, now_iso: str, **fields: Any) -> None:
             f"UPDATE subscriptions SET {assignments}, updated_at = ? WHERE user_id = ?",
             (*[fields[col] for col in cols], now_iso, user_id),
         )
-        return
+        return True
     fields.setdefault("plan_id", FREE_PLAN_ID)
     fields.setdefault("status", "incomplete")
     cols = sorted(fields)
@@ -307,6 +317,7 @@ def _save_subscription(conn, user_id: str, now_iso: str, **fields: Any) -> None:
         f"VALUES (?, {', '.join('?' for _ in cols)}, ?, ?)",
         (user_id, *[fields[col] for col in cols], now_iso, now_iso),
     )
+    return True
 
 
 def _user_exists(conn, user_id: str) -> bool:
