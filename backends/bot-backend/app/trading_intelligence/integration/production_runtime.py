@@ -287,6 +287,12 @@ def _sync_with_client(db, account, auth, env, gate, client, factory, execute):
     result["execution_permission"] = result.get("execution", {}).get("execution_permission", "BLOCKED_ACCOUNT")
     result["credential_version"] = getattr(auth, "credential_version", None)
     save(db, account["id"], account["user_id"], now, result)
+    if execute:
+        # Step 1.6: the customer's equity history. Never on the order path; a
+        # recorder failure is logged inside and cannot touch the cycle.
+        from app.observability import account_recorder
+        account_recorder.record_cycle(db, account, result, now, bot_instance_id=bots[0][0] if len(bots) == 1 else None,
+                                      fills=account_recorder.fills_in_document(result))
     return result
 
 

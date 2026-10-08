@@ -232,17 +232,17 @@ def test_concurrent_deployments_create_exactly_one_bot(db):
     assert [b.status for b in bots] == ["active"]
 
 
-def test_the_one_bot_per_account_invariant_is_a_database_index(db):
+def test_the_one_bot_per_account_invariant_is_the_deploy_transaction_not_an_index(db):
+    """Accounts with several active bots exist in the engine's model (they are
+    blocked as ACCOUNT_EXECUTION_OWNER_AMBIGUOUS); the deployment path is what
+    refuses to CREATE a second occupying bot, under the write lock."""
     with db.connect() as c:
-        assert c.execute("SELECT 1 FROM sqlite_master WHERE name='ux_bot_instances_one_occupying_per_account'").fetchone()
-        c.execute("INSERT INTO bot_instances (id,user_id,broker_account_id,market_type,strategy_id,mode,status,created_at,updated_at) "
-                  "VALUES ('x1','alice','demo-a','CRYPTO','cati','live','active',?,?)", (NOW, NOW))
-        import sqlite3
-        with pytest.raises(sqlite3.IntegrityError):
-            c.execute("INSERT INTO bot_instances (id,user_id,broker_account_id,market_type,strategy_id,mode,status,created_at,updated_at) "
-                      "VALUES ('x2','alice','demo-a','CRYPTO','cati','live','paused',?,?)", (NOW, NOW))
-        c.execute("INSERT INTO bot_instances (id,user_id,broker_account_id,market_type,strategy_id,mode,status,created_at,updated_at) "
-                  "VALUES ('x3','alice','demo-a','CRYPTO','cati','live','stopped',?,?)", (NOW, NOW))   # stopped rows are free
+        assert not c.execute("SELECT 1 FROM sqlite_master WHERE name='ux_bot_instances_one_occupying_per_account'").fetchone()
+    first = svc.deploy(db, ALICE, request(), account_state_reader=balance())
+    with pytest.raises(svc.DeploymentRefused) as refused:
+        svc.deploy(db, ALICE, request(request_id="req-0000-0077"), account_state_reader=balance())
+    assert refused.value.status == 409 and refused.value.body["blockers"][0]["code"] == C.ACCOUNT_ALREADY_HAS_BOT
+    assert [b.id for b in service(db).get_user_bot_instances(ALICE)] == [first["bot"]["id"]]
 
 
 def test_the_handlers_translate_refusals_and_replays(db):

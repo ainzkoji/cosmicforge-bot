@@ -184,6 +184,9 @@ app.include_router(auto_pilot_proxy_router, prefix="/api/v1/auto-pilot", tags=["
 from app.api.events_proxy import router as events_proxy_router
 app.include_router(events_proxy_router, prefix="/api/v1/events", tags=["Events Proxy"])
 
+from app.api.cati_proxy import router as cati_proxy_router  # Step 1.6: engine read model, user-backend boundary
+app.include_router(cati_proxy_router)
+
 from app.api.admin import router as admin_router
 app.include_router(admin_router, prefix="/api", tags=["Admin"])
 

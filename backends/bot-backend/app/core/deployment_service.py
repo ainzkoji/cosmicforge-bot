@@ -359,6 +359,15 @@ def deploy(db, user_id: str, request: C.DeploymentRequest, *, service=None, now_
                       (consent_id, user_id, instance.id, account["id"], profile.level, profile.version, C.CONSENT_VERSION,
                        acknowledged_at, request.request_id,
                        json.dumps({**evaluation, "request_fingerprint": request.fingerprint()}, default=str)))
+    try:
+        from app.observability import account_recorder
+        account_state = evaluation.get("account") or {}
+        account_recorder.record_deployment(db, user_id=user_id, account_id=account["id"], bot_instance_id=instance.id,
+                                           figures={"equity": account_state.get("equity"), "wallet": account_state.get("wallet"),
+                                                    "available": account_state.get("available_balance"),
+                                                    "source": account_state.get("source")}, now_ms=now)
+    except Exception:  # never fails a deployment
+        logger.exception("deployment equity snapshot not recorded for %s", instance.id)
     logger.info("deployment created bot=%s account=%s user=%s level=%s budget=%s", instance.id, account["id"], user_id,
                 profile.level, request.budget.value)
     return {"bot": bot_payload(db, service.get_bot_instance(instance.id)), "idempotent_replay": False,
@@ -374,10 +383,17 @@ def bot_status(db, instance) -> Dict[str, Any]:
     status = STATUS_MAP.get(raw, raw or "stopped")
     reason = getattr(instance, "stopped_reason", None)
     if raw == "active":
+        # "deploying" until the engine has evaluated the account with THIS bot:
+        # the latest persisted evaluation names the bot, or it was observed
+        # after the bot was created.
+        seen = False
         with db.connect() as c:
-            seen = c.execute("SELECT 1 FROM sqlite_master WHERE name='cati_production_state'").fetchone() and c.execute(
-                "SELECT 1 FROM cati_production_state WHERE account_id=? AND observed_at >= ?",
-                (instance.broker_account_id, _iso_to_ms(instance.created_at))).fetchone()
+            if c.execute("SELECT 1 FROM sqlite_master WHERE name='cati_production_state'").fetchone():
+                row = c.execute("SELECT observed_at, document FROM cati_production_state WHERE account_id=?",
+                                (instance.broker_account_id,)).fetchone()
+                if row is not None:
+                    execution = (json.loads(row[1]) or {}).get("execution") or {}
+                    seen = execution.get("bot_instance_id") == instance.id or int(row[0]) >= _iso_to_ms(instance.created_at)
         if not seen:
             status = "deploying"
     if raw in ("archived", "deleted") and not reason:

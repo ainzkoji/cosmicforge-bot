@@ -863,19 +863,33 @@ def migrate(db_path: str | DB = None):
             consent_version TEXT NOT NULL, acknowledged_at TEXT NOT NULL, request_id TEXT NOT NULL,
             preview_json TEXT NOT NULL)""")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_deployment_consents_bot ON deployment_consents(bot_instance_id)")
-        # One occupying (active or paused) bot per broker account, as a database
-        # invariant. A populated legacy database may already violate it: then
-        # the index is not created (the deploy service still serialises on the
-        # write lock) and the violation is logged for the operator to resolve.
+        # Account equity history (Step 1.6, app.observability.account_recorder).
+        conn.execute("""CREATE TABLE IF NOT EXISTS account_equity_snapshots (
+            snapshot_id TEXT PRIMARY KEY, user_id TEXT, broker_account_id TEXT NOT NULL, bot_instance_id TEXT,
+            observed_at INTEGER NOT NULL, asset TEXT NOT NULL DEFAULT 'USDT',
+            equity REAL NOT NULL, wallet REAL, available REAL, unrealized REAL,
+            source TEXT NOT NULL, freshness_ms INTEGER, reason TEXT NOT NULL, dedupe_key TEXT NOT NULL UNIQUE)""")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_account_equity_snapshots_account_time "
+                     "ON account_equity_snapshots(broker_account_id, observed_at)")
+        conn.execute("""CREATE TABLE IF NOT EXISTS account_equity_daily (
+            broker_account_id TEXT NOT NULL, day TEXT NOT NULL, asset TEXT NOT NULL DEFAULT 'USDT',
+            open REAL NOT NULL, high REAL NOT NULL, low REAL NOT NULL, close REAL NOT NULL,
+            samples INTEGER NOT NULL, first_observed_at INTEGER NOT NULL, last_observed_at INTEGER NOT NULL,
+            PRIMARY KEY(broker_account_id, day, asset))""")
+        # One occupying (active or paused) bot per broker account is enforced by
+        # the deployment service as a race-safe transaction (BEGIN IMMEDIATE +
+        # re-check before the insert), not by a unique index: the engine
+        # deliberately models accounts that carry more than one active bot
+        # (ACCOUNT_EXECUTION_OWNER_AMBIGUOUS, which blocks entries) and the
+        # operator repair tooling reports them. A database that received the
+        # short-lived index from an earlier build of this step drops it here.
+        conn.execute("DROP INDEX IF EXISTS ux_bot_instances_one_occupying_per_account")
         duplicates = conn.execute(
             "SELECT broker_account_id, COUNT(*) FROM bot_instances WHERE status IN ('active','paused') "
             "GROUP BY broker_account_id HAVING COUNT(*) > 1").fetchall()
         if duplicates:
-            logger.warning("bot_instances: %d broker account(s) carry more than one active/paused bot; "
-                           "ux_bot_instances_one_occupying_per_account not created", len(duplicates))
-        else:
-            conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS ux_bot_instances_one_occupying_per_account "
-                         "ON bot_instances(broker_account_id) WHERE status IN ('active','paused')")
+            logger.warning("bot_instances: %d broker account(s) carry more than one active/paused bot "
+                           "(the engine blocks their entries as ACCOUNT_EXECUTION_OWNER_AMBIGUOUS)", len(duplicates))
 
         # 23b) Bot Daily/Symbol State (Multi-user persistence)
         conn.execute("""

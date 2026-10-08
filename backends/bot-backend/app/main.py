@@ -357,6 +357,9 @@ from app.trading_intelligence.integration.residual_simulation import health as s
 app.include_router(cati_simulation_router)
 from app.api.cati_runtime import router as cati_runtime_router
 app.include_router(cati_runtime_router)
+from app.api.cati_account import router as cati_account_router, admin_router as cati_account_admin_router  # Step 1.6
+app.include_router(cati_account_router)
+app.include_router(cati_account_admin_router)
 
 # Register Auto Pilot
 from app.api.auto_pilot import router as auto_pilot_router
