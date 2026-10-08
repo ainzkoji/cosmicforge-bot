@@ -520,3 +520,157 @@ failing test id with the baseline run of `9fb120f`. The quarantine list is uncha
   `npm test` 40 pass. The admin frontend was not changed and not rebuilt.
 * Not run: `tests/integration` (needs both backends running; excluded from CI), browser end-to-end automation (none
   exists in the repository), the Binance demo certification flow.
+
+---
+
+# Closure pass (8 October 2026, second session)
+
+This section supersedes the statuses above where they differ. **Step 1 overall remains PARTIAL.** What changed is
+that the exchange side is no longer synthetic only: the connected Binance demo account was read, traded once through
+the operator certification harness, restarted on and reconciled.
+
+Evidence is labelled throughout as one of:
+
+* **synthetic** — a controlled fake exchange, in tests;
+* **real exchange read** — signed read-only requests to `https://demo-fapi.binance.com`;
+* **demo order** — an order on the Binance demo exchange (demo funds);
+* **live** — real money. **None. No live order was submitted and the live gate was never changed.**
+
+## Verified starting state
+
+`main` at `fa97147`, clean, 20 commits ahead of `origin/main` and 0 behind (fast-forward possible), no service running.
+
+## The connected exchange account
+
+| Fact | Finding | Evidence |
+|---|---|---|
+| Connections | One: Binance, USD-M futures | database, read-only |
+| Environment | DEMO; resolver and client both select `https://demo-fapi.binance.com` | real exchange read |
+| Owner | one customer account; the resolver returns it only for that owner | real exchange read; another user gets `ACCOUNT_NOT_CONNECTED` |
+| Credential | valid, credential version 2; account read answered in 275 ms | real exchange read |
+| Balance | 418.60916730 USDT demo before, 417.57574278 after the certification | real exchange read |
+| Trading | exchange `canTrade` true; platform execution readiness permitted | real exchange read |
+| Withdrawal permission | **cannot be inspected on the demo venue** (the restrictions endpoint does not exist there); recorded as unverified, not as absent | real exchange read |
+| Instruments | 570 tradable perpetuals; one-way position mode | real exchange read |
+| Existing bot | one active CATI bot on this account (legacy fixed amount, 120 USDT) | database |
+| Adapter | Binance demo adapter exercised end to end (below) | demo order |
+
+Operator configuration found incomplete on this workstation: no usable `SECRET_KEY` in any of the three environment
+files, no `CREDENTIAL_KEY`, no SMTP host, user or password, no Telegram or push credentials. The services refuse to
+start in production as configured. For the certification the engine was started with the canonical launcher and a
+throwaway signing key held in the process environment only; no configuration file was changed.
+
+## Demo order certification (operator harness, `DEMO_CERTIFICATION`, excluded from strategy performance)
+
+Run id `step1-closure-20261008-a`, engine revision `8857bee`, a verified database backup taken first
+(`backups/step1_closure/cosmicforge-20261008T193920Z.db.gz`, SHA-256 `5207d683…db603d`).
+
+| Step | Result | Kind |
+|---|---|---|
+| Engine start on the Step 1 code | additive migration of the 8.5 GB production database; account `SYNCED`; risk engine healthy; lease held; live gate false | real exchange read |
+| Engine pickup | the existing bot is evaluated every cycle (`evaluation_scope FULL`), status `running` | real exchange read |
+| Entry | BUY MARKET 3,623 ADA filled at 0.2316 through the execution boundary; one fill | **demo order** |
+| Exchange-side protection | stop `1000000233785265` at 0.2298 and target `1000000233785274` at 0.2358, both SELL close-position, read back from the exchange; state `CONFIRMED` | **demo order** |
+| Read model while open | quantity, entry price and both protection ids equal to the exchange; permission `ACCOUNT_WIDE_POSITION_OR_ORDER_ACTIVE` | real exchange read |
+| Event | `ENTRY_FILLED` once, delivered in-app; other users see nothing | database |
+| Graceful stop | lease released; position and both protection orders still on the exchange with the engine down | real exchange read |
+| Restart | same position, same two protection orders, no new order, no second event | real exchange read |
+| Close | SELL MARKET reduce-only 3,623 at 0.2315, order `1321158161`, filled; both protection orders cancelled; account flat | **demo order** |
+| Reconciliation | read model net result −1.03342452 USDT (−0.3623 realized, 0.67112452 fees) equals the wallet change 418.60916730 → 417.57574278 exactly | real exchange read |
+| Event | `EXIT_FILLED` once | database |
+| Unauthenticated access to the running engine | 401 on emergency, runtime, bot and read-model routes, 401 for a forged token, 404 on `/docs` | live service |
+| End state | engine stopped again (as found), lease released, `quick_check` ok | database |
+
+Precision note: the plan's stop 0.22980951 and target 0.23572622 are rounded to the venue tick (0.2298, 0.2358).
+
+**This is not the CATI strategy flow.** No natural strategy order was observed. During the run the engine's own
+decision state was "entry window expired" and "boundary missed"; nothing was forced.
+
+## Defects found by the real account and fixed
+
+| Defect | Fix | Commit |
+|---|---|---|
+| The preview used the largest minimum order size of any instrument (100 USDT, one of 741) for all, giving a minimum budget near 8,900 USDT; the 418 USDT demo account could not deploy any level | the typical instrument's minimum (5 USDT here), the largest reported beside it | `33d5bec` |
+| The preview sized the typical position from all recorded strategy stops (7 % to 41 %), although the engine refuses stops wider than 15 % | only stops inside the engine limit count; none claimed with fewer than twenty; the number outside is shown | `33d5bec` |
+| The portal described every unapproved typical position as "below exchange minimum" | worded from the engine's reason | `33d5bec` |
+| The exit fill got no equity snapshot because it was reconciled outside the cycle | recent fills without a snapshot are picked up when the wallet moves | `794cee8` |
+| Seven report routes the portal calls had no proxy (404) | forwarded to the engine routes that already exist | `8857bee` |
+| `FRONTEND_URL` was ignored for browser origins | origins from `FRONTEND_URL`, `PUBLIC_APP_URL`, `CORS_ALLOWED_ORIGINS`; development origins only outside production | `8857bee` |
+| User and admin backends served `/docs` in production | off unless `API_DOCS_ENABLED=true` | `8857bee` |
+| Unused portal function asked an admin-only route for the active-bot count | removed; the dashboard count already comes from the user's own bots | `8857bee` |
+
+**Finding for Step 2, not changed here:** 55 of the 74 recorded decisions of the frozen strategy carry a stop wider
+than the engine's 15 % maximum and would be refused at execution under either sizing mode.
+
+## Risk ceiling
+
+Located and proven, not changed. `SystemLimits.max_risk_per_trade_ceiling` is 0.004; the policy resolver clamps every
+bot to it; the risk library carries the same value and the preview shows it. One test now asserts, for all three
+levels, that the engine limit, the resolved policy, the library and the preview agree (Conservative 0.25 %, Balanced
+0.40 % against an approved 0.50 %, Aggressive 0.40 % against 0.75 %) and that the sized position loses no more than
+that at its stop. On the real account the preview showed 1.00, 1.60 and 1.60 USDT risk per trade for a 400 USDT
+budget. **Widening it needs the owner's explicit approval; it has not been given.**
+
+## Closing test, final status
+
+| Scenario | Status | What was done | What is missing |
+|---|---|---|---|
+| A User account | BLOCKED (final certification) | registration, sign-in and onboarding work through the live services (earlier session, verification bypassed there) | no mail provider is configured, so verification cannot be certified without a bypass |
+| B Connected exchange | PARTIAL | real exchange read through the platform's resolver: identity, demo environment, balance, trading flag, instruments | not through the owner's signed-in session (their password is not available to me); withdrawal permission not inspectable on demo |
+| C Deployment preview | PARTIAL | the backend preview on the real account for all three levels; every money value equals the library; blockers correct | not viewed in the portal as the owner |
+| D Deploy a demo bot | PARTIAL | synthetic: acknowledgement, idempotency, one bot per account, ownership, environment, pickup. Real: the account already has an active bot, and the preview correctly answers `ACCOUNT_ALREADY_HAS_BOT` | a new risk-based deployment on the real account needs the owner to stop the existing bot and deploy while signed in |
+| E CATI demo execution | PARTIAL | demo order with exchange-side stop, durable state, restart and reconciliation, through the operator harness | **the strategy-driven flow: no natural order observed; record as pending** |
+| F Customer visibility | PARTIAL | read model equals the exchange to the cent; tenant isolation holds; report proxies repaired | portal pages not viewed as the owner with this data |
+| G Notifications | BLOCKED (external channels) | events and in-app delivery verified on real data; retry and isolation in tests | no SMTP, Telegram or push credentials exist |
+| H Controls and emergency | PARTIAL | pause, resume, stop, restart persistence, daily-loss pause, kill switch and flatten in tests; protection survives an engine stop on the real exchange; emergency routes refuse unauthenticated calls | kill switch and flatten were not drilled on the real account: they need an administrator session |
+| I Clean installation | BLOCKED | Windows rehearsal only | no Linux server is accessible |
+
+## Regression certification
+
+Run from a pristine export of `794cee8` with the CI commands and the quarantine plugin; compared by failing test
+identity with the baseline at `9fb120f`. Skipped and expected-failure tests are listed separately and are not counted
+as passes. The quarantine list is unchanged at 125 lines.
+
+| Suite | Baseline | Final | New failures |
+|---|---|---|---|
+| bot-backend | 5,086 passed, 5 failed, 5 skipped, 106 xfailed, 2 xpassed | 5,300 passed, 0 failed, 11 skipped, 106 xfailed, 2 xpassed | 0 |
+| user-backend | 409 passed | 478 passed | 0 |
+| shared | 38 passed | 96 passed | 0 |
+| admin-backend | 88 passed, 6 xfailed | 88 passed, 6 xfailed | 0 |
+| root | 4 passed, 3 xfailed | 4 passed, 3 xfailed | 0 |
+| integration (`tests/integration`, both services running on a scratch database) | 43 passed, 24 failed | 43 passed, 24 failed | 0 (the same 24 tests; they expect routes that have not existed since before the baseline) |
+
+Of the five baseline failures in bot-backend, three are skipped here because they assert the operator's private
+`.env`, absent from the export; two pass. One test was removed on purpose in 1.0e (it asserted the position flip).
+
+Frontends: user portal `tsc -b` clean, eslint 0 errors (212 warnings), 41 unit tests pass, production build succeeds;
+admin console eslint 0 errors (139 warnings), 10 tests pass, production build succeeds.
+
+Security, tenant-isolation, exchange-adapter, runtime-safety and idempotency tests are part of the suites above and
+none fails. There is no browser automation suite in the repository.
+
+## Removal batches 2 to 4
+
+Reviewed again; **nothing was deleted**. The master plan (Section I), which defines each batch's prerequisites, is not
+in the repository, so the prerequisites could not be checked against their source.
+
+* Batch 2 (backtesting): still started at engine start-up, registered in both backends, routed and linked in the
+  portal, imported by two tests; an audit document says historical read and export are to be preserved.
+* Batch 3 (shadow trades): off by default and unused by CATI, but still a registered router, a guarded hook in the
+  legacy runner and the subject of auth-hardening tests.
+* Batch 4 (callerless routers): after this pass the seven report routes have callers. Three monitoring routes, three
+  analytics routes and the risk templates route have no caller in the repository; operator or external callers cannot
+  be ruled out from here.
+
+Each is a separate change to make once its prerequisites are confirmed by the owner.
+
+## Outstanding, in order
+
+1. Operator: set a real `SECRET_KEY` (the same in all three services), `CREDENTIAL_KEY` and the mail settings; rotate
+   the administrator passwords that are in Git history.
+2. Owner, signed in: stop the legacy bot on the demo account, deploy a risk-based bot from the portal, pause, resume
+   and stop it; administrator: kill switch and flatten drill.
+3. A natural strategy order on demo (depends on Step 2: most recorded stops exceed the engine limit).
+4. One real email, Telegram and push delivery.
+5. The install guide on a Linux server.
+6. Decision on the 0.40 % ceiling. Decision on the removal batches.

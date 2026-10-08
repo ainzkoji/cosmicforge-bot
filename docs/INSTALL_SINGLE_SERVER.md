@@ -577,7 +577,7 @@ the commit and an empty database, with throwaway secrets generated for the run:
 | 20 | unauthenticated requests to `/api/v1/auth/me`, `/api/v1/cati/runtime/status`, `/api/admin/billing/grants`, `/api/onboarding/state` | 401 each |
 | 9 | registration with the mail server unreachable | 200, account `pending_verification`; this is why section 9 says to test delivery |
 | 21, 22 | `scripts/backup_trading_db.py --compress` and a restore of its output | verified backup with manifest; restored copy passes `quick_check` and holds the same rows |
-| 15 | `npm run build` of the user frontend | builds |
+| 15 | `npm run build` of the user frontend and of the admin frontend | both build |
 | 7, 16, 19 | the trading backend started with the unit's uvicorn command in the production profile on an empty database, 127.0.0.1 | `/health` 200 within seconds, state `STARTING` then running; lease acquired; `live_system_gate: false`, `demo_system_gate: true`; no request to any exchange order endpoint in its log |
 | 24 (steps 1, 2, 4 in part) | a built portal served locally against both services: sign-in, onboarding through the API, dashboard, Auto Pilot, bot list | pages render; the engine status reaches the dashboard through the user backend; Auto Pilot shows the backend's blocker for an account without credentials and keeps Deploy disabled |
 
@@ -587,22 +587,30 @@ Not executed anywhere, and to be treated as untested until someone runs them:
 * the three systemd units (`Type=notify` readiness, watchdog, `ExecStopPost` alerts) and the timers;
 * the nginx site, TLS, the security headers and the admin address restriction;
 * the trading backend under systemd (`Type=notify` readiness and the watchdog); it was only started by hand, on Windows;
-* the admin backend and the admin frontend build;
+* the admin backend as a running service;
 * email verification: in the rehearsal the test address was marked verified directly in the scratch database;
 * SMTP delivery, Telegram and push;
 * sections 10 and 24: no Binance demo credentials were available, so no exchange account was connected and no demo order was observed;
 * section 25 as a whole.
 
-Two observations from the rehearsal:
+Two observations from the first rehearsal were fixed afterwards and checked on
+a running service started from a pristine export in the production profile:
 
-* The user backend answered `/docs` with 200 in the production profile. The
-  provided nginx site does not publish that path, so it is reachable only from
-  the server itself, but it should be confirmed and, if unwanted, disabled.
-* The user backend did not add the `FRONTEND_URL` value to its allowed browser
-  origins: a portal served from another origin than the API was refused by the
-  browser. Behind the provided nginx site the portal and the API share one
-  origin, so this does not arise there. It matters only if they are ever
-  served from different host names.
+* `/docs`, `/redoc` and `/openapi.json` answer 404 on the user and admin
+  backends unless `API_DOCS_ENABLED=true` is set (the trading backend already
+  behaved this way).
+* Browser origins now come from `FRONTEND_URL`, `PUBLIC_APP_URL` and
+  `CORS_ALLOWED_ORIGINS` (comma separated). A request from the configured
+  portal address is answered; one from a development address is not. If
+  `FRONTEND_URL` is not set at all, the development addresses are still
+  allowed, as before: set it.
+
+One finding on the operator's own workstation, not on a server: none of the
+three environment files carried a usable `SECRET_KEY` on 8 October 2026 (the
+engine's and the admin backend's had none, the user backend's was still a
+placeholder), and the user backend had no mail settings. Section 7 and
+`docs/AUDIT_FIXES_OPERATOR_CHECKLIST.md` apply there too: the services refuse
+to start in production until that is done.
 
 The first real execution of this guide is the Step 1 clean-install test
 (closing scenario K). Record its outcome here when it is done.
