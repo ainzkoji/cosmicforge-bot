@@ -105,6 +105,16 @@ export function AdvancedDashboard() {
         allocation?.find((a: any) => a.asset === 'USDT')?.value ??
         0;
 
+    // A new account has no equity reading yet: the reconciliation answers with
+    // an account object that carries no figures. That is shown as "not available",
+    // never formatted as a number (it used to crash this whole page) and never as 0.
+    function usdOrDash(value: number | null | undefined, signed = false): string {
+        if (value === null || value === undefined || !Number.isFinite(Number(value))) return "—";
+        const n = Number(value);
+        const text = Math.abs(n).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        return signed ? `${n >= 0 ? '+' : '-'}$${text}` : `$${text}`;
+    }
+
     function reconciliationExplanation(expl: string | undefined): string {
         switch (expl) {
             case 'open_unrealized_pnl':
@@ -252,19 +262,19 @@ export function AdvancedDashboard() {
                                     <div className="flex justify-between items-center">
                                         <span className="text-xs text-muted-foreground">Broker Equity</span>
                                         <span className="text-sm font-mono font-semibold text-white">
-                                            ${reconciliation.account.equity.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                            {usdOrDash(reconciliation.account.equity)}
                                         </span>
                                     </div>
                                     <div className="flex justify-between items-center">
                                         <span className="text-xs text-muted-foreground">Wallet Balance</span>
                                         <span className="text-sm font-mono font-semibold text-white">
-                                            ${reconciliation.account.wallet_balance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                            {usdOrDash(reconciliation.account.wallet_balance)}
                                         </span>
                                     </div>
                                     <div className="flex justify-between items-center">
                                         <span className="text-xs text-muted-foreground">Unrealized PnL</span>
                                         <span className={`text-sm font-mono font-semibold ${reconciliation.account.unrealized_pnl >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                                            {reconciliation.account.unrealized_pnl >= 0 ? '+' : ''}${Math.abs(reconciliation.account.unrealized_pnl).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                            {usdOrDash(reconciliation.account.unrealized_pnl, true)}
                                         </span>
                                     </div>
                                     <div className="border-t border-white/5 my-2" />
