@@ -17,13 +17,18 @@ def set_authorization(conn, *, account_id, user_id, bot_instance_id, enabled, no
 
 
 def authorization(conn, account, bots):
-    ensure(conn)
     if len(bots) != 1:
         return {"enabled": False, "state": "AUTO_TRADING_DISABLED", "reason":
                 "ACCOUNT_EXECUTION_OWNER_AMBIGUOUS" if bots else "AUTO_TRADING_DISABLED"}
     if bots[0]["user_id"] != account["user_id"]:
         return {"enabled": False, "state": "AUTO_TRADING_DISABLED", "reason": "BROKER_ACCOUNT_OWNERSHIP_MISMATCH"}
-    row = conn.execute("SELECT * FROM broker_auto_trading WHERE account_id=?", (account["id"],)).fetchone()
+    try:
+        row = conn.execute("SELECT * FROM broker_auto_trading WHERE account_id=?", (account["id"],)).fetchone()
+    except Exception as exc:  # sqlite3.OperationalError: the table does not exist yet (read every cycle; created once)
+        if "no such table" not in str(exc):
+            raise
+        ensure(conn)
+        row = None
     environment = normalize_environment(account["environment"]).value
     if row is not None:
         enabled = bool(row["enabled"] and (row["user_id"], row["bot_instance_id"], row["environment"]) ==

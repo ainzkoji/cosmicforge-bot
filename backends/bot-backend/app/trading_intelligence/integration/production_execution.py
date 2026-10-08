@@ -26,48 +26,38 @@ _TRADING_INCOME = {"REALIZED_PNL", "COMMISSION", "FUNDING_FEE", "INSURANCE_CLEAR
                    "DELIVERED_SETTELMENT", "DELIVERED_SETTLEMENT", "POSITION_LIMIT_INCREASE_FEE", "FEE_RETURN", "API_REBATE"}
 
 
-def complete_income(client, start, now):
-    """Bounded complete history in venue-supported seven-day windows."""
-    windows, history = [], []
-    while start <= now:
-        end = min(now, start + 7*86400000 - 1)
-        windows.append((start, end))
-        start = end + 1
-    pages = 0
-    while windows:
-        pages += 1
-        if pages > 512:
-            raise ValueError("BROKER_INCOME_HISTORY_INCOMPLETE")
-        start, end = windows.pop()
-        page = client.income_history(start_time_ms=start, end_time_ms=end, limit=1000)
-        if not isinstance(page, list):
-            raise ValueError("BROKER_INCOME_HISTORY_UNAVAILABLE")
-        if any(not isinstance(p, dict) or not start <= int(p["time"]) <= end or
-               not math.isfinite(float(p["income"])) or p.get("asset", "USDT") != "USDT" for p in page):
-            raise ValueError("BROKER_INCOME_HISTORY_INVALID")
-        if len(page) < 1000:
-            history.extend(page)
-        else:
-            if start == end:
-                raise ValueError("BROKER_INCOME_HISTORY_AMBIGUOUS")
-            middle = (start+end)//2
-            windows.extend(((start, middle), (middle+1, end)))
-    return history
+from .income_ledger import complete_income  # noqa: F401  (bounded venue read, re-exported for callers)
+
+#: Fields ``account_risk`` needs from the venue's account document.
+_ACCOUNT_KEYS = ("totalMarginBalance", "totalWalletBalance", "availableBalance", "totalInitialMargin",
+                 "totalUnrealizedProfit")
+
+
+def _period_starts(risk_date, zone):
+    """``({"weekly": date, "monthly": date}, earliest_ms)`` of the risk periods."""
+    from app.risk.state import get_week_start, get_month_start
+    starts = {"weekly": get_week_start(risk_date), "monthly": get_month_start(risk_date)}
+    earliest = int(datetime.combine(min(starts.values()), day_time.min, zone).timestamp()*1000)
+    return starts, earliest
 
 
 def account_periods(db, account, client, wallet, equity, risk_date, zone, now):
     """Reconstruct cash-ledger peaks, persist observed equity peaks per account.
 
     External cash transfers change capital, not trading drawdown. No legacy
-    bot runner is required to create the weekly/monthly risk baseline.
+    bot runner is required to create the weekly/monthly risk baseline. The
+    income comes from the local ledger (``income_ledger``), which the caller
+    has made complete for the period; nothing is read from the venue here.
     """
-    from app.risk.state import get_week_start, get_month_start
-    starts = {"weekly": get_week_start(risk_date), "monthly": get_month_start(risk_date)}
-    earliest = int(datetime.combine(min(starts.values()), day_time.min, zone).timestamp()*1000)
-    history = complete_income(client, earliest, now)
+    from . import income_ledger
+    from app.execution.production_schema import ensure
+    ensure(db)
+    starts, earliest = _period_starts(risk_date, zone)
+    if income_ledger.cursor(db, account["id"]) is None:
+        income_ledger.ensure_covered(db, client, account["id"], earliest, now)
+    history = income_ledger.rows(db, account["id"], earliest, now)
     output = {}
     with db.connect() as c:
-        c.execute("CREATE TABLE IF NOT EXISTS cati_account_period_risk(account_id TEXT,period TEXT,start_date TEXT,peak_equity REAL NOT NULL,transfers REAL NOT NULL DEFAULT 0,PRIMARY KEY(account_id,period,start_date))")
         for period, date in starts.items():
             stamp = int(datetime.combine(date, day_time.min, zone).timestamp()*1000)
             rows = sorted((r for r in history if int(r["time"]) >= stamp), key=lambda r:(int(r["time"]), str(r.get("tranId", ""))))
@@ -93,23 +83,9 @@ def account_periods(db, account, client, wallet, equity, risk_date, zone, now):
 
 
 def initialize(db):
-    with db.connect() as c:
-        c.executescript("""
-        CREATE TABLE IF NOT EXISTS cati_production_decisions (
-            account_id TEXT NOT NULL, decision_id TEXT NOT NULL, bot_instance_id TEXT,
-            observed_at INTEGER NOT NULL, document TEXT NOT NULL,
-            PRIMARY KEY(account_id,decision_id));
-        CREATE TABLE IF NOT EXISTS cati_production_daily_risk (
-            account_id TEXT NOT NULL, day TEXT NOT NULL, opening_wallet REAL NOT NULL,
-            loss_latched INTEGER NOT NULL DEFAULT 0, PRIMARY KEY(account_id,day));
-        CREATE TABLE IF NOT EXISTS cati_production_fills (
-            account_id TEXT NOT NULL, trade_id TEXT NOT NULL, order_id TEXT NOT NULL,
-            symbol TEXT NOT NULL, document TEXT NOT NULL, PRIMARY KEY(account_id,symbol,trade_id));
-        """)
-        from .production_evidence import initialize as initialize_evaluations
-        initialize_evaluations(c)
-        from app.execution.protection_state import initialize as initialize_protection_state
-        initialize_protection_state(c)
+    """Every production table, created once per database (``production_schema``)."""
+    from app.execution.production_schema import ensure
+    ensure(db)
 
 
 def latest_decision(db):
@@ -212,12 +188,21 @@ def account_daily_loss_policy(db, account, bots):
     return min(resolved, key=lambda p: p["pct"]) if resolved else None
 
 
-def account_risk(db, account, client, positions, orders, bots, now):
+def account_risk(db, account, client, positions, orders, bots, now, *, account_state=None, income_force=False):
     """Broker-wide risk, including manual and other bots' activity. Unknown
     history fails closed. Loss latch survives a restart and a later recovery.
     Existing adaptive/weekly/monthly/consecutive-loss gates still run below.
+
+    ``account_state``: the venue account document the runtime already read in
+    this cycle (reused instead of a second ``/fapi/v2/account`` read; the
+    venue is asked again only when it is missing or incomplete).
+    ``income_force``: refresh the income ledger from the venue now rather than
+    on its interval -- the caller forces it whenever the latch matters (an
+    entry may be evaluated, a position is open); the first computation of a
+    risk day is always forced.
     """
-    raw = client.account()
+    raw = account_state if isinstance(account_state, dict) and all(k in account_state for k in _ACCOUNT_KEYS) \
+        else client.account()
     equity = float(raw["totalMarginBalance"])
     wallet = float(raw["totalWalletBalance"])
     free = float(raw["availableBalance"])
@@ -227,8 +212,17 @@ def account_risk(db, account, client, positions, orders, bots, now):
     risk_zone = ZoneInfo(settings.ADAPTIVE_DAILY_RISK_TIMEZONE)
     risk_date = datetime.fromtimestamp(now/1000, timezone.utc).astimezone(risk_zone).date()
     day_start = int(datetime.combine(risk_date, day_time.min, risk_zone).timestamp()*1000)
-    # Pagination is mandatory; a full page is never mistaken for complete history.
-    history = complete_income(client, day_start, now)
+    # Pagination is mandatory; a full page is never mistaken for complete
+    # history. The local ledger holds what was read before; only the uncovered
+    # part (and the late-record overlap) is read from the venue.
+    from . import income_ledger
+    _, earliest = _period_starts(risk_date, risk_zone)
+    with db.connect() as c:
+        first_of_day = c.execute("SELECT 1 FROM cati_production_daily_risk WHERE account_id=? AND day=?",
+                                 (account["id"], risk_date.isoformat())).fetchone() is None
+    ledger = income_ledger.ensure_covered(db, client, account["id"], min(day_start, earliest), now,
+                                          force=bool(income_force or first_of_day), wallet=wallet)
+    history = income_ledger.rows(db, account["id"], day_start, now)
     # Strategy accounting excludes labelled DEMO_CERTIFICATION fills; the
     # wallet, equity, opening basis and drawdowns remain broker account truth.
     cert_ids, cert_pnl = certification_pnl(db, account["id"], day_start, now)
@@ -309,6 +303,9 @@ def account_risk(db, account, client, positions, orders, bots, now):
             "consecutive_losses": streak.consecutive_losses,
             "consec_loss_day_paused": streak.consec_loss_day_paused,
             "consec_loss_cooldown_until_ms": streak.consec_loss_cooldown_until_ms,
+            "income_ledger": {"covered_from": ledger["covered_from"], "covered_to": ledger["covered_to"],
+                              "refreshed_at": ledger["refreshed_at"], "refreshed": ledger["refreshed"],
+                              "venue_pages_read": ledger["pages"]},
             "periods": account_periods(db, account, client, wallet, equity, risk_date, risk_zone, now)}
 
 
@@ -403,8 +400,17 @@ def boundary_for(db, account, bot, client):
     if instance.strategy_id not in ("cati", FAMILY):
         raise ValueError("PRODUCTION_REQUIRES_CATI_BOT")
     assert_broker_execution_capability(db, user_id=account["user_id"], broker_account_id=account["id"])
+    risk_based = str(getattr(instance, "allocation_type", "") or "").lower() == "risk_based"
+    if risk_based:
+        # The versioned customer risk profile (shared_lib.risk_levels) is the
+        # source of truth for a risk-based deployment; legacy presets stay for
+        # legacy bots. The 0.4 % system ceiling still clamps inside the policy.
+        from app.core.risk_profile_params import risk_based_params
+        risk_params = risk_based_params(instance)
+    else:
+        risk_params = service.get_risk_profile_preset(instance.risk_level)
     policy = resolve_effective_bot_policy(instance=instance, broker_environment=environment.lower(),
-        risk_params=service.get_risk_profile_preset(instance.risk_level))
+        risk_params=risk_params)
     if policy.execution_mode != "broker":
         raise ValueError("PRODUCTION_REJECTS_PAPER_BOT")
     cache_key = (db.path, account["id"], bot["id"])
@@ -428,6 +434,13 @@ def boundary_for(db, account, bot, client):
         requested_leverage={s: int(policy.max_leverage) for s in symbols}, paper_mode=False,
         use_fixed_size=policy.position_allocation_type == "fixed_amount",
         fixed_size_usdt=policy.position_allocation_value if policy.position_allocation_type == "fixed_amount" else None)
+    if risk_based and policy.max_position_usdt:
+        # The user's optional maximum position also bounds the executor's per-symbol notional.
+        max_notional = float(getattr(settings, "MAX_NOTIONAL_PER_SYMBOL", 0.) or 0.)
+        settings_cap = max_notional if max_notional > 0 else float("inf")
+        max_notional_per_symbol = min(settings_cap, float(policy.max_position_usdt))
+    else:
+        max_notional_per_symbol = float(getattr(settings, "MAX_NOTIONAL_PER_SYMBOL", 0.) or 0.)
     orchestrator = TradingOrchestrator(config_id=bot["id"], user_config=limits, strategy_id="cati",
                                       broker_id=account["id"], effective_policy=policy)
     # Dependency injection must bind every safety projection to this database.
@@ -442,7 +455,7 @@ def boundary_for(db, account, bot, client):
     executor._allocation_type = policy.position_allocation_type
     executor._allocation_value = policy.position_allocation_value
     executor._max_open_positions = 1
-    executor._max_notional_per_symbol = float(getattr(settings, "MAX_NOTIONAL_PER_SYMBOL", 0.) or 0.)
+    executor._max_notional_per_symbol = max_notional_per_symbol
     adapter = executor_adapter_for(account["broker_id"], executor)
     client._production_db = db
     client._production_account_id = account["id"]
@@ -497,13 +510,34 @@ def _native_protection_snapshot(db, account, client, snapshot, row):
         with db.connect() as c:
             symbols.update(r[0] for r in c.execute("SELECT e.symbol FROM pending_entries e JOIN bot_instances b ON b.id=e.bot_id WHERE b.broker_account_id=? AND e.state!='OPEN_FAILED'", (account['id'],)))
             if c.execute("SELECT 1 FROM sqlite_master WHERE name='cati_production_protection'").fetchone():
-                symbols.update(json.loads(r[0])["symbol"] for r in c.execute(
-                    "SELECT document FROM cati_production_protection WHERE account_id=?", (account["id"],)))
+                # A leg already resolved after a broker-confirmed flat position
+                # (_closed_flat) cannot be live any more; every other recorded
+                # leg -- open, unanswered, or cancelled at the venue by hand --
+                # keeps its symbol in the read so reconciliation sees it.
+                for document, response in c.execute(
+                        "SELECT document, response FROM cati_production_protection WHERE account_id=?", (account["id"],)):
+                    answer = json.loads(response) if response else None
+                    if not (answer and answer.get("_closed_flat")):
+                        symbols.add(json.loads(document)["symbol"])
         for symbol in sorted(symbols):
             protective = client.get_algo_orders(symbol, raise_on_error=True)
             if not isinstance(protective, list):
                 raise ValueError("NATIVE_PROTECTION_READ_UNAVAILABLE")
             snapshot["orders"].extend(protective)
+
+
+def idle_account(db, account, positions):
+    """True when the account has nothing to evaluate or maintain: no active
+    bot, no open position at the venue, and no unresolved execution lineage
+    (unknown submits, open attempts, pending closes). Local reads only."""
+    if any(abs(float(p.get("positionAmt", 0) or 0)) > 0 for p in positions or []):
+        return False
+    with db.connect() as c:
+        if c.execute("SELECT 1 FROM bot_instances WHERE broker_account_id=? AND status='active' LIMIT 1",
+                     (account["id"],)).fetchone():
+            return False
+    lineage = open_lineage(db, account["id"])
+    return not lineage["bots"] and not lineage["pending_close"]
 
 
 def open_lineage(db, account_id):
@@ -786,6 +820,14 @@ def _process_account(db, account, client, snapshot, *, now_ms=None, boundary_fac
     result['bot_instance_id'] = bots[0]['id'] if len(bots) == 1 else None
     mismatch = any(b.get("user_id") != account["user_id"] for b in bots)
     supported = account["broker_id"].lower() in {"binance", "bybit", "bingx"}
+    open_positions = any(abs(float(p.get("positionAmt", 0) or 0)) > 0 for p in snapshot["positions"])
+    # Nothing to trade and nothing to maintain: no active bot, no position,
+    # no unresolved lineage. Such an account is not evaluated (no account
+    # risk, no income, no conditional-order read); it is still discovered
+    # every cycle, so a bot deployed to it is picked up on the next one.
+    idle = supported and not mismatch and not bots and not open_positions and not snapshot.get("pending_close") \
+        and idle_account(db, account, snapshot["positions"])
+    result["evaluation_scope"] = "IDLE_NO_TRADABLE_BOT" if idle else "FULL"
     # ── Position safety first ────────────────────────────────────────────────
     # Recovery and reconciliation of EXISTING attempts/positions (protection
     # repair, fail-safe close, horizon close) used to run only after
@@ -795,7 +837,7 @@ def _process_account(db, account, client, snapshot, *, now_ms=None, boundary_fac
     # need nothing that gates an ENTRY. Entry evaluation below is unchanged.
     snapshot_error = maintenance = None
     if supported:
-        if not mismatch:
+        if not mismatch and not idle:
             try:
                 # The same pre-maintenance order snapshot entry evaluation always used.
                 _native_protection_snapshot(db, account, client, snapshot, row)
@@ -809,7 +851,8 @@ def _process_account(db, account, client, snapshot, *, now_ms=None, boundary_fac
             if not mismatch and snapshot_error is None:
                 try:
                     # Keep the account-wide loss latch and risk evidence current.
-                    result["risk"] = account_risk(db, account, client, snapshot["positions"], snapshot["orders"], bots, now)
+                    result["risk"] = account_risk(db, account, client, snapshot["positions"], snapshot["orders"], bots, now,
+                                                  account_state=snapshot.get("account"), income_force=True)
                 except Exception:
                     pass
             raise  # fail closed: no entry is evaluated after a maintenance failure
@@ -822,10 +865,17 @@ def _process_account(db, account, client, snapshot, *, now_ms=None, boundary_fac
     elif not supported:
         result["reason"] = "DEMO_CAPABILITY_UNAVAILABLE" if environment == "DEMO" else "EXECUTION_ADAPTER_UNVALIDATED"
         result["missing_capabilities"] = ["COMPLETE_ACCOUNT_INCOME_HISTORY", "DURABLE_PROTECTION_READ_BACK"]
+    elif idle:
+        result["reason"] = result["auto_trading"].get("reason") or "AUTO_TRADING_DISABLED"
     else:
         # Multiple owners must never each claim the account. Resolve a unique
         # execution bot; risk still includes ALL broker and bot activity.
-        result["risk"] = account_risk(db, account, client, snapshot["positions"], snapshot["orders"], bots, now)
+        # The income ledger is refreshed from the venue now when the latch can
+        # matter this cycle (an entry may be evaluated, a position is open).
+        entry_possible = len(bots) == 1 and bool(result["auto_trading"].get("enabled")) and eligibility(row, now) is None
+        result["risk"] = account_risk(db, account, client, snapshot["positions"], snapshot["orders"], bots, now,
+                                      account_state=snapshot.get("account"),
+                                      income_force=open_positions or entry_possible)
         if len(bots) != 1:
             result["reason"] = "ACCOUNT_EXECUTION_OWNER_AMBIGUOUS" if bots else "AUTO_TRADING_DISABLED"
         else:

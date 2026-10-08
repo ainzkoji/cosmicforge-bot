@@ -161,10 +161,9 @@ def close_position(client, symbol, trace=None):
         raise ValueError(order_submission_gate(client.broker_environment)['reason'])
     from .fill_resolution import RATE_LIMIT_STATUSES, TRANSIENT_NOT_PROCESSED_CODES, definitive_rejection, venue_error
     cid = close_client_id(account,identity,symbol)
+    from .production_schema import ensure
+    ensure(db)
     with db.connect() as c:
-        c.execute('''CREATE TABLE IF NOT EXISTS cati_production_closes (
-            account_id TEXT,client_id TEXT,symbol TEXT,identity TEXT,status TEXT,
-            document TEXT,PRIMARY KEY(account_id,client_id))''')
         prior = c.execute('SELECT * FROM cati_production_closes WHERE account_id=? AND client_id=?',(account,cid)).fetchone()
     # Taken BEFORE the reads below: every "has enough time passed" test in this
     # function therefore errs on the side of waiting longer.

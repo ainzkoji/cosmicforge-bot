@@ -192,7 +192,10 @@ def test_read_sync_persists_broker_snapshot_without_orders(monkeypatch, db):
     c.open_orders.return_value = []
     runtime.initialize(db)
     runtime.sync_account(db, {"id": "live", "user_id": "alice"}, factory=lambda auth: c)
-    assert [call[0] for call in c.method_calls] == ["get_balance", "position_risk", "open_orders"]
+    # The full account document is tried first (one read serves the balance view
+    # and the account-risk evaluation); a client that does not answer with it
+    # falls back to the balance view.
+    assert [call[0] for call in c.method_calls] == ["account", "get_balance", "position_risk", "open_orders"]
     with db.connect() as conn:
         document = json.loads(conn.execute("SELECT document FROM cati_production_state").fetchone()[0])
     assert document["environment"] == "LIVE" and document["balance"]["equity"] == 2000

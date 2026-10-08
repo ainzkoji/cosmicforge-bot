@@ -2,10 +2,60 @@ from __future__ import annotations
 
 import os
 import sqlite3
+import threading
 import uuid
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from typing import Iterator
+
+
+class _Metrics:
+    """Process-wide connection and statement counters (measurement only).
+
+    ``connections_opened`` and ``connections_reused`` are always counted (two
+    integer increments). Statement counting needs a trace callback on every
+    connection and is switched on with ``instrument(True)``; ``schema_statements``
+    counts CREATE / ALTER / DROP statements and ``pragmas`` the PRAGMAs
+    (three per opened connection).
+    """
+
+    def __init__(self) -> None:
+        self.enabled = False
+        self.reset()
+
+    def reset(self) -> None:
+        self.connections_opened = 0
+        self.connections_reused = 0
+        self.statements = 0
+        self.schema_statements = 0
+        self.pragmas = 0
+        self.schema_texts = []
+
+    def trace(self, sql: str) -> None:
+        self.statements += 1
+        head = sql.lstrip()[:6].upper()
+        if head.startswith(("CREATE", "ALTER", "DROP")):
+            self.schema_statements += 1
+            if len(self.schema_texts) < 64:
+                self.schema_texts.append(" ".join(sql.split())[:90])
+        elif head.startswith("PRAGMA"):
+            self.pragmas += 1
+
+    def snapshot(self) -> dict:
+        return {"connections_opened": self.connections_opened, "connections_reused": self.connections_reused,
+                "statements": self.statements, "schema_statements": self.schema_statements, "pragmas": self.pragmas,
+                "schema_texts": list(self.schema_texts)}
+
+
+METRICS = _Metrics()
+
+
+def instrument(enabled: bool = True) -> _Metrics:
+    """Switch statement tracing on (or off) for connections opened from now on,
+    and reset the counters. Returns the live counters."""
+    METRICS.enabled = bool(enabled)
+    METRICS.reset()
+    return METRICS
 
 
 # =========================
@@ -110,16 +160,15 @@ class DB:
     # -------------------------
     # Connection manager
     # -------------------------
-    @contextmanager
-    def connect(self) -> Iterator[sqlite3.Connection]:
-        """
-        Get a database connection as a context manager.
-        
-        Usage:
-            with db.connect() as conn:
-                cursor = conn.execute("SELECT * FROM table")
-                ...
-        """
+    def _local(self):
+        """Per-thread state (created lazily: DB objects are built in many places)."""
+        local = self.__dict__.get("_scoped")
+        if local is None:
+            local = self.__dict__["_scoped"] = threading.local()
+        return local
+
+    def _open(self) -> sqlite3.Connection:
+        """One new connection with the standard pragmas (and instrumentation)."""
         # Increased timeout to 10s for Windows/OneDrive stability
         conn = sqlite3.connect(
             self._sqlite_target,
@@ -128,6 +177,9 @@ class DB:
             check_same_thread=False,
         )
         conn.row_factory = sqlite3.Row
+        METRICS.connections_opened += 1
+        if METRICS.enabled:
+            conn.set_trace_callback(METRICS.trace)
 
         # ✅ ADD: improve concurrent read/write + wait on locks instead of failing
         try:
@@ -137,7 +189,65 @@ class DB:
         except Exception:
             # pragma failures shouldn't crash app; continue with defaults
             pass
+        return conn
 
+    @contextmanager
+    def scope(self) -> Iterator[None]:
+        """Share ONE connection among every ``connect()`` block of this thread
+        while the scope is open.
+
+        Each inner ``with db.connect() as c:`` keeps its own semantics -- its
+        writes are committed when the block exits normally and rolled back when
+        it raises -- so every existing atomic unit stays atomic and no
+        transaction is held open across the network calls between blocks. What
+        changes is only that the connection (open, three pragmas, close) is paid
+        once per scope instead of once per block. The scope is thread-local, so
+        a connection is never shared between threads. Nested scopes reuse the
+        outer connection.
+        """
+        local = self._local()
+        if getattr(local, "conn", None) is not None:
+            yield
+            return
+        conn = self._open()
+        local.conn = conn
+        try:
+            yield
+        finally:
+            local.conn = None
+            try:
+                conn.rollback()  # anything a raising block left behind
+            except Exception:
+                pass
+            conn.close()
+
+    @contextmanager
+    def connect(self) -> Iterator[sqlite3.Connection]:
+        """
+        Get a database connection as a context manager.
+
+        Usage:
+            with db.connect() as conn:
+                cursor = conn.execute("SELECT * FROM table")
+                ...
+
+        Inside ``db.scope()`` the thread's scoped connection is reused (see there).
+        """
+        scoped = getattr(self._local(), "conn", None)
+        if scoped is not None:
+            METRICS.connections_reused += 1
+            try:
+                yield scoped
+            except BaseException:
+                try:
+                    scoped.rollback()
+                except Exception:
+                    pass
+                raise
+            else:
+                scoped.commit()
+            return
+        conn = self._open()
         try:
             yield conn
             conn.commit()

@@ -266,6 +266,18 @@ class AdaptiveDailyRiskBudgetEngine:
             return
 
     def _persist(self, conn: sqlite3.Connection, bot_instance_id: str, decision: AdaptiveDailyRiskDecision) -> None:
+        # Written every evaluation: the table is created on the first miss, not
+        # re-declared on every write.
+        try:
+            self._insert(conn, bot_instance_id, decision)
+        except sqlite3.OperationalError as exc:
+            if "no such table" not in str(exc):
+                raise
+            self._create(conn)
+            self._insert(conn, bot_instance_id, decision)
+
+    @staticmethod
+    def _create(conn: sqlite3.Connection) -> None:
         conn.execute(
             """
             CREATE TABLE IF NOT EXISTS adaptive_daily_risk_decisions (
@@ -282,6 +294,9 @@ class AdaptiveDailyRiskBudgetEngine:
             )
             """
         )
+
+    @staticmethod
+    def _insert(conn: sqlite3.Connection, bot_instance_id: str, decision: AdaptiveDailyRiskDecision) -> None:
         conn.execute(
             """
             INSERT INTO adaptive_daily_risk_decisions(

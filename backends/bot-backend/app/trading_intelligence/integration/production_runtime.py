@@ -54,6 +54,33 @@ def _client_key(db, auth):
             getattr(auth, "base_url", None), version, fingerprint)
 
 
+#: Exceptions raised by the production path about THIS process or its data --
+#: never about the broker connection. A cycle that ends with one of these
+#: learned nothing bad about the client, so rebuilding it (an exchangeInfo
+#: download and a time sync, every cycle for as long as the gate holds) would
+#: only add request weight. Everything else -- transport errors, venue errors,
+#: malformed answers, unknown exceptions -- still rebuilds on any doubt.
+LOCAL_GATE_CODES = frozenset({
+    "CATI_PRODUCTION_PROFILE_REQUIRED", "CANONICAL_RUNTIME_LEASE_REQUIRED", "RUNTIME_SHUTDOWN_IN_PROGRESS",
+    "PRODUCTION_REQUIRES_CATI_BOT", "PRODUCTION_REJECTS_PAPER_BOT", "MAINTENANCE_BOUNDARY_UNAVAILABLE",
+    "PERSISTED_RISK_STATE_REQUIRED", "PERSISTED_WEEKLY_RISK_BASIS_REQUIRED", "PERSISTED_MONTHLY_RISK_BASIS_REQUIRED",
+    "ACCOUNT_DAILY_LOSS_POLICY_UNAVAILABLE", "CLOSE_ACCOUNT_OWNERSHIP_UNCONFIRMED",
+    "BROKER_EXECUTION_CAPABILITY_INCOMPLETE", "BROKER_ACCOUNT_NOT_FOUND", "BROKER_ACCOUNT_ACCESS_DENIED",
+    "BROKER_ENVIRONMENT_MISMATCH", "BROKER_ACCOUNT_OWNERSHIP_MISMATCH", "EMERGENCY_FLATTEN_UNSUPPORTED_BROKER",
+    "PROTECTION_STATE_UNKNOWN",  # the read failure underneath was already classified; the state is durable
+})
+
+
+def client_doubt(exc) -> bool:
+    """True when ``exc`` is a reason to rebuild the account's broker client."""
+    code = getattr(exc, "reason_code", None)
+    if not code and isinstance(exc, ValueError):
+        text = str(exc)
+        if text and text.replace("_", "").isalnum() and text.upper() == text:
+            code = text
+    return not (isinstance(exc, ValueError) and code in LOCAL_GATE_CODES)
+
+
 def invalidate_client(account_id):
     """Drop an account's cached client (an error, or credentials changed).
 
@@ -132,9 +159,27 @@ def account_identity(account):
 
 
 def initialize(db):
-    with db.connect() as c:
-        c.execute("""CREATE TABLE IF NOT EXISTS cati_production_state (
-            account_id TEXT PRIMARY KEY, user_id TEXT, observed_at INTEGER NOT NULL, document TEXT NOT NULL)""")
+    """Every production table, created once per database (``production_schema``)."""
+    from app.execution.production_schema import ensure
+    ensure(db)
+
+
+def _account_document(client):
+    """The venue's full account document when the client offers one (Binance
+    ``/fapi/v2/account``; Bybit / BingX ``account()`` return the same keys), so
+    the balance view and the account-risk evaluation share ONE read. None when
+    the client has no such read or did not answer with the document."""
+    read = getattr(client, "account", None)
+    if not callable(read):
+        return None
+    raw = read()
+    return raw if isinstance(raw, dict) and "totalMarginBalance" in raw and "totalWalletBalance" in raw else None
+
+
+def _balance_view(raw):
+    from decimal import Decimal
+    return {"wallet": Decimal(str(raw.get("totalWalletBalance", 0))), "equity": Decimal(str(raw.get("totalMarginBalance", 0))),
+            "available": Decimal(str(raw.get("availableBalance", 0)))}
 
 
 def sync_account(db, account, *, factory=build_client_from_auth, execute=False):
@@ -147,21 +192,40 @@ def sync_account(db, account, *, factory=build_client_from_auth, execute=False):
                "broker_id": account.get("broker_id", getattr(auth, "broker_type", "binance"))}
     gate = order_submission_gate(env)
     client = account_client(db, account["id"], auth, factory)
+    from contextlib import nullcontext
+    scope = getattr(db, "scope", None)
     try:
-        return _sync_with_client(db, account, auth, env, gate, client, factory, execute)
-    except Exception:
-        # Safe invalidation: whatever went wrong, the next cycle starts from a
-        # freshly built client (new time sync, new session, current metadata).
-        invalidate_client(account["id"])
+        # One database connection for the whole account cycle (every atomic
+        # unit inside keeps its own commit / rollback, see DB.scope).
+        with (scope() if callable(scope) else nullcontext()):
+            return _sync_with_client(db, account, auth, env, gate, client, factory, execute)
+    except Exception as exc:
+        # Safe invalidation: whatever went wrong at the broker, the next cycle
+        # starts from a freshly built client (new time sync, new session,
+        # current metadata). A local gate says nothing about the client.
+        if client_doubt(exc):
+            invalidate_client(account["id"])
         raise
 
 
 def _sync_with_client(db, account, auth, env, gate, client, factory, execute):
     client._production_credential_version = getattr(auth, "credential_version", None)
-    balance = client.get_balance()
+    account_document = _account_document(client)
+    balance = _balance_view(account_document) if account_document is not None else client.get_balance()
     positions = client.position_risk()
-    orders = client.open_orders()
-    if not isinstance(balance, dict) or not isinstance(positions, list) or not isinstance(orders, list):
+    if not isinstance(balance, dict) or not isinstance(positions, list):
+        raise ValueError("BROKER_READ_SHAPE_INVALID")
+    # The account-wide open-order book (the costliest read of the cycle) is
+    # needed to evaluate an entry or maintain a position. An account with no
+    # active bot, no position and no unresolved lineage has neither; it still
+    # gets its position read every cycle, so a manual position or a newly
+    # deployed bot is seen on the next cycle.
+    idle = False
+    if execute:
+        from .production_execution import idle_account
+        idle = idle_account(db, account, positions)
+    orders = [] if idle else client.open_orders()
+    if not isinstance(orders, list):
         raise ValueError("BROKER_READ_SHAPE_INVALID")
     try:
         # Reuse canonical position reconciliation; it changes local projections,
@@ -194,7 +258,8 @@ def _sync_with_client(db, account, auth, env, gate, client, factory, execute):
         raise
     now = int(time.time() * 1000)
     result = {**account_identity(account), "status": "SYNCED", "balance": balance, "positions": positions,
-              "orders": orders, "discovery": discovery, "reconciliation": reconciliation,
+              "orders": orders, "orders_read": "SKIPPED_IDLE_ACCOUNT" if idle else "ACCOUNT_WIDE",
+              "account": account_document, "discovery": discovery, "reconciliation": reconciliation,
               "reconciliation_status": "SYNCED" if len(bots) == 1 else "ACCOUNT_EXECUTION_OWNER_AMBIGUOUS" if bots else "ACCOUNT_OWNER_MAPPING_REQUIRED",
               "credential": "READY",
               "risk": {"daily_loss_limit_source": "PER_BOT_EFFECTIVE_POLICY",
@@ -208,7 +273,8 @@ def _sync_with_client(db, account, auth, env, gate, client, factory, execute):
             result["risk"] = result["execution"].get("risk", result["risk"])
         except Exception as exc:
             # Same safe invalidation as a failed read: rebuild the client next cycle.
-            invalidate_client(account["id"])
+            if client_doubt(exc):
+                invalidate_client(account["id"])
             code = getattr(exc, "reason_code", None)
             if not code and isinstance(exc, ValueError):
                 candidate = str(exc)
@@ -224,12 +290,26 @@ def _sync_with_client(db, account, auth, env, gate, client, factory, execute):
     return result
 
 
+_HEALTH_COLUMNS = {}
+
+
+def _bot_health_columns_present(db, c):
+    """Whether bot_instances carries the health columns; answered once per database."""
+    key = getattr(db, "path", None) or id(db)
+    present = _HEALTH_COLUMNS.get(key)
+    if present is None:
+        columns = {r[1] for r in c.execute("PRAGMA table_info(bot_instances)")}
+        present = {"bot_health_status", "bot_health_reason_code", "bot_health_message"} <= columns
+        if present:  # a missing column may still be added by a migration; only presence is final
+            _HEALTH_COLUMNS[key] = True
+    return present
+
+
 def save(db, account_id, user_id, now, result):
     with db.connect() as c:
         c.execute("INSERT OR REPLACE INTO cati_production_state VALUES(?,?,?,?)",
                   (account_id, user_id, now, json.dumps(result, default=str)))
-        columns = {r[1] for r in c.execute("PRAGMA table_info(bot_instances)")}
-        if {"bot_health_status", "bot_health_reason_code", "bot_health_message"} <= columns:
+        if _bot_health_columns_present(db, c):
             execution = result.get("execution", {})
             health = execution.get("execution_permission", result.get("execution_permission", "BLOCKED_ACCOUNT"))
             reason = execution.get("reason", result.get("reason", "BROKER_SYNC_PENDING"))
@@ -430,7 +510,8 @@ def flatten(db, *, account_id=None, request_id, factory=build_client_from_auth, 
                 client._production_credential_version = getattr(auth, "credential_version", None)
                 results.extend(flatten_account(db, scoped, client, request_id=request_id))
             except Exception as exc:
-                invalidate_client(account["id"])
+                if client_doubt(exc):
+                    invalidate_client(account["id"])
                 code = getattr(exc, "reason_code", None)
                 if not code and isinstance(exc, ValueError):
                     candidate = str(exc)

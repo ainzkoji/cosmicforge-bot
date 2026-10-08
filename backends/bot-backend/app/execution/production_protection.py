@@ -124,12 +124,14 @@ def place_native_protection(client, request):
     tick = float(instrument.tick_size)
     side = "LONG" if request.position_side == Side.BUY else "SHORT"
     exit_side = "SELL" if side == "LONG" else "BUY"
-    with db.connect() as c:
-        c.execute("""CREATE TABLE IF NOT EXISTS cati_production_protection (
-            account_id TEXT, client_id TEXT, document TEXT NOT NULL, response TEXT,
-            PRIMARY KEY(account_id,client_id))""")
+    from .production_schema import ensure
+    ensure(db)
     result = ProtectionResult(status="initiated")
     expected = []
+    # One read of the symbol's open conditional orders serves both legs of a
+    # replay; a leg is re-read only after a CREATE was sent for the other.
+    orders = None
+    created = False
     for leg, price, kind in (("SL", request.sl_price, "STOP_MARKET"), ("TP", request.tp_price, "TAKE_PROFIT_MARKET")):
         if not price or Decimal(str(price)) <= 0:
             raise ValueError("FROZEN_PROTECTION_GEOMETRY_REQUIRED")
@@ -143,7 +145,8 @@ def place_native_protection(client, request):
         # Every replay reads broker truth before considering any CREATE. A read
         # the venue did not answer is PROTECTION_READ_UNAVAILABLE (unknown),
         # never an empty list.
-        orders = open_protection_legs(client, request.symbol)
+        if orders is None:
+            orders = open_protection_legs(client, request.symbol)
         found = next((o for o in orders if o.get("clientAlgoId") in candidates), None)
         if found is not None and (str(found.get("symbol")) != request.symbol or found.get("side") != exit_side
                 or found.get("type", found.get("orderType")) != kind
@@ -166,8 +169,8 @@ def place_native_protection(client, request):
                 # the caller's fail-safe close decides. Present after all
                 # (propagation) means it is the live leg.
                 getattr(client, '_production_protection_readback_sleep', time.sleep)(1)
-                again = open_protection_legs(client, request.symbol)
-                found = next((o for o in again if o.get("clientAlgoId") == missing.client_id), None)
+                orders = open_protection_legs(client, request.symbol)
+                found = next((o for o in orders if o.get("clientAlgoId") == missing.client_id), None)
                 if found is None:
                     raise ValueError("PROTECTION_CONFIRMED_ABSENT") from None
                 cid = found["clientAlgoId"]
@@ -199,6 +202,7 @@ def place_native_protection(client, request):
                 raise ValueError("PROTECTION_SUBMIT_OUTCOME_UNKNOWN")
             if not isinstance(found, dict) or not found.get("algoId"):
                 raise ValueError("PROTECTION_SUBMIT_OUTCOME_UNKNOWN")
+            created, orders = True, None               # the next leg reads the venue again
         # Also resolve a previously ambiguous CREATE when read-back found it.
         with db.connect() as c:
             c.execute("UPDATE cati_production_protection SET response=? WHERE account_id=? AND client_id=?",
@@ -210,8 +214,10 @@ def place_native_protection(client, request):
     # An acknowledgement alone is not a healthy protected position.
     # Binance may acknowledge before the open-algo view propagates. Retry only
     # the read for a bounded interval; never repeat either protection CREATE.
-    confirmed = []
-    for delay in (0, 1, 1, 2, 2):
+    # A replay that created nothing already holds a successful read listing
+    # both legs: that read IS the confirmation (no further venue call).
+    confirmed = orders if not created and orders is not None else []
+    for delay in ((0, 1, 1, 2, 2) if created or orders is None else ()):
         if delay:
             getattr(client,'_production_protection_readback_sleep',time.sleep)(delay)
         confirmed = open_protection_legs(client, request.symbol)
