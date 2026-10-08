@@ -51,6 +51,12 @@ _STATUS_MAP = {
     "ENTRY_LOCK_HELD": (X.DUPLICATE_SUPPRESSED.value, None),
     "ALREADY_OPEN": (X.DUPLICATE_SUPPRESSED.value, None),
     "PROTECTION_FAILED_ENTRY_CLOSED": (X.PROTECTION_FAILED_ROLLED_BACK.value, None),
+    # Refused before any broker call (Step 1.0e): nothing exists at the venue.
+    "FLIP_REFUSED": (X.REJECTED.value, F.OTHER.value),
+    # Filled, protection failed, rollback close failed: a position exists without
+    # proven protection. Reconciled from broker truth like any unknown outcome
+    # (recover_pending verifies protection under protection_state).
+    "PROTECTION_FAILED_CLOSE_FAILED": (X.SUBMIT_UNKNOWN.value, None),
 }
 _FILLED_STATUSES = ("ORDER_PLACED", "PAPER_POSITION_OPENED", "PAPER_FILLED")
 

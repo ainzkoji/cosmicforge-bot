@@ -417,7 +417,10 @@ def test_confirmed_exposure_uses_filled_notional_after_entry_confirm(temp_db):
     assert ep.get_effective_exposure("bot-1", "BTCUSDT") == pytest.approx(83.0)
 
 
-def test_flip_closes_old_side_before_new_side_proceeds(temp_db):
+def test_flip_is_refused_before_any_broker_call(temp_db):
+    """Step 1.0e: a reversal is no longer close-then-open in one tick. The
+    executor refuses it without touching the broker; the caller closes
+    explicitly, reconciles, and enters on a later cycle."""
     _, db = temp_db
     ep = EntryProtection(db)
     ep.acquire_intent(
@@ -462,9 +465,14 @@ def test_flip_closes_old_side_before_new_side_proceeds(temp_db):
             current_equity=1_000.0,
         )
 
-    assert result.status == "ORDER_PLACED"
-    assert ep.get_entry("bot-never-again", "BTCUSDT", "SHORT") is None
-    assert ep.get_entry("bot-never-again", "BTCUSDT", "LONG") is not None
+    assert result.status == "FLIP_REFUSED" and result.success is False
+    assert result.details["reason_code"] == "POSITION_REVERSAL_REQUIRES_EXPLICIT_CLOSE"
+    client.close_position_market.assert_not_called()
+    client.cancel_all_orders.assert_not_called()
+    client.place_order.assert_not_called()
+    # The open SHORT keeps its entry record; no LONG intent was created.
+    assert ep.get_entry("bot-never-again", "BTCUSDT", "SHORT") is not None
+    assert ep.get_entry("bot-never-again", "BTCUSDT", "LONG") is None
 
 
 def test_operator_recovery_releases_stale_entry_with_audit_event(temp_db):

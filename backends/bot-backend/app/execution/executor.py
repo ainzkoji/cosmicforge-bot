@@ -1296,29 +1296,24 @@ class BinanceExecutor:
             signal == "SELL" and current_position == "LONG"
         )
 
-        # ✅ 2) Handle FLIP (Close then Open)
+        # ✅ 2) A FLIP (reverse the open side) is refused (Step 1.0e).
+        # The branch used to cancel every open order on the symbol (errors
+        # swallowed), send a market close, and -- without confirming the close
+        # had filled or that the account was flat -- continue straight into the
+        # opposite entry in the same tick: two broker mutations under one entry
+        # intent, neither reconciled before the next. Exactly-once execution,
+        # the fail-safe close and the protection guarantees all need recovery
+        # BEFORE a new entry, so a reversal is now a two-step operation owned by
+        # the caller: close explicitly (signal CLOSE), reconcile, enter later.
+        # Nothing is sent to the broker here.
         if is_flip:
-            # Close first
-            try:
-                self.client.cancel_all_orders(symbol)
-            except: pass
-            
-            close_order = self.client.close_position_market(symbol)
-            if getattr(self, "_entry_prot", None) is not None:
-                _closing_side = "SHORT" if current_position == "SHORT" else "LONG"
-                self._entry_prot.mark_closed(self.bot_instance_id, symbol, _closing_side)
-            # We don't return here, we proceed to OPEN new position below
-            # But strictly, simpler to return "CLOSED_FOR_FLIP" and let next tick open?
-            # Or do it atomically?
-            # Risky to do both in one tick if latencies.
-            # Let's return the close and let auto-pilot retry the open next cycle?
-            # OR just do it.
-            # Existing executor did it atomically-ish.
-            
-            # Let's trigger the close and continue to open logic (treating as new entry)
-            # Update pos_amt to 0 for sizing logic
-            pos_amt = 0.0
-            current_position = "NONE"
+            return ExecResult(
+                status="FLIP_REFUSED",
+                details={"symbol": symbol, "signal": signal, "position_before": current_position,
+                         "pos_amt_before": pos_amt, "reason_code": "POSITION_REVERSAL_REQUIRES_EXPLICIT_CLOSE"},
+                success=False,
+                error="Position reversal refused: close the open side explicitly, reconcile, then enter",
+            )
 
         # FIX: ALREADY_OPEN guard — block duplicate OPEN when exchange already shows a position.
         # The runner sends signal="BUY" for both OPEN_LONG and ADD_LONG. The executor can
@@ -2217,9 +2212,40 @@ class BinanceExecutor:
                     self.client.close_position(symbol)
                 _log.getLogger(__name__).info(f"[ATOMIC GUARANTEE BROKEN] Rollback successful. Successfully force closed orphaned entry. Capital protected.")
             except Exception as close_err:
-                _log.getLogger(__name__).critical(f"[ATOMIC CHAIN] {symbol}: FATAL: Failed to close orphaned entry! Position is naked! Error: {close_err}")
-                from app.execution.executor import FatalIntegrationError
-                raise FatalIntegrationError(f"FATAL: Orphaned position for {symbol}. Entry close failed! Halting system.") from close_err
+                # Step 1.0e: this used to raise FatalIntegrationError ("Halting
+                # system"), which the legacy runner answered with sys.exit(1) and
+                # which lost the fill's identity on the way out. A filled entry
+                # whose protection AND rollback close both failed is a NAKED
+                # POSITION: it is reported as such, with the order identity, so
+                # the boundary reconciles the broker truth (recover_pending ->
+                # protection verified under protection_state; proven absence
+                # runs the durable fail-safe close, a failed read keeps the
+                # position and alerts). The entry lock stays held: the position
+                # exists. The operator is alerted on the existing alert store.
+                _log.getLogger(__name__).critical(
+                    f"[ATOMIC CHAIN] {symbol}: protection failed AND the rollback close failed; position is "
+                    f"NAKED and handed to reconciliation. protect={protect_err!r} close={close_err!r}")
+                try:
+                    from app.execution.production_close import operator_alert
+                    operator_alert(getattr(self, "_db", None), getattr(self, "_broker_account_id", None) or "", symbol,
+                                   f"naked-entry:{_client_order_id}",
+                                   {"client_order_id": _client_order_id, "order_id": fill_resolution.broker_order_id,
+                                    "protect_error": type(protect_err).__name__, "close_error": type(close_err).__name__},
+                                   summary="entry filled, protection failed, rollback close failed")
+                except Exception:
+                    pass
+                return ExecResult(
+                    status="PROTECTION_FAILED_CLOSE_FAILED",
+                    details={"symbol": symbol, "signal": signal, "client_order_id": _client_order_id,
+                             "filled_qty": executed_qty, "requested_qty": executed_qty,
+                             "protect_error": str(protect_err)[:200], "close_error": str(close_err)[:200],
+                             "reason_code": "ENTRY_FILLED_PROTECTION_AND_ROLLBACK_FAILED",
+                             "action": "Position left open for reconciliation; operator alerted."},
+                    order_id=fill_resolution.broker_order_id,
+                    success=False,
+                    error="Entry filled but protection and rollback close both failed: position is unprotected "
+                          "and handed to reconciliation.",
+                )
             
             # Protection failed: entry was rolled back → entry is now flat → release lock
             if _ep is not None and _ep_lock_acquired:
