@@ -1,0 +1,29 @@
+{
+ "beyond_limit": 189,
+ "engine_behaviour": "a plan whose stop is beyond 15% of the live price is rejected (CATI_STRUCTURAL_STOP_EXCEEDS_SYSTEM_MAX); the stop is never moved or clipped",
+ "engine_limit": 0.15,
+ "family": "RESIDUAL_MOMENTUM_PORTFOLIO_TOP1",
+ "hypothesis_id": "H-015",
+ "max_stop_distance": 0.6566925042220587,
+ "mean_net_R_all": 0.07275230354419425,
+ "mean_net_R_beyond_limit": 0.042761004527065646,
+ "mean_net_R_within_limit": 0.11412716131234978,
+ "median_stop_distance": 0.15949580810433164,
+ "nature": "DESCRIPTION_OF_A_FAILED_FAMILY_NOT_A_TEST",
+ "prospective_records": {
+  "counted_by": "backends/bot-backend/app/core/deployment_service.py stop_distance_assumptions",
+  "decisions_recorded": 74,
+  "kind": "FORWARD_OBSERVATION_RECORDS: mode OBSERVE, entry authority BLOCKED, reference = decision close, portfolio-selected and counterfactual candidates together; not executable plans",
+  "outside_engine_stop_limit": 55,
+  "recorded_on": "2026-10-08",
+  "source": "docs/implementation/STEP1_PORTAL_TO_ENGINE_STATUS.md (deployment preview on the runtime database)"
+ },
+ "schema": "residual-stop-distance-description-v1",
+ "share_beyond_limit": 0.5797546012269938,
+ "source": "docs/research/cati_edge003/selected_portfolio_labels.jsonl.gz",
+ "source_sha256": "2e46ea7498a30ed73fc1c2bc5524b2d3970851ec5701e56f42d3ce46994a2f56",
+ "stop_distance": "risk / entry price (the same fraction the engine checks)",
+ "stop_geometry": "risk = max(distance to the prior-24h swing + 0.25 x ATR14, 2 x ATR14, 0.3% of close) on hourly bars",
+ "trades": 326,
+ "within_limit": 137
+}

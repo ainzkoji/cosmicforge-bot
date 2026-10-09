@@ -1,0 +1,3487 @@
+{
+ "amendments": [
+  {
+   "artifact_sha256": "cd252fc540a861c5da0958c6c7394d10cecb26bc6d2eb1255343d062512745ec",
+   "number": 1
+  },
+  {
+   "artifact_sha256": "f0dc1853e4f94424c006e62b60224e5e18ef4537101d7c5fd58b018a59e97d42",
+   "number": 2
+  }
+ ],
+ "blocks": {
+  "development": {
+   "benchmarks": {
+    "btc": {
+     "scale": 0.09274361445057036,
+     "scaled": {
+      "annual_return": 0.05402115872052948,
+      "annual_volatility": 0.06056970238503506,
+      "best_day": 0.017808608916927062,
+      "calmar": 0.4741191636750167,
+      "expected_shortfall_5pct": -0.007166670700835668,
+      "max_drawdown": 0.1139400447385377,
+      "net_return": 0.3012832732375281,
+      "observations": 1827,
+      "positive_days_share": 0.5068418171866448,
+      "sharpe": 0.8989968264339823,
+      "sortino": 1.3058876924914642,
+      "worst_day": -0.037083595659749766,
+      "years": 5.005479452054795
+     },
+     "unscaled": {
+      "annual_return": 0.44564938534012244,
+      "annual_volatility": 0.6530875763669631,
+      "best_day": 0.19201978510788503,
+      "calmar": 0.5646201172618082,
+      "expected_shortfall_5pct": -0.07727400687683242,
+      "max_drawdown": 0.7892906605973441,
+      "net_return": 5.326914081828607,
+      "observations": 1827,
+      "positive_days_share": 0.5068418171866448,
+      "sharpe": 0.8989968264339822,
+      "sortino": 1.305887692491464,
+      "worst_day": -0.3998506622740506,
+      "years": 5.005479452054795
+     }
+    },
+    "equal_weight": {
+     "scale": 0.07280562326396926,
+     "scaled": {
+      "annual_return": 0.03318368766518409,
+      "annual_volatility": 0.060569702385035055,
+      "best_day": 0.021668755423304164,
+      "calmar": 0.30121496298142425,
+      "expected_shortfall_5pct": -0.007503938932552117,
+      "max_drawdown": 0.1101661329727186,
+      "net_return": 0.17751212773200287,
+      "observations": 1827,
+      "positive_days_share": 0.5079365079365079,
+      "sharpe": 0.5692811317370537,
+      "sortino": 0.793593750787666,
+      "worst_day": -0.024319238161426577,
+      "years": 5.005479452054795
+     },
+     "unscaled": {
+      "annual_return": 0.12895996407011512,
+      "annual_volatility": 0.8319371453689672,
+      "best_day": 0.2976247500105916,
+      "calmar": 0.14614892823512263,
+      "expected_shortfall_5pct": -0.10306812298474936,
+      "max_drawdown": 0.8823873402796761,
+      "net_return": 0.835191353267138,
+      "observations": 1827,
+      "positive_days_share": 0.5079365079365079,
+      "sharpe": 0.5692811317370536,
+      "sortino": 0.793593750787666,
+      "worst_day": -0.33402966791799876,
+      "years": 5.005479452054795
+     }
+    }
+   },
+   "capacity": {
+    "account_equity_usdt": {
+     "10000": {
+      "max_order_share_of_daily_volume": 4.570916278023187e-05,
+      "median_order_share_of_daily_volume": 1.0666797489825389e-07,
+      "orders_above_1pct_of_daily_volume": 0.0,
+      "p95_order_share_of_daily_volume": 1.8813138722980813e-06
+     },
+     "100000": {
+      "max_order_share_of_daily_volume": 0.0004570916278023187,
+      "median_order_share_of_daily_volume": 1.0666797489825388e-06,
+      "orders_above_1pct_of_daily_volume": 0.0,
+      "p95_order_share_of_daily_volume": 1.8813138722980813e-05
+     },
+     "1000000": {
+      "max_order_share_of_daily_volume": 0.004570916278023187,
+      "median_order_share_of_daily_volume": 1.0666797489825388e-05,
+      "orders_above_1pct_of_daily_volume": 0.0,
+      "p95_order_share_of_daily_volume": 0.00018813138722980813
+     },
+     "10000000": {
+      "max_order_share_of_daily_volume": 0.04570916278023187,
+      "median_order_share_of_daily_volume": 0.00010666797489825388,
+      "orders_above_1pct_of_daily_volume": 0.010983524712930605,
+      "p95_order_share_of_daily_volume": 0.0018813138722980813
+     },
+     "100000000": {
+      "max_order_share_of_daily_volume": 0.4570916278023187,
+      "median_order_share_of_daily_volume": 0.0010666797489825388,
+      "orders_above_1pct_of_daily_volume": 0.09036445332001997,
+      "p95_order_share_of_daily_volume": 0.018813138722980814
+     }
+    },
+    "basis": "order notional / that day's traded quote volume",
+    "limits": "daily volume is not depth: no order-book, spread or impact data exists in the dataset; the frozen 0.05% slippage is not scaled with size. These figures bound participation, not capacity.",
+    "orders": 2003
+   },
+   "entry_stop_distances": {
+    "accepted": 1251,
+    "at_cap_40pct": 205,
+    "at_floor_5pct": 2,
+    "beyond_engine_limit": 1072,
+    "engine_limit": 0.15,
+    "entry_decisions": 1251,
+    "share_beyond_engine_limit": 0.8569144684252598,
+    "stop_distance_quantiles": {
+     "max": 0.4,
+     "min": 0.05,
+     "p05": 0.11912091977292888,
+     "p25": 0.18103643429376443,
+     "p50": 0.2538513012929283,
+     "p75": 0.3486764955430431,
+     "p95": 0.4
+    }
+   },
+   "first_day": "2020-01-01",
+   "last_day": "2024-12-31",
+   "scenarios": {
+    "EXECUTABLE|aggressive|base|brakes_off|no_overlay": {
+     "annual_return": 0.03741820401520335,
+     "annual_volatility": 0.03053198400404273,
+     "average_exposure": 0.027070214139861375,
+     "average_positions": 1.2599890530925013,
+     "best_day": 0.01544311040499613,
+     "brake_days": {
+      "daily_pause": 0,
+      "halted": 0,
+      "halved": 0
+     },
+     "calendar_years": {
+      "2020": {
+       "complete": true,
+       "first_day": "2020-01-01",
+       "last_day": "2020-12-31",
+       "return": 0.0687753710633916
+      },
+      "2021": {
+       "complete": true,
+       "first_day": "2021-01-01",
+       "last_day": "2021-12-31",
+       "return": 0.0010004978135054188
+      },
+      "2022": {
+       "complete": true,
+       "first_day": "2022-01-01",
+       "last_day": "2022-12-31",
+       "return": 0.006351593250818022
+      },
+      "2023": {
+       "complete": true,
+       "first_day": "2023-01-01",
+       "last_day": "2023-12-31",
+       "return": 0.048212694863084105
+      },
+      "2024": {
+       "complete": true,
+       "first_day": "2024-01-01",
+       "last_day": "2024-12-31",
+       "return": 0.06496873080998888
+      }
+     },
+     "calmar": 0.8512219643418629,
+     "cost_multiple": 1.0,
+     "costs": {
+      "fee_drag_per_year": 0.0010277344687268147,
+      "fees": 55.73104753616055,
+      "funding": 209.4635679713523,
+      "funding_drag_per_year": 0.0038627109710612025,
+      "price_pnl": 2339.605380579654,
+      "slippage": 55.73163243750564,
+      "slippage_drag_per_year": 0.0010277452548738497
+     },
+     "drawdown_brakes": false,
+     "drawdown_stop_fired_on": null,
+     "expected_shortfall_5pct": -0.0034775657916292437,
+     "fills": 724,
+     "final_equity": 12018.679132634657,
+     "first_day": "2020-01-01",
+     "funding_events": 7050.0,
+     "funding_events_imputed": 0.0,
+     "funding_imputed_share": 0.0,
+     "funding_overlay": false,
+     "gross_annual_return_arithmetic": 0.04310966980917946,
+     "gross_return": 0.23396053805796502,
+     "initial_equity": 10000.0,
+     "label": "EXECUTABLE|aggressive|base|brakes_off|no_overlay",
+     "last_day": "2024-12-31",
+     "ledger_residual": 2.1827872842550278e-11,
+     "max_drawdown": 0.0439582219240946,
+     "max_exposure": 0.22154996451989215,
+     "max_order_share_of_daily_volume": 3.6671440223817355e-05,
+     "net_annual_return_arithmetic": 0.03720265665788494,
+     "net_return": 0.20186791326346176,
+     "observations": 1827,
+     "policy": "EXECUTABLE",
+     "positive_days_share": 0.2983032293377121,
+     "rejections": {
+      "BELOW_EXCHANGE_MINIMUM_NOTIONAL": 52,
+      "POSITION_LIMIT": 13141,
+      "QUANTITY_ROUNDS_TO_ZERO": 34,
+      "STOP_DISTANCE_EXCEEDS_ENGINE_MAX": 11230
+     },
+     "risk_level": "aggressive",
+     "risk_per_trade_approved": 0.0075,
+     "risk_per_trade_effective": 0.004,
+     "share_of_days_with_a_position": 0.5752599890530925,
+     "sharpe": 1.2184814669416488,
+     "sortino": 1.9063064941465815,
+     "stop_events": {
+      "STOP": 72
+     },
+     "trades": {
+      "average_days_held": 9.244979919678714,
+      "average_loss": -11.135550959844418,
+      "average_win": 34.49712829383075,
+      "exit_reasons": {
+       "STOP": 72,
+       "TARGET_ZERO": 177
+      },
+      "hit_rate": 0.42168674698795183,
+      "largest_loss": -48.032756504573,
+      "largest_win": 302.34089448859305,
+      "profit_factor": 2.258905386746698,
+      "symbols_traded": 21,
+      "trades_closed": 249,
+      "trades_open_at_end": 0
+     },
+     "turnover_per_year": 2.055490509747703,
+     "worst_day": -0.01805121836847645,
+     "years": 5.005479452054795
+    },
+    "EXECUTABLE|aggressive|base|brakes_on|no_overlay": {
+     "annual_return": 0.03741820401520335,
+     "annual_volatility": 0.03053198400404273,
+     "average_exposure": 0.027070214139861375,
+     "average_positions": 1.2599890530925013,
+     "best_day": 0.01544311040499613,
+     "brake_days": {
+      "daily_pause": 0,
+      "halted": 0,
+      "halved": 0
+     },
+     "calendar_years": {
+      "2020": {
+       "complete": true,
+       "first_day": "2020-01-01",
+       "last_day": "2020-12-31",
+       "return": 0.0687753710633916
+      },
+      "2021": {
+       "complete": true,
+       "first_day": "2021-01-01",
+       "last_day": "2021-12-31",
+       "return": 0.0010004978135054188
+      },
+      "2022": {
+       "complete": true,
+       "first_day": "2022-01-01",
+       "last_day": "2022-12-31",
+       "return": 0.006351593250818022
+      },
+      "2023": {
+       "complete": true,
+       "first_day": "2023-01-01",
+       "last_day": "2023-12-31",
+       "return": 0.048212694863084105
+      },
+      "2024": {
+       "complete": true,
+       "first_day": "2024-01-01",
+       "last_day": "2024-12-31",
+       "return": 0.06496873080998888
+      }
+     },
+     "calmar": 0.8512219643418629,
+     "cost_multiple": 1.0,
+     "costs": {
+      "fee_drag_per_year": 0.0010277344687268147,
+      "fees": 55.73104753616055,
+      "funding": 209.4635679713523,
+      "funding_drag_per_year": 0.0038627109710612025,
+      "price_pnl": 2339.605380579654,
+      "slippage": 55.73163243750564,
+      "slippage_drag_per_year": 0.0010277452548738497
+     },
+     "drawdown_brakes": true,
+     "drawdown_stop_fired_on": null,
+     "expected_shortfall_5pct": -0.0034775657916292437,
+     "fills": 724,
+     "final_equity": 12018.679132634657,
+     "first_day": "2020-01-01",
+     "funding_events": 7050.0,
+     "funding_events_imputed": 0.0,
+     "funding_imputed_share": 0.0,
+     "funding_overlay": false,
+     "gross_annual_return_arithmetic": 0.04310966980917946,
+     "gross_return": 0.23396053805796502,
+     "initial_equity": 10000.0,
+     "label": "EXECUTABLE|aggressive|base|brakes_on|no_overlay",
+     "last_day": "2024-12-31",
+     "ledger_residual": 2.1827872842550278e-11,
+     "max_drawdown": 0.0439582219240946,
+     "max_exposure": 0.22154996451989215,
+     "max_order_share_of_daily_volume": 3.6671440223817355e-05,
+     "net_annual_return_arithmetic": 0.03720265665788494,
+     "net_return": 0.20186791326346176,
+     "observations": 1827,
+     "policy": "EXECUTABLE",
+     "positive_days_share": 0.2983032293377121,
+     "rejections": {
+      "BELOW_EXCHANGE_MINIMUM_NOTIONAL": 52,
+      "POSITION_LIMIT": 13141,
+      "QUANTITY_ROUNDS_TO_ZERO": 34,
+      "STOP_DISTANCE_EXCEEDS_ENGINE_MAX": 11230
+     },
+     "risk_level": "aggressive",
+     "risk_per_trade_approved": 0.0075,
+     "risk_per_trade_effective": 0.004,
+     "share_of_days_with_a_position": 0.5752599890530925,
+     "sharpe": 1.2184814669416488,
+     "sortino": 1.9063064941465815,
+     "stop_events": {
+      "STOP": 72
+     },
+     "trades": {
+      "average_days_held": 9.244979919678714,
+      "average_loss": -11.135550959844418,
+      "average_win": 34.49712829383075,
+      "exit_reasons": {
+       "STOP": 72,
+       "TARGET_ZERO": 177
+      },
+      "hit_rate": 0.42168674698795183,
+      "largest_loss": -48.032756504573,
+      "largest_win": 302.34089448859305,
+      "profit_factor": 2.258905386746698,
+      "symbols_traded": 21,
+      "trades_closed": 249,
+      "trades_open_at_end": 0
+     },
+     "turnover_per_year": 2.055490509747703,
+     "worst_day": -0.01805121836847645,
+     "years": 5.005479452054795
+    },
+    "EXECUTABLE|aggressive|cost_x2|brakes_off|no_overlay": {
+     "annual_return": 0.03526043116431654,
+     "annual_volatility": 0.030500817631095745,
+     "average_exposure": 0.02706821667886632,
+     "average_positions": 1.2594417077175697,
+     "best_day": 0.015443566894302707,
+     "brake_days": {
+      "daily_pause": 0,
+      "halted": 0,
+      "halved": 0
+     },
+     "calendar_years": {
+      "2020": {
+       "complete": true,
+       "first_day": "2020-01-01",
+       "last_day": "2020-12-31",
+       "return": 0.06648220725008991
+      },
+      "2021": {
+       "complete": true,
+       "first_day": "2021-01-01",
+       "last_day": "2021-12-31",
+       "return": 0.0006527939487344092
+      },
+      "2022": {
+       "complete": true,
+       "first_day": "2022-01-01",
+       "last_day": "2022-12-31",
+       "return": 0.005112836081776706
+      },
+      "2023": {
+       "complete": true,
+       "first_day": "2023-01-01",
+       "last_day": "2023-12-31",
+       "return": 0.043909006064338785
+      },
+      "2024": {
+       "complete": true,
+       "first_day": "2024-01-01",
+       "last_day": "2024-12-31",
+       "return": 0.06222385128545005
+      }
+     },
+     "calmar": 0.7846097213054629,
+     "cost_multiple": 2.0,
+     "costs": {
+      "fee_drag_per_year": 0.002051564698585898,
+      "fees": 110.77430885783257,
+      "funding": 208.71834555899878,
+      "funding_drag_per_year": 0.003865509919322939,
+      "price_pnl": 2324.3406299545454,
+      "slippage": 110.77663319846246,
+      "slippage_drag_per_year": 0.0020516077458884088
+     },
+     "drawdown_brakes": false,
+     "drawdown_stop_fired_on": null,
+     "expected_shortfall_5pct": -0.0034910825411458243,
+     "fills": 721,
+     "final_equity": 11894.071342339108,
+     "first_day": "2020-01-01",
+     "funding_events": 7049.0,
+     "funding_events_imputed": 0.0,
+     "funding_imputed_share": 0.0,
+     "funding_overlay": false,
+     "gross_annual_return_arithmetic": 0.04306143738039416,
+     "gross_return": 0.23243406299545422,
+     "initial_equity": 10000.0,
+     "label": "EXECUTABLE|aggressive|cost_x2|brakes_off|no_overlay",
+     "last_day": "2024-12-31",
+     "ledger_residual": -1.4551915228366852e-10,
+     "max_drawdown": 0.04494008958447382,
+     "max_exposure": 0.213560556228171,
+     "max_order_share_of_daily_volume": 3.666147244990492e-05,
+     "net_annual_return_arithmetic": 0.035119394483604474,
+     "net_return": 0.1894071342339123,
+     "observations": 1827,
+     "policy": "EXECUTABLE",
+     "positive_days_share": 0.29720853858784896,
+     "rejections": {
+      "BELOW_EXCHANGE_MINIMUM_NOTIONAL": 52,
+      "POSITION_LIMIT": 13141,
+      "QUANTITY_ROUNDS_TO_ZERO": 35,
+      "STOP_DISTANCE_EXCEEDS_ENGINE_MAX": 11230
+     },
+     "risk_level": "aggressive",
+     "risk_per_trade_approved": 0.0075,
+     "risk_per_trade_effective": 0.004,
+     "share_of_days_with_a_position": 0.5752599890530925,
+     "sharpe": 1.1514246899335596,
+     "sortino": 1.7948461578459343,
+     "stop_events": {
+      "STOP": 73
+     },
+     "trades": {
+      "average_days_held": 9.240963855421686,
+      "average_loss": -11.336573131411992,
+      "average_win": 34.45835941286797,
+      "exit_reasons": {
+       "STOP": 73,
+       "TARGET_ZERO": 176
+      },
+      "hit_rate": 0.41365461847389556,
+      "largest_loss": -48.19377793180443,
+      "largest_win": 298.19658927690494,
+      "profit_factor": 2.144357402850314,
+      "symbols_traded": 21,
+      "trades_closed": 249,
+      "trades_open_at_end": 0
+     },
+     "turnover_per_year": 2.0516077458884063,
+     "worst_day": -0.01820555626637599,
+     "years": 5.005479452054795
+    },
+    "EXECUTABLE|aggressive|cost_x2|brakes_on|no_overlay": {
+     "annual_return": 0.03526043116431654,
+     "annual_volatility": 0.030500817631095745,
+     "average_exposure": 0.02706821667886632,
+     "average_positions": 1.2594417077175697,
+     "best_day": 0.015443566894302707,
+     "brake_days": {
+      "daily_pause": 0,
+      "halted": 0,
+      "halved": 0
+     },
+     "calendar_years": {
+      "2020": {
+       "complete": true,
+       "first_day": "2020-01-01",
+       "last_day": "2020-12-31",
+       "return": 0.06648220725008991
+      },
+      "2021": {
+       "complete": true,
+       "first_day": "2021-01-01",
+       "last_day": "2021-12-31",
+       "return": 0.0006527939487344092
+      },
+      "2022": {
+       "complete": true,
+       "first_day": "2022-01-01",
+       "last_day": "2022-12-31",
+       "return": 0.005112836081776706
+      },
+      "2023": {
+       "complete": true,
+       "first_day": "2023-01-01",
+       "last_day": "2023-12-31",
+       "return": 0.043909006064338785
+      },
+      "2024": {
+       "complete": true,
+       "first_day": "2024-01-01",
+       "last_day": "2024-12-31",
+       "return": 0.06222385128545005
+      }
+     },
+     "calmar": 0.7846097213054629,
+     "cost_multiple": 2.0,
+     "costs": {
+      "fee_drag_per_year": 0.002051564698585898,
+      "fees": 110.77430885783257,
+      "funding": 208.71834555899878,
+      "funding_drag_per_year": 0.003865509919322939,
+      "price_pnl": 2324.3406299545454,
+      "slippage": 110.77663319846246,
+      "slippage_drag_per_year": 0.0020516077458884088
+     },
+     "drawdown_brakes": true,
+     "drawdown_stop_fired_on": null,
+     "expected_shortfall_5pct": -0.0034910825411458243,
+     "fills": 721,
+     "final_equity": 11894.071342339108,
+     "first_day": "2020-01-01",
+     "funding_events": 7049.0,
+     "funding_events_imputed": 0.0,
+     "funding_imputed_share": 0.0,
+     "funding_overlay": false,
+     "gross_annual_return_arithmetic": 0.04306143738039416,
+     "gross_return": 0.23243406299545422,
+     "initial_equity": 10000.0,
+     "label": "EXECUTABLE|aggressive|cost_x2|brakes_on|no_overlay",
+     "last_day": "2024-12-31",
+     "ledger_residual": -1.4551915228366852e-10,
+     "max_drawdown": 0.04494008958447382,
+     "max_exposure": 0.213560556228171,
+     "max_order_share_of_daily_volume": 3.666147244990492e-05,
+     "net_annual_return_arithmetic": 0.035119394483604474,
+     "net_return": 0.1894071342339123,
+     "observations": 1827,
+     "policy": "EXECUTABLE",
+     "positive_days_share": 0.29720853858784896,
+     "rejections": {
+      "BELOW_EXCHANGE_MINIMUM_NOTIONAL": 52,
+      "POSITION_LIMIT": 13141,
+      "QUANTITY_ROUNDS_TO_ZERO": 35,
+      "STOP_DISTANCE_EXCEEDS_ENGINE_MAX": 11230
+     },
+     "risk_level": "aggressive",
+     "risk_per_trade_approved": 0.0075,
+     "risk_per_trade_effective": 0.004,
+     "share_of_days_with_a_position": 0.5752599890530925,
+     "sharpe": 1.1514246899335596,
+     "sortino": 1.7948461578459343,
+     "stop_events": {
+      "STOP": 73
+     },
+     "trades": {
+      "average_days_held": 9.240963855421686,
+      "average_loss": -11.336573131411992,
+      "average_win": 34.45835941286797,
+      "exit_reasons": {
+       "STOP": 73,
+       "TARGET_ZERO": 176
+      },
+      "hit_rate": 0.41365461847389556,
+      "largest_loss": -48.19377793180443,
+      "largest_win": 298.19658927690494,
+      "profit_factor": 2.144357402850314,
+      "symbols_traded": 21,
+      "trades_closed": 249,
+      "trades_open_at_end": 0
+     },
+     "turnover_per_year": 2.0516077458884063,
+     "worst_day": -0.01820555626637599,
+     "years": 5.005479452054795
+    },
+    "EXECUTABLE|balanced|base|brakes_off|no_overlay": {
+     "annual_return": 0.023972042839315977,
+     "annual_volatility": 0.02540664691067797,
+     "average_exposure": 0.02189376817018707,
+     "average_positions": 0.9222769567597153,
+     "best_day": 0.014097165821405966,
+     "brake_days": {
+      "daily_pause": 0,
+      "halted": 0,
+      "halved": 0
+     },
+     "calendar_years": {
+      "2020": {
+       "complete": true,
+       "first_day": "2020-01-01",
+       "last_day": "2020-12-31",
+       "return": 0.05833663875324557
+      },
+      "2021": {
+       "complete": true,
+       "first_day": "2021-01-01",
+       "last_day": "2021-12-31",
+       "return": -0.0024072934594896456
+      },
+      "2022": {
+       "complete": true,
+       "first_day": "2022-01-01",
+       "last_day": "2022-12-31",
+       "return": 0.006739607780701595
+      },
+      "2023": {
+       "complete": true,
+       "first_day": "2023-01-01",
+       "last_day": "2023-12-31",
+       "return": 0.02012164264945082
+      },
+      "2024": {
+       "complete": true,
+       "first_day": "2024-01-01",
+       "last_day": "2024-12-31",
+       "return": 0.03836647222255429
+      }
+     },
+     "calmar": 0.5661993709698684,
+     "cost_multiple": 1.0,
+     "costs": {
+      "fee_drag_per_year": 0.000895648014039659,
+      "fees": 47.68672449485502,
+      "funding": 156.8852799883078,
+      "funding_drag_per_year": 0.0029466060196427194,
+      "price_pnl": 1511.1826560744998,
+      "slippage": 47.68710229051905,
+      "slippage_drag_per_year": 0.0008956551097657712
+     },
+     "drawdown_brakes": false,
+     "drawdown_stop_fired_on": null,
+     "expected_shortfall_5pct": -0.002930800814843177,
+     "fills": 546,
+     "final_equity": 11258.923549300793,
+     "first_day": "2020-01-01",
+     "funding_events": 5167.0,
+     "funding_events_imputed": 0.0,
+     "funding_imputed_share": 0.0,
+     "funding_overlay": false,
+     "gross_annual_return_arithmetic": 0.028747181586669165,
+     "gross_return": 0.1511182656074499,
+     "initial_equity": 10000.0,
+     "label": "EXECUTABLE|balanced|base|brakes_off|no_overlay",
+     "last_day": "2024-12-31",
+     "ledger_residual": -2.3646862246096134e-11,
+     "max_drawdown": 0.042338519024232024,
+     "max_exposure": 0.20992584817768511,
+     "max_order_share_of_daily_volume": 3.668140799772978e-05,
+     "net_annual_return_arithmetic": 0.02401245843953337,
+     "net_return": 0.12589235493008188,
+     "observations": 1827,
+     "policy": "EXECUTABLE",
+     "positive_days_share": 0.26053639846743293,
+     "rejections": {
+      "BELOW_EXCHANGE_MINIMUM_NOTIONAL": 37,
+      "POSITION_LIMIT": 16186,
+      "QUANTITY_ROUNDS_TO_ZERO": 10,
+      "STOP_DISTANCE_EXCEEDS_ENGINE_MAX": 8636
+     },
+     "risk_level": "balanced",
+     "risk_per_trade_approved": 0.005,
+     "risk_per_trade_effective": 0.004,
+     "share_of_days_with_a_position": 0.5024630541871922,
+     "sharpe": 0.9451250503049007,
+     "sortino": 1.4577442892870178,
+     "stop_events": {
+      "STOP": 56
+     },
+     "trades": {
+      "average_days_held": 8.341584158415841,
+      "average_loss": -12.353104949278345,
+      "average_win": 37.703571704788885,
+      "exit_reasons": {
+       "STOP": 56,
+       "TARGET_ZERO": 146
+      },
+      "hit_rate": 0.3712871287128713,
+      "largest_loss": -46.376454556139464,
+      "largest_win": 251.6485519731388,
+      "profit_factor": 1.8024528159895077,
+      "symbols_traded": 19,
+      "trades_closed": 202,
+      "trades_open_at_end": 0
+     },
+     "turnover_per_year": 1.7913102195315422,
+     "worst_day": -0.016184353986095523,
+     "years": 5.005479452054795
+    },
+    "EXECUTABLE|balanced|base|brakes_on|no_overlay": {
+     "annual_return": 0.023972042839315977,
+     "annual_volatility": 0.02540664691067797,
+     "average_exposure": 0.02189376817018707,
+     "average_positions": 0.9222769567597153,
+     "best_day": 0.014097165821405966,
+     "brake_days": {
+      "daily_pause": 0,
+      "halted": 0,
+      "halved": 0
+     },
+     "calendar_years": {
+      "2020": {
+       "complete": true,
+       "first_day": "2020-01-01",
+       "last_day": "2020-12-31",
+       "return": 0.05833663875324557
+      },
+      "2021": {
+       "complete": true,
+       "first_day": "2021-01-01",
+       "last_day": "2021-12-31",
+       "return": -0.0024072934594896456
+      },
+      "2022": {
+       "complete": true,
+       "first_day": "2022-01-01",
+       "last_day": "2022-12-31",
+       "return": 0.006739607780701595
+      },
+      "2023": {
+       "complete": true,
+       "first_day": "2023-01-01",
+       "last_day": "2023-12-31",
+       "return": 0.02012164264945082
+      },
+      "2024": {
+       "complete": true,
+       "first_day": "2024-01-01",
+       "last_day": "2024-12-31",
+       "return": 0.03836647222255429
+      }
+     },
+     "calmar": 0.5661993709698684,
+     "cost_multiple": 1.0,
+     "costs": {
+      "fee_drag_per_year": 0.000895648014039659,
+      "fees": 47.68672449485502,
+      "funding": 156.8852799883078,
+      "funding_drag_per_year": 0.0029466060196427194,
+      "price_pnl": 1511.1826560744998,
+      "slippage": 47.68710229051905,
+      "slippage_drag_per_year": 0.0008956551097657712
+     },
+     "drawdown_brakes": true,
+     "drawdown_stop_fired_on": null,
+     "expected_shortfall_5pct": -0.002930800814843177,
+     "fills": 546,
+     "final_equity": 11258.923549300793,
+     "first_day": "2020-01-01",
+     "funding_events": 5167.0,
+     "funding_events_imputed": 0.0,
+     "funding_imputed_share": 0.0,
+     "funding_overlay": false,
+     "gross_annual_return_arithmetic": 0.028747181586669165,
+     "gross_return": 0.1511182656074499,
+     "initial_equity": 10000.0,
+     "label": "EXECUTABLE|balanced|base|brakes_on|no_overlay",
+     "last_day": "2024-12-31",
+     "ledger_residual": -2.3646862246096134e-11,
+     "max_drawdown": 0.042338519024232024,
+     "max_exposure": 0.20992584817768511,
+     "max_order_share_of_daily_volume": 3.668140799772978e-05,
+     "net_annual_return_arithmetic": 0.02401245843953337,
+     "net_return": 0.12589235493008188,
+     "observations": 1827,
+     "policy": "EXECUTABLE",
+     "positive_days_share": 0.26053639846743293,
+     "rejections": {
+      "BELOW_EXCHANGE_MINIMUM_NOTIONAL": 37,
+      "POSITION_LIMIT": 16186,
+      "QUANTITY_ROUNDS_TO_ZERO": 10,
+      "STOP_DISTANCE_EXCEEDS_ENGINE_MAX": 8636
+     },
+     "risk_level": "balanced",
+     "risk_per_trade_approved": 0.005,
+     "risk_per_trade_effective": 0.004,
+     "share_of_days_with_a_position": 0.5024630541871922,
+     "sharpe": 0.9451250503049007,
+     "sortino": 1.4577442892870178,
+     "stop_events": {
+      "STOP": 56
+     },
+     "trades": {
+      "average_days_held": 8.341584158415841,
+      "average_loss": -12.353104949278345,
+      "average_win": 37.703571704788885,
+      "exit_reasons": {
+       "STOP": 56,
+       "TARGET_ZERO": 146
+      },
+      "hit_rate": 0.3712871287128713,
+      "largest_loss": -46.376454556139464,
+      "largest_win": 251.6485519731388,
+      "profit_factor": 1.8024528159895077,
+      "symbols_traded": 19,
+      "trades_closed": 202,
+      "trades_open_at_end": 0
+     },
+     "turnover_per_year": 1.7913102195315422,
+     "worst_day": -0.016184353986095523,
+     "years": 5.005479452054795
+    },
+    "EXECUTABLE|balanced|cost_x2|brakes_off|no_overlay": {
+     "annual_return": 0.022270265254653587,
+     "annual_volatility": 0.025447700238468627,
+     "average_exposure": 0.021889250118747053,
+     "average_positions": 0.9222769567597153,
+     "best_day": 0.014092417811508273,
+     "brake_days": {
+      "daily_pause": 0,
+      "halted": 0,
+      "halved": 0
+     },
+     "calendar_years": {
+      "2020": {
+       "complete": true,
+       "first_day": "2020-01-01",
+       "last_day": "2020-12-31",
+       "return": 0.05647106187800377
+      },
+      "2021": {
+       "complete": true,
+       "first_day": "2021-01-01",
+       "last_day": "2021-12-31",
+       "return": -0.0027770592579884346
+      },
+      "2022": {
+       "complete": true,
+       "first_day": "2022-01-01",
+       "last_day": "2022-12-31",
+       "return": 0.0059550436884203695
+      },
+      "2023": {
+       "complete": true,
+       "first_day": "2023-01-01",
+       "last_day": "2023-12-31",
+       "return": 0.01676228527628365
+      },
+      "2024": {
+       "complete": true,
+       "first_day": "2024-01-01",
+       "last_day": "2024-12-31",
+       "return": 0.03617519349690057
+      }
+     },
+     "calmar": 0.5085943178364368,
+     "cost_multiple": 2.0,
+     "costs": {
+      "fee_drag_per_year": 0.001788590542388486,
+      "fees": 94.89962353309275,
+      "funding": 156.48658508232302,
+      "funding_drag_per_year": 0.0029493312583196134,
+      "price_pnl": 1511.8614491516712,
+      "slippage": 94.9011353945418,
+      "slippage_drag_per_year": 0.001788619036717425
+     },
+     "drawdown_brakes": false,
+     "drawdown_stop_fired_on": null,
+     "expected_shortfall_5pct": -0.002944473823490079,
+     "fills": 546,
+     "final_equity": 11165.574105141673,
+     "first_day": "2020-01-01",
+     "funding_events": 5167.0,
+     "funding_events_imputed": 0.0,
+     "funding_imputed_share": 0.0,
+     "funding_overlay": false,
+     "gross_annual_return_arithmetic": 0.028866210671789145,
+     "gross_return": 0.15118614491516702,
+     "initial_equity": 10000.0,
+     "label": "EXECUTABLE|balanced|cost_x2|brakes_off|no_overlay",
+     "last_day": "2024-12-31",
+     "ledger_residual": -4.001776687800884e-11,
+     "max_drawdown": 0.04378787665067008,
+     "max_exposure": 0.2102220679298122,
+     "max_order_share_of_daily_volume": 3.6671440223817355e-05,
+     "net_annual_return_arithmetic": 0.02235009366867331,
+     "net_return": 0.11655741051417001,
+     "observations": 1827,
+     "policy": "EXECUTABLE",
+     "positive_days_share": 0.2594417077175698,
+     "rejections": {
+      "BELOW_EXCHANGE_MINIMUM_NOTIONAL": 38,
+      "POSITION_LIMIT": 16186,
+      "QUANTITY_ROUNDS_TO_ZERO": 9,
+      "STOP_DISTANCE_EXCEEDS_ENGINE_MAX": 8636
+     },
+     "risk_level": "balanced",
+     "risk_per_trade_approved": 0.005,
+     "risk_per_trade_effective": 0.004,
+     "share_of_days_with_a_position": 0.5024630541871922,
+     "sharpe": 0.8782755792952659,
+     "sortino": 1.3479531902335136,
+     "stop_events": {
+      "STOP": 56
+     },
+     "trades": {
+      "average_days_held": 8.341584158415841,
+      "average_loss": -12.599357948053626,
+      "average_win": 37.544485439088874,
+      "exit_reasons": {
+       "STOP": 56,
+       "TARGET_ZERO": 146
+      },
+      "hit_rate": 0.36633663366336633,
+      "largest_loss": -46.52038286472789,
+      "largest_win": 250.56770573782256,
+      "profit_factor": 1.7227390263823998,
+      "symbols_traded": 19,
+      "trades_closed": 202,
+      "trades_open_at_end": 0
+     },
+     "turnover_per_year": 1.7886190367174262,
+     "worst_day": -0.016246096310059244,
+     "years": 5.005479452054795
+    },
+    "EXECUTABLE|balanced|cost_x2|brakes_on|no_overlay": {
+     "annual_return": 0.022270265254653587,
+     "annual_volatility": 0.025447700238468627,
+     "average_exposure": 0.021889250118747053,
+     "average_positions": 0.9222769567597153,
+     "best_day": 0.014092417811508273,
+     "brake_days": {
+      "daily_pause": 0,
+      "halted": 0,
+      "halved": 0
+     },
+     "calendar_years": {
+      "2020": {
+       "complete": true,
+       "first_day": "2020-01-01",
+       "last_day": "2020-12-31",
+       "return": 0.05647106187800377
+      },
+      "2021": {
+       "complete": true,
+       "first_day": "2021-01-01",
+       "last_day": "2021-12-31",
+       "return": -0.0027770592579884346
+      },
+      "2022": {
+       "complete": true,
+       "first_day": "2022-01-01",
+       "last_day": "2022-12-31",
+       "return": 0.0059550436884203695
+      },
+      "2023": {
+       "complete": true,
+       "first_day": "2023-01-01",
+       "last_day": "2023-12-31",
+       "return": 0.01676228527628365
+      },
+      "2024": {
+       "complete": true,
+       "first_day": "2024-01-01",
+       "last_day": "2024-12-31",
+       "return": 0.03617519349690057
+      }
+     },
+     "calmar": 0.5085943178364368,
+     "cost_multiple": 2.0,
+     "costs": {
+      "fee_drag_per_year": 0.001788590542388486,
+      "fees": 94.89962353309275,
+      "funding": 156.48658508232302,
+      "funding_drag_per_year": 0.0029493312583196134,
+      "price_pnl": 1511.8614491516712,
+      "slippage": 94.9011353945418,
+      "slippage_drag_per_year": 0.001788619036717425
+     },
+     "drawdown_brakes": true,
+     "drawdown_stop_fired_on": null,
+     "expected_shortfall_5pct": -0.002944473823490079,
+     "fills": 546,
+     "final_equity": 11165.574105141673,
+     "first_day": "2020-01-01",
+     "funding_events": 5167.0,
+     "funding_events_imputed": 0.0,
+     "funding_imputed_share": 0.0,
+     "funding_overlay": false,
+     "gross_annual_return_arithmetic": 0.028866210671789145,
+     "gross_return": 0.15118614491516702,
+     "initial_equity": 10000.0,
+     "label": "EXECUTABLE|balanced|cost_x2|brakes_on|no_overlay",
+     "last_day": "2024-12-31",
+     "ledger_residual": -4.001776687800884e-11,
+     "max_drawdown": 0.04378787665067008,
+     "max_exposure": 0.2102220679298122,
+     "max_order_share_of_daily_volume": 3.6671440223817355e-05,
+     "net_annual_return_arithmetic": 0.02235009366867331,
+     "net_return": 0.11655741051417001,
+     "observations": 1827,
+     "policy": "EXECUTABLE",
+     "positive_days_share": 0.2594417077175698,
+     "rejections": {
+      "BELOW_EXCHANGE_MINIMUM_NOTIONAL": 38,
+      "POSITION_LIMIT": 16186,
+      "QUANTITY_ROUNDS_TO_ZERO": 9,
+      "STOP_DISTANCE_EXCEEDS_ENGINE_MAX": 8636
+     },
+     "risk_level": "balanced",
+     "risk_per_trade_approved": 0.005,
+     "risk_per_trade_effective": 0.004,
+     "share_of_days_with_a_position": 0.5024630541871922,
+     "sharpe": 0.8782755792952659,
+     "sortino": 1.3479531902335136,
+     "stop_events": {
+      "STOP": 56
+     },
+     "trades": {
+      "average_days_held": 8.341584158415841,
+      "average_loss": -12.599357948053626,
+      "average_win": 37.544485439088874,
+      "exit_reasons": {
+       "STOP": 56,
+       "TARGET_ZERO": 146
+      },
+      "hit_rate": 0.36633663366336633,
+      "largest_loss": -46.52038286472789,
+      "largest_win": 250.56770573782256,
+      "profit_factor": 1.7227390263823998,
+      "symbols_traded": 19,
+      "trades_closed": 202,
+      "trades_open_at_end": 0
+     },
+     "turnover_per_year": 1.7886190367174262,
+     "worst_day": -0.016246096310059244,
+     "years": 5.005479452054795
+    },
+    "EXECUTABLE|conservative|base|brakes_off|no_overlay": {
+     "annual_return": 0.012434763452703779,
+     "annual_volatility": 0.012639413511696661,
+     "average_exposure": 0.010091608817072772,
+     "average_positions": 0.6015325670498084,
+     "best_day": 0.008024170716184997,
+     "brake_days": {
+      "daily_pause": 0,
+      "halted": 0,
+      "halved": 0
+     },
+     "calendar_years": {
+      "2020": {
+       "complete": true,
+       "first_day": "2020-01-01",
+       "last_day": "2020-12-31",
+       "return": 0.03556484384423109
+      },
+      "2021": {
+       "complete": true,
+       "first_day": "2021-01-01",
+       "last_day": "2021-12-31",
+       "return": -0.0008977432212827763
+      },
+      "2022": {
+       "complete": true,
+       "first_day": "2022-01-01",
+       "last_day": "2022-12-31",
+       "return": 0.008259099735181685
+      },
+      "2023": {
+       "complete": true,
+       "first_day": "2023-01-01",
+       "last_day": "2023-12-31",
+       "return": 0.0055136219865452585
+      },
+      "2024": {
+       "complete": true,
+       "first_day": "2024-01-01",
+       "last_day": "2024-12-31",
+       "return": 0.014185287212755027
+      }
+     },
+     "calmar": 0.5746277096156712,
+     "cost_multiple": 1.0,
+     "costs": {
+      "fee_drag_per_year": 0.0004540984862457141,
+      "fees": 23.563937327872893,
+      "funding": 67.30362342795358,
+      "funding_drag_per_year": 0.0012970019862229942,
+      "price_pnl": 752.5460032357637,
+      "slippage": 23.564125464373703,
+      "slippage_drag_per_year": 0.0004541021118070554
+     },
+     "drawdown_brakes": false,
+     "drawdown_stop_fired_on": null,
+     "expected_shortfall_5pct": -0.0014724365601112791,
+     "fills": 345,
+     "final_equity": 10638.114317015643,
+     "first_day": "2020-01-01",
+     "funding_events": 3355.0,
+     "funding_events_imputed": 0.0,
+     "funding_imputed_share": 0.0,
+     "funding_overlay": false,
+     "gross_annual_return_arithmetic": 0.014640216945511405,
+     "gross_return": 0.07525460032357634,
+     "initial_equity": 10000.0,
+     "label": "EXECUTABLE|conservative|base|brakes_off|no_overlay",
+     "last_day": "2024-12-31",
+     "ledger_residual": 8.003553375601768e-11,
+     "max_drawdown": 0.021639686434579586,
+     "max_exposure": 0.09262637091848773,
+     "max_order_share_of_daily_volume": 2.293584777249354e-05,
+     "net_annual_return_arithmetic": 0.012438086459308844,
+     "net_return": 0.06381143170156744,
+     "observations": 1827,
+     "policy": "EXECUTABLE",
+     "positive_days_share": 0.20580186097427478,
+     "rejections": {
+      "BELOW_EXCHANGE_MINIMUM_NOTIONAL": 59,
+      "POSITION_LIMIT": 19427,
+      "QUANTITY_ROUNDS_TO_ZERO": 18,
+      "STOP_DISTANCE_EXCEEDS_ENGINE_MAX": 5857
+     },
+     "risk_level": "conservative",
+     "risk_per_trade_approved": 0.0025,
+     "risk_per_trade_effective": 0.0025,
+     "share_of_days_with_a_position": 0.3924466338259442,
+     "sharpe": 0.9840714877947849,
+     "sortino": 1.559590890059014,
+     "stop_events": {
+      "STOP": 29
+     },
+     "trades": {
+      "average_days_held": 7.794326241134752,
+      "average_loss": -8.086587391535673,
+      "average_win": 22.574156388155597,
+      "exit_reasons": {
+       "STOP": 29,
+       "TARGET_ZERO": 112
+      },
+      "hit_rate": 0.41134751773049644,
+      "largest_loss": -27.825872733683678,
+      "largest_win": 125.14123804488084,
+      "profit_factor": 1.9507254332574928,
+      "symbols_traded": 16,
+      "trades_closed": 141,
+      "trades_open_at_end": 0
+     },
+     "turnover_per_year": 0.9082042236141112,
+     "worst_day": -0.007164109113637407,
+     "years": 5.005479452054795
+    },
+    "EXECUTABLE|conservative|base|brakes_on|no_overlay": {
+     "annual_return": 0.012434763452703779,
+     "annual_volatility": 0.012639413511696661,
+     "average_exposure": 0.010091608817072772,
+     "average_positions": 0.6015325670498084,
+     "best_day": 0.008024170716184997,
+     "brake_days": {
+      "daily_pause": 0,
+      "halted": 0,
+      "halved": 0
+     },
+     "calendar_years": {
+      "2020": {
+       "complete": true,
+       "first_day": "2020-01-01",
+       "last_day": "2020-12-31",
+       "return": 0.03556484384423109
+      },
+      "2021": {
+       "complete": true,
+       "first_day": "2021-01-01",
+       "last_day": "2021-12-31",
+       "return": -0.0008977432212827763
+      },
+      "2022": {
+       "complete": true,
+       "first_day": "2022-01-01",
+       "last_day": "2022-12-31",
+       "return": 0.008259099735181685
+      },
+      "2023": {
+       "complete": true,
+       "first_day": "2023-01-01",
+       "last_day": "2023-12-31",
+       "return": 0.0055136219865452585
+      },
+      "2024": {
+       "complete": true,
+       "first_day": "2024-01-01",
+       "last_day": "2024-12-31",
+       "return": 0.014185287212755027
+      }
+     },
+     "calmar": 0.5746277096156712,
+     "cost_multiple": 1.0,
+     "costs": {
+      "fee_drag_per_year": 0.0004540984862457141,
+      "fees": 23.563937327872893,
+      "funding": 67.30362342795358,
+      "funding_drag_per_year": 0.0012970019862229942,
+      "price_pnl": 752.5460032357637,
+      "slippage": 23.564125464373703,
+      "slippage_drag_per_year": 0.0004541021118070554
+     },
+     "drawdown_brakes": true,
+     "drawdown_stop_fired_on": null,
+     "expected_shortfall_5pct": -0.0014724365601112791,
+     "fills": 345,
+     "final_equity": 10638.114317015643,
+     "first_day": "2020-01-01",
+     "funding_events": 3355.0,
+     "funding_events_imputed": 0.0,
+     "funding_imputed_share": 0.0,
+     "funding_overlay": false,
+     "gross_annual_return_arithmetic": 0.014640216945511405,
+     "gross_return": 0.07525460032357634,
+     "initial_equity": 10000.0,
+     "label": "EXECUTABLE|conservative|base|brakes_on|no_overlay",
+     "last_day": "2024-12-31",
+     "ledger_residual": 8.003553375601768e-11,
+     "max_drawdown": 0.021639686434579586,
+     "max_exposure": 0.09262637091848773,
+     "max_order_share_of_daily_volume": 2.293584777249354e-05,
+     "net_annual_return_arithmetic": 0.012438086459308844,
+     "net_return": 0.06381143170156744,
+     "observations": 1827,
+     "policy": "EXECUTABLE",
+     "positive_days_share": 0.20580186097427478,
+     "rejections": {
+      "BELOW_EXCHANGE_MINIMUM_NOTIONAL": 59,
+      "POSITION_LIMIT": 19427,
+      "QUANTITY_ROUNDS_TO_ZERO": 18,
+      "STOP_DISTANCE_EXCEEDS_ENGINE_MAX": 5857
+     },
+     "risk_level": "conservative",
+     "risk_per_trade_approved": 0.0025,
+     "risk_per_trade_effective": 0.0025,
+     "share_of_days_with_a_position": 0.3924466338259442,
+     "sharpe": 0.9840714877947849,
+     "sortino": 1.559590890059014,
+     "stop_events": {
+      "STOP": 29
+     },
+     "trades": {
+      "average_days_held": 7.794326241134752,
+      "average_loss": -8.086587391535673,
+      "average_win": 22.574156388155597,
+      "exit_reasons": {
+       "STOP": 29,
+       "TARGET_ZERO": 112
+      },
+      "hit_rate": 0.41134751773049644,
+      "largest_loss": -27.825872733683678,
+      "largest_win": 125.14123804488084,
+      "profit_factor": 1.9507254332574928,
+      "symbols_traded": 16,
+      "trades_closed": 141,
+      "trades_open_at_end": 0
+     },
+     "turnover_per_year": 0.9082042236141112,
+     "worst_day": -0.007164109113637407,
+     "years": 5.005479452054795
+    },
+    "EXECUTABLE|conservative|cost_x2|brakes_off|no_overlay": {
+     "annual_return": 0.011565228412844464,
+     "annual_volatility": 0.012630929090032363,
+     "average_exposure": 0.010047759536486634,
+     "average_positions": 0.6015325670498084,
+     "best_day": 0.008007321385442356,
+     "brake_days": {
+      "daily_pause": 0,
+      "halted": 0,
+      "halved": 0
+     },
+     "calendar_years": {
+      "2020": {
+       "complete": true,
+       "first_day": "2020-01-01",
+       "last_day": "2020-12-31",
+       "return": 0.03475644976172232
+      },
+      "2021": {
+       "complete": true,
+       "first_day": "2021-01-01",
+       "last_day": "2021-12-31",
+       "return": -0.0010611704965015623
+      },
+      "2022": {
+       "complete": true,
+       "first_day": "2022-01-01",
+       "last_day": "2022-12-31",
+       "return": 0.00786998743191658
+      },
+      "2023": {
+       "complete": true,
+       "first_day": "2023-01-01",
+       "last_day": "2023-12-31",
+       "return": 0.003331841480595621
+      },
+      "2024": {
+       "complete": true,
+       "first_day": "2024-01-01",
+       "last_day": "2024-12-31",
+       "return": 0.013376155542625945
+      }
+     },
+     "calmar": 0.5157929144883463,
+     "cost_multiple": 2.0,
+     "costs": {
+      "fee_drag_per_year": 0.0009072726100071983,
+      "fees": 46.99930799691419,
+      "funding": 67.02901665801635,
+      "funding_drag_per_year": 0.001293925240208372,
+      "price_pnl": 753.4882273500755,
+      "slippage": 47.00006148514155,
+      "slippage_drag_per_year": 0.0009072871553113693
+     },
+     "drawdown_brakes": false,
+     "drawdown_stop_fired_on": null,
+     "expected_shortfall_5pct": -0.0014763469776141096,
+     "fills": 345,
+     "final_equity": 10592.45984121006,
+     "first_day": "2020-01-01",
+     "funding_events": 3355.0,
+     "funding_events_imputed": 0.0,
+     "funding_imputed_share": 0.0,
+     "funding_overlay": false,
+     "gross_annual_return_arithmetic": 0.014679812951692704,
+     "gross_return": 0.07534882273500743,
+     "initial_equity": 10000.0,
+     "label": "EXECUTABLE|conservative|cost_x2|brakes_off|no_overlay",
+     "last_day": "2024-12-31",
+     "ledger_residual": 5.638867150992155e-11,
+     "max_drawdown": 0.022422232039222334,
+     "max_exposure": 0.0929836767240862,
+     "max_order_share_of_daily_volume": 2.293584777249354e-05,
+     "net_annual_return_arithmetic": 0.011578728136711406,
+     "net_return": 0.05924598412100757,
+     "observations": 1827,
+     "policy": "EXECUTABLE",
+     "positive_days_share": 0.20415982484948003,
+     "rejections": {
+      "BELOW_EXCHANGE_MINIMUM_NOTIONAL": 53,
+      "POSITION_LIMIT": 19427,
+      "QUANTITY_ROUNDS_TO_ZERO": 21,
+      "STOP_DISTANCE_EXCEEDS_ENGINE_MAX": 5857
+     },
+     "risk_level": "conservative",
+     "risk_per_trade_approved": 0.0025,
+     "risk_per_trade_effective": 0.0025,
+     "share_of_days_with_a_position": 0.3924466338259442,
+     "sharpe": 0.9166964721422357,
+     "sortino": 1.4461730888397715,
+     "stop_events": {
+      "STOP": 29
+     },
+     "trades": {
+      "average_days_held": 7.794326241134752,
+      "average_loss": -8.365445331193248,
+      "average_win": 22.18606558101797,
+      "exit_reasons": {
+       "STOP": 29,
+       "TARGET_ZERO": 112
+      },
+      "hit_rate": 0.41134751773049644,
+      "largest_loss": -28.11303712688592,
+      "largest_win": 124.582479130847,
+      "profit_factor": 1.853280380592237,
+      "symbols_traded": 16,
+      "trades_closed": 141,
+      "trades_open_at_end": 0
+     },
+     "turnover_per_year": 0.9072871553113693,
+     "worst_day": -0.007202750586226991,
+     "years": 5.005479452054795
+    },
+    "EXECUTABLE|conservative|cost_x2|brakes_on|no_overlay": {
+     "annual_return": 0.011565228412844464,
+     "annual_volatility": 0.012630929090032363,
+     "average_exposure": 0.010047759536486634,
+     "average_positions": 0.6015325670498084,
+     "best_day": 0.008007321385442356,
+     "brake_days": {
+      "daily_pause": 0,
+      "halted": 0,
+      "halved": 0
+     },
+     "calendar_years": {
+      "2020": {
+       "complete": true,
+       "first_day": "2020-01-01",
+       "last_day": "2020-12-31",
+       "return": 0.03475644976172232
+      },
+      "2021": {
+       "complete": true,
+       "first_day": "2021-01-01",
+       "last_day": "2021-12-31",
+       "return": -0.0010611704965015623
+      },
+      "2022": {
+       "complete": true,
+       "first_day": "2022-01-01",
+       "last_day": "2022-12-31",
+       "return": 0.00786998743191658
+      },
+      "2023": {
+       "complete": true,
+       "first_day": "2023-01-01",
+       "last_day": "2023-12-31",
+       "return": 0.003331841480595621
+      },
+      "2024": {
+       "complete": true,
+       "first_day": "2024-01-01",
+       "last_day": "2024-12-31",
+       "return": 0.013376155542625945
+      }
+     },
+     "calmar": 0.5157929144883463,
+     "cost_multiple": 2.0,
+     "costs": {
+      "fee_drag_per_year": 0.0009072726100071983,
+      "fees": 46.99930799691419,
+      "funding": 67.02901665801635,
+      "funding_drag_per_year": 0.001293925240208372,
+      "price_pnl": 753.4882273500755,
+      "slippage": 47.00006148514155,
+      "slippage_drag_per_year": 0.0009072871553113693
+     },
+     "drawdown_brakes": true,
+     "drawdown_stop_fired_on": null,
+     "expected_shortfall_5pct": -0.0014763469776141096,
+     "fills": 345,
+     "final_equity": 10592.45984121006,
+     "first_day": "2020-01-01",
+     "funding_events": 3355.0,
+     "funding_events_imputed": 0.0,
+     "funding_imputed_share": 0.0,
+     "funding_overlay": false,
+     "gross_annual_return_arithmetic": 0.014679812951692704,
+     "gross_return": 0.07534882273500743,
+     "initial_equity": 10000.0,
+     "label": "EXECUTABLE|conservative|cost_x2|brakes_on|no_overlay",
+     "last_day": "2024-12-31",
+     "ledger_residual": 5.638867150992155e-11,
+     "max_drawdown": 0.022422232039222334,
+     "max_exposure": 0.0929836767240862,
+     "max_order_share_of_daily_volume": 2.293584777249354e-05,
+     "net_annual_return_arithmetic": 0.011578728136711406,
+     "net_return": 0.05924598412100757,
+     "observations": 1827,
+     "policy": "EXECUTABLE",
+     "positive_days_share": 0.20415982484948003,
+     "rejections": {
+      "BELOW_EXCHANGE_MINIMUM_NOTIONAL": 53,
+      "POSITION_LIMIT": 19427,
+      "QUANTITY_ROUNDS_TO_ZERO": 21,
+      "STOP_DISTANCE_EXCEEDS_ENGINE_MAX": 5857
+     },
+     "risk_level": "conservative",
+     "risk_per_trade_approved": 0.0025,
+     "risk_per_trade_effective": 0.0025,
+     "share_of_days_with_a_position": 0.3924466338259442,
+     "sharpe": 0.9166964721422357,
+     "sortino": 1.4461730888397715,
+     "stop_events": {
+      "STOP": 29
+     },
+     "trades": {
+      "average_days_held": 7.794326241134752,
+      "average_loss": -8.365445331193248,
+      "average_win": 22.18606558101797,
+      "exit_reasons": {
+       "STOP": 29,
+       "TARGET_ZERO": 112
+      },
+      "hit_rate": 0.41134751773049644,
+      "largest_loss": -28.11303712688592,
+      "largest_win": 124.582479130847,
+      "profit_factor": 1.853280380592237,
+      "symbols_traded": 16,
+      "trades_closed": 141,
+      "trades_open_at_end": 0
+     },
+     "turnover_per_year": 0.9072871553113693,
+     "worst_day": -0.007202750586226991,
+     "years": 5.005479452054795
+    },
+    "MANDATE|aggressive|base|brakes_off|no_overlay": {
+     "annual_return": 0.09872717824474164,
+     "annual_volatility": 0.0957286501578867,
+     "average_exposure": 0.10668537031157309,
+     "average_positions": 6.956759715380405,
+     "best_day": 0.02637145912881378,
+     "brake_days": {
+      "daily_pause": 0,
+      "halted": 0,
+      "halved": 0
+     },
+     "calendar_years": {
+      "2020": {
+       "complete": true,
+       "first_day": "2020-01-01",
+       "last_day": "2020-12-31",
+       "return": 0.19569874925111108
+      },
+      "2021": {
+       "complete": true,
+       "first_day": "2021-01-01",
+       "last_day": "2021-12-31",
+       "return": 0.18974540471899082
+      },
+      "2022": {
+       "complete": true,
+       "first_day": "2022-01-01",
+       "last_day": "2022-12-31",
+       "return": -0.1152187297003141
+      },
+      "2023": {
+       "complete": true,
+       "first_day": "2023-01-01",
+       "last_day": "2023-12-31",
+       "return": 0.17087056511422594
+      },
+      "2024": {
+       "complete": true,
+       "first_day": "2024-01-01",
+       "last_day": "2024-12-31",
+       "return": 0.08705813702032295
+      }
+     },
+     "calmar": 0.6600015237129572,
+     "cost_multiple": 1.0,
+     "costs": {
+      "fee_drag_per_year": 0.004382674351381981,
+      "fees": 286.3641919835841,
+      "funding": 472.51101578709176,
+      "funding_drag_per_year": 0.007231567240621504,
+      "price_pnl": 7065.642100938519,
+      "slippage": 286.36557669241336,
+      "slippage_drag_per_year": 0.004382695543723902
+     },
+     "drawdown_brakes": false,
+     "drawdown_stop_fired_on": null,
+     "expected_shortfall_5pct": -0.011809556583130659,
+     "fills": 3965,
+     "final_equity": 16020.401316475483,
+     "first_day": "2020-01-01",
+     "funding_events": 38730.0,
+     "funding_events_imputed": 1.0,
+     "funding_imputed_share": 2.5819777949909632e-05,
+     "funding_overlay": false,
+     "gross_annual_return_arithmetic": 0.11453838013710252,
+     "gross_return": 0.7065642100938516,
+     "initial_equity": 10000.0,
+     "label": "MANDATE|aggressive|base|brakes_off|no_overlay",
+     "last_day": "2024-12-31",
+     "ledger_residual": 5.093170329928398e-11,
+     "max_drawdown": 0.1495862883608725,
+     "max_exposure": 0.26943132872672865,
+     "max_order_share_of_daily_volume": 6.153806235223773e-05,
+     "net_annual_return_arithmetic": 0.09874533559275114,
+     "net_return": 0.6020401316475534,
+     "observations": 1827,
+     "policy": "MANDATE",
+     "positive_days_share": 0.4838533114395183,
+     "rejections": {
+      "BELOW_EXCHANGE_MINIMUM_NOTIONAL": 42,
+      "POSITION_LIMIT": 13141,
+      "QUANTITY_ROUNDS_TO_ZERO": 104
+     },
+     "risk_level": "aggressive",
+     "risk_per_trade_approved": 0.0075,
+     "risk_per_trade_effective": 0.0075,
+     "share_of_days_with_a_position": 0.9326765188834154,
+     "sharpe": 1.031512879685329,
+     "sortino": 1.5111504597162004,
+     "stop_events": {
+      "STOP": 304
+     },
+     "trades": {
+      "average_days_held": 8.833566433566434,
+      "average_loss": -16.10410806777728,
+      "average_win": 34.7720008814143,
+      "exit_reasons": {
+       "STOP": 304,
+       "TARGET_ZERO": 1126
+      },
+      "hit_rate": 0.4,
+      "largest_loss": -74.72710284105307,
+      "largest_win": 442.19021048461553,
+      "profit_factor": 1.4394671113345552,
+      "symbols_traded": 121,
+      "trades_closed": 1430,
+      "trades_open_at_end": 8
+     },
+     "turnover_per_year": 8.765391087447805,
+     "worst_day": -0.026471675854381593,
+     "years": 5.005479452054795
+    },
+    "MANDATE|aggressive|base|brakes_on|no_overlay": {
+     "annual_return": 0.08817527546980886,
+     "annual_volatility": 0.09299135423256498,
+     "average_exposure": 0.10052172764024363,
+     "average_positions": 6.95511767925561,
+     "best_day": 0.02637145912881378,
+     "brake_days": {
+      "daily_pause": 0,
+      "halted": 0,
+      "halved": 235
+     },
+     "calendar_years": {
+      "2020": {
+       "complete": true,
+       "first_day": "2020-01-01",
+       "last_day": "2020-12-31",
+       "return": 0.19569874925111108
+      },
+      "2021": {
+       "complete": true,
+       "first_day": "2021-01-01",
+       "last_day": "2021-12-31",
+       "return": 0.18974540471899082
+      },
+      "2022": {
+       "complete": true,
+       "first_day": "2022-01-01",
+       "last_day": "2022-12-31",
+       "return": -0.11519309978426917
+      },
+      "2023": {
+       "complete": true,
+       "first_day": "2023-01-01",
+       "last_day": "2023-12-31",
+       "return": 0.1174097040465667
+      },
+      "2024": {
+       "complete": true,
+       "first_day": "2024-01-01",
+       "last_day": "2024-12-31",
+       "return": 0.08532200713748983
+      }
+     },
+     "calmar": 0.5571942470454269,
+     "cost_multiple": 1.0,
+     "costs": {
+      "fee_drag_per_year": 0.004177759772382283,
+      "fees": 268.757477867961,
+      "funding": 633.3209929307721,
+      "funding_drag_per_year": 0.009844797578325548,
+      "price_pnl": 6435.786267192295,
+      "slippage": 268.7587214340677,
+      "slippage_drag_per_year": 0.004177779103269358
+     },
+     "drawdown_brakes": true,
+     "drawdown_stop_fired_on": null,
+     "expected_shortfall_5pct": -0.011618460291106381,
+     "fills": 4028,
+     "final_equity": 15264.949074959492,
+     "first_day": "2020-01-01",
+     "funding_events": 38721.0,
+     "funding_events_imputed": 1.0,
+     "funding_imputed_share": 2.582577929289016e-05,
+     "funding_overlay": false,
+     "gross_annual_return_arithmetic": 0.10681109608816643,
+     "gross_return": 0.6435786267192329,
+     "initial_equity": 10000.0,
+     "label": "MANDATE|aggressive|base|brakes_on|no_overlay",
+     "last_day": "2024-12-31",
+     "ledger_residual": -3.637978807091713e-12,
+     "max_drawdown": 0.15824871835516297,
+     "max_exposure": 0.2573983251908359,
+     "max_order_share_of_daily_volume": 6.153806235223773e-05,
+     "net_annual_return_arithmetic": 0.08883506812163527,
+     "net_return": 0.5264949074959535,
+     "observations": 1827,
+     "policy": "MANDATE",
+     "positive_days_share": 0.4838533114395183,
+     "rejections": {
+      "BELOW_EXCHANGE_MINIMUM_NOTIONAL": 42,
+      "POSITION_LIMIT": 13141,
+      "QUANTITY_ROUNDS_TO_ZERO": 110
+     },
+     "risk_level": "aggressive",
+     "risk_per_trade_approved": 0.0075,
+     "risk_per_trade_effective": 0.0075,
+     "share_of_days_with_a_position": 0.9326765188834154,
+     "sharpe": 0.9553045963763994,
+     "sortino": 1.3912288836594815,
+     "stop_events": {
+      "STOP": 304
+     },
+     "trades": {
+      "average_days_held": 8.837648705388384,
+      "average_loss": -15.188900977996983,
+      "average_win": 32.31697579361289,
+      "exit_reasons": {
+       "STOP": 304,
+       "TARGET_ZERO": 1125
+      },
+      "hit_rate": 0.3981805458362491,
+      "largest_loss": -74.4451470818729,
+      "largest_win": 368.68724369304067,
+      "profit_factor": 1.4077261472123905,
+      "symbols_traded": 121,
+      "trades_closed": 1429,
+      "trades_open_at_end": 8
+     },
+     "turnover_per_year": 8.35555820653871,
+     "worst_day": -0.026342553884325937,
+     "years": 5.005479452054795
+    },
+    "MANDATE|aggressive|base|brakes_on|overlay": {
+     "annual_return": 0.09376761987689286,
+     "annual_volatility": 0.08267112561857577,
+     "average_exposure": 0.09176902288596334,
+     "average_positions": 6.448275862068965,
+     "best_day": 0.024534418493603383,
+     "brake_days": {
+      "daily_pause": 0,
+      "halted": 0,
+      "halved": 290
+     },
+     "calendar_years": {
+      "2020": {
+       "complete": true,
+       "first_day": "2020-01-01",
+       "last_day": "2020-12-31",
+       "return": 0.19231247108364724
+      },
+      "2021": {
+       "complete": true,
+       "first_day": "2021-01-01",
+       "last_day": "2021-12-31",
+       "return": 0.22035625200942444
+      },
+      "2022": {
+       "complete": true,
+       "first_day": "2022-01-01",
+       "last_day": "2022-12-31",
+       "return": -0.11595294663105604
+      },
+      "2023": {
+       "complete": true,
+       "first_day": "2023-01-01",
+       "last_day": "2023-12-31",
+       "return": 0.10694107082664295
+      },
+      "2024": {
+       "complete": true,
+       "first_day": "2024-01-01",
+       "last_day": "2024-12-31",
+       "return": 0.09992228252714175
+      }
+     },
+     "calmar": 0.5498076127945902,
+     "cost_multiple": 1.0,
+     "costs": {
+      "fee_drag_per_year": 0.004404421932720592,
+      "fees": 287.9469641134644,
+      "funding": 110.78556415584774,
+      "funding_drag_per_year": 0.0016945702834518048,
+      "price_pnl": 6348.369836650857,
+      "slippage": 287.9481760782385,
+      "slippage_drag_per_year": 0.004404440470871355
+     },
+     "drawdown_brakes": true,
+     "drawdown_stop_fired_on": null,
+     "expected_shortfall_5pct": -0.009708015746808303,
+     "fills": 4357,
+     "final_equity": 15661.689132303265,
+     "first_day": "2020-01-01",
+     "funding_events": 35831.0,
+     "funding_events_imputed": 1.0,
+     "funding_imputed_share": 2.7908794061008625e-05,
+     "funding_overlay": true,
+     "gross_annual_return_arithmetic": 0.10321532041272637,
+     "gross_return": 0.6348369836650793,
+     "initial_equity": 10000.0,
+     "label": "MANDATE|aggressive|base|brakes_on|overlay",
+     "last_day": "2024-12-31",
+     "ledger_residual": -4.3655745685100555e-11,
+     "max_drawdown": 0.1705462378017758,
+     "max_exposure": 0.2647239006929967,
+     "max_order_share_of_daily_volume": 6.858044966449685e-05,
+     "net_annual_return_arithmetic": 0.09305249029485413,
+     "net_return": 0.5661689132303216,
+     "observations": 1827,
+     "policy": "MANDATE",
+     "positive_days_share": 0.4723590585659551,
+     "rejections": {
+      "BELOW_EXCHANGE_MINIMUM_NOTIONAL": 58,
+      "POSITION_LIMIT": 13141,
+      "QUANTITY_ROUNDS_TO_ZERO": 107
+     },
+     "risk_level": "aggressive",
+     "risk_per_trade_approved": 0.0075,
+     "risk_per_trade_effective": 0.0075,
+     "share_of_days_with_a_position": 0.9091406677613574,
+     "sharpe": 1.1255742509685354,
+     "sortino": 1.7067365778090073,
+     "stop_events": {
+      "STOP": 248
+     },
+     "trades": {
+      "average_days_held": 8.247357293868921,
+      "average_loss": -14.441778108554207,
+      "average_win": 30.644622723237852,
+      "exit_reasons": {
+       "STOP": 248,
+       "TARGET_ZERO": 1171
+      },
+      "hit_rate": 0.4094432699083862,
+      "largest_loss": -86.74716864422582,
+      "largest_win": 478.8324404229705,
+      "profit_factor": 1.471179703651875,
+      "symbols_traded": 121,
+      "trades_closed": 1419,
+      "trades_open_at_end": 8
+     },
+     "turnover_per_year": 8.808880941742725,
+     "worst_day": -0.02493392209351586,
+     "years": 5.005479452054795
+    },
+    "MANDATE|aggressive|cost_x2|brakes_off|no_overlay": {
+     "annual_return": 0.08884282400686816,
+     "annual_volatility": 0.09572635292420441,
+     "average_exposure": 0.10652141514494029,
+     "average_positions": 6.952928297755884,
+     "best_day": 0.02631852421601022,
+     "brake_days": {
+      "daily_pause": 0,
+      "halted": 0,
+      "halved": 0
+     },
+     "calendar_years": {
+      "2020": {
+       "complete": true,
+       "first_day": "2020-01-01",
+       "last_day": "2020-12-31",
+       "return": 0.1868030480726024
+      },
+      "2021": {
+       "complete": true,
+       "first_day": "2021-01-01",
+       "last_day": "2021-12-31",
+       "return": 0.18415815361533094
+      },
+      "2022": {
+       "complete": true,
+       "first_day": "2022-01-01",
+       "last_day": "2022-12-31",
+       "return": -0.12100615217240274
+      },
+      "2023": {
+       "complete": true,
+       "first_day": "2023-01-01",
+       "last_day": "2023-12-31",
+       "return": 0.15454000524103995
+      },
+      "2024": {
+       "complete": true,
+       "first_day": "2024-01-01",
+       "last_day": "2024-12-31",
+       "return": 0.07360699185759367
+      }
+     },
+     "calmar": 0.5466126332839082,
+     "cost_multiple": 2.0,
+     "costs": {
+      "fee_drag_per_year": 0.00873922569423649,
+      "fees": 560.1191344561963,
+      "funding": 467.89958444475377,
+      "funding_drag_per_year": 0.0073003756150415025,
+      "price_pnl": 6900.023234595237,
+      "slippage": 560.124570324842,
+      "slippage_drag_per_year": 0.008739310507055792
+     },
+     "drawdown_brakes": false,
+     "drawdown_stop_fired_on": null,
+     "expected_shortfall_5pct": -0.011852718103925552,
+     "fills": 3960,
+     "final_equity": 15311.879945369452,
+     "first_day": "2020-01-01",
+     "funding_events": 38713.0,
+     "funding_events_imputed": 1.0,
+     "funding_imputed_share": 2.5831116162529384e-05,
+     "funding_overlay": false,
+     "gross_annual_return_arithmetic": 0.11409087591191891,
+     "gross_return": 0.690002323459525,
+     "initial_equity": 10000.0,
+     "label": "MANDATE|aggressive|cost_x2|brakes_off|no_overlay",
+     "last_day": "2024-12-31",
+     "ledger_residual": 5.4569682106375694e-12,
+     "max_drawdown": 0.16253342604455245,
+     "max_exposure": 0.2695232141329747,
+     "max_order_share_of_daily_volume": 6.147010204041859e-05,
+     "net_annual_return_arithmetic": 0.08970613570821075,
+     "net_return": 0.531187994536942,
+     "observations": 1827,
+     "policy": "MANDATE",
+     "positive_days_share": 0.4827586206896552,
+     "rejections": {
+      "BELOW_EXCHANGE_MINIMUM_NOTIONAL": 50,
+      "POSITION_LIMIT": 13141,
+      "QUANTITY_ROUNDS_TO_ZERO": 106
+     },
+     "risk_level": "aggressive",
+     "risk_per_trade_approved": 0.0075,
+     "risk_per_trade_effective": 0.0075,
+     "share_of_days_with_a_position": 0.9326765188834154,
+     "sharpe": 0.9371101370511792,
+     "sortino": 1.3673497815794702,
+     "stop_events": {
+      "STOP": 306
+     },
+     "trades": {
+      "average_days_held": 8.834849545136459,
+      "average_loss": -15.969914802281398,
+      "average_win": 34.02251814760725,
+      "exit_reasons": {
+       "STOP": 306,
+       "TARGET_ZERO": 1123
+      },
+      "hit_rate": 0.3946815955213436,
+      "largest_loss": -73.72037893474625,
+      "largest_win": 436.8272404308189,
+      "profit_factor": 1.3890786992106763,
+      "symbols_traded": 121,
+      "trades_closed": 1429,
+      "trades_open_at_end": 8
+     },
+     "turnover_per_year": 8.739310507055803,
+     "worst_day": -0.026815783786324765,
+     "years": 5.005479452054795
+    },
+    "MANDATE|aggressive|cost_x2|brakes_on|no_overlay": {
+     "annual_return": 0.07899432693360087,
+     "annual_volatility": 0.09169967899213459,
+     "average_exposure": 0.09811278749113347,
+     "average_positions": 6.950191570881226,
+     "best_day": 0.02631852421601022,
+     "brake_days": {
+      "daily_pause": 0,
+      "halted": 0,
+      "halved": 319
+     },
+     "calendar_years": {
+      "2020": {
+       "complete": true,
+       "first_day": "2020-01-01",
+       "last_day": "2020-12-31",
+       "return": 0.1868030480726024
+      },
+      "2021": {
+       "complete": true,
+       "first_day": "2021-01-01",
+       "last_day": "2021-12-31",
+       "return": 0.18415815361533094
+      },
+      "2022": {
+       "complete": true,
+       "first_day": "2022-01-01",
+       "last_day": "2022-12-31",
+       "return": -0.12282157649074643
+      },
+      "2023": {
+       "complete": true,
+       "first_day": "2023-01-01",
+       "last_day": "2023-12-31",
+       "return": 0.1038094711419173
+      },
+      "2024": {
+       "complete": true,
+       "first_day": "2024-01-01",
+       "last_day": "2024-12-31",
+       "return": 0.07524223241861572
+      }
+     },
+     "calmar": 0.4525892648139208,
+     "cost_multiple": 2.0,
+     "costs": {
+      "fee_drag_per_year": 0.008071774937697089,
+      "fees": 508.80356755795987,
+      "funding": 631.7646644146089,
+      "funding_drag_per_year": 0.01002245760425717,
+      "price_pnl": 6280.468435421983,
+      "slippage": 508.80846708600524,
+      "slippage_drag_per_year": 0.008071852664918762
+     },
+     "drawdown_brakes": true,
+     "drawdown_stop_fired_on": null,
+     "expected_shortfall_5pct": -0.01157325901926644,
+     "fills": 3954,
+     "final_equity": 14631.091736363333,
+     "first_day": "2020-01-01",
+     "funding_events": 38698.0,
+     "funding_events_imputed": 1.0,
+     "funding_imputed_share": 2.5841128740503384e-05,
+     "funding_overlay": false,
+     "gross_annual_return_arithmetic": 0.10600036869719327,
+     "gross_return": 0.6280468435421991,
+     "initial_equity": 10000.0,
+     "label": "MANDATE|aggressive|cost_x2|brakes_on|no_overlay",
+     "last_day": "2024-12-31",
+     "ledger_residual": -7.821654435247183e-11,
+     "max_drawdown": 0.17453866689939912,
+     "max_exposure": 0.2570001387287051,
+     "max_order_share_of_daily_volume": 6.147010204041859e-05,
+     "net_annual_return_arithmetic": 0.08024164126360117,
+     "net_return": 0.4631091736363322,
+     "observations": 1827,
+     "policy": "MANDATE",
+     "positive_days_share": 0.48330596606458676,
+     "rejections": {
+      "BELOW_EXCHANGE_MINIMUM_NOTIONAL": 59,
+      "POSITION_LIMIT": 13141,
+      "QUANTITY_ROUNDS_TO_ZERO": 112
+     },
+     "risk_level": "aggressive",
+     "risk_per_trade_approved": 0.0075,
+     "risk_per_trade_effective": 0.0075,
+     "share_of_days_with_a_position": 0.9326765188834154,
+     "sharpe": 0.875048224219888,
+     "sortino": 1.266412564937849,
+     "stop_events": {
+      "STOP": 306
+     },
+     "trades": {
+      "average_days_held": 8.837535014005603,
+      "average_loss": -14.740888515485416,
+      "average_win": 31.131029615062197,
+      "exit_reasons": {
+       "STOP": 306,
+       "TARGET_ZERO": 1122
+      },
+      "hit_rate": 0.39285714285714285,
+      "largest_loss": -73.1688094232272,
+      "largest_win": 356.4724556094876,
+      "profit_factor": 1.3665124308362016,
+      "symbols_traded": 121,
+      "trades_closed": 1428,
+      "trades_open_at_end": 8
+     },
+     "turnover_per_year": 8.071852664918753,
+     "worst_day": -0.026689233811242108,
+     "years": 5.005479452054795
+    },
+    "MANDATE|balanced|base|brakes_off|no_overlay": {
+     "annual_return": 0.06673768261504098,
+     "annual_volatility": 0.06350947514195228,
+     "average_exposure": 0.06920673485657497,
+     "average_positions": 5.324028461959497,
+     "best_day": 0.01706157058819535,
+     "brake_days": {
+      "daily_pause": 0,
+      "halted": 0,
+      "halved": 0
+     },
+     "calendar_years": {
+      "2020": {
+       "complete": true,
+       "first_day": "2020-01-01",
+       "last_day": "2020-12-31",
+       "return": 0.13871863815425178
+      },
+      "2021": {
+       "complete": true,
+       "first_day": "2021-01-01",
+       "last_day": "2021-12-31",
+       "return": 0.11247479867736265
+      },
+      "2022": {
+       "complete": true,
+       "first_day": "2022-01-01",
+       "last_day": "2022-12-31",
+       "return": -0.07590715539538251
+      },
+      "2023": {
+       "complete": true,
+       "first_day": "2023-01-01",
+       "last_day": "2023-12-31",
+       "return": 0.09992573783612735
+      },
+      "2024": {
+       "complete": true,
+       "first_day": "2024-01-01",
+       "last_day": "2024-12-31",
+       "return": 0.07313989928454623
+      }
+     },
+     "calmar": 0.5972250915382253,
+     "cost_multiple": 1.0,
+     "costs": {
+      "fee_drag_per_year": 0.0030764222990029982,
+      "fees": 184.37819222733611,
+      "funding": 243.04874221384736,
+      "funding_drag_per_year": 0.004055363387929202,
+      "price_pnl": 4429.702193223587,
+      "slippage": 184.37909623394677,
+      "slippage_drag_per_year": 0.0030764373827071065
+     },
+     "drawdown_brakes": false,
+     "drawdown_stop_fired_on": null,
+     "expected_shortfall_5pct": -0.007683546553311604,
+     "fills": 3155,
+     "final_equity": 13817.896162548424,
+     "first_day": "2020-01-01",
+     "funding_events": 29633.0,
+     "funding_events_imputed": 1.0,
+     "funding_imputed_share": 3.3746161374143694e-05,
+     "funding_overlay": false,
+     "gross_annual_return_arithmetic": 0.07669977804484782,
+     "gross_return": 0.4429702193223579,
+     "initial_equity": 10000.0,
+     "label": "MANDATE|balanced|base|brakes_off|no_overlay",
+     "last_day": "2024-12-31",
+     "ledger_residual": -3.456079866737127e-11,
+     "max_drawdown": 0.1117462805240651,
+     "max_exposure": 0.2001162009207935,
+     "max_order_share_of_daily_volume": 4.5686319620421664e-05,
+     "net_annual_return_arithmetic": 0.0666262820597905,
+     "net_return": 0.38178961625484553,
+     "observations": 1827,
+     "policy": "MANDATE",
+     "positive_days_share": 0.48330596606458676,
+     "rejections": {
+      "BELOW_EXCHANGE_MINIMUM_NOTIONAL": 79,
+      "POSITION_LIMIT": 16186,
+      "QUANTITY_ROUNDS_TO_ZERO": 76
+     },
+     "risk_level": "balanced",
+     "risk_per_trade_approved": 0.005,
+     "risk_per_trade_effective": 0.005,
+     "share_of_days_with_a_position": 0.9321291735084839,
+     "sharpe": 1.049076250604681,
+     "sortino": 1.5545848566836273,
+     "stop_events": {
+      "STOP": 229
+     },
+     "trades": {
+      "average_days_held": 8.08284518828452,
+      "average_loss": -12.074700405553417,
+      "average_win": 25.23563301739527,
+      "exit_reasons": {
+       "STOP": 229,
+       "TARGET_ZERO": 966
+      },
+      "hit_rate": 0.4108786610878661,
+      "largest_loss": -52.79968169690207,
+      "largest_win": 329.6916074704383,
+      "profit_factor": 1.4576278993020237,
+      "symbols_traded": 119,
+      "trades_closed": 1195,
+      "trades_open_at_end": 6
+     },
+     "turnover_per_year": 6.152874765414212,
+     "worst_day": -0.01720027972978888,
+     "years": 5.005479452054795
+    },
+    "MANDATE|balanced|base|brakes_on|no_overlay": {
+     "annual_return": 0.05970360265931007,
+     "annual_volatility": 0.060569702385035055,
+     "average_exposure": 0.06298816577515315,
+     "average_positions": 5.319102353585112,
+     "best_day": 0.01706157058819535,
+     "brake_days": {
+      "daily_pause": 0,
+      "halted": 0,
+      "halved": 306
+     },
+     "calendar_years": {
+      "2020": {
+       "complete": true,
+       "first_day": "2020-01-01",
+       "last_day": "2020-12-31",
+       "return": 0.13871863815425178
+      },
+      "2021": {
+       "complete": true,
+       "first_day": "2021-01-01",
+       "last_day": "2021-12-31",
+       "return": 0.11247479867736265
+      },
+      "2022": {
+       "complete": true,
+       "first_day": "2022-01-01",
+       "last_day": "2022-12-31",
+       "return": -0.07540126879397768
+      },
+      "2023": {
+       "complete": true,
+       "first_day": "2023-01-01",
+       "last_day": "2023-12-31",
+       "return": 0.06344109451919566
+      },
+      "2024": {
+       "complete": true,
+       "first_day": "2024-01-01",
+       "last_day": "2024-12-31",
+       "return": 0.07321493639654975
+      }
+     },
+     "calmar": 0.5172707306257814,
+     "cost_multiple": 1.0,
+     "costs": {
+      "fee_drag_per_year": 0.0028472810891203393,
+      "fees": 168.7731114432509,
+      "funding": 380.02480801949184,
+      "funding_drag_per_year": 0.006411195717241463,
+      "price_pnl": 4085.375285271764,
+      "slippage": 168.77393463847503,
+      "slippage_drag_per_year": 0.0028472949768076268
+     },
+     "drawdown_brakes": true,
+     "drawdown_stop_fired_on": null,
+     "expected_shortfall_5pct": -0.007460492372378458,
+     "fills": 3195,
+     "final_equity": 13367.803431170518,
+     "first_day": "2020-01-01",
+     "funding_events": 29606.0,
+     "funding_events_imputed": 1.0,
+     "funding_imputed_share": 3.377693710734311e-05,
+     "funding_overlay": false,
+     "gross_annual_return_arithmetic": 0.07179691091873801,
+     "gross_return": 0.40853752852717395,
+     "initial_equity": 10000.0,
+     "label": "MANDATE|balanced|base|brakes_on|no_overlay",
+     "last_day": "2024-12-31",
+     "ledger_residual": -2.7284841053187847e-11,
+     "max_drawdown": 0.11542041550868753,
+     "max_exposure": 0.1875687153590711,
+     "max_order_share_of_daily_volume": 4.5686319620421664e-05,
+     "net_annual_return_arithmetic": 0.05982715285865184,
+     "net_return": 0.3367803431170495,
+     "observations": 1827,
+     "policy": "MANDATE",
+     "positive_days_share": 0.48440065681444994,
+     "rejections": {
+      "BELOW_EXCHANGE_MINIMUM_NOTIONAL": 94,
+      "POSITION_LIMIT": 16186,
+      "QUANTITY_ROUNDS_TO_ZERO": 77
+     },
+     "risk_level": "balanced",
+     "risk_per_trade_approved": 0.005,
+     "risk_per_trade_effective": 0.005,
+     "share_of_days_with_a_position": 0.9321291735084839,
+     "sharpe": 0.9877405782570482,
+     "sortino": 1.4563103043621488,
+     "stop_events": {
+      "STOP": 229
+     },
+     "trades": {
+      "average_days_held": 8.095637583892618,
+      "average_loss": -11.132173667215866,
+      "average_win": 23.1750473064242,
+      "exit_reasons": {
+       "STOP": 229,
+       "TARGET_ZERO": 963
+      },
+      "hit_rate": 0.4085570469798658,
+      "largest_loss": -52.578572259273635,
+      "largest_win": 262.75781219722234,
+      "profit_factor": 1.438071570219785,
+      "symbols_traded": 119,
+      "trades_closed": 1192,
+      "trades_open_at_end": 6
+     },
+     "turnover_per_year": 5.694589953615259,
+     "worst_day": -0.01720027972978888,
+     "years": 5.005479452054795
+    },
+    "MANDATE|balanced|base|brakes_on|overlay": {
+     "annual_return": 0.055134774881896886,
+     "annual_volatility": 0.05311094708306649,
+     "average_exposure": 0.05670353384480329,
+     "average_positions": 4.925013683634373,
+     "best_day": 0.014583807808943083,
+     "brake_days": {
+      "daily_pause": 0,
+      "halted": 0,
+      "halved": 308
+     },
+     "calendar_years": {
+      "2020": {
+       "complete": true,
+       "first_day": "2020-01-01",
+       "last_day": "2020-12-31",
+       "return": 0.140815331749073
+      },
+      "2021": {
+       "complete": true,
+       "first_day": "2021-01-01",
+       "last_day": "2021-12-31",
+       "return": 0.09413907407012512
+      },
+      "2022": {
+       "complete": true,
+       "first_day": "2022-01-01",
+       "last_day": "2022-12-31",
+       "return": -0.07407592587610179
+      },
+      "2023": {
+       "complete": true,
+       "first_day": "2023-01-01",
+       "last_day": "2023-12-31",
+       "return": 0.06357399251670337
+      },
+      "2024": {
+       "complete": true,
+       "first_day": "2024-01-01",
+       "last_day": "2024-12-31",
+       "return": 0.06423230018248338
+      }
+     },
+     "calmar": 0.47695446290788646,
+     "cost_multiple": 1.0,
+     "costs": {
+      "fee_drag_per_year": 0.002847533228611899,
+      "fees": 166.84598856405248,
+      "funding": 22.264132787354743,
+      "funding_drag_per_year": 0.0003799783169127961,
+      "price_pnl": 3437.753546939751,
+      "slippage": 166.8466551169894,
+      "slippage_drag_per_year": 0.0028475446045619765
+     },
+     "drawdown_brakes": true,
+     "drawdown_stop_fired_on": null,
+     "expected_shortfall_5pct": -0.0062609098618819185,
+     "fills": 3346,
+     "final_equity": 13081.79677047111,
+     "first_day": "2020-01-01",
+     "funding_events": 27376.0,
+     "funding_events_imputed": 1.0,
+     "funding_imputed_share": 3.6528345996493277e-05,
+     "funding_overlay": true,
+     "gross_annual_return_arithmetic": 0.06096393673564439,
+     "gross_return": 0.34377535469397436,
+     "initial_equity": 10000.0,
+     "label": "MANDATE|balanced|base|brakes_on|overlay",
+     "last_day": "2024-12-31",
+     "ledger_residual": -2.4374458007514477e-10,
+     "max_drawdown": 0.1155975657419207,
+     "max_exposure": 0.18830388577745402,
+     "max_order_share_of_daily_volume": 4.583923032201475e-05,
+     "net_annual_return_arithmetic": 0.05508128254944927,
+     "net_return": 0.30817967704711213,
+     "observations": 1827,
+     "policy": "MANDATE",
+     "positive_days_share": 0.4663382594417077,
+     "rejections": {
+      "BELOW_EXCHANGE_MINIMUM_NOTIONAL": 101,
+      "POSITION_LIMIT": 16186,
+      "QUANTITY_ROUNDS_TO_ZERO": 101
+     },
+     "risk_level": "balanced",
+     "risk_per_trade_approved": 0.005,
+     "risk_per_trade_effective": 0.005,
+     "share_of_days_with_a_position": 0.9047619047619048,
+     "sharpe": 1.0370984810965833,
+     "sortino": 1.578224515047579,
+     "stop_events": {
+      "STOP": 194
+     },
+     "trades": {
+      "average_days_held": 7.685025817555938,
+      "average_loss": -10.118746949771566,
+      "average_win": 20.621272178019094,
+      "exit_reasons": {
+       "STOP": 194,
+       "TARGET_ZERO": 968
+      },
+      "hit_rate": 0.4173838209982788,
+      "largest_loss": -51.87691366765423,
+      "largest_win": 257.00806302099306,
+      "profit_factor": 1.459962797199683,
+      "symbols_traded": 119,
+      "trades_closed": 1162,
+      "trades_open_at_end": 6
+     },
+     "turnover_per_year": 5.695089209123945,
+     "worst_day": -0.016818977133259194,
+     "years": 5.005479452054795
+    },
+    "MANDATE|balanced|cost_x2|brakes_off|no_overlay": {
+     "annual_return": 0.06125520059601808,
+     "annual_volatility": 0.06354036997063192,
+     "average_exposure": 0.0692273412475928,
+     "average_positions": 5.323481116584565,
+     "best_day": 0.01702448728119421,
+     "brake_days": {
+      "daily_pause": 0,
+      "halted": 0,
+      "halved": 0
+     },
+     "calendar_years": {
+      "2020": {
+       "complete": true,
+       "first_day": "2020-01-01",
+       "last_day": "2020-12-31",
+       "return": 0.13233633275201684
+      },
+      "2021": {
+       "complete": true,
+       "first_day": "2021-01-01",
+       "last_day": "2021-12-31",
+       "return": 0.1105463454666189
+      },
+      "2022": {
+       "complete": true,
+       "first_day": "2022-01-01",
+       "last_day": "2022-12-31",
+       "return": -0.07916406657878794
+      },
+      "2023": {
+       "complete": true,
+       "first_day": "2023-01-01",
+       "last_day": "2023-12-31",
+       "return": 0.09127881583139863
+      },
+      "2024": {
+       "complete": true,
+       "first_day": "2024-01-01",
+       "last_day": "2024-12-31",
+       "return": 0.06564002287442072
+      }
+     },
+     "calmar": 0.5119045330833876,
+     "cost_multiple": 2.0,
+     "costs": {
+      "fee_drag_per_year": 0.006139227477075686,
+      "fees": 363.87624209930664,
+      "funding": 242.16812612937713,
+      "funding_drag_per_year": 0.004085799076708217,
+      "price_pnl": 4435.987064183108,
+      "slippage": 363.87988232723126,
+      "slippage_drag_per_year": 0.006139288894076062
+     },
+     "drawdown_brakes": false,
+     "drawdown_stop_fired_on": null,
+     "expected_shortfall_5pct": -0.007706080212957367,
+     "fills": 3150,
+     "final_equity": 13466.062813627019,
+     "first_day": "2020-01-01",
+     "funding_events": 29632.0,
+     "funding_events_imputed": 1.0,
+     "funding_imputed_share": 3.3747300215982723e-05,
+     "funding_overlay": false,
+     "gross_annual_return_arithmetic": 0.07761780889372377,
+     "gross_return": 0.44359870641831245,
+     "initial_equity": 10000.0,
+     "label": "MANDATE|balanced|cost_x2|brakes_off|no_overlay",
+     "last_day": "2024-12-31",
+     "ledger_residual": -1.7280399333685637e-10,
+     "max_drawdown": 0.11966137558316914,
+     "max_exposure": 0.19813162970659326,
+     "max_order_share_of_daily_volume": 4.565233946451209e-05,
+     "net_annual_return_arithmetic": 0.06147469044730101,
+     "net_return": 0.3466062813627,
+     "observations": 1827,
+     "policy": "MANDATE",
+     "positive_days_share": 0.4827586206896552,
+     "rejections": {
+      "BELOW_EXCHANGE_MINIMUM_NOTIONAL": 77,
+      "POSITION_LIMIT": 16186,
+      "QUANTITY_ROUNDS_TO_ZERO": 76
+     },
+     "risk_level": "balanced",
+     "risk_per_trade_approved": 0.005,
+     "risk_per_trade_effective": 0.005,
+     "share_of_days_with_a_position": 0.9321291735084839,
+     "sharpe": 0.9674902817801395,
+     "sortino": 1.4280626244574184,
+     "stop_events": {
+      "STOP": 230
+     },
+     "trades": {
+      "average_days_held": 8.082008368200837,
+      "average_loss": -11.982142628358254,
+      "average_win": 25.29558044379875,
+      "exit_reasons": {
+       "STOP": 230,
+       "TARGET_ZERO": 965
+      },
+      "hit_rate": 0.400836820083682,
+      "largest_loss": -52.52596974858655,
+      "largest_win": 323.168775266648,
+      "profit_factor": 1.4123185247986125,
+      "symbols_traded": 119,
+      "trades_closed": 1195,
+      "trades_open_at_end": 6
+     },
+     "turnover_per_year": 6.1392888940760475,
+     "worst_day": -0.01726300682764892,
+     "years": 5.005479452054795
+    },
+    "MANDATE|balanced|cost_x2|brakes_on|no_overlay": {
+     "annual_return": 0.054059901348776807,
+     "annual_volatility": 0.059357394927522185,
+     "average_exposure": 0.061753355549687014,
+     "average_positions": 5.310892172961139,
+     "best_day": 0.01702448728119421,
+     "brake_days": {
+      "daily_pause": 0,
+      "halted": 0,
+      "halved": 374
+     },
+     "calendar_years": {
+      "2020": {
+       "complete": true,
+       "first_day": "2020-01-01",
+       "last_day": "2020-12-31",
+       "return": 0.13233633275201684
+      },
+      "2021": {
+       "complete": true,
+       "first_day": "2021-01-01",
+       "last_day": "2021-12-31",
+       "return": 0.1105463454666189
+      },
+      "2022": {
+       "complete": true,
+       "first_day": "2022-01-01",
+       "last_day": "2022-12-31",
+       "return": -0.07869930958759563
+      },
+      "2023": {
+       "complete": true,
+       "first_day": "2023-01-01",
+       "last_day": "2023-12-31",
+       "return": 0.05417289517252222
+      },
+      "2024": {
+       "complete": true,
+       "first_day": "2024-01-01",
+       "last_day": "2024-12-31",
+       "return": 0.06567892746586557
+      }
+     },
+     "calmar": 0.4547409749937739,
+     "cost_multiple": 2.0,
+     "costs": {
+      "fee_drag_per_year": 0.00553148521240241,
+      "fees": 324.19818443878034,
+      "funding": 373.18362949648935,
+      "funding_drag_per_year": 0.006367277261727827,
+      "price_pnl": 4036.8103527014055,
+      "slippage": 324.2014474805532,
+      "slippage_drag_per_year": 0.005531540886580059
+     },
+     "drawdown_brakes": true,
+     "drawdown_stop_fired_on": null,
+     "expected_shortfall_5pct": -0.007360898655100838,
+     "fills": 3173,
+     "final_equity": 13015.227091285451,
+     "first_day": "2020-01-01",
+     "funding_events": 29563.0,
+     "funding_events_imputed": 1.0,
+     "funding_imputed_share": 3.382606636674221e-05,
+     "funding_overlay": false,
+     "gross_annual_return_arithmetic": 0.07165427501476263,
+     "gross_return": 0.4036810352701399,
+     "initial_equity": 10000.0,
+     "label": "MANDATE|balanced|cost_x2|brakes_on|no_overlay",
+     "last_day": "2024-12-31",
+     "ledger_residual": -1.3278622645884752e-10,
+     "max_drawdown": 0.11888064705301071,
+     "max_exposure": 0.17997874758251553,
+     "max_order_share_of_daily_volume": 4.565233946451209e-05,
+     "net_annual_return_arithmetic": 0.05441376113013618,
+     "net_return": 0.3015227091285455,
+     "observations": 1827,
+     "policy": "MANDATE",
+     "positive_days_share": 0.48056923918992883,
+     "rejections": {
+      "BELOW_EXCHANGE_MINIMUM_NOTIONAL": 108,
+      "POSITION_LIMIT": 16186,
+      "QUANTITY_ROUNDS_TO_ZERO": 75
+     },
+     "risk_level": "balanced",
+     "risk_per_trade_approved": 0.005,
+     "risk_per_trade_effective": 0.005,
+     "share_of_days_with_a_position": 0.9321291735084839,
+     "sharpe": 0.9167141043938603,
+     "sortino": 1.3455007187290304,
+     "stop_events": {
+      "STOP": 230
+     },
+     "trades": {
+      "average_days_held": 8.096638655462185,
+      "average_loss": -10.79359748402045,
+      "average_win": 22.600881709444934,
+      "exit_reasons": {
+       "STOP": 230,
+       "TARGET_ZERO": 960
+      },
+      "hit_rate": 0.4008403361344538,
+      "largest_loss": -50.08321229102286,
+      "largest_win": 254.4474501511431,
+      "profit_factor": 1.4008383192793115,
+      "symbols_traded": 119,
+      "trades_closed": 1190,
+      "trades_open_at_end": 6
+     },
+     "turnover_per_year": 5.531540886580052,
+     "worst_day": -0.01726300682764892,
+     "years": 5.005479452054795
+    },
+    "MANDATE|conservative|base|brakes_off|no_overlay": {
+     "annual_return": 0.030645949985077525,
+     "annual_volatility": 0.03022102147014294,
+     "average_exposure": 0.030609096482704847,
+     "average_positions": 3.551176792556103,
+     "best_day": 0.008668106933913178,
+     "brake_days": {
+      "daily_pause": 0,
+      "halted": 0,
+      "halved": 0
+     },
+     "calendar_years": {
+      "2020": {
+       "complete": true,
+       "first_day": "2020-01-01",
+       "last_day": "2020-12-31",
+       "return": 0.06042946359626833
+      },
+      "2021": {
+       "complete": true,
+       "first_day": "2021-01-01",
+       "last_day": "2021-12-31",
+       "return": 0.04465190156261012
+      },
+      "2022": {
+       "complete": true,
+       "first_day": "2022-01-01",
+       "last_day": "2022-12-31",
+       "return": -0.02893346423528209
+      },
+      "2023": {
+       "complete": true,
+       "first_day": "2023-01-01",
+       "last_day": "2023-12-31",
+       "return": 0.0456316578934588
+      },
+      "2024": {
+       "complete": true,
+       "first_day": "2024-01-01",
+       "last_day": "2024-12-31",
+       "return": 0.0340421481017128
+      }
+     },
+     "calmar": 0.5977570618318838,
+     "cost_multiple": 1.0,
+     "costs": {
+      "fee_drag_per_year": 0.001545178063825519,
+      "fees": 83.70589794462296,
+      "funding": 82.91495524319542,
+      "funding_drag_per_year": 0.001530577571602172,
+      "price_pnl": 1881.3882639539522,
+      "slippage": 83.70629121162158,
+      "slippage_drag_per_year": 0.001545185323380155
+     },
+     "drawdown_brakes": false,
+     "drawdown_stop_fired_on": null,
+     "expected_shortfall_5pct": -0.003702799196672676,
+     "fills": 2274,
+     "final_equity": 11631.061119554593,
+     "first_day": "2020-01-01",
+     "funding_events": 19742.0,
+     "funding_events_imputed": 1.0,
+     "funding_imputed_share": 5.065342923715936e-05,
+     "funding_overlay": false,
+     "gross_annual_return_arithmetic": 0.03523152967537441,
+     "gross_return": 0.18813882639539492,
+     "initial_equity": 10000.0,
+     "label": "MANDATE|conservative|base|brakes_off|no_overlay",
+     "last_day": "2024-12-31",
+     "ledger_residual": 8.185452315956354e-11,
+     "max_drawdown": 0.051268235779866944,
+     "max_exposure": 0.10030114359391308,
+     "max_order_share_of_daily_volume": 2.2975718868143245e-05,
+     "net_annual_return_arithmetic": 0.030643387992003716,
+     "net_return": 0.16310611195546043,
+     "observations": 1827,
+     "policy": "MANDATE",
+     "positive_days_share": 0.4794745484400657,
+     "rejections": {
+      "BELOW_EXCHANGE_MINIMUM_NOTIONAL": 183,
+      "POSITION_LIMIT": 19427,
+      "QUANTITY_ROUNDS_TO_ZERO": 161
+     },
+     "risk_level": "conservative",
+     "risk_per_trade_approved": 0.0025,
+     "risk_per_trade_effective": 0.0025,
+     "share_of_days_with_a_position": 0.9304871373836892,
+     "sharpe": 1.0139759181296386,
+     "sortino": 1.5024151191558601,
+     "stop_events": {
+      "STOP": 141
+     },
+     "trades": {
+      "average_days_held": 7.069078947368421,
+      "average_loss": -6.824028004246957,
+      "average_win": 14.812505505050755,
+      "exit_reasons": {
+       "STOP": 141,
+       "TARGET_ZERO": 771
+      },
+      "hit_rate": 0.3991228070175439,
+      "largest_loss": -29.813435071803937,
+      "largest_win": 163.53019763590027,
+      "profit_factor": 1.4418117136287891,
+      "symbols_traded": 112,
+      "trades_closed": 912,
+      "trades_open_at_end": 4
+     },
+     "turnover_per_year": 3.0903706467603045,
+     "worst_day": -0.009297570537930233,
+     "years": 5.005479452054795
+    },
+    "MANDATE|conservative|base|brakes_on|no_overlay": {
+     "annual_return": 0.030351281644190653,
+     "annual_volatility": 0.030196623800018172,
+     "average_exposure": 0.030558214582686455,
+     "average_positions": 3.551176792556103,
+     "best_day": 0.008668106933913178,
+     "brake_days": {
+      "daily_pause": 0,
+      "halted": 0,
+      "halved": 9
+     },
+     "calendar_years": {
+      "2020": {
+       "complete": true,
+       "first_day": "2020-01-01",
+       "last_day": "2020-12-31",
+       "return": 0.06042946359626833
+      },
+      "2021": {
+       "complete": true,
+       "first_day": "2021-01-01",
+       "last_day": "2021-12-31",
+       "return": 0.04465190156261012
+      },
+      "2022": {
+       "complete": true,
+       "first_day": "2022-01-01",
+       "last_day": "2022-12-31",
+       "return": -0.02893346423528209
+      },
+      "2023": {
+       "complete": true,
+       "first_day": "2023-01-01",
+       "last_day": "2023-12-31",
+       "return": 0.04348292396930331
+      },
+      "2024": {
+       "complete": true,
+       "first_day": "2024-01-01",
+       "last_day": "2024-12-31",
+       "return": 0.034689426623879305
+      }
+     },
+     "calmar": 0.5973400576709227,
+     "cost_multiple": 1.0,
+     "costs": {
+      "fee_drag_per_year": 0.0015462818656579369,
+      "fees": 83.72468707795865,
+      "funding": 86.22862631851032,
+      "funding_drag_per_year": 0.0015925262408297333,
+      "price_pnl": 1868.1038428074437,
+      "slippage": 83.72508083494434,
+      "slippage_drag_per_year": 0.0015462891378175314
+     },
+     "drawdown_brakes": true,
+     "drawdown_stop_fired_on": null,
+     "expected_shortfall_5pct": -0.0037034139807847655,
+     "fills": 2286,
+     "final_equity": 11614.425448576118,
+     "first_day": "2020-01-01",
+     "funding_events": 19742.0,
+     "funding_events_imputed": 1.0,
+     "funding_imputed_share": 5.065342923715936e-05,
+     "funding_overlay": false,
+     "gross_annual_return_arithmetic": 0.035006836994997174,
+     "gross_return": 0.18681038428074426,
+     "initial_equity": 10000.0,
+     "label": "MANDATE|conservative|base|brakes_on|no_overlay",
+     "last_day": "2024-12-31",
+     "ledger_residual": 8.549250196665525e-11,
+     "max_drawdown": 0.05081072540578102,
+     "max_exposure": 0.10047710947261083,
+     "max_order_share_of_daily_volume": 2.2975718868143245e-05,
+     "net_annual_return_arithmetic": 0.030356680524796727,
+     "net_return": 0.16144254485761578,
+     "observations": 1827,
+     "policy": "MANDATE",
+     "positive_days_share": 0.4794745484400657,
+     "rejections": {
+      "BELOW_EXCHANGE_MINIMUM_NOTIONAL": 184,
+      "POSITION_LIMIT": 19427,
+      "QUANTITY_ROUNDS_TO_ZERO": 161
+     },
+     "risk_level": "conservative",
+     "risk_per_trade_approved": 0.0025,
+     "risk_per_trade_effective": 0.0025,
+     "share_of_days_with_a_position": 0.9304871373836892,
+     "sharpe": 1.0053004841149975,
+     "sortino": 1.4889623170433317,
+     "stop_events": {
+      "STOP": 141
+     },
+     "trades": {
+      "average_days_held": 7.069078947368421,
+      "average_loss": -6.8173201163238435,
+      "average_win": 14.751937492639222,
+      "exit_reasons": {
+       "STOP": 141,
+       "TARGET_ZERO": 771
+      },
+      "hit_rate": 0.3991228070175439,
+      "largest_loss": -29.813435071803937,
+      "largest_win": 162.3372030836353,
+      "profit_factor": 1.437329043662947,
+      "symbols_traded": 112,
+      "trades_closed": 912,
+      "trades_open_at_end": 4
+     },
+     "turnover_per_year": 3.0925782756350593,
+     "worst_day": -0.009297570537930233,
+     "years": 5.005479452054795
+    },
+    "MANDATE|conservative|base|brakes_on|overlay": {
+     "annual_return": 0.026811108154262797,
+     "annual_volatility": 0.025188710137125175,
+     "average_exposure": 0.02616537009331077,
+     "average_positions": 3.28024083196497,
+     "best_day": 0.007889680844392233,
+     "brake_days": {
+      "daily_pause": 0,
+      "halted": 0,
+      "halved": 9
+     },
+     "calendar_years": {
+      "2020": {
+       "complete": true,
+       "first_day": "2020-01-01",
+       "last_day": "2020-12-31",
+       "return": 0.05522781384958675
+      },
+      "2021": {
+       "complete": true,
+       "first_day": "2021-01-01",
+       "last_day": "2021-12-31",
+       "return": 0.03157879424712928
+      },
+      "2022": {
+       "complete": true,
+       "first_day": "2022-01-01",
+       "last_day": "2022-12-31",
+       "return": -0.028713478748841004
+      },
+      "2023": {
+       "complete": true,
+       "first_day": "2023-01-01",
+       "last_day": "2023-12-31",
+       "return": 0.043217034953940026
+      },
+      "2024": {
+       "complete": true,
+       "first_day": "2024-01-01",
+       "last_day": "2024-12-31",
+       "return": 0.03501128573634715
+      }
+     },
+     "calmar": 0.5302119953936988,
+     "cost_multiple": 1.0,
+     "costs": {
+      "fee_drag_per_year": 0.0013948070200355243,
+      "fees": 74.50582260563195,
+      "funding": -85.14474466521443,
+      "funding_drag_per_year": -0.0015939759259727463,
+      "price_pnl": 1479.9143346180488,
+      "slippage": 74.5061198258556,
+      "slippage_drag_per_year": 0.0013948125842295693
+     },
+     "drawdown_brakes": true,
+     "drawdown_stop_fired_on": null,
+     "expected_shortfall_5pct": -0.002902935057876175,
+     "fills": 2302,
+     "final_equity": 11416.047136851894,
+     "first_day": "2020-01-01",
+     "funding_events": 18213.0,
+     "funding_events_imputed": 1.0,
+     "funding_imputed_share": 5.4905836490418934e-05,
+     "funding_overlay": true,
+     "gross_annual_return_arithmetic": 0.02790462672584947,
+     "gross_return": 0.1479914334618051,
+     "initial_equity": 10000.0,
+     "label": "MANDATE|conservative|base|brakes_on|overlay",
+     "last_day": "2024-12-31",
+     "ledger_residual": 1.1823431123048067e-10,
+     "max_drawdown": 0.05056677024886003,
+     "max_exposure": 0.10095681758789109,
+     "max_order_share_of_daily_volume": 2.2995654415968097e-05,
+     "net_annual_return_arithmetic": 0.026775891699682194,
+     "net_return": 0.141604713685189,
+     "observations": 1827,
+     "policy": "MANDATE",
+     "positive_days_share": 0.4521072796934866,
+     "rejections": {
+      "BELOW_EXCHANGE_MINIMUM_NOTIONAL": 174,
+      "POSITION_LIMIT": 19427,
+      "QUANTITY_ROUNDS_TO_ZERO": 168
+     },
+     "risk_level": "conservative",
+     "risk_per_trade_approved": 0.0025,
+     "risk_per_trade_effective": 0.0025,
+     "share_of_days_with_a_position": 0.8932676518883416,
+     "sharpe": 1.0630116252049642,
+     "sortino": 1.6425240869879358,
+     "stop_events": {
+      "STOP": 119
+     },
+     "trades": {
+      "average_days_held": 6.849252013808976,
+      "average_loss": -5.862088790323913,
+      "average_win": 12.900356986225406,
+      "exit_reasons": {
+       "STOP": 119,
+       "TARGET_ZERO": 750
+      },
+      "hit_rate": 0.4004602991944764,
+      "largest_loss": -27.61841218417929,
+      "largest_win": 162.5554350018113,
+      "profit_factor": 1.4699103806967917,
+      "symbols_traded": 112,
+      "trades_closed": 869,
+      "trades_open_at_end": 4
+     },
+     "turnover_per_year": 2.7896251684591378,
+     "worst_day": -0.007778745643439833,
+     "years": 5.005479452054795
+    },
+    "MANDATE|conservative|cost_x2|brakes_off|no_overlay": {
+     "annual_return": 0.027397772809162557,
+     "annual_volatility": 0.030222822900201677,
+     "average_exposure": 0.030599963151628277,
+     "average_positions": 3.5506294471811715,
+     "best_day": 0.00864062405504229,
+     "brake_days": {
+      "daily_pause": 0,
+      "halted": 0,
+      "halved": 0
+     },
+     "calendar_years": {
+      "2020": {
+       "complete": true,
+       "first_day": "2020-01-01",
+       "last_day": "2020-12-31",
+       "return": 0.05667996228135297
+      },
+      "2021": {
+       "complete": true,
+       "first_day": "2021-01-01",
+       "last_day": "2021-12-31",
+       "return": 0.041158288660255726
+      },
+      "2022": {
+       "complete": true,
+       "first_day": "2022-01-01",
+       "last_day": "2022-12-31",
+       "return": -0.030916500756433596
+      },
+      "2023": {
+       "complete": true,
+       "first_day": "2023-01-01",
+       "last_day": "2023-12-31",
+       "return": 0.041126567356584376
+      },
+      "2024": {
+       "complete": true,
+       "first_day": "2024-01-01",
+       "last_day": "2024-12-31",
+       "return": 0.03141266567145662
+      }
+     },
+     "calmar": 0.4916932797967164,
+     "cost_multiple": 2.0,
+     "costs": {
+      "fee_drag_per_year": 0.0030858001689077685,
+      "fees": 165.81963853129554,
+      "funding": 82.6344202891146,
+      "funding_drag_per_year": 0.0015377750810717144,
+      "price_pnl": 1863.0080873854774,
+      "slippage": 165.8211949927631,
+      "slippage_drag_per_year": 0.003085829133686018
+     },
+     "drawdown_brakes": false,
+     "drawdown_stop_fired_on": null,
+     "expected_shortfall_5pct": -0.0037170254339090798,
+     "fills": 2275,
+     "final_equity": 11448.732833572429,
+     "first_day": "2020-01-01",
+     "funding_events": 19741.0,
+     "funding_events_imputed": 1.0,
+     "funding_imputed_share": 5.065599513702447e-05,
+     "funding_overlay": false,
+     "gross_annual_return_arithmetic": 0.03513429071271762,
+     "gross_return": 0.18630080873854804,
+     "initial_equity": 10000.0,
+     "label": "MANDATE|conservative|cost_x2|brakes_off|no_overlay",
+     "last_day": "2024-12-31",
+     "ledger_residual": 1.2369127944111824e-10,
+     "max_drawdown": 0.05572126757658713,
+     "max_exposure": 0.10097912730119887,
+     "max_order_share_of_daily_volume": 2.2965751094230822e-05,
+     "net_annual_return_arithmetic": 0.027486634519503818,
+     "net_return": 0.14487328335723237,
+     "observations": 1827,
+     "policy": "MANDATE",
+     "positive_days_share": 0.4767378215654078,
+     "rejections": {
+      "BELOW_EXCHANGE_MINIMUM_NOTIONAL": 179,
+      "POSITION_LIMIT": 19427,
+      "QUANTITY_ROUNDS_TO_ZERO": 158
+     },
+     "risk_level": "conservative",
+     "risk_per_trade_approved": 0.0025,
+     "risk_per_trade_effective": 0.0025,
+     "share_of_days_with_a_position": 0.9304871373836892,
+     "sharpe": 0.9094661544445075,
+     "sortino": 1.3401899294033792,
+     "stop_events": {
+      "STOP": 142
+     },
+     "trades": {
+      "average_days_held": 7.067982456140351,
+      "average_loss": -6.872908710175698,
+      "average_win": 14.68175610209396,
+      "exit_reasons": {
+       "STOP": 142,
+       "TARGET_ZERO": 770
+      },
+      "hit_rate": 0.39364035087719296,
+      "largest_loss": -29.786432193962458,
+      "largest_win": 162.33373407440007,
+      "profit_factor": 1.386777373134812,
+      "symbols_traded": 112,
+      "trades_closed": 912,
+      "trades_open_at_end": 4
+     },
+     "turnover_per_year": 3.0858291336860106,
+     "worst_day": -0.009355886131455105,
+     "years": 5.005479452054795
+    },
+    "MANDATE|conservative|cost_x2|brakes_on|no_overlay": {
+     "annual_return": 0.02683275291860543,
+     "annual_volatility": 0.030103343029860938,
+     "average_exposure": 0.03023491269102047,
+     "average_positions": 3.5506294471811715,
+     "best_day": 0.00864062405504229,
+     "brake_days": {
+      "daily_pause": 0,
+      "halted": 0,
+      "halved": 50
+     },
+     "calendar_years": {
+      "2020": {
+       "complete": true,
+       "first_day": "2020-01-01",
+       "last_day": "2020-12-31",
+       "return": 0.05667996228135297
+      },
+      "2021": {
+       "complete": true,
+       "first_day": "2021-01-01",
+       "last_day": "2021-12-31",
+       "return": 0.041158288660255726
+      },
+      "2022": {
+       "complete": true,
+       "first_day": "2022-01-01",
+       "last_day": "2022-12-31",
+       "return": -0.030916500756433596
+      },
+      "2023": {
+       "complete": true,
+       "first_day": "2023-01-01",
+       "last_day": "2023-12-31",
+       "return": 0.03808942992720055
+      },
+      "2024": {
+       "complete": true,
+       "first_day": "2024-01-01",
+       "last_day": "2024-12-31",
+       "return": 0.031585849163295876
+      }
+     },
+     "calmar": 0.4969399035747976,
+     "cost_multiple": 2.0,
+     "costs": {
+      "fee_drag_per_year": 0.0030718014897648553,
+      "fees": 164.9361173731588,
+      "funding": 108.06780767046517,
+      "funding_drag_per_year": 0.0020126753186914745,
+      "price_pnl": 1855.1933412524834,
+      "slippage": 164.93768153306013,
+      "slippage_drag_per_year": 0.0030718306209751188
+     },
+     "drawdown_brakes": true,
+     "drawdown_stop_fired_on": null,
+     "expected_shortfall_5pct": -0.003719996737344736,
+     "fills": 2299,
+     "final_equity": 11417.25173467598,
+     "first_day": "2020-01-01",
+     "funding_events": 19741.0,
+     "funding_events_imputed": 1.0,
+     "funding_imputed_share": 5.065599513702447e-05,
+     "funding_overlay": false,
+     "gross_annual_return_arithmetic": 0.03503275713941421,
+     "gross_return": 0.18551933412524857,
+     "initial_equity": 10000.0,
+     "label": "MANDATE|conservative|cost_x2|brakes_on|no_overlay",
+     "last_day": "2024-12-31",
+     "ledger_residual": 1.800799509510398e-10,
+     "max_drawdown": 0.05399597159652658,
+     "max_exposure": 0.1009725454401883,
+     "max_order_share_of_daily_volume": 2.2965751094230822e-05,
+     "net_annual_return_arithmetic": 0.02693288997450745,
+     "net_return": 0.14172517346758906,
+     "observations": 1827,
+     "policy": "MANDATE",
+     "positive_days_share": 0.47619047619047616,
+     "rejections": {
+      "BELOW_EXCHANGE_MINIMUM_NOTIONAL": 179,
+      "POSITION_LIMIT": 19427,
+      "QUANTITY_ROUNDS_TO_ZERO": 157
+     },
+     "risk_level": "conservative",
+     "risk_per_trade_approved": 0.0025,
+     "risk_per_trade_effective": 0.0025,
+     "share_of_days_with_a_position": 0.9304871373836892,
+     "sharpe": 0.8946810308672838,
+     "sortino": 1.317191523025107,
+     "stop_events": {
+      "STOP": 142
+     },
+     "trades": {
+      "average_days_held": 7.067982456140351,
+      "average_loss": -6.784703175601599,
+      "average_win": 14.572200756916251,
+      "exit_reasons": {
+       "STOP": 142,
+       "TARGET_ZERO": 770
+      },
+      "hit_rate": 0.39144736842105265,
+      "largest_loss": -29.786432193962458,
+      "largest_win": 162.33373407440007,
+      "profit_factor": 1.3815592861568786,
+      "symbols_traded": 112,
+      "trades_closed": 912,
+      "trades_open_at_end": 4
+     },
+     "turnover_per_year": 3.071830620975115,
+     "worst_day": -0.009355886131455105,
+     "years": 5.005479452054795
+    }
+   },
+   "universe": {
+    "average_members": 18.448275862068964,
+    "contracts_ever_in_universe": 136,
+    "days": 1827,
+    "days_with_a_full_universe": 1665,
+    "days_with_no_universe": 119
+   }
+  }
+ },
+ "causality_audit": {
+  "checks": [
+   {
+    "cut_day": "2021-10-01",
+    "identical_up_to_cut": true,
+    "kind": "TRUNCATED"
+   },
+   {
+    "cut_day": "2021-10-01",
+    "identical_up_to_cut": true,
+    "kind": "FUTURE_REWRITTEN"
+   },
+   {
+    "cut_day": "2022-12-31",
+    "identical_up_to_cut": true,
+    "kind": "TRUNCATED"
+   },
+   {
+    "cut_day": "2022-12-31",
+    "identical_up_to_cut": true,
+    "kind": "FUTURE_REWRITTEN"
+   },
+   {
+    "cut_day": "2024-04-01",
+    "identical_up_to_cut": true,
+    "kind": "TRUNCATED"
+   },
+   {
+    "cut_day": "2024-04-01",
+    "identical_up_to_cut": true,
+    "kind": "FUTURE_REWRITTEN"
+   }
+  ],
+  "decisions_compared": 1827,
+  "fills_compared": 3195,
+  "ok": true
+ },
+ "cost_model": {
+  "basis": "ASSUMED_BY_THE_FROZEN_MANDATE (0.05% taker fee + 0.05% slippage per side); not measured",
+  "cost_model_hash": "1a261984c62ad598297a5c05d2243987b6a5b2d7b813615f088ca8b9cde4b3f9",
+  "cost_model_id": "MANDATE_004_FROZEN_COSTS",
+  "cost_model_version": "1",
+  "funding": "ACTUAL_RATES_ON_NOTIONAL_HELD",
+  "missing_funding_max_share": 0.02,
+  "missing_funding_rate_per_8h": 0.0003,
+  "model": {
+   "funding_interval_ms": 28800000,
+   "funding_rate": 0.0,
+   "maker_fee": 0.0005,
+   "models_borrow": false,
+   "models_latency": false,
+   "models_market_impact": false,
+   "notes": "Mandate 004 frozen costs; funding from actual archive rates",
+   "slippage": 0.0005,
+   "spread": 0.0,
+   "taker_fee": 0.0005
+  },
+  "replay_cost_model_hash": "b59d6a32bc7a03bc",
+  "stress_multiple": 2.0
+ },
+ "data_quality": {
+  "data_gap_exits_in_primary_run": 0,
+  "dataset_missing_candles": 346,
+  "dataset_non_trading_bars": 56815,
+  "ended_contracts_that_were_in_the_universe": [
+   "AGIXUSDT",
+   "BAKEUSDT",
+   "BLZUSDT",
+   "EOSUSDT",
+   "FTMUSDT",
+   "HIGHUSDT",
+   "LEVERUSDT",
+   "LINAUSDT",
+   "LRCUSDT",
+   "LUNAUSDT",
+   "MATICUSDT",
+   "MKRUSDT",
+   "OCEANUSDT",
+   "OMGUSDT",
+   "PERPUSDT",
+   "REEFUSDT",
+   "RNDRUSDT",
+   "STMXUSDT",
+   "STORJUSDT",
+   "SXPUSDT",
+   "TOMOUSDT",
+   "TONUSDT",
+   "UNFIUSDT",
+   "WAVESUSDT",
+   "YFIIUSDT"
+  ],
+  "funding_imputed_share_limit": 0.02,
+  "largest_funding_imputed_share": 5.4905836490418934e-05,
+  "ok": true,
+  "reason_codes": []
+ },
+ "dataset": {
+  "dataset_hash": "0c3392d8daf78e08244fdd21edac5a93ef0c6cfd5386e3cecbf6cb379fde284e",
+  "dataset_id": "binance_usdm_daily",
+  "dataset_version": "v1",
+  "manifest_hash": "38d940f14f98a604ffe7bd3336e51b51e07fdda571b057db19327b4019a6a450"
+ },
+ "evaluated_period": [
+  "2020-01-01",
+  "2024-12-31"
+ ],
+ "evaluator_version": "daily-trend-evaluator-1",
+ "family_id": "DAILY_TREND",
+ "holdout_id": "hold_36c4dece60da11fddee1a98e",
+ "holdout_opened_by_this_run": false,
+ "hypotheses_in_register": 18,
+ "hypothesis_id": "H-018",
+ "hypothesis_number": 18,
+ "integrity": {
+  "causality_verified": true,
+  "costs_applied": true,
+  "data_quality_ok": true,
+  "dataset_frozen": true,
+  "largest_ledger_residual": 2.4374458007514477e-10,
+  "ledgers_close": true,
+  "mandate_verified": true,
+  "risk_limits_applied": true
+ },
+ "mandate_id": "MANDATE_004",
+ "mandate_pass_rule": "PENDING_HOLDOUT",
+ "numeric_tolerance": 1e-09,
+ "parent_run_id": null,
+ "pass_rule": {
+  "criteria": {
+   "1_holdout_net_return_positive": {
+    "observed": null,
+    "status": "PENDING_HOLDOUT"
+   },
+   "2_positive_calendar_years": {
+    "observed": {
+     "of_known": 5,
+     "positive": 4,
+     "required": 4,
+     "years": {
+      "2020": 0.13871863815425178,
+      "2021": 0.11247479867736265,
+      "2022": -0.07540126879397768,
+      "2023": 0.06344109451919566,
+      "2024": 0.07321493639654975
+     },
+     "years_not_covered": 1
+    },
+    "status": "PASS"
+   },
+   "3_max_drawdown_without_brake": {
+    "observed": {
+     "limit": 0.15,
+     "max_drawdown": 0.1117462805240651,
+     "period": "DEVELOPMENT_ONLY"
+    },
+    "status": "PENDING_HOLDOUT"
+   },
+   "4_holdout_net_sharpe": {
+    "observed": null,
+    "status": "PENDING_HOLDOUT"
+   }
+  },
+  "decided_without_holdout": false,
+  "level": "balanced",
+  "status": "PENDING_HOLDOUT"
+ },
+ "periods": {
+  "development_end": "2024-12-31",
+  "development_start": "2020-01-01",
+  "holdout_end": "2026-09-30",
+  "holdout_start": "2025-01-01"
+ },
+ "preparation": {
+  "relisting_bar_days_removed": 288,
+  "symbols_out_of_scope": 213,
+  "symbols_without_exchange_metadata": 47
+ },
+ "primary_scenario": "MANDATE|balanced|base|brakes_on|no_overlay",
+ "promotion": {
+  "governance_phase_changed": false,
+  "live_trading": "DISABLED",
+  "research_pass": false,
+  "trading_authorized": false
+ },
+ "provenance": {
+  "code_commit": "9d4aadb34d112ce60e6c460b5a1ab0bcfc29732f",
+  "completed_at": "2026-10-09T01:55:39Z",
+  "environment": {
+   "numpy": "2.4.1",
+   "platform": "Windows",
+   "python": "3.12.2"
+  },
+  "researcher": "Claude (coding agent), Step 2 assignment"
+ },
+ "reason_for_rerun": null,
+ "result_hash": "a48879dde9f4a9c6cdf38ea86c9e7d1ef986f3a99f56202cc83b9a7ed36f64e9",
+ "rule_artifact_hash": "7795ad79de962300351fcf4d419cd511256dce356c9ee46cdbbc21842582cbb9",
+ "run_id": "run_0b88d389f8da50dc48de5e51",
+ "run_type": "DEVELOPMENT",
+ "schema": "cati-mandate-evaluation-v1",
+ "simulator_version": "daily-portfolio-simulator-1",
+ "source_fingerprint": "59a3b6689f63bd8e61c7db5f9251bc58162d0bdb5d37a9c866478f76dc50a7aa",
+ "specification_sha256": "ea02ace43ecc75ea409dd2bb3592640e0d9b77412dc4774ddf58492ccf7e4edb",
+ "statistical_gate": "BLOCKED_PENDING_APPROVAL",
+ "statistical_gate_detail": {
+  "annualized_return_arithmetic": 0.05982715285865184,
+  "annualized_sharpe": 0.9877405782570483,
+  "bootstrap": {
+   "annualized_return_ci95": [
+    0.005735565913790749,
+    0.11688235758246823
+   ],
+   "block_length": 13,
+   "mean_ci95": [
+    1.5713879215865067e-05,
+    0.00032022563721224173
+   ],
+   "method": "CIRCULAR_BLOCK_BOOTSTRAP",
+   "p_value_one_sided": 0.014650000000000052,
+   "repetitions": 20000,
+   "seed": 22022
+  },
+  "effective_years": 4.269105456691068,
+  "hypotheses_in_register": 18,
+  "mean_daily_return": 0.00016391000783192285,
+  "multiple_testing": {
+   "deflated_benchmark_sharpe_annualized": 0.8972461126933028,
+   "deflated_note": "benchmark = expected best of N null Sharpe ratios of this length",
+   "deflated_sharpe_ratio": 0.5801623165750575,
+   "p_value_adjusted": 0.26370000000000093,
+   "sensitivity_p_adjusted": {
+    "18": 0.26370000000000093,
+    "19": 0.278350000000001,
+    "24": 0.35160000000000124
+   },
+   "tests": 18
+  },
+  "multiple_testing_method": "BONFERRONI_OVER_FULL_REGISTER",
+  "normal_approximation": {
+   "note": "cross-check on the effective sample size; the bootstrap decides",
+   "p_value_one_sided": 0.020632810719181438,
+   "z": 2.040851181894298
+  },
+  "null_hypothesis": "mean daily net return <= 0",
+  "observations": 1827,
+  "policy": {
+   "approved_by": null,
+   "authorization_reference": null,
+   "bootstrap_repetitions": 20000,
+   "bootstrap_seed": 22022,
+   "familywise_alpha": null,
+   "max_autocorrelation_lag": 30,
+   "min_observations": 250,
+   "name": "UNAPPROVED_FAIL_CLOSED",
+   "periods_per_year": 365,
+   "required_power": null,
+   "target_annual_sharpe": null
+  },
+  "policy_hash": "d0937cd37ec668584d88d7c52c333e4e3da55cf9ea60fdb9d905eb13a7e32927",
+  "power": {
+   "assumption": "Sharpe estimate ~ Normal(true Sharpe, 1/sqrt(effective years)); one-sided; Bonferroni level",
+   "minimum_detectable_annual_sharpe": 1.749382982254939,
+   "per_test_alpha": 0.002777777777777778,
+   "power_for_annual_sharpe": {
+    "0.3": 0.015656711235658816,
+    "0.5": 0.04094438301277442,
+    "0.75": 0.11061098499606037,
+    "1.0": 0.2398640571751377,
+    "1.5": 0.6279205067427658,
+    "2.0": 0.9129966275225132
+   },
+   "reference_power": 0.8,
+   "thresholds_are": "ILLUSTRATIVE_5PCT_80PCT_NOT_APPROVED"
+  },
+  "reason_codes": [
+   "STATISTICAL_GATE_THRESHOLDS_NOT_APPROVED"
+  ],
+  "sample": "DEVELOPMENT_PERIOD",
+  "serial_dependence": {
+   "design_effect": 1.1724890618969346,
+   "effective_n": 1558.2234916922398,
+   "lags_used": 4,
+   "n": 1827,
+   "rho_1": -0.055914781947380976
+  },
+  "status": "BLOCKED_PENDING_APPROVAL",
+  "std_daily_return": 0.0031703631212496868,
+  "unit_of_evidence": "PORTFOLIO_DAILY_NET_RETURN",
+  "unresolved_governance_requirements": [
+   "familywise_alpha",
+   "required_power",
+   "target_annual_sharpe",
+   "recorded_owner_approval"
+  ],
+  "version": "portfolio-statistical-gate-v1",
+  "years": 5.005479452054795
+ },
+ "statistical_gate_full_period": null,
+ "statistical_policy_hash": "d0937cd37ec668584d88d7c52c333e4e3da55cf9ea60fdb9d905eb13a7e32927",
+ "strategy_hash": "eb07acdb40a4d517bb44e6c89e48693d729ec55e8f95715455d488a18cb51437",
+ "verdict": "PENDING_HOLDOUT"
+}

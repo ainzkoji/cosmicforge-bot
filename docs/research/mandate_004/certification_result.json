@@ -1,0 +1,135 @@
+{
+ "certification_status": {
+  "cati_mode": "SHADOW_ONLY",
+  "certified": false,
+  "eligible_for_demo": false,
+  "eligible_for_live": false,
+  "family": "DAILY_TREND"
+ },
+ "content_hash": "c3536114165b27e549e984d419f62ff34ba099a50c7351bee34966cd0d525806",
+ "cost_model_hash": "1a261984c62ad598297a5c05d2243987b6a5b2d7b813615f088ca8b9cde4b3f9",
+ "dataset_hash": "0c3392d8daf78e08244fdd21edac5a93ef0c6cfd5386e3cecbf6cb379fde284e",
+ "family_id": "DAILY_TREND",
+ "headline": {
+  "development": {
+   "annual_return": 0.05970360265931007,
+   "annual_volatility": 0.060569702385035055,
+   "by_risk_level": {
+    "EXECUTABLE": {
+     "aggressive": {
+      "max_drawdown": 0.0439582219240946,
+      "net_return": 0.20186791326346176,
+      "risk_per_trade_effective": 0.004,
+      "sharpe": 1.2184814669416488
+     },
+     "balanced": {
+      "max_drawdown": 0.042338519024232024,
+      "net_return": 0.12589235493008188,
+      "risk_per_trade_effective": 0.004,
+      "sharpe": 0.9451250503049007
+     },
+     "conservative": {
+      "max_drawdown": 0.021639686434579586,
+      "net_return": 0.06381143170156744,
+      "risk_per_trade_effective": 0.0025,
+      "sharpe": 0.9840714877947849
+     }
+    },
+    "MANDATE": {
+     "aggressive": {
+      "max_drawdown": 0.15824871835516297,
+      "net_return": 0.5264949074959535,
+      "risk_per_trade_effective": 0.0075,
+      "sharpe": 0.9553045963763994
+     },
+     "balanced": {
+      "max_drawdown": 0.11542041550868753,
+      "net_return": 0.3367803431170495,
+      "risk_per_trade_effective": 0.005,
+      "sharpe": 0.9877405782570482
+     },
+     "conservative": {
+      "max_drawdown": 0.05081072540578102,
+      "net_return": 0.16144254485761578,
+      "risk_per_trade_effective": 0.0025,
+      "sharpe": 1.0053004841149975
+     }
+    }
+   },
+   "costs": {
+    "fees": 168.7731114432509,
+    "funding": 380.02480801949184,
+    "slippage": 168.77393463847503
+   },
+   "first_day": "2020-01-01",
+   "gross_return": 0.40853752852717395,
+   "last_day": "2024-12-31",
+   "max_drawdown": 0.11542041550868753,
+   "net_return": 0.3367803431170495,
+   "observations": 1827,
+   "sharpe": 0.9877405782570482,
+   "trades_closed": 1192
+  }
+ },
+ "holdout": {
+  "holdout_id": "hold_36c4dece60da11fddee1a98e",
+  "opened_by_this_run": false,
+  "status": "HOLDOUT_RESERVED"
+ },
+ "hypotheses_in_register": 18,
+ "hypothesis_id": "H-018",
+ "hypothesis_number": 18,
+ "integrity": {
+  "causality_verified": true,
+  "costs_applied": true,
+  "data_quality_ok": true,
+  "dataset_frozen": true,
+  "largest_ledger_residual": 2.4374458007514477e-10,
+  "ledgers_close": true,
+  "mandate_verified": true,
+  "risk_limits_applied": true
+ },
+ "mandate_id": "MANDATE_004",
+ "mandate_pass_rule": "PENDING_HOLDOUT",
+ "manifest_hash": "38d940f14f98a604ffe7bd3336e51b51e07fdda571b057db19327b4019a6a450",
+ "pass_rule_criteria": {
+  "1_holdout_net_return_positive": "PENDING_HOLDOUT",
+  "2_positive_calendar_years": "PASS",
+  "3_max_drawdown_without_brake": "PENDING_HOLDOUT",
+  "4_holdout_net_sharpe": "PENDING_HOLDOUT"
+ },
+ "primary_scenario": "MANDATE|balanced|base|brakes_on|no_overlay",
+ "promotion": {
+  "governance_phase_changed": false,
+  "live_trading": "DISABLED",
+  "research_pass": false,
+  "rule_based_admission": {
+   "note": "eligibility is an input to PromotionGovernance; it never changes a phase or enables trading",
+   "promotes": false,
+   "reason_codes": [
+    "HOLDOUT_NOT_EVALUATED_UNDER_RECORDED_AUTHORIZATION",
+    "FROZEN_MANDATE_PASS_RULE_NOT_PASSED",
+    "STATISTICAL_GATE_BLOCKED_PENDING_APPROVAL",
+    "CERTIFICATION_VERDICT_NOT_PASS"
+   ],
+   "route": "RULE_BASED_PORTFOLIO_ADMISSION_V1",
+   "route_approved": false,
+   "status": "NOT_ELIGIBLE"
+  },
+  "trading_authorized": false
+ },
+ "recommendation": "BLOCKED PENDING AUTHORIZATION",
+ "result_hash": "a48879dde9f4a9c6cdf38ea86c9e7d1ef986f3a99f56202cc83b9a7ed36f64e9",
+ "run_id": "run_0b88d389f8da50dc48de5e51",
+ "run_type": "DEVELOPMENT",
+ "schema": "cati-certification-result-v1",
+ "source_fingerprint": "59a3b6689f63bd8e61c7db5f9251bc58162d0bdb5d37a9c866478f76dc50a7aa",
+ "specification_sha256": "ea02ace43ecc75ea409dd2bb3592640e0d9b77412dc4774ddf58492ccf7e4edb",
+ "statistical_gate": "BLOCKED_PENDING_APPROVAL",
+ "step3": {
+  "daily_targets_artifact": "runs/run_0b88d389f8da50dc48de5e51/development_primary_daily_targets.csv",
+  "rules": "app.trading_intelligence.families.daily_trend (rules.py, targets.py, spec.py)"
+ },
+ "strategy_hash": "eb07acdb40a4d517bb44e6c89e48693d729ec55e8f95715455d488a18cb51437",
+ "verdict": "PENDING_HOLDOUT"
+}

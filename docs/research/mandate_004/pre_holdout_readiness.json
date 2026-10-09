@@ -1,0 +1,55 @@
+{
+ "dataset_hash": "0c3392d8daf78e08244fdd21edac5a93ef0c6cfd5386e3cecbf6cb379fde284e",
+ "development_run_id": "run_0b88d389f8da50dc48de5e51",
+ "evidence": {
+  "attested_by": "Claude (coding agent): independent recomputation and from-scratch reproduction of run_0b88d389f8da50dc48de5e51 both agree",
+  "code_commit": "9d4aadb34d112ce60e6c460b5a1ab0bcfc29732f",
+  "development_result_hash": "a48879dde9f4a9c6cdf38ea86c9e7d1ef986f3a99f56202cc83b9a7ed36f64e9",
+  "development_verdict": "PENDING_HOLDOUT",
+  "holdout_id": "hold_36c4dece60da11fddee1a98e",
+  "holdout_window": [
+   "2025-01-01",
+   "2026-09-30"
+  ],
+  "statistical_thresholds_approved": false,
+  "tests": {
+   "failed_or_errored": 0,
+   "green": true,
+   "junit_sha256": "d4be8303ddb625af015f686c0845fdd16190adf5cf67ccc9d8d4fd05fa393fa4",
+   "lookahead_green": true,
+   "lookahead_tests": 5,
+   "modules": {
+    "test_step2_daily_dataset": 16,
+    "test_step2_mandate_004": 7,
+    "test_step2_official_evaluation": 15,
+    "test_step2_report": 9,
+    "test_step2_research_governance": 32,
+    "test_step2_trend_evaluator": 57
+   },
+   "report_green": true,
+   "skipped": 0,
+   "tests": 144
+  }
+ },
+ "facts": {
+  "causality_audit_green": true,
+  "costs_registered": true,
+  "dataset_frozen": true,
+  "development_run_valid": true,
+  "hypothesis_registered": true,
+  "mandate_frozen": true,
+  "no_known_critical_defect": true,
+  "reporting_ready": true,
+  "reproduction_documented": true,
+  "simulator_tests_green": true,
+  "source_committed_clean": true,
+  "statistical_gate_frozen": true
+ },
+ "mandate_id": "MANDATE_004",
+ "readiness_hash": "1b266a008bb7a6d4bd21653ed9ce2134d457d496c905a2012009546eae9ff3a4",
+ "reason_codes": [],
+ "source_fingerprint": "59a3b6689f63bd8e61c7db5f9251bc58162d0bdb5d37a9c866478f76dc50a7aa",
+ "specification_sha256": "ea02ace43ecc75ea409dd2bb3592640e0d9b77412dc4774ddf58492ccf7e4edb",
+ "status": "READY",
+ "version": "step2-pre-holdout-readiness-v1"
+}
