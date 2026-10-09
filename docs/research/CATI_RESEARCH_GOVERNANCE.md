@@ -161,8 +161,12 @@ It does not change a phase, enable an entry or touch a flag. `governance/phases.
    removes the first attempt.
 6. The data loader returns held-back rows only against the access token produced in step 4.
 
-Two points the owner must weigh before authorizing the Mandate 004 holdout:
+Three points the owner must weigh before authorizing the Mandate 004 holdout:
 
+- The frozen specification leaves 21 points open. They were fixed in writing before any price series was
+  loaded (`research/trend_v1/INTERPRETATION_001.md`, `INTERPRETATION_002.md`) and registered as amendments,
+  by the engineering agent. They are missing mandate parameters that still need the owner's approval; the
+  authorization command records that approval as an acknowledgement.
 - Its held-back period (2025-01-01 to 2026-09-30) overlaps the period 2024-09-25 to 2026-07-12 that the
   seventeen earlier hypotheses used for development. The daily trend rules were frozen without being run, but
   the period is not unseen by the research programme.
