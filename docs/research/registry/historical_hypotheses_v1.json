@@ -1,0 +1,851 @@
+{
+ "schema_version": "historical-hypotheses-source-v1",
+ "prepared_on": "2026-10-09",
+ "prepared_from": "repository evidence at commit 8dcf1c10c55f2018d81e319b4367e6e65cd3add7 (registries, reports, git history)",
+ "counting_rule": {
+  "id": "ONE_PER_SEPARATELY_GATED_HYPOTHESIS_V1",
+  "statement": "A hypothesis is one separately identified trading or forecasting idea that was given its own frozen evaluation and its own recorded verdict. Sub-variants searched inside one registered candidate (regularisation values, model families, architectures) and a re-scoring that adds no information are part of that candidate, not further hypotheses.",
+  "arithmetic": "4 forecast-model candidates (V1 with its V2 re-scoring, V3, V4, V5) + 6 Alpha V1 + 4 Alpha V2 + 3 Mandate 003 = 17",
+  "status": "RECONSTRUCTED. The number 17 is given by the Step 2 assignment (9 October 2026). No document in the repository states it or enumerates the seventeen; this rule is the best-supported reading of the evidence and needs the project owner's confirmation.",
+  "alternatives_considered": [
+   {
+    "rule": "13 labelled alpha/mandate hypotheses + the four items labelled RESEARCH_CANDIDATE_V2..V5",
+    "count": 17,
+    "difference": "drops forecast V1 as an identity although it has an explicit REJECTED_PRE_HOLDOUT"
+   },
+   {
+    "rule": "13 + the four baseline setup families",
+    "count": 17,
+    "difference": "the baseline setups have no registry, gate or verdict and all model work is ignored"
+   },
+   {
+    "rule": "all five forecast versions separately + 13",
+    "count": 18,
+    "difference": "V2 counted apart from V1"
+   },
+   {
+    "rule": "finest granularity (every model family and architecture)",
+    "count": 23,
+    "difference": "sub-variants counted"
+   }
+  ],
+  "consequence_for_statistics": "the multiple-testing adjustment is reported for N = 18 (this register) and, as a sensitivity, for N = 19 and N = 24"
+ },
+ "hypotheses": [
+  {
+   "hypothesis_id": "H-001",
+   "hypothesis_number": 1,
+   "source_identifier": "cati_lib_0ead8264955eb958b20e165e (V1) + cati_lib_80348290bf88005f4b2c151c (RESEARCH_CANDIDATE_V2_CAUSAL_BASELINE_CORRECTION)",
+   "family_id": "FORECAST_OUTCOME_LIBRARY",
+   "mandate_id": "NONE_RECORDED",
+   "strategy_description": "Analog outcome-library forecast of the probability that a candidate of the four baseline setups is net profitable (15m, 48-bar horizon, 3,007,222 rows). Its V2 form is the same model re-scored against a causal expanding baseline and 'deliberately adds no predictive information'; both are one hypothesis here.",
+   "created_at": {
+    "value": "UNKNOWN",
+    "note": "V1 has no registry; the V2 candidate file was first committed 2026-10-02T07:18:05+02:00"
+   },
+   "specification_hash": {
+    "library_hash_v1": "0ead8264955eb958b20e165edfd3dfc1ecd1548731e717e87c4bb04f526bc9b4",
+    "library_hash_v2": "80348290bf88005f4b2c151ce322dbb67f8d7a36095f9f244694315e548f3e55",
+    "calibration_policy_hash": "d6baee27c12dd48d49cd3d60fc1164cf8752c3470ed676972234e0c2043ca8ae"
+   },
+   "source_commit": "4719a831e0e4c8e8bf911e6cd5e865715cf9cf3e (clean_code_commit of the V2 candidate); V1 build commit UNKNOWN",
+   "data_manifest_hash": {
+    "dataset_manifest_hash": "d64e5c517fd634e57ecff9441341d67ea9009072d0b184772471cd33e5903dfb",
+    "v2_library_manifest_hash": "276cbccc811b052ea542ee2c48b2689d1d898d447d7013382d6dc89000d24344"
+   },
+   "development_period": {
+    "start": "UNKNOWN",
+    "end": "before 2026-07-12T17:14:59.999Z",
+    "basis": "registry records only holdout_start_ms 1783876499999 and 'the entire pre-holdout range has previously been inspected'; the dataset window opens 2024-09-23 (crypto_broad_binance_v1)"
+   },
+   "holdout_period": {
+    "start": "2026-07-12T17:14:59.999Z",
+    "end": "UNKNOWN",
+    "opened": false,
+    "basis": "holdout_start_ms 1783876499999; holdout_query_count 0; the end is not in any tracked document"
+   },
+   "evaluation_id": "cati_lib_80348290bf88005f4b2c151c",
+   "decision_date": "2026-10-02 (commit 18e10b59, evidence recorded)",
+   "status": "REJECTED_PRE_HOLDOUT",
+   "failure_reasons": [
+    "V1: Brier skill 0.0004776754 below the frozen 0.02 (CALIBRATION_DEFECT = YES)",
+    "V2: Brier skill 0.0010456895 below the frozen 0.02"
+   ],
+   "governance_stage": "M0 (RESEARCH_ONLY; never promoted)",
+   "evidence_locations": [
+    "docs/research/cati_calibration_failure_root_cause.md",
+    "docs/research/cati_causal_baseline_candidate.json",
+    "docs/research/cati_next_candidate_design.md",
+    "docs/research/cati_final_activation_closure.md"
+   ],
+   "notes": "Evaluation timestamps are not recorded; only commit dates exist."
+  },
+  {
+   "hypothesis_id": "H-002",
+   "hypothesis_number": 2,
+   "source_identifier": "cati_v3_f97c1349086b6c1068ee49c0 (RESEARCH_CANDIDATE_V3_INFORMATION_CONDITIONING)",
+   "family_id": "FORECAST_OUTCOME_LIBRARY",
+   "mandate_id": "NONE_RECORDED",
+   "strategy_description": "L2 additive logistic model on log geometry with three registered regularisation variants, nested chronological evaluation.",
+   "created_at": "2026-10-02T22:54:59+02:00 (registry first committed, f7d2689c)",
+   "specification_hash": {
+    "library_hash": "f97c1349086b6c1068ee49c06aaee3a6c0d02d3f1a1e38ab6660496eac61825e",
+    "registry_hash_recorded": "ad76a87ae9bbf5ec7febc4f7355f323e8cbdf9c381bfe61c55ab20a2d52cd20e",
+    "registry_file_sha256": "0889fc980ad43f2b217c31cfc0e149f172987ac1b1c3b237780d9c149a47fe12"
+   },
+   "source_commit": "a839d250bfe197e0b923aec2f211e3547262d3ee",
+   "data_manifest_hash": {
+    "dataset_manifest_hash": "d64e5c517fd634e57ecff9441341d67ea9009072d0b184772471cd33e5903dfb"
+   },
+   "development_period": {
+    "start": "UNKNOWN",
+    "end": "before 2026-07-12T17:14:59.999Z",
+    "basis": "registry records only holdout_start_ms 1783876499999 and 'the entire pre-holdout range has previously been inspected'; the dataset window opens 2024-09-23 (crypto_broad_binance_v1)"
+   },
+   "holdout_period": {
+    "start": "2026-07-12T17:14:59.999Z",
+    "end": "UNKNOWN",
+    "opened": false,
+    "basis": "holdout_start_ms 1783876499999; holdout_query_count 0; the end is not in any tracked document"
+   },
+   "evaluation_id": "cati_v3_f97c1349086b6c1068ee49c0",
+   "decision_date": "2026-10-02 (commit 81aceaa6)",
+   "status": "REJECTED_PRE_HOLDOUT",
+   "failure_reasons": [
+    "pooled Brier skill 0.0185275224 below the frozen 0.02",
+    "one aborted first run (non-convergence), disclosed"
+   ],
+   "governance_stage": "M0 (RESEARCH_ONLY; never promoted)",
+   "evidence_locations": [
+    "docs/research/cati_v3_research_registry.json",
+    "docs/research/cati_v3_development_report.md",
+    "docs/research/cati_v3_development_result.json"
+   ],
+   "notes": ""
+  },
+  {
+   "hypothesis_id": "H-003",
+   "hypothesis_number": 3,
+   "source_identifier": "cati_v4_a71dc63a483d307c3b6cfbeb (RESEARCH_CANDIDATE_V4_EDGE_AND_PAYOFF)",
+   "family_id": "FORECAST_OUTCOME_LIBRARY",
+   "mandate_id": "NONE_RECORDED",
+   "strategy_description": "Nested search over four registered probability families (regularised spline logistic, family-aware geometry, causal market context, bounded hybrid) with a fixed payoff model.",
+   "created_at": "2026-10-03T00:06:54+02:00 (registry first committed, 44a19175)",
+   "specification_hash": {
+    "candidate_hash": "a71dc63a483d307c3b6cfbeb1d8d9649b46ae19e044e8120fc1927dd680f6d16",
+    "registry_hash_recorded": "ade7184da9393b91efb6e2ad9110e465997b71145b63eab6f21fd01880a98ae5",
+    "registry_file_sha256": "fb843717f44d6a58425a2cdbb638b6ecdf740c3150308c11806904ae601d649b"
+   },
+   "source_commit": "705d7b1f2638d70b72a2af7374def3abecba3310",
+   "data_manifest_hash": {
+    "dataset_manifest_hash": "d64e5c517fd634e57ecff9441341d67ea9009072d0b184772471cd33e5903dfb"
+   },
+   "development_period": {
+    "start": "UNKNOWN",
+    "end": "before 2026-07-12T17:14:59.999Z",
+    "basis": "registry records only holdout_start_ms 1783876499999 and 'the entire pre-holdout range has previously been inspected'; the dataset window opens 2024-09-23 (crypto_broad_binance_v1)"
+   },
+   "holdout_period": {
+    "start": "2026-07-12T17:14:59.999Z",
+    "end": "UNKNOWN",
+    "opened": false,
+    "basis": "holdout_start_ms 1783876499999; holdout_query_count 0; the end is not in any tracked document"
+   },
+   "evaluation_id": "cati_v4_a71dc63a483d307c3b6cfbeb",
+   "decision_date": "2026-10-03 (commit 03b462e6)",
+   "status": "REJECTED_PRE_HOLDOUT",
+   "failure_reasons": [
+    "pooled Brier skill 0.01928768 below the frozen 0.02",
+    "payoff model not decision-ready (top quintile realises -0.07838 R)",
+    "the four families are each REJECTED (0.01883723 / 0.01973321 / 0.01909901 / 0.02011761 with a failed robustness condition)"
+   ],
+   "governance_stage": "M0 (RESEARCH_ONLY; never promoted)",
+   "evidence_locations": [
+    "docs/research/cati_v4_research_registry.json",
+    "docs/research/cati_v4_development_report.md",
+    "docs/research/artifacts/cati_v4_a71dc63a483d307c3b6cfbeb/",
+    "docs/research/cati_v3_residual_findings_for_v4.md"
+   ],
+   "notes": "The four families are sub-variants of this one candidate and are not numbered separately."
+  },
+  {
+   "hypothesis_id": "H-004",
+   "hypothesis_number": 4,
+   "source_identifier": "cati_v5_b131674954a223230581dbbc (RESEARCH_CANDIDATE_V5_COHERENT_JOINT)",
+   "family_id": "FORECAST_OUTCOME_LIBRARY",
+   "mandate_id": "NONE_RECORDED",
+   "strategy_description": "One coherent five-state joint outcome model in three architectures (joint multinomial, histogram boosting, recency-aware).",
+   "created_at": "2026-10-03T00:56:10+02:00 (registry first committed, ca4996e5; edited in bc55c377)",
+   "specification_hash": {
+    "candidate_hash": "b131674954a223230581dbbc9d988cf9a98842055986386f29b02376cd3c7e31",
+    "registry_hash_recorded": "1b8254bc89f794bf51f60f80654f7ef99d1640a78287ce44460835fcc50ec33b",
+    "registry_file_sha256": "f1d2c67e4f2408d394b31971bfd999d46888a0ef8847a89f170b9cfc49c91e5a"
+   },
+   "source_commit": "dd700907cc7211bb9749eb1c1aaa038ea12c65a8",
+   "data_manifest_hash": {
+    "dataset_manifest_hash": "d64e5c517fd634e57ecff9441341d67ea9009072d0b184772471cd33e5903dfb"
+   },
+   "development_period": {
+    "start": "UNKNOWN",
+    "end": "before 2026-07-12T17:14:59.999Z",
+    "basis": "registry records only holdout_start_ms 1783876499999 and 'the entire pre-holdout range has previously been inspected'; the dataset window opens 2024-09-23 (crypto_broad_binance_v1)"
+   },
+   "holdout_period": {
+    "start": "2026-07-12T17:14:59.999Z",
+    "end": "UNKNOWN",
+    "opened": false,
+    "basis": "holdout_start_ms 1783876499999; holdout_query_count 0; the end is not in any tracked document"
+   },
+   "evaluation_id": "cati_v5_b131674954a223230581dbbc",
+   "decision_date": "2026-10-03 (commit 619f1e00)",
+   "status": "REJECTED_PRE_HOLDOUT",
+   "failure_reasons": [
+    "pooled Brier skill 0.02009139 passes but the registered temporal guard fails in folds 3 and 5",
+    "every fold's top expectancy bucket is negative (MODEL_READY = NO)",
+    "two earlier generations (cati_v5_2130b8e9..., cati_v5_42975f78...) are recorded as superseded benchmarks"
+   ],
+   "governance_stage": "M0 (RESEARCH_ONLY; never promoted)",
+   "evidence_locations": [
+    "docs/research/cati_v5_research_registry.json",
+    "docs/research/cati_v5_development_report.md",
+    "docs/research/cati_v5_development_result.json",
+    "docs/research/artifacts/cati_v5_b131674954a223230581dbbc/",
+    "docs/research/artifacts/cati_v5_2130b8e979e2c5d27ea97cf8/",
+    "docs/research/artifacts/cati_v5_42975f7898e66a0ef5a12fda/",
+    "docs/research/cati_economic_edge_viability_audit.md"
+   ],
+   "notes": "The registry was edited once after first registration, following a disclosed aborted run."
+  },
+  {
+   "hypothesis_id": "H-005",
+   "hypothesis_number": 5,
+   "source_identifier": "BREAKOUT_ACCEPTANCE_V1_5m_H72",
+   "family_id": "CATI_ALPHA_CONFIRMED_STRUCTURE_V1",
+   "mandate_id": "NONE_RECORDED (research attempt 1, inferred from Mandate 003's research_attempt_number 3)",
+   "strategy_description": "Two-bar breakout acceptance after contraction, 5m bars, 72-bar horizon.",
+   "created_at": "2026-10-03T09:13:38+02:00 (registry first committed, b8724a54)",
+   "specification_hash": {
+    "registry_hash_recorded": "9d0c00c72a866591eac3deae26de552ef36e8344c88bf77713a095ce7d87fb1c",
+    "registry_file_sha256": "339d2c3dec008c3b39ab8e97d34690ae4abadbb5b2a856fdfd1698be8626b4e3"
+   },
+   "source_commit": "e615b04d135e875a6e45976272280a232ad29a14 (source_tree_dirty: true)",
+   "data_manifest_hash": {
+    "value": "UNKNOWN",
+    "note": "fixed 8-symbol panel; only per-symbol prefix hashes are recorded"
+   },
+   "development_period": {
+    "start": "2024-09-25T14:44:59.999Z",
+    "end": "2026-07-12T05:14:59.999Z",
+    "basis": "development_start_ms 1727275499999 / development_stop_ms 1783833299999 in the registry"
+   },
+   "holdout_period": {
+    "start": "2026-07-12T17:14:59.999Z",
+    "end": "UNKNOWN",
+    "opened": false,
+    "basis": "holdout_start_ms 1783876499999; holdout_query_count 0; the end is not in any tracked document"
+   },
+   "evaluation_id": "CATI_ALPHA_CONFIRMED_STRUCTURE_V1 attempt 2 (COMPLETED); attempt 1 ABORTED_SOURCE_DISCOVERY",
+   "decision_date": "2026-10-03 (commit b8724a54)",
+   "status": "FAILED",
+   "failure_reasons": [
+    "FAIL: DATA_UNAVAILABLE (no 5m data; zero labels)",
+    "the explicit list of failing gate clauses is not recorded (UNKNOWN)"
+   ],
+   "governance_stage": "M0 (RESEARCH_ONLY; never promoted)",
+   "evidence_locations": [
+    "docs/research/cati_alpha_v1_registry.json",
+    "docs/research/cati_alpha_v1_first_report.md",
+    "docs/research/artifacts/cati_alpha_v1/",
+    "backends/bot-backend/app/trading_intelligence/setups/alpha_v1.py"
+   ],
+   "notes": ""
+  },
+  {
+   "hypothesis_id": "H-006",
+   "hypothesis_number": 6,
+   "source_identifier": "TREND_RECLAIM_V1_5m_H72",
+   "family_id": "CATI_ALPHA_CONFIRMED_STRUCTURE_V1",
+   "mandate_id": "NONE_RECORDED (research attempt 1, inferred from Mandate 003's research_attempt_number 3)",
+   "strategy_description": "Pullback structure reclaim, 5m bars, 72-bar horizon.",
+   "created_at": "2026-10-03T09:13:38+02:00 (registry first committed, b8724a54)",
+   "specification_hash": {
+    "registry_hash_recorded": "9d0c00c72a866591eac3deae26de552ef36e8344c88bf77713a095ce7d87fb1c",
+    "registry_file_sha256": "339d2c3dec008c3b39ab8e97d34690ae4abadbb5b2a856fdfd1698be8626b4e3"
+   },
+   "source_commit": "e615b04d135e875a6e45976272280a232ad29a14 (source_tree_dirty: true)",
+   "data_manifest_hash": {
+    "value": "UNKNOWN",
+    "note": "fixed 8-symbol panel; only per-symbol prefix hashes are recorded"
+   },
+   "development_period": {
+    "start": "2024-09-25T14:44:59.999Z",
+    "end": "2026-07-12T05:14:59.999Z",
+    "basis": "development_start_ms 1727275499999 / development_stop_ms 1783833299999 in the registry"
+   },
+   "holdout_period": {
+    "start": "2026-07-12T17:14:59.999Z",
+    "end": "UNKNOWN",
+    "opened": false,
+    "basis": "holdout_start_ms 1783876499999; holdout_query_count 0; the end is not in any tracked document"
+   },
+   "evaluation_id": "CATI_ALPHA_CONFIRMED_STRUCTURE_V1 attempt 2 (COMPLETED); attempt 1 ABORTED_SOURCE_DISCOVERY",
+   "decision_date": "2026-10-03 (commit b8724a54)",
+   "status": "FAILED",
+   "failure_reasons": [
+    "FAIL: DATA_UNAVAILABLE (no 5m data; zero labels)",
+    "the explicit list of failing gate clauses is not recorded (UNKNOWN)"
+   ],
+   "governance_stage": "M0 (RESEARCH_ONLY; never promoted)",
+   "evidence_locations": [
+    "docs/research/cati_alpha_v1_registry.json",
+    "docs/research/cati_alpha_v1_first_report.md",
+    "docs/research/artifacts/cati_alpha_v1/",
+    "backends/bot-backend/app/trading_intelligence/setups/alpha_v1.py"
+   ],
+   "notes": ""
+  },
+  {
+   "hypothesis_id": "H-007",
+   "hypothesis_number": 7,
+   "source_identifier": "BREAKOUT_ACCEPTANCE_V1_15m_H32",
+   "family_id": "CATI_ALPHA_CONFIRMED_STRUCTURE_V1",
+   "mandate_id": "NONE_RECORDED (research attempt 1, inferred from Mandate 003's research_attempt_number 3)",
+   "strategy_description": "Two-bar breakout acceptance after contraction, 15m bars, 32-bar horizon.",
+   "created_at": "2026-10-03T09:13:38+02:00 (registry first committed, b8724a54)",
+   "specification_hash": {
+    "registry_hash_recorded": "9d0c00c72a866591eac3deae26de552ef36e8344c88bf77713a095ce7d87fb1c",
+    "registry_file_sha256": "339d2c3dec008c3b39ab8e97d34690ae4abadbb5b2a856fdfd1698be8626b4e3"
+   },
+   "source_commit": "e615b04d135e875a6e45976272280a232ad29a14 (source_tree_dirty: true)",
+   "data_manifest_hash": {
+    "value": "UNKNOWN",
+    "note": "fixed 8-symbol panel; only per-symbol prefix hashes are recorded"
+   },
+   "development_period": {
+    "start": "2024-09-25T14:44:59.999Z",
+    "end": "2026-07-12T05:14:59.999Z",
+    "basis": "development_start_ms 1727275499999 / development_stop_ms 1783833299999 in the registry"
+   },
+   "holdout_period": {
+    "start": "2026-07-12T17:14:59.999Z",
+    "end": "UNKNOWN",
+    "opened": false,
+    "basis": "holdout_start_ms 1783876499999; holdout_query_count 0; the end is not in any tracked document"
+   },
+   "evaluation_id": "CATI_ALPHA_CONFIRMED_STRUCTURE_V1 attempt 2 (COMPLETED); attempt 1 ABORTED_SOURCE_DISCOVERY",
+   "decision_date": "2026-10-03 (commit b8724a54)",
+   "status": "FAILED",
+   "failure_reasons": [
+    "FAIL: 35 candidates; pooled gross +0.047851 R, net -0.063249 R",
+    "the explicit list of failing gate clauses is not recorded (UNKNOWN)"
+   ],
+   "governance_stage": "M0 (RESEARCH_ONLY; never promoted)",
+   "evidence_locations": [
+    "docs/research/cati_alpha_v1_registry.json",
+    "docs/research/cati_alpha_v1_first_report.md",
+    "docs/research/artifacts/cati_alpha_v1/",
+    "backends/bot-backend/app/trading_intelligence/setups/alpha_v1.py"
+   ],
+   "notes": ""
+  },
+  {
+   "hypothesis_id": "H-008",
+   "hypothesis_number": 8,
+   "source_identifier": "TREND_RECLAIM_V1_15m_H32",
+   "family_id": "CATI_ALPHA_CONFIRMED_STRUCTURE_V1",
+   "mandate_id": "NONE_RECORDED (research attempt 1, inferred from Mandate 003's research_attempt_number 3)",
+   "strategy_description": "Pullback structure reclaim, 15m bars, 32-bar horizon.",
+   "created_at": "2026-10-03T09:13:38+02:00 (registry first committed, b8724a54)",
+   "specification_hash": {
+    "registry_hash_recorded": "9d0c00c72a866591eac3deae26de552ef36e8344c88bf77713a095ce7d87fb1c",
+    "registry_file_sha256": "339d2c3dec008c3b39ab8e97d34690ae4abadbb5b2a856fdfd1698be8626b4e3"
+   },
+   "source_commit": "e615b04d135e875a6e45976272280a232ad29a14 (source_tree_dirty: true)",
+   "data_manifest_hash": {
+    "value": "UNKNOWN",
+    "note": "fixed 8-symbol panel; only per-symbol prefix hashes are recorded"
+   },
+   "development_period": {
+    "start": "2024-09-25T14:44:59.999Z",
+    "end": "2026-07-12T05:14:59.999Z",
+    "basis": "development_start_ms 1727275499999 / development_stop_ms 1783833299999 in the registry"
+   },
+   "holdout_period": {
+    "start": "2026-07-12T17:14:59.999Z",
+    "end": "UNKNOWN",
+    "opened": false,
+    "basis": "holdout_start_ms 1783876499999; holdout_query_count 0; the end is not in any tracked document"
+   },
+   "evaluation_id": "CATI_ALPHA_CONFIRMED_STRUCTURE_V1 attempt 2 (COMPLETED); attempt 1 ABORTED_SOURCE_DISCOVERY",
+   "decision_date": "2026-10-03 (commit b8724a54)",
+   "status": "FAILED",
+   "failure_reasons": [
+    "FAIL: 872 candidates; pooled gross -0.042231 R, net -0.151188 R; net negative in every fold",
+    "the explicit list of failing gate clauses is not recorded (UNKNOWN)"
+   ],
+   "governance_stage": "M0 (RESEARCH_ONLY; never promoted)",
+   "evidence_locations": [
+    "docs/research/cati_alpha_v1_registry.json",
+    "docs/research/cati_alpha_v1_first_report.md",
+    "docs/research/artifacts/cati_alpha_v1/",
+    "backends/bot-backend/app/trading_intelligence/setups/alpha_v1.py"
+   ],
+   "notes": ""
+  },
+  {
+   "hypothesis_id": "H-009",
+   "hypothesis_number": 9,
+   "source_identifier": "BREAKOUT_ACCEPTANCE_V1_1h_H16",
+   "family_id": "CATI_ALPHA_CONFIRMED_STRUCTURE_V1",
+   "mandate_id": "NONE_RECORDED (research attempt 1, inferred from Mandate 003's research_attempt_number 3)",
+   "strategy_description": "Two-bar breakout acceptance after contraction, 1h bars, 16-bar horizon.",
+   "created_at": "2026-10-03T09:13:38+02:00 (registry first committed, b8724a54)",
+   "specification_hash": {
+    "registry_hash_recorded": "9d0c00c72a866591eac3deae26de552ef36e8344c88bf77713a095ce7d87fb1c",
+    "registry_file_sha256": "339d2c3dec008c3b39ab8e97d34690ae4abadbb5b2a856fdfd1698be8626b4e3"
+   },
+   "source_commit": "e615b04d135e875a6e45976272280a232ad29a14 (source_tree_dirty: true)",
+   "data_manifest_hash": {
+    "value": "UNKNOWN",
+    "note": "fixed 8-symbol panel; only per-symbol prefix hashes are recorded"
+   },
+   "development_period": {
+    "start": "2024-09-25T14:44:59.999Z",
+    "end": "2026-07-12T05:14:59.999Z",
+    "basis": "development_start_ms 1727275499999 / development_stop_ms 1783833299999 in the registry"
+   },
+   "holdout_period": {
+    "start": "2026-07-12T17:14:59.999Z",
+    "end": "UNKNOWN",
+    "opened": false,
+    "basis": "holdout_start_ms 1783876499999; holdout_query_count 0; the end is not in any tracked document"
+   },
+   "evaluation_id": "CATI_ALPHA_CONFIRMED_STRUCTURE_V1 attempt 2 (COMPLETED); attempt 1 ABORTED_SOURCE_DISCOVERY",
+   "decision_date": "2026-10-03 (commit b8724a54)",
+   "status": "FAILED",
+   "failure_reasons": [
+    "FAIL: 10 candidates; pooled gross -0.052301 R, net -0.126523 R; one empty fold",
+    "the explicit list of failing gate clauses is not recorded (UNKNOWN)"
+   ],
+   "governance_stage": "M0 (RESEARCH_ONLY; never promoted)",
+   "evidence_locations": [
+    "docs/research/cati_alpha_v1_registry.json",
+    "docs/research/cati_alpha_v1_first_report.md",
+    "docs/research/artifacts/cati_alpha_v1/",
+    "backends/bot-backend/app/trading_intelligence/setups/alpha_v1.py"
+   ],
+   "notes": ""
+  },
+  {
+   "hypothesis_id": "H-010",
+   "hypothesis_number": 10,
+   "source_identifier": "TREND_RECLAIM_V1_1h_H16",
+   "family_id": "CATI_ALPHA_CONFIRMED_STRUCTURE_V1",
+   "mandate_id": "NONE_RECORDED (research attempt 1, inferred from Mandate 003's research_attempt_number 3)",
+   "strategy_description": "Pullback structure reclaim, 1h bars, 16-bar horizon.",
+   "created_at": "2026-10-03T09:13:38+02:00 (registry first committed, b8724a54)",
+   "specification_hash": {
+    "registry_hash_recorded": "9d0c00c72a866591eac3deae26de552ef36e8344c88bf77713a095ce7d87fb1c",
+    "registry_file_sha256": "339d2c3dec008c3b39ab8e97d34690ae4abadbb5b2a856fdfd1698be8626b4e3"
+   },
+   "source_commit": "e615b04d135e875a6e45976272280a232ad29a14 (source_tree_dirty: true)",
+   "data_manifest_hash": {
+    "value": "UNKNOWN",
+    "note": "fixed 8-symbol panel; only per-symbol prefix hashes are recorded"
+   },
+   "development_period": {
+    "start": "2024-09-25T14:44:59.999Z",
+    "end": "2026-07-12T05:14:59.999Z",
+    "basis": "development_start_ms 1727275499999 / development_stop_ms 1783833299999 in the registry"
+   },
+   "holdout_period": {
+    "start": "2026-07-12T17:14:59.999Z",
+    "end": "UNKNOWN",
+    "opened": false,
+    "basis": "holdout_start_ms 1783876499999; holdout_query_count 0; the end is not in any tracked document"
+   },
+   "evaluation_id": "CATI_ALPHA_CONFIRMED_STRUCTURE_V1 attempt 2 (COMPLETED); attempt 1 ABORTED_SOURCE_DISCOVERY",
+   "decision_date": "2026-10-03 (commit b8724a54)",
+   "status": "FAILED",
+   "failure_reasons": [
+    "FAIL: 552 candidates; pooled gross -0.044281 R, net -0.122481 R",
+    "the explicit list of failing gate clauses is not recorded (UNKNOWN)"
+   ],
+   "governance_stage": "M0 (RESEARCH_ONLY; never promoted)",
+   "evidence_locations": [
+    "docs/research/cati_alpha_v1_registry.json",
+    "docs/research/cati_alpha_v1_first_report.md",
+    "docs/research/artifacts/cati_alpha_v1/",
+    "backends/bot-backend/app/trading_intelligence/setups/alpha_v1.py"
+   ],
+   "notes": ""
+  },
+  {
+   "hypothesis_id": "H-011",
+   "hypothesis_number": 11,
+   "source_identifier": "CROSS_SECTIONAL_RELATIVE_STRENGTH",
+   "family_id": "CATI_ALPHA_CAUSAL_DIVERSIFIED_V2",
+   "mandate_id": "NONE_RECORDED (research attempt 2, inferred from Mandate 003's research_attempt_number 3)",
+   "strategy_description": "Cross-sectional relative strength across 136 perpetuals, 15m, 48-bar horizon.",
+   "created_at": "2026-10-03T11:02:21+02:00 (registry first committed, 6e0b42c6)",
+   "specification_hash": {
+    "registry_hash_recorded": "54b6fcc12706749f498cbc4c184506c9e1625c1ee638b3a3878683d5b21493ec",
+    "registry_file_sha256": "1935818f2a4a917f596a323ac991381d2b6ead94c2e00ef5862bf0733165ac1e"
+   },
+   "source_commit": "b8724a54aea91c4ac429cf9d95fc8534751f7378 (dirty tree)",
+   "data_manifest_hash": {
+    "dataset_manifest_hash": "d64e5c517fd634e57ecff9441341d67ea9009072d0b184772471cd33e5903dfb"
+   },
+   "development_period": {
+    "start": "2024-09-25T14:44:59.999Z",
+    "end": "2026-07-12T05:14:59.999Z",
+    "basis": "development_start_ms 1727275499999 / development_stop_ms 1783833299999 in the registry"
+   },
+   "holdout_period": {
+    "start": "2026-07-12T17:14:59.999Z",
+    "end": "UNKNOWN",
+    "opened": false,
+    "basis": "holdout_start_ms 1783876499999; holdout_query_count 0; the end is not in any tracked document"
+   },
+   "evaluation_id": "CATI_ALPHA_CAUSAL_DIVERSIFIED_V2 (one evaluation run)",
+   "decision_date": "2026-10-03 (commit 6e0b42c6)",
+   "status": "FAILED",
+   "failure_reasons": [
+    "FAIL: N 20407; gross -0.032447 R, net -0.115079 R, net at 2x cost -0.197710 R",
+    "RESEARCH_PROMISING False; ECONOMIC_VIABILITY_PASS False"
+   ],
+   "governance_stage": "M0 (RESEARCH_ONLY; never promoted)",
+   "evidence_locations": [
+    "docs/research/cati_alpha_v2_registry.json",
+    "docs/research/cati_alpha_v2_fixed_report.md",
+    "docs/research/artifacts/cati_alpha_v2_fixed/",
+    "backends/bot-backend/app/trading_intelligence/setups/alpha_v2.py",
+    "docs/research/cati_final_completion_report.md"
+   ],
+   "notes": ""
+  },
+  {
+   "hypothesis_id": "H-012",
+   "hypothesis_number": 12,
+   "source_identifier": "VOLATILITY_TRANSITION_CONTINUATION",
+   "family_id": "CATI_ALPHA_CAUSAL_DIVERSIFIED_V2",
+   "mandate_id": "NONE_RECORDED (research attempt 2, inferred from Mandate 003's research_attempt_number 3)",
+   "strategy_description": "Continuation after a volatility regime transition, 15m, 48-bar horizon.",
+   "created_at": "2026-10-03T11:02:21+02:00 (registry first committed, 6e0b42c6)",
+   "specification_hash": {
+    "registry_hash_recorded": "54b6fcc12706749f498cbc4c184506c9e1625c1ee638b3a3878683d5b21493ec",
+    "registry_file_sha256": "1935818f2a4a917f596a323ac991381d2b6ead94c2e00ef5862bf0733165ac1e"
+   },
+   "source_commit": "b8724a54aea91c4ac429cf9d95fc8534751f7378 (dirty tree)",
+   "data_manifest_hash": {
+    "dataset_manifest_hash": "d64e5c517fd634e57ecff9441341d67ea9009072d0b184772471cd33e5903dfb"
+   },
+   "development_period": {
+    "start": "2024-09-25T14:44:59.999Z",
+    "end": "2026-07-12T05:14:59.999Z",
+    "basis": "development_start_ms 1727275499999 / development_stop_ms 1783833299999 in the registry"
+   },
+   "holdout_period": {
+    "start": "2026-07-12T17:14:59.999Z",
+    "end": "UNKNOWN",
+    "opened": false,
+    "basis": "holdout_start_ms 1783876499999; holdout_query_count 0; the end is not in any tracked document"
+   },
+   "evaluation_id": "CATI_ALPHA_CAUSAL_DIVERSIFIED_V2 (one evaluation run)",
+   "decision_date": "2026-10-03 (commit 6e0b42c6)",
+   "status": "FAILED",
+   "failure_reasons": [
+    "FAIL: N 12 in 11 days; gross -0.346722 R, net -0.395776 R",
+    "RESEARCH_PROMISING False; ECONOMIC_VIABILITY_PASS False"
+   ],
+   "governance_stage": "M0 (RESEARCH_ONLY; never promoted)",
+   "evidence_locations": [
+    "docs/research/cati_alpha_v2_registry.json",
+    "docs/research/cati_alpha_v2_fixed_report.md",
+    "docs/research/artifacts/cati_alpha_v2_fixed/",
+    "backends/bot-backend/app/trading_intelligence/setups/alpha_v2.py",
+    "docs/research/cati_final_completion_report.md"
+   ],
+   "notes": ""
+  },
+  {
+   "hypothesis_id": "H-013",
+   "hypothesis_number": 13,
+   "source_identifier": "MULTI_TIMEFRAME_TREND_PULLBACK",
+   "family_id": "CATI_ALPHA_CAUSAL_DIVERSIFIED_V2",
+   "mandate_id": "NONE_RECORDED (research attempt 2, inferred from Mandate 003's research_attempt_number 3)",
+   "strategy_description": "Multi-timeframe trend pullback, 15m, 48-bar horizon.",
+   "created_at": "2026-10-03T11:02:21+02:00 (registry first committed, 6e0b42c6)",
+   "specification_hash": {
+    "registry_hash_recorded": "54b6fcc12706749f498cbc4c184506c9e1625c1ee638b3a3878683d5b21493ec",
+    "registry_file_sha256": "1935818f2a4a917f596a323ac991381d2b6ead94c2e00ef5862bf0733165ac1e"
+   },
+   "source_commit": "b8724a54aea91c4ac429cf9d95fc8534751f7378 (dirty tree)",
+   "data_manifest_hash": {
+    "dataset_manifest_hash": "d64e5c517fd634e57ecff9441341d67ea9009072d0b184772471cd33e5903dfb"
+   },
+   "development_period": {
+    "start": "2024-09-25T14:44:59.999Z",
+    "end": "2026-07-12T05:14:59.999Z",
+    "basis": "development_start_ms 1727275499999 / development_stop_ms 1783833299999 in the registry"
+   },
+   "holdout_period": {
+    "start": "2026-07-12T17:14:59.999Z",
+    "end": "UNKNOWN",
+    "opened": false,
+    "basis": "holdout_start_ms 1783876499999; holdout_query_count 0; the end is not in any tracked document"
+   },
+   "evaluation_id": "CATI_ALPHA_CAUSAL_DIVERSIFIED_V2 (one evaluation run)",
+   "decision_date": "2026-10-03 (commit 6e0b42c6)",
+   "status": "FAILED",
+   "failure_reasons": [
+    "FAIL: N 3523; gross +0.050512 R below cost 0.102384 R; net -0.051873 R",
+    "RESEARCH_PROMISING False; ECONOMIC_VIABILITY_PASS False"
+   ],
+   "governance_stage": "M0 (RESEARCH_ONLY; never promoted)",
+   "evidence_locations": [
+    "docs/research/cati_alpha_v2_registry.json",
+    "docs/research/cati_alpha_v2_fixed_report.md",
+    "docs/research/artifacts/cati_alpha_v2_fixed/",
+    "backends/bot-backend/app/trading_intelligence/setups/alpha_v2.py",
+    "docs/research/cati_final_completion_report.md"
+   ],
+   "notes": ""
+  },
+  {
+   "hypothesis_id": "H-014",
+   "hypothesis_number": 14,
+   "source_identifier": "FLOW_CONFIRMED_DIRECTIONAL",
+   "family_id": "CATI_ALPHA_CAUSAL_DIVERSIFIED_V2",
+   "mandate_id": "NONE_RECORDED (research attempt 2, inferred from Mandate 003's research_attempt_number 3)",
+   "strategy_description": "Flow-confirmed directional entry, 15m, 48-bar horizon.",
+   "created_at": "2026-10-03T11:02:21+02:00 (registry first committed, 6e0b42c6)",
+   "specification_hash": {
+    "registry_hash_recorded": "54b6fcc12706749f498cbc4c184506c9e1625c1ee638b3a3878683d5b21493ec",
+    "registry_file_sha256": "1935818f2a4a917f596a323ac991381d2b6ead94c2e00ef5862bf0733165ac1e"
+   },
+   "source_commit": "b8724a54aea91c4ac429cf9d95fc8534751f7378 (dirty tree)",
+   "data_manifest_hash": {
+    "dataset_manifest_hash": "d64e5c517fd634e57ecff9441341d67ea9009072d0b184772471cd33e5903dfb"
+   },
+   "development_period": {
+    "start": "2024-09-25T14:44:59.999Z",
+    "end": "2026-07-12T05:14:59.999Z",
+    "basis": "development_start_ms 1727275499999 / development_stop_ms 1783833299999 in the registry"
+   },
+   "holdout_period": {
+    "start": "2026-07-12T17:14:59.999Z",
+    "end": "UNKNOWN",
+    "opened": false,
+    "basis": "holdout_start_ms 1783876499999; holdout_query_count 0; the end is not in any tracked document"
+   },
+   "evaluation_id": "CATI_ALPHA_CAUSAL_DIVERSIFIED_V2 (one evaluation run)",
+   "decision_date": "2026-10-03 (commit 6e0b42c6)",
+   "status": "FAILED",
+   "failure_reasons": [
+    "FAIL: N 16550; gross -0.009169 R, net -0.086165 R, net at 2x cost -0.163160 R",
+    "RESEARCH_PROMISING False; ECONOMIC_VIABILITY_PASS False"
+   ],
+   "governance_stage": "M0 (RESEARCH_ONLY; never promoted)",
+   "evidence_locations": [
+    "docs/research/cati_alpha_v2_registry.json",
+    "docs/research/cati_alpha_v2_fixed_report.md",
+    "docs/research/artifacts/cati_alpha_v2_fixed/",
+    "backends/bot-backend/app/trading_intelligence/setups/alpha_v2.py",
+    "docs/research/cati_final_completion_report.md"
+   ],
+   "notes": ""
+  },
+  {
+   "hypothesis_id": "H-015",
+   "hypothesis_number": 15,
+   "source_identifier": "RESIDUAL_MOMENTUM_PORTFOLIO_TOP1",
+   "family_id": "CATI_NEXT_EDGE_DISCOVERY",
+   "mandate_id": "CATI_NEXT_EDGE_DISCOVERY_MANDATE_003",
+   "strategy_description": "Hourly: the single largest 24h BTC/ETH-residual momentum z-score with |z| >= 2, long or short, 2.5R target, 48h timeout, one open position.",
+   "created_at": "2026-10-03T14:54:31+02:00 (registered, e4d3cd16)",
+   "specification_hash": {
+    "registry_file_sha256": "f3cac76976590fb59ae9f83252092dc484cf89e59b3880945288bc92458ce36f"
+   },
+   "source_commit": "8ca044670c4481ccbeb2efc112afd17e1ad288f9 (evaluator frozen); registered at e4d3cd16e19a16eb385a1d96e9d7dabd838f07df",
+   "data_manifest_hash": {
+    "value": "UNKNOWN",
+    "note": "no single manifest hash; per-symbol prefix hashes in the registry source_hashes"
+   },
+   "development_period": {
+    "start": "2024-09-25T14:44:59.999Z",
+    "end": "2026-07-12T05:14:59.999Z",
+    "basis": "development_start_ms 1727275499999 / development_stop_ms 1783833299999 in the registry"
+   },
+   "holdout_period": {
+    "start": "2026-07-12T17:14:59.999Z",
+    "end": "UNKNOWN",
+    "opened": false,
+    "basis": "holdout_start_ms 1783876499999; holdout_query_count 0; the end is not in any tracked document"
+   },
+   "evaluation_id": "Mandate 003 single run: started 2026-10-03T13:32:19Z, completed 2026-10-03T13:35:29Z (results_sha256 16366f17...18c0)",
+   "decision_date": "2026-10-03T13:35:29Z",
+   "status": "FAILED",
+   "failure_reasons": [
+    "ECONOMIC_GATE FAIL: FOLD_1_GROSS_NOT_POSITIVE",
+    "FOLD_n_NET_DAY_CLUSTERED_LCB_NOT_POSITIVE for n = 1..5",
+    "326 selected trades: gross +0.087762 R, net +0.072752 R, net at 2x cost +0.057743 R (cannot rescue the fold failures)"
+   ],
+   "governance_stage": "M0 (RESEARCH_ONLY; never promoted)",
+   "evidence_locations": [
+    "docs/research/cati_alpha_root_cause/next_edge_registry.json",
+    "docs/research/cati_alpha_root_cause/next_edge_registry.sha256",
+    "docs/research/cati_edge003/report.md",
+    "docs/research/cati_edge003/results.json",
+    "docs/research/cati_edge003/run_lock.json",
+    "docs/research/cati_edge003/run_completion.json",
+    "scripts/evaluate_cati_edge003.py",
+    "docs/research/cati_residual_prospective/",
+    "backends/bot-backend/app/trading_intelligence/integration/residual_prospective.py"
+   ],
+   "notes": "After failing, this family was kept as the frozen prospective/demo strategy without certification (conflict recorded in the governance specification)."
+  },
+  {
+   "hypothesis_id": "H-016",
+   "hypothesis_number": 16,
+   "source_identifier": "DISPERSION_BREAK_RESIDUAL_RELATIVE_VALUE",
+   "family_id": "CATI_NEXT_EDGE_DISCOVERY",
+   "mandate_id": "CATI_NEXT_EDGE_DISCOVERY_MANDATE_003",
+   "strategy_description": "Pair the weakest against the strongest residual z-score when dispersion >= 1.5x its 168h median; 24h timeout.",
+   "created_at": "2026-10-03T14:54:31+02:00 (registered, e4d3cd16)",
+   "specification_hash": {
+    "registry_file_sha256": "f3cac76976590fb59ae9f83252092dc484cf89e59b3880945288bc92458ce36f"
+   },
+   "source_commit": "8ca044670c4481ccbeb2efc112afd17e1ad288f9 (evaluator frozen); registered at e4d3cd16e19a16eb385a1d96e9d7dabd838f07df",
+   "data_manifest_hash": {
+    "value": "UNKNOWN",
+    "note": "no single manifest hash; per-symbol prefix hashes in the registry source_hashes"
+   },
+   "development_period": {
+    "start": "2024-09-25T14:44:59.999Z",
+    "end": "2026-07-12T05:14:59.999Z",
+    "basis": "development_start_ms 1727275499999 / development_stop_ms 1783833299999 in the registry"
+   },
+   "holdout_period": {
+    "start": "2026-07-12T17:14:59.999Z",
+    "end": "UNKNOWN",
+    "opened": false,
+    "basis": "holdout_start_ms 1783876499999; holdout_query_count 0; the end is not in any tracked document"
+   },
+   "evaluation_id": "Mandate 003 single run: started 2026-10-03T13:32:19Z, completed 2026-10-03T13:35:29Z (results_sha256 16366f17...18c0)",
+   "decision_date": "2026-10-03T13:35:29Z",
+   "status": "FAILED",
+   "failure_reasons": [
+    "ECONOMIC_GATE FAIL (9 clauses incl. POOLED_2X_COST_NET_NOT_POSITIVE)",
+    "MINIMUM_EVIDENCE_GATE FAIL (12 clauses)",
+    "103 selected trades: gross -0.085849 R, net -0.119538 R",
+    "runtime_capability_blocked"
+   ],
+   "governance_stage": "M0 (RESEARCH_ONLY; never promoted)",
+   "evidence_locations": [
+    "docs/research/cati_alpha_root_cause/next_edge_registry.json",
+    "docs/research/cati_alpha_root_cause/next_edge_registry.sha256",
+    "docs/research/cati_edge003/report.md",
+    "docs/research/cati_edge003/results.json",
+    "docs/research/cati_edge003/run_lock.json",
+    "docs/research/cati_edge003/run_completion.json",
+    "scripts/evaluate_cati_edge003.py"
+   ],
+   "notes": ""
+  },
+  {
+   "hypothesis_id": "H-017",
+   "hypothesis_number": 17,
+   "source_identifier": "SETTLED_FUNDING_BASIS_RELATIVE_CARRY",
+   "family_id": "CATI_NEXT_EDGE_DISCOVERY",
+   "mandate_id": "CATI_NEXT_EDGE_DISCOVERY_MANDATE_003",
+   "strategy_description": "Short the highest and long the lowest mean settled funding with a basis filter (35 assets); 72h timeout.",
+   "created_at": "2026-10-03T14:54:31+02:00 (registered, e4d3cd16)",
+   "specification_hash": {
+    "registry_file_sha256": "f3cac76976590fb59ae9f83252092dc484cf89e59b3880945288bc92458ce36f"
+   },
+   "source_commit": "8ca044670c4481ccbeb2efc112afd17e1ad288f9 (evaluator frozen); registered at e4d3cd16e19a16eb385a1d96e9d7dabd838f07df",
+   "data_manifest_hash": {
+    "value": "UNKNOWN",
+    "note": "no single manifest hash; per-symbol prefix hashes in the registry source_hashes"
+   },
+   "development_period": {
+    "start": "2024-09-25T14:44:59.999Z",
+    "end": "2026-07-12T05:14:59.999Z",
+    "basis": "development_start_ms 1727275499999 / development_stop_ms 1783833299999 in the registry"
+   },
+   "holdout_period": {
+    "start": "2026-07-12T17:14:59.999Z",
+    "end": "UNKNOWN",
+    "opened": false,
+    "basis": "holdout_start_ms 1783876499999; holdout_query_count 0; the end is not in any tracked document"
+   },
+   "evaluation_id": "Mandate 003 single run: started 2026-10-03T13:32:19Z, completed 2026-10-03T13:35:29Z (results_sha256 16366f17...18c0)",
+   "decision_date": "2026-10-03T13:35:29Z",
+   "status": "FAILED",
+   "failure_reasons": [
+    "ECONOMIC_GATE FAIL (8 clauses)",
+    "MINIMUM_EVIDENCE_GATE FAIL (fold 2)",
+    "518 selected trades: gross +0.017588 R below cost 0.059720 R; net -0.042132 R",
+    "runtime_capability_blocked"
+   ],
+   "governance_stage": "M0 (RESEARCH_ONLY; never promoted)",
+   "evidence_locations": [
+    "docs/research/cati_alpha_root_cause/next_edge_registry.json",
+    "docs/research/cati_alpha_root_cause/next_edge_registry.sha256",
+    "docs/research/cati_edge003/report.md",
+    "docs/research/cati_edge003/results.json",
+    "docs/research/cati_edge003/run_lock.json",
+    "docs/research/cati_edge003/run_completion.json",
+    "scripts/evaluate_cati_edge003.py"
+   ],
+   "notes": ""
+  }
+ ],
+ "related_records_not_numbered": [
+  {
+   "identifier": "BREAKOUT_VOL_EXPANSION_V2, MOMENTUM_CONTINUATION_V1, RANGE_MEAN_REVERSION_V2, TREND_PULLBACK_V2",
+   "what": "the four baseline setup specialists (commit 7bb89f90, 2026-09-24)",
+   "why_not_numbered": "no registry, no frozen gate and no verdict; only diagnostic economics exist (net R -0.085786, -0.056665, -0.221152, -0.484940). They are the candidate generators the forecast line scored.",
+   "evidence": [
+    "docs/research/cati_economic_edge_viability_audit.md",
+    "backends/bot-backend/app/trading_intelligence/setups/"
+   ]
+  },
+  {
+   "identifier": "cati_v4_family_* (4) and the three V5 architectures",
+   "what": "sub-variants of H-003 and H-004",
+   "why_not_numbered": "searched inside one registered candidate under its own budget",
+   "evidence": [
+    "docs/research/cati_v4_development_report.md",
+    "docs/research/cati_v5_development_report.md"
+   ]
+  },
+  {
+   "identifier": "cati_v5_2130b8e979e2c5d27ea97cf8, cati_v5_42975f7898e66a0ef5a12fda",
+   "what": "earlier generations of H-004",
+   "why_not_numbered": "recorded by the project as superseded benchmarks of the same experiment",
+   "evidence": [
+    "docs/research/artifacts/cati_v5_2130b8e979e2c5d27ea97cf8/",
+    "docs/research/artifacts/cati_v5_42975f7898e66a0ef5a12fda/"
+   ]
+  },
+  {
+   "identifier": "FX recovery and FX demo pre-holdout work",
+   "what": "data acquisition and venue validation",
+   "why_not_numbered": "no FX strategy hypothesis exists",
+   "evidence": [
+    "docs/research/cati_fx_recovery_result.md",
+    "docs/research/fx_demo_preholdout_status_2026-09-29.md"
+   ]
+  }
+ ],
+ "known_gaps": [
+  "No document states the number 17 or lists the seventeen.",
+  "Mandates 001 and 002 do not exist by name; Alpha V1 and Alpha V2 are research attempts 1 and 2 only by inference.",
+  "Evaluation timestamps for H-001..H-014 are not recorded (commit dates only).",
+  "The holdout end date is not in any tracked document.",
+  "Recorded registry_hash values for H-002..H-014 are not the SHA-256 of the registry files; both are kept.",
+  "cati_experiment_registry (the table the certification code counted trials from) holds zero rows in every local research database: none of these hypotheses was ever recorded there."
+ ]
+}

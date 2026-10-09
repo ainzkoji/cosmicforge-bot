@@ -16,3 +16,6 @@ backends/bot-backend/tests/test_cati_edge003.py -text whitespace=blank-at-eol,bl
 deploy/** text eol=lf
 scripts/backup_trading_db.py text eol=lf
 scripts/vps_health_check.py text eol=lf
+# Step 2 research governance: the frozen mandate text and the append-only research register, byte-for-byte.
+research/trend_v1/** -text whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol
+docs/research/registry/** -text whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol

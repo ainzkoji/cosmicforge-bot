@@ -44,6 +44,20 @@ OUT_OF_SCOPE = {"FOREX": "BLOCKED_DATA: no real certified Forex history/feed", "
 DETERMINISM_SAMPLE_DECISIONS = 48
 
 
+def registered_trial_floor(local_trials: int, research_register: Any = None) -> int:
+    """The multiple-testing N a certification run must use: the local count, but at least every hypothesis in
+    the authoritative research register plus this run (a Section 22 baseline is not itself a registered
+    hypothesis). ``research_register`` defaults to the committed register; a checkout without one (an installed
+    server) keeps the local count. A register that fails its own hash chain raises: a count taken from a
+    tampered history is refused, never silently replaced by a smaller one."""
+    from app.trading_intelligence.research.governance.register import ResearchRegister
+
+    register = research_register if research_register is not None else ResearchRegister()
+    if not register.path.exists():
+        return int(local_trials)
+    return max(int(local_trials), register.hypothesis_count() + 1)
+
+
 def _iso(ms: Optional[int]) -> Optional[str]:
     return datetime.fromtimestamp(ms / 1000, timezone.utc).strftime("%Y-%m-%d") if ms else None
 
@@ -73,7 +87,8 @@ def certify(series: Mapping[str, Mapping[str, Sequence[Any]]], meta: Mapping[str
             runtime_db: Any = None, open_holdout: bool = False, calendar_source_version: str = "UNAVAILABLE",
             freeze: Optional[PolicyFreezeManifest] = None, hypothesis: str = "frozen CATI deterministic baseline",
             now_ms: Optional[int] = None, library_output: Optional[Path] = None,
-            library_governance: Optional[Mapping[str, Any]] = None) -> CertificationReport:
+            library_governance: Optional[Mapping[str, Any]] = None,
+            research_register: Any = None) -> CertificationReport:
     started = int(now_ms or time.time() * 1000)
     policy = policy or canonical_certification_policy()
     from app.replay.cost_model import BINANCE_FUTURES_STANDARD
@@ -137,9 +152,12 @@ def certify(series: Mapping[str, Mapping[str, Sequence[Any]]], meta: Mapping[str
     stage_names = tuple(st.value for st in ST)
     baseline = _experiment(manifest, freeze, hypothesis, stage_names, results={}, status=ExperimentStatus.INCONCLUSIVE.value,
                            artifact_hashes={}, reasons=(), created_at=started)
-    # multiple-testing N: DISTINCT experiments on this dataset (a re-run of the same one is not a new trial)
-    trials = 1 + sum(1 for e in ExperimentRegistry(research_db).all(dataset_hash=manifest.dataset_hash)
-                     if e["experiment_id"] != baseline.experiment_id)
+    # multiple-testing N: DISTINCT experiments on this dataset (a re-run of the same one is not a new trial) --
+    # and never fewer than the authoritative research register holds. The local table alone restarts at 1 for
+    # every new dataset hash and every new database file, which is how earlier failed hypotheses were forgotten.
+    trials = registered_trial_floor(
+        1 + sum(1 for e in ExperimentRegistry(research_db).all(dataset_hash=manifest.dataset_hash)
+                if e["experiment_id"] != baseline.experiment_id), research_register)
     eval_window = plan.evaluation_window
     eval_days = eval_window.days if eval_window else 0.0
     stages: Dict[str, CertificationStageResult] = {}
