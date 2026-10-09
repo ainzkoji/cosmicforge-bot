@@ -187,7 +187,42 @@ daily trend mandate the same conflict is larger: 86% of selected entries.
 
 ## Tests
 
-Filled in under "Closure" below.
+All commands run on this Windows workstation with `backends/venv` (Python 3.12.2). A local run is not evidence
+about Linux; the remote GitHub Actions workflow is, and it has not run on these commits yet.
+
+| Command | Result |
+|---|---|
+| `python -m pytest tests/trading_intelligence -k step2 -q` (from `backends/bot-backend`) | 144 passed |
+| `ruff check backends/bot-backend/app backends/user-backend/app backends/admin-backend/app backends/shared/shared_lib --select E9,F63,F7,F82` (the CI lint job) | all checks passed |
+| `python scripts/verify_mandate_004_run.py --run-id run_0b88d389f8da50dc48de5e51 --samples 60` | AGREES: 60 decisions, 60 trades with funding, 1,827 ledger rows |
+| `python scripts/reproduce_mandate_004.py --run-id run_0b88d389f8da50dc48de5e51` | REPRODUCED: same run id, same result hash |
+| `python -m app.market_data.daily_dataset build` | 43,626 files verified, 0 failed |
+
+Step 2 tests by module: research governance 32, Mandate 004 registration 7, daily dataset 16, rules and
+simulator 57, official evaluation 15, report 9, measured costs 8.
+
+### Regression (five suites, CI commands, quarantine plugin)
+
+Run from a pristine `git archive` export of `d7deba6` (the commits after it change documents only), compared by
+failing test identity with the Step 1 final figures. The quarantine list is unchanged at 125 lines.
+
+| Suite | Step 1 final | Step 2 | New failures |
+|---|---|---|---|
+| bot-backend | 5,300 passed, 0 failed, 11 skipped, 106 xfailed, 2 xpassed | 5,454 passed, 0 failed, 11 skipped, 106 xfailed, 2 xpassed | 0 |
+| user-backend | 478 passed | 478 passed | 0 |
+| shared | 96 passed | 96 passed | 0 |
+| admin-backend | 88 passed, 6 xfailed | 88 passed, 6 xfailed | 0 |
+| root | 4 passed, 3 xfailed | 4 passed, 3 xfailed | 0 |
+
+The 11 skipped tests are the same as before (they need the operator's private `.env`, untracked local
+artifacts or a POSIX host). All 144 Step 2 tests pass in the export, where the local dataset store does not
+exist. Frontends were not touched and were not rebuilt.
+
+Platform-sensitive points were kept out of the tests by construction rather than by luck: file hashes ignore
+line endings, the register and every artifact are written with LF, content hashes use little-endian bytes,
+no test depends on a file timestamp, a time zone or a locale, and the two random sources are seeded
+generators that give the same stream on every platform. The one scenario that asserts a verdict on a random
+market is far from every threshold (Sharpe ratio 14.8 against 0.3; drawdown 0.8% against 15%).
 
 ## Security and trading safety
 
@@ -230,3 +265,52 @@ The holdout id is also in `pre_holdout_readiness.json` (`evidence.holdout_id`). 
 once (`python -m app.trading_intelligence.research.evaluator holdout --researcher "NAME"`), the report is
 regenerated, and the verdict is recorded on hypothesis 18. If the owner declines, hypothesis 18 stays
 registered without a verdict and the next candidate is registered as hypothesis 19.
+
+---
+
+# Closure (9 October 2026)
+
+| | |
+|---|---|
+| **STEP 2 IMPLEMENTATION** | **PARTIAL** |
+| **MANDATE 004 CERTIFICATION** | **BLOCKED** |
+| **Exact unresolved requirement** | the held-back period (2025-01-01 to 2026-09-30) has to be opened exactly once under a recorded authorization of the project owner |
+| **Why it cannot be satisfied here** | the authorization is the owner's act; an engineering agent may not record it |
+| **Safe next action** | the owner ratifies the interpretation points and authorizes (or declines) the holdout; nothing else changes meanwhile |
+
+## Completed
+
+- One authoritative, append-only research register with the seventeen earlier hypotheses and hypothesis 18.
+- Mandate 004 registered and hash-pinned before any evaluation; two amendments that change no rule.
+- A verified public dataset with a frozen manifest, a coverage report and stated limitations.
+- A causal, cost-aware evaluator inside CATI, with rules shared with the future pipeline.
+- A valid development run, checked by an independent recomputation and reproduced from scratch.
+- A pre-holdout readiness record (READY) and a holdout that is reserved and untouched.
+- A certification report and a machine-readable result generated from the run.
+- A measured-cost system with today's observations and an honest INSUFFICIENT_DATA calibration.
+- A Step 3 handoff.
+
+## Not completed
+
+- The held-back evaluation, and therefore any strategy verdict (2.5).
+- The final report on held-back data (it is regenerated from the held-back run).
+- Observed-cost calibration (needs observations on more days).
+- Remote CI on the Step 2 commits (needs a push).
+
+## Not claimed
+
+- No strategy family is certified. CATI stays in shadow.
+- The dataset is not claimed free of survivorship bias.
+- No statistical threshold was invented: the gate is blocked until the owner sets a standard.
+- The development figures are not presented as an independent test.
+
+## Git
+
+| | |
+|---|---|
+| Branch | `main` |
+| Starting commit | `8dcf1c1` (= `origin/main` when the work began) |
+| Commits | `7d8cea0` specification brought to main, `e897f88` 2.1, `dd455f7` 2.2, `a794792` 2.3, `9d4aadb` 2.4 to 2.6 code, `6f7fad0` development run, `d7deba6` 2.7, `3e17c88` documents, and the commit that adds this closure |
+| Remote | local `main` is ahead of `origin/main`; nothing was pushed, nothing was force-pushed |
+| Remote CI | **NOT RUN** on these commits. It is the only Linux evidence and must be read after the push |
+| Working tree | clean after the closure commit; the dataset store and the test caches are gitignored |
