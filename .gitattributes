@@ -19,3 +19,7 @@ scripts/vps_health_check.py text eol=lf
 # Step 2 research governance: the frozen mandate text and the append-only research register, byte-for-byte.
 research/trend_v1/** -text whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol
 docs/research/registry/** -text whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol
+# Step 2 dataset documents and run artifacts: hashed content, kept byte-for-byte.
+docs/research/datasets/binance_usdm_daily_v1.* -text
+docs/research/coverage/binance_usdm_daily_v1.* -text
+docs/research/mandate_004/** -text

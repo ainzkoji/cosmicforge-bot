@@ -159,3 +159,7 @@ data/research/fx_finalization/
 
 # Frozen Mandate 003 hashed local input arrays; provenance receipts are committed.
 data/research/edge003_inputs/
+
+# Step 2 daily research dataset: raw archive mirror and normalized tables are reproducible from
+# `python -m app.market_data.daily_dataset build`; the manifest, coverage, inventory and metadata are committed under docs/research.
+data/research/binance_usdm_daily_v1/
