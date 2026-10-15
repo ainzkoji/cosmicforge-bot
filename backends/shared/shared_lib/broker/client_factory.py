@@ -22,7 +22,7 @@ from shared_lib.broker.resolver import BrokerAuth
 logger = logging.getLogger(__name__)
 
 
-def build_client_from_auth(auth: BrokerAuth) -> Any:
+def build_client_from_auth(auth: BrokerAuth, *, http=None) -> Any:
     """
     Build and return an exchange client using only the resolved BrokerAuth.
 
@@ -49,7 +49,7 @@ def build_client_from_auth(auth: BrokerAuth) -> Any:
     )
 
     try:
-        client = _build_client(broker, auth)
+        client = _build_client(broker, auth, **({"http": http} if http is not None else {}))
         client.broker_environment = auth.environment
         client._broker_account_id = auth.account_id
         client._broker_user_id = auth.user_id
@@ -65,13 +65,13 @@ def build_client_from_auth(auth: BrokerAuth) -> Any:
         ) from exc
 
 
-def _build_client(broker: str, auth: BrokerAuth) -> Any:
+def _build_client(broker: str, auth: BrokerAuth, *, http=None) -> Any:
     if broker == "binance":
-        return _build_binance(auth)
+        return _build_binance(auth, **({"http": http} if http is not None else {}))
     if broker == "bybit":
-        return _build_bybit(auth)
+        return _build_bybit(auth, **({"http": http} if http is not None else {}))
     if broker == "bingx":
-        return _build_bingx(auth)
+        return _build_bingx(auth, **({"http": http} if http is not None else {}))
 
     raise BrokerResolverError(
         BrokerResolverError.REASON_AUTH_FAILED,
@@ -83,7 +83,7 @@ def _build_client(broker: str, auth: BrokerAuth) -> Any:
     )
 
 
-def _build_binance(auth: BrokerAuth) -> Any:
+def _build_binance(auth: BrokerAuth, *, http=None) -> Any:
     # Import lazily — avoids circular imports and keeps shared_lib broker
     # module free of exchange-specific top-level dependencies.
     try:
@@ -96,10 +96,11 @@ def _build_binance(auth: BrokerAuth) -> Any:
         api_key=auth.api_key,
         api_secret=auth.api_secret,
         base_url=auth.base_url,
+        **({"http": http} if http is not None else {}),
     )
 
 
-def _build_bybit(auth: BrokerAuth) -> Any:
+def _build_bybit(auth: BrokerAuth, *, http=None) -> Any:
     try:
         from app.exchange.bybit_client import BybitClient  # type: ignore[import]
     except ImportError:
@@ -109,10 +110,11 @@ def _build_bybit(auth: BrokerAuth) -> Any:
         api_key=auth.api_key,
         api_secret=auth.api_secret,
         base_url=auth.base_url,
+        **({"http": http} if http is not None else {}),
     )
 
 
-def _build_bingx(auth: BrokerAuth) -> Any:
+def _build_bingx(auth: BrokerAuth, *, http=None) -> Any:
     # The BingX client lives at app.exchange.bingx.client in both backends.
     # (A previous revision imported a non-existent app.exchange.bingx_client,
     # which made every BingX account fail at client construction.)
@@ -129,4 +131,5 @@ def _build_bingx(auth: BrokerAuth) -> Any:
         api_key=auth.api_key,
         api_secret=auth.api_secret,
         base_url=auth.base_url,
+        **({"http": http} if http is not None else {}),
     )

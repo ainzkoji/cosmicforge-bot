@@ -16,7 +16,8 @@ class BybitClient:
     Duck-typed to match BinanceFuturesClient surface area.
     """
     
-    def __init__(self, api_key: str, api_secret: str, testnet: bool = False, base_url: str = ""):
+    def __init__(self, api_key: str, api_secret: str, testnet: bool = False, base_url: str = "", *, http=None):
+        self.http = http if http is not None else requests
         self.api_key = api_key
         self.api_secret = api_secret
         
@@ -68,9 +69,9 @@ class BybitClient:
         }
         
         if method == "GET":
-            r = requests.get(full_url, headers=headers, timeout=10)
+            r = self.http.get(full_url, headers=headers, timeout=10)
         elif method == "POST":
-            r = requests.post(full_url, data=payload_str, headers=headers, timeout=10)
+            r = self.http.post(full_url, data=payload_str, headers=headers, timeout=10)
         else:
             raise ValueError(f"Method {method} not supported")
             

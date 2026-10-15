@@ -124,6 +124,7 @@ class BinanceFuturesClient:
         api_secret: str,
         base_url: str,
         recv_window: int = 5000,
+        *, http=None,
     ):
         self.api_key = api_key
         self.api_secret = api_secret
@@ -136,7 +137,7 @@ class BinanceFuturesClient:
         self.recv_window = recv_window
 
         # Use session for connection pooling
-        self.session = requests.Session()
+        self.session = http if http is not None else requests.Session()
 
         self._exchange_info_cache: dict | None = None
         self._exchange_info_cache_ts: float = 0.0

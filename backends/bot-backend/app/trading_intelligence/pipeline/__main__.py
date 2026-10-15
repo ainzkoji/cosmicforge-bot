@@ -91,7 +91,7 @@ def main(argv: Any = None) -> int:
         if not args.no_connected_accounts:
             sources.append(ConnectedAccounts(db))
         driver = PlatformCycleDriver(db, accounts=CombinedAccounts(*sources), data={"1d": default_daily_bars(db)},
-                                     registry=registry, owner="pipeline-cli")
+                                     registry=registry, owner="pipeline-cli", compare_models=True)
         results = driver.run_due(int(time.time() * 1000))
         print(json.dumps([{"family_id": r.family_id, "cycle_key": r.cycle_key, "mode": r.mode, "status": r.status,
                            "reason": r.reason, "accounts_done": r.accounts_done, "accounts_failed": r.accounts_failed}

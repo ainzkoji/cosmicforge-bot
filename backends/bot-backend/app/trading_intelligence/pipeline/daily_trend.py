@@ -454,6 +454,29 @@ class DailyTrendPipeline:
     family_id = FAMILY_ID
     timeframe = TIMEFRAME
 
+    def compare_models(self, db: Any, market: MarketDecision, accounts: Sequence[Any], *, now_ms: int) -> None:
+        """Daily model audit against the frozen evaluator, after account commits.
+
+        Recompute each reference book from its actual start; persist today's
+        comparison only. A crash retries this audit before completing the cycle.
+        Customer-specific operational differences aren't mixed into model parity.
+        """
+        from . import shadow_book, shadow_compare as comparison
+
+        for account in accounts:
+            with db.connect() as conn:
+                book = shadow_book.load(conn, account.account_id, FAMILY_ID)
+            if book is None or book.last_day is None:
+                continue
+            simulation = comparison.evaluator_simulation(
+                market.features, risk_level=book.risk_level, policy=book.policy,
+                first_day=book.first_day, last_day=market.day, initial_equity=book.initial_equity)
+            result = comparison.compare(
+                comparison.shadow_from_db(db, account.account_id, FAMILY_ID),
+                comparison.reference_from_simulation(simulation), days=[market.day])
+            comparison.record(db, family_id=FAMILY_ID, account_id=account.account_id,
+                              reference_label="DAILY_FROZEN_EVALUATOR", comparisons=result, now_ms=now_ms)
+
     def due_key(self, now_ms: int) -> str:
         return cycle_key_due(now_ms)
 

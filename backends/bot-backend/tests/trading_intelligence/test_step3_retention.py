@@ -675,7 +675,13 @@ def test_sizes_are_measured_per_table_and_the_method_is_stated(db):
     growth = R.growth_between(before, R.table_sizes(db, [METRICS]), cycles=2, accounts=5)
     assert growth[METRICS]["rows_added"] == 20 and growth[METRICS]["rows_per_cycle"] == 10.0
     assert growth[METRICS]["rows_per_account_cycle"] == 2.0 and growth[METRICS]["prunable"] is True
-    assert growth[METRICS]["retention_class"] == R.RAW_OPERATIONAL_DETAIL and growth[METRICS]["bytes_added"] > 0
+    assert growth[METRICS]["retention_class"] == R.RAW_OPERATIONAL_DETAIL
+    # dbstat counts allocated pages: these inserts can fit in existing pages.
+    # A payload estimate grows per row; allocated storage only grows on a split.
+    if growth[METRICS]["method"] == "dbstat":
+        assert growth[METRICS]["bytes_added"] >= 0
+    else:
+        assert growth[METRICS]["bytes_added"] > 0
 
 
 def test_database_growth_of_a_synthetic_run(broker, monkeypatch, tmp_path):

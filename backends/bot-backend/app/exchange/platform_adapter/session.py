@@ -7,7 +7,7 @@ then close on account removal, credential rotation, or runtime shutdown.
 import time
 import uuid
 
-from .certification import adapter_certified
+from .certification import CertificationRegister, adapter_certified
 from .factory import adapter_for
 from .rate_budget import BudgetedVenueAdapter, RateBudget
 from .rules_cache import RulesCache
@@ -24,6 +24,8 @@ class AccountSession:
         self.clock = clock or (lambda: int(time.time() * 1000))
         owner = "venue-session:" + uuid.uuid4().hex
         raw = adapter_for(client, venue, environment, clock=self.clock)
+        CertificationRegister(db).record_adapter_version(raw.venue, raw.environment,
+                                                         adapter_version=raw.adapter_version, now_ms=self.clock())
         self.adapter = BudgetedVenueAdapter(raw, RateBudget(db, worker=owner),
                                            account_ref=account_ref, server_address=server_address,
                                            clock=self.clock)

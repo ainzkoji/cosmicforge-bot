@@ -486,6 +486,16 @@ class BudgetedVenueAdapter:
             return method(*args, **kwargs)
         now_ms = int(self._clock())
         priority = (_mutation_priority(self._priority, name, args) if name in C.MUTATING_METHODS else self._priority)
+        from .http_budget import BudgetedHTTP, priority_context
+        client = getattr(self._adapter, "_client", None)
+        transport = getattr(client, "session", None) or getattr(client, "http", None)
+        if isinstance(transport, BudgetedHTTP):
+            # Each physical request (including retries) is charged by the transport.
+            token = priority_context.set(priority)
+            try:
+                return method(*args, **kwargs)
+            finally:
+                priority_context.reset(token)
         granted = self._budget.reserve(self.venue, self._server_address, now_ms, priority=priority,
                                        weight=self._weight(name, args, kwargs), category=name,
                                        account_ref=self._account_ref)

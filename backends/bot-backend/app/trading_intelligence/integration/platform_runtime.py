@@ -39,7 +39,7 @@ class ShadowScheduler:
             accounts=CombinedAccounts(ModelAccounts(initial_equity=spec.INTERPRETATION["initial_equity_usdt"]),
                                       ConnectedAccounts(self.db)),
             data={"1d": default_daily_bars(self.db)}, account_runner=self.runner,
-            owner="shadow-runtime:" + uuid.uuid4().hex)
+            owner="shadow-runtime:" + uuid.uuid4().hex, compare_models=True)
 
     def tick(self):
         if self.stop.is_set() or not self.owns_runtime(self.db):

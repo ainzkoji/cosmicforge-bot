@@ -35,7 +35,7 @@ def specification(adapter):
         path, method, header = "/openApi/user/auth/userDataStream", "PUT" if old_key else "POST", "X-BX-APIKEY"
         host = "open-api-swap.bingx.com"
     try:
-        request = client.session.request if venue == C.BINANCE else requests.request
+        request = client.session.request if venue == C.BINANCE else getattr(client, "http", requests).request
         response = request(method, client.base_url + path, headers={header: client.api_key},
                                     params={"listenKey": old_key} if old_key and venue == C.BINGX else {}, timeout=10)
         if response.status_code in (418, 429):

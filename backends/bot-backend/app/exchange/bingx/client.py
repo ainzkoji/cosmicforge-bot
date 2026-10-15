@@ -15,7 +15,8 @@ class BingXClient:
     BingX V2 API Client (USDT-M Futures/Swap).
     """
     
-    def __init__(self, api_key: str, api_secret: str, testnet: bool = False, base_url: str = ""):
+    def __init__(self, api_key: str, api_secret: str, testnet: bool = False, base_url: str = "", *, http=None):
+        self.http = http if http is not None else requests
         self.api_key = api_key
         self.api_secret = api_secret
         
@@ -79,14 +80,14 @@ class BingXClient:
         try:
             if method == "GET":
                 full_url = f"{url}?{final_query}"
-                r = requests.get(full_url, headers=headers, timeout=10)
+                r = self.http.get(full_url, headers=headers, timeout=10)
             elif method == "POST":
                 # Using form-urlencoded for compatibility
                 headers["Content-Type"] = "application/x-www-form-urlencoded"
-                r = requests.post(url, data=final_query, headers=headers, timeout=10)
+                r = self.http.post(url, data=final_query, headers=headers, timeout=10)
             elif method == "DELETE":
                 full_url = f"{url}?{final_query}"
-                r = requests.delete(full_url, headers=headers, timeout=10)
+                r = self.http.delete(full_url, headers=headers, timeout=10)
             else:
                 raise ValueError(f"Method {method} not supported")
                 

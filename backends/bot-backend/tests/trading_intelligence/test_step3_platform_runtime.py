@@ -49,6 +49,17 @@ def test_worker_that_loses_cycle_claim_cannot_overwrite_successor(tmp_path, monk
     assert setup.rows("SELECT owner, status FROM cati_platform_cycles") == [("successor", "STARTED")]
 
 
+def test_runtime_comparison_records_each_models_daily_evaluator_match(tmp_path):
+    setup = Setup(tmp_path)
+    driver = setup.make(compare_models=True)
+    assert setup.run(START, driver=driver).status == "COMPLETED"
+    assert setup.run(START + 1, driver=driver).status == "COMPLETED"
+    rows = setup.rows("SELECT status FROM cati_shadow_comparisons")
+    assert rows and all(row == ("MATCH",) for row in rows)
+    setup.run(START + 1, driver=driver)
+    assert setup.rows("SELECT status FROM cati_shadow_comparisons") == rows
+
+
 def test_shutdown_joins_inflight_worker():
     started, release = threading.Event(), threading.Event()
     driver = Mock()

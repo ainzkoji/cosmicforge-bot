@@ -49,6 +49,7 @@ PREEMPTION_RESUME_WAIT_SECONDS = 300.
 #: per cycle. Reuse is only ever for the factory's own client of the SAME
 #: credentials; any doubt rebuilds.
 _DEFAULT_CLIENT_FACTORY = build_client_from_auth
+_HTTP_CLIENT_FACTORY = build_client_from_auth
 CLIENT_CACHE_MAX_AGE_SECONDS = 600.
 _clients = {}
 
@@ -104,9 +105,11 @@ def invalidate_client(account_id):
 def account_client(db, account_id, auth, factory=build_client_from_auth):
     """This account's broker client. Only the production factory's clients are
     cached; an injected factory (tests, tools) is always called."""
+    from app.exchange.platform_adapter.http_budget import build_budgeted_client
+    construct = (lambda resolved: build_budgeted_client(db, resolved)) if factory is _HTTP_CLIENT_FACTORY else factory
     key = _client_key(db, auth) if factory is _DEFAULT_CLIENT_FACTORY else None
     if key is None:
-        return factory(auth)
+        return construct(auth)
     cached = _clients.get(account_id)
     if cached and cached[0] == key and time.monotonic() - cached[2] < CLIENT_CACHE_MAX_AGE_SECONDS:
         client = cached[1]
@@ -114,7 +117,7 @@ def account_client(db, account_id, auth, factory=build_client_from_auth):
         client._production_intent_identity = None
         return client
     _clients.pop(account_id, None)
-    client = factory(auth)
+    client = construct(auth)
     _clients[account_id] = (key, client, time.monotonic())
     return client
 #: Liveness evidence for the runtime supervisor (monotonic seconds).
@@ -255,7 +258,8 @@ def _sync_with_client(db, account, auth, env, gate, client, factory, execute):
                 position_mode="HEDGE" if hedge else "ONE_WAY", spec_resolver=lambda s: _position_spec(client, s),
                 execution_mode="broker", broker_environment=env.value.upper().lower()))
         from app.activation.account_status import refresh_if_stale
-        discovery = refresh_if_stale(db, auth, client_factory=factory)
+        discovery_factory = (lambda resolved: client) if factory is _DEFAULT_CLIENT_FACTORY else factory
+        discovery = refresh_if_stale(db, auth, client_factory=discovery_factory)
     except Exception:
         # A local projection or instrument discovery failed. The account still
         # fails closed for this cycle (the error is re-raised, no entry is
@@ -668,6 +672,7 @@ async def run(db):
         raise ValueError("CATI_PRODUCTION_PROFILE_REQUIRED")
     from .platform_runtime import ShadowScheduler
     from .venue_runtime import VenueRuntime
+    from app.exchange.platform_adapter.http_budget import build_budgeted_client
     import os
 
     scheduler = ShadowScheduler(db, owns_runtime=owner_current)
@@ -677,7 +682,7 @@ async def run(db):
     services.append(VenueRuntime(db, owns_runtime=owner_current,
                                  server_address=os.environ.get("CATI_EGRESS_SCOPE", "shared-runtime-egress"),
                                  accounts=execution_accounts, resolve=resolve_broker_auth,
-                                 build=build_client_from_auth))
+                                 build=lambda auth: build_budgeted_client(db, auth)))
     workers = [asyncio.create_task(service.run()) for service in services]
     try:
         await _broker_loop(db)

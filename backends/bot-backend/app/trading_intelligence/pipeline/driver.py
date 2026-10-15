@@ -122,7 +122,7 @@ class PlatformCycleDriver:
                  registry: Optional[FamilyRegistry] = None, research_register: Any = None,
                  clock: Optional[Callable[[], int]] = None, owner: str = "driver",
                  account_runner: Optional[Callable[[Sequence[Callable[[], Any]]], List[Any]]] = None,
-                 handoff: Any = None) -> None:
+                 handoff: Any = None, compare_models: bool = False) -> None:
         """``data``: timeframe -> the market-data provider the families of that timeframe read.
         ``account_runner``: runs the per-account callables (bounded parallelism, Step 3.13); sequential by
         default. ``handoff``: the execution hand-off; ``None`` means this driver cannot place an order."""
@@ -136,6 +136,7 @@ class PlatformCycleDriver:
         self._owner = owner
         self._run_accounts = account_runner or (lambda calls: [c() for c in calls])
         self._handoff = handoff
+        self._compare_models = compare_models
 
     @property
     def registry(self) -> FamilyRegistry:
@@ -262,6 +263,12 @@ class PlatformCycleDriver:
         result.accounts_total, result.accounts_done = counts["total"], counts[DONE]
         result.accounts_failed, result.accounts_skipped = counts[ACCOUNT_FAILED], counts[SKIPPED]
         status = COMPLETED if counts[ACCOUNT_FAILED] == 0 and counts[PENDING] == 0 else PARTIAL
+        if status == COMPLETED and self._compare_models and callable(getattr(pipeline, "compare_models", None)):
+            try:
+                with timer("SHADOW_COMPARISON"):
+                    pipeline.compare_models(self._db, market, [a for a in accounts if a.model], now_ms=now)
+            except Exception as exc:
+                return self._finish(result, FAILED, f"SHADOW_COMPARISON_FAILED:{type(exc).__name__}", timer, now)
         return self._finish(result, status, None if status == COMPLETED else "ACCOUNTS_FAILED", timer, now)
 
     # ------------------------------------------------------------------------------------------ accounts
