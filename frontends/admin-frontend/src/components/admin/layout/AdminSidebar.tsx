@@ -18,6 +18,7 @@ import {
     RadioTower,
     Network,
     Database,
+    Gavel,
 } from "lucide-react";
 import logo from "../../../assets/logo.png";
 
@@ -37,6 +38,7 @@ const navItems: NavItem[] = [
     { path: "/admin/affiliate-revenue", icon: Link2, label: "Affiliate & Broker Revenue" },
     { path: "/admin/ml", icon: Cpu, label: "ML Monitoring" },
     { path: "/admin/cati", icon: Database, label: "CATI Research & Certification" },
+    { path: "/admin/governance", icon: Gavel, label: "Family Governance" },
     { path: "/admin/audit", icon: FileText, label: "Audit Logs" },
     { path: "/admin/bot-monitor", icon: Activity, label: "Bot Monitor" },
     { path: "/admin/events", icon: CalendarClock, label: "Event Calendar", exact: true },

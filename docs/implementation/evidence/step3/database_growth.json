@@ -1,0 +1,181 @@
+{
+  "byte_method": "payload_estimate",
+  "byte_method_note": "dbstat: pages of the table and its indexes. payload_estimate: summed payload of the rows, without page or index overhead (this SQLite build has no dbstat); the database_file figures are exact (page_count x page_size) and include every index.",
+  "generated_at": "2026-10-09T18:41:45Z",
+  "generated_by": "tests/trading_intelligence/test_step3_retention.py::test_database_growth_of_a_synthetic_run",
+  "largest_growth_is_append_only": {
+    "class": "EXECUTION_AUDIT",
+    "guarded_by_trigger": true,
+    "pruned_by_retention": false,
+    "table": "cati_execution_evaluations"
+  },
+  "platform_shadow_cycle": {
+    "database_file": {
+      "bytes_after": 8130560,
+      "bytes_before": 4124672,
+      "bytes_per_account_cycle": 6358.6,
+      "bytes_per_cycle": 133529.6
+    },
+    "run": {
+      "accounts": 21,
+      "daily_cycles": 30,
+      "family": "DAILY_TREND",
+      "market": "synthetic",
+      "runner": "BoundedAccountRunner(max_concurrency=1) with account leases"
+    },
+    "tables": {
+      "cati_account_leases": {
+        "bytes_added": 42,
+        "bytes_per_account_cycle": 0.1,
+        "bytes_per_cycle": 1.4,
+        "method": "payload_estimate",
+        "prunable": false,
+        "retention_class": "RECONCILIATION_STATE",
+        "rows_added": 0,
+        "rows_per_account_cycle": 0.0,
+        "rows_per_cycle": 0.0
+      },
+      "cati_family_decisions": {
+        "bytes_added": 2833654,
+        "bytes_per_account_cycle": 4497.9,
+        "bytes_per_cycle": 94455.1,
+        "method": "payload_estimate",
+        "prunable": false,
+        "retention_class": "EXECUTION_AUDIT",
+        "rows_added": 630,
+        "rows_per_account_cycle": 1.0,
+        "rows_per_cycle": 21.0
+      },
+      "cati_platform_cycle_accounts": {
+        "bytes_added": 136885,
+        "bytes_per_account_cycle": 217.3,
+        "bytes_per_cycle": 4562.8,
+        "method": "payload_estimate",
+        "prunable": false,
+        "retention_class": "DECISION_SUMMARY",
+        "rows_added": 630,
+        "rows_per_account_cycle": 1.0,
+        "rows_per_cycle": 21.0
+      },
+      "cati_platform_cycle_metrics": {
+        "bytes_added": 8533,
+        "bytes_per_account_cycle": 13.5,
+        "bytes_per_cycle": 284.4,
+        "method": "payload_estimate",
+        "prunable": true,
+        "retention_class": "RAW_OPERATIONAL_DETAIL",
+        "rows_added": 120,
+        "rows_per_account_cycle": 0.1905,
+        "rows_per_cycle": 4.0
+      },
+      "cati_platform_cycles": {
+        "bytes_added": 40740,
+        "bytes_per_account_cycle": 64.7,
+        "bytes_per_cycle": 1358.0,
+        "method": "payload_estimate",
+        "prunable": false,
+        "retention_class": "DECISION_SUMMARY",
+        "rows_added": 30,
+        "rows_per_account_cycle": 0.0476,
+        "rows_per_cycle": 1.0
+      },
+      "cati_shadow_accounts": {
+        "bytes_added": 1768,
+        "bytes_per_account_cycle": 2.8,
+        "bytes_per_cycle": 58.9,
+        "method": "payload_estimate",
+        "prunable": false,
+        "retention_class": "RECONCILIATION_STATE",
+        "rows_added": 0,
+        "rows_per_account_cycle": 0.0,
+        "rows_per_cycle": 0.0
+      },
+      "cati_shadow_days": {
+        "bytes_added": 187727,
+        "bytes_per_account_cycle": 298.0,
+        "bytes_per_cycle": 6257.6,
+        "method": "payload_estimate",
+        "prunable": false,
+        "retention_class": "RESEARCH_GOVERNANCE",
+        "rows_added": 630,
+        "rows_per_account_cycle": 1.0,
+        "rows_per_cycle": 21.0
+      },
+      "cati_shadow_fills": {
+        "bytes_added": 99324,
+        "bytes_per_account_cycle": 157.7,
+        "bytes_per_cycle": 3310.8,
+        "method": "payload_estimate",
+        "prunable": false,
+        "retention_class": "RESEARCH_GOVERNANCE",
+        "rows_added": 718,
+        "rows_per_account_cycle": 1.1397,
+        "rows_per_cycle": 23.933
+      },
+      "cati_shadow_positions": {
+        "bytes_added": 36,
+        "bytes_per_account_cycle": 0.1,
+        "bytes_per_cycle": 1.2,
+        "method": "payload_estimate",
+        "prunable": false,
+        "retention_class": "RECONCILIATION_STATE",
+        "rows_added": 0,
+        "rows_per_account_cycle": 0.0,
+        "rows_per_cycle": 0.0
+      }
+    }
+  },
+  "production_broker_cycle": {
+    "database_file": {
+      "bytes_after": 4415488,
+      "bytes_before": 3829760,
+      "bytes_per_cycle": 9762.1
+    },
+    "run": {
+      "accounts": 1,
+      "broker": "the fake Binance client of the boundary-certification tests",
+      "broker_cycles": 60,
+      "state": "one running bot, waiting for a signal, no position"
+    },
+    "tables": {
+      "adaptive_daily_risk_decisions": {
+        "bytes_added": 63293,
+        "bytes_per_account_cycle": 1054.9,
+        "bytes_per_cycle": 1054.9,
+        "method": "payload_estimate",
+        "prunable": false,
+        "retention_class": "EXECUTION_AUDIT",
+        "rows_added": 60,
+        "rows_per_account_cycle": 1.0,
+        "rows_per_cycle": 1.0
+      },
+      "cati_execution_evaluations": {
+        "bytes_added": 368040,
+        "bytes_per_account_cycle": 6134.0,
+        "bytes_per_cycle": 6134.0,
+        "method": "payload_estimate",
+        "prunable": false,
+        "retention_class": "EXECUTION_AUDIT",
+        "rows_added": 60,
+        "rows_per_account_cycle": 1.0,
+        "rows_per_cycle": 1.0
+      }
+    }
+  },
+  "projection_from_the_measured_rate": {
+    "cati_execution_evaluations": {
+      "bytes_per_account_per_day": 17665920,
+      "bytes_per_day_at_1000_accounts": 17665920000,
+      "bytes_per_day_at_10_accounts": 176659200,
+      "rows_per_account_per_day": 2880,
+      "rows_per_account_per_day_with_a_15_minute_repeat_interval_when_idle": 96
+    },
+    "note": "Arithmetic on the measured per-cycle rate, NOT a measurement: 2,880 broker cycles per account per day. A real account document is larger than the fake broker's, so real rows are larger than these."
+  },
+  "prunable_tables": [
+    "account_equity_snapshots",
+    "cati_platform_cycle_metrics"
+  ],
+  "retention_policy_version": "1.0.0",
+  "what_this_is": "Measured growth of two synthetic runs on temporary SQLite databases. No exchange, no real account."
+}

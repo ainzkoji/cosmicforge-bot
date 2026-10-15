@@ -41,7 +41,7 @@ import json
 import logging
 import uuid
 from datetime import datetime, timedelta, timezone
-from typing import Any, Dict, Optional
+from typing import Any, Callable, Dict, Optional, Tuple
 
 import httpx
 from fastapi import APIRouter, Body, Depends
@@ -108,26 +108,32 @@ def _gateway_error(status: int, reason: str, message: str) -> JSONResponse:
     return JSONResponse(status_code=status, content={"detail": message, "reason": reason})
 
 
-def _write_audit(admin: Dict[str, Any], action: str, details: Dict[str, Any]) -> None:
-    """One ``auth_audit_log`` row for an emergency call (blocking: run in the threadpool)."""
+def _write_audit_row(event_type: str, admin: Dict[str, Any], details: Dict[str, Any]) -> None:
+    """One ``auth_audit_log`` row naming the admin (blocking: run in the threadpool)."""
     from app.api.auth import audit_event
     from shared_lib.persistence.db import DB
 
     with DB().connect() as conn:
         audit_event(
             conn,
-            f"admin_emergency_{action}",
+            event_type,
             user_id=str(admin.get("id")),
             email=admin.get("email"),
             details=details,
         )
 
 
-def _request_summary(json_body: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+def _write_audit(admin: Dict[str, Any], action: str, details: Dict[str, Any]) -> None:
+    """One ``auth_audit_log`` row for an emergency call (blocking: run in the threadpool)."""
+    _write_audit_row(f"admin_emergency_{action}", admin, details)
+
+
+def _request_summary(json_body: Optional[Dict[str, Any]],
+                     keys: Tuple[str, ...] = ("enabled", "scope", "account_id")) -> Dict[str, Any]:
     """The few request fields worth keeping in the audit trail (never the whole body)."""
     if not isinstance(json_body, dict):
         return {}
-    summary = {key: json_body[key] for key in ("enabled", "scope", "account_id") if key in json_body}
+    summary = {key: json_body[key] for key in keys if key in json_body}
     if json_body.get("reason") is not None:
         summary["reason"] = str(json_body["reason"])[:200]
     return summary
@@ -146,30 +152,38 @@ def _outcome_reason(response: Response) -> Optional[str]:
 async def _audit(admin: Dict[str, Any], action: str, response: Response,
                  json_body: Optional[Dict[str, Any]]) -> None:
     """Record who did what and how it ended. Never fails the request it describes."""
+    # The admin app polls /status every few seconds: a successful read gets the
+    # log line only. Every kill-switch / flatten call, and every status call
+    # that did not succeed, also gets a durable auth_audit_log row.
+    await _record_outcome(admin, action, response, _request_summary(json_body),
+                          routine_read=action == "status" and response.status_code == 200, write=_write_audit)
+
+
+async def _record_outcome(admin: Dict[str, Any], action: str, response: Response, request: Dict[str, Any], *,
+                          routine_read: bool, write: Callable[[Dict[str, Any], str, Dict[str, Any]], None],
+                          tag: str = "EMERGENCY-AUDIT") -> None:
+    """The audit line of one proxied admin call and, unless it is a routine read, its durable row
+    (``write(admin, action, details)``, blocking). Also used by ``admin_governance``."""
     details = {
         "admin_id": str(admin.get("id")),
         "action": action,
         "outcome_status": response.status_code,
         "outcome_reason": _outcome_reason(response),
-        "request": _request_summary(json_body),
+        "request": request,
     }
-    # The admin app polls /status every few seconds: a successful read gets the
-    # log line only. Every kill-switch / flatten call, and every status call
-    # that did not succeed, also gets a durable auth_audit_log row.
-    routine_read = action == "status" and response.status_code == 200
     logger.log(
         logging.INFO if routine_read else logging.WARNING,
-        "[EMERGENCY-AUDIT] admin=%s action=%s outcome_status=%s outcome_reason=%s request=%s",
-        details["admin_id"], action, details["outcome_status"], details["outcome_reason"], details["request"],
+        "[%s] admin=%s action=%s outcome_status=%s outcome_reason=%s request=%s",
+        tag, details["admin_id"], action, details["outcome_status"], details["outcome_reason"], details["request"],
     )
     if routine_read:
         return
     try:
-        await run_in_threadpool(_write_audit, admin, action, details)
+        await run_in_threadpool(write, admin, action, details)
     except Exception as exc:
         # The log line above is the fallback record.
-        logger.error("[EMERGENCY-AUDIT] audit row not persisted for admin=%s action=%s (%s)",
-                     details["admin_id"], action, type(exc).__name__)
+        logger.error("[%s] audit row not persisted for admin=%s action=%s (%s)",
+                     tag, details["admin_id"], action, type(exc).__name__)
 
 
 async def _forward(method: str, path: str, admin: Dict[str, Any], *, timeout: float,
@@ -187,46 +201,51 @@ async def _forward(method: str, path: str, admin: Dict[str, Any], *, timeout: fl
 
 
 async def _call_upstream(method: str, path: str, admin: Dict[str, Any], *, timeout: float,
-                         json_body: Optional[Dict[str, Any]] = None) -> Response:
-    url = f"{proxy_utils.BOT_BACKEND_BASE_URL}{UPSTREAM_PREFIX}{path}"
+                         json_body: Optional[Dict[str, Any]] = None, params: Optional[Dict[str, Any]] = None,
+                         upstream_prefix: str = UPSTREAM_PREFIX, tag: str = "EMERGENCY-PROXY",
+                         recheck: str = "Reload the status and check positions on the exchange.") -> Response:
+    """One upstream call with the service token of this verified admin. The keyword defaults are the
+    emergency family's; ``admin_governance`` passes its own prefix, log tag and ``recheck`` advice (what
+    the operator must look at when the outcome is unknown)."""
+    url = f"{proxy_utils.BOT_BACKEND_BASE_URL}{upstream_prefix}{path}"
     try:
         upstream = await proxy_utils._proxy_client.request(
             method=method,
             url=url,
             json=json_body,
+            params=params,
             headers={"Authorization": _service_authorization(admin)},
             timeout=timeout,
         )
     except _NOT_SENT_ERRORS as exc:
         # Checked BEFORE the timeout branch: a connect timeout is a timeout,
         # but the request never reached the engine.
-        logger.error("[EMERGENCY-PROXY] %s %s not sent: %s", method, path, type(exc).__name__)
+        logger.error("[%s] %s %s not sent: %s", tag, method, path, type(exc).__name__)
         return _gateway_error(
             502, "UPSTREAM_UNREACHABLE",
             f"The engine is unreachable ({type(exc).__name__}): the request was NOT sent and nothing was done. "
             "Nothing was changed by this call.")
     except httpx.TimeoutException as exc:
-        logger.error("[EMERGENCY-PROXY] %s %s timed out after %.0fs (%s)", method, path, timeout,
+        logger.error("[%s] %s %s timed out after %.0fs (%s)", tag, method, path, timeout,
                      type(exc).__name__)
         return _gateway_error(
             504, "UPSTREAM_TIMEOUT",
             f"The bot service did not answer within {timeout:.0f}s. The outcome is UNKNOWN: "
-            "the request may still be running. Reload the status and check positions on the exchange.")
+            f"the request may still be running. {recheck}")
     except httpx.RequestError as exc:
         # The connection was established, so the request (or part of it) may
         # have reached the engine before the transport failed.
-        logger.error("[EMERGENCY-PROXY] %s %s failed after sending: %s", method, path, type(exc).__name__)
+        logger.error("[%s] %s %s failed after sending: %s", tag, method, path, type(exc).__name__)
         return _gateway_error(
             504, "UPSTREAM_OUTCOME_UNKNOWN",
             f"The connection to the bot service failed after the request was sent ({type(exc).__name__}). "
-            "The outcome is UNKNOWN: the engine may have acted. Reload the status and check positions on "
-            "the exchange.")
+            f"The outcome is UNKNOWN: the engine may have acted. {recheck}")
 
     if upstream.status_code == 401:
         # The caller was authenticated here; a 401 upstream means the two
         # services disagree about the signing key. Passing a 401 on would make
         # the admin app discard a perfectly valid session.
-        logger.error("[EMERGENCY-PROXY] bot-backend rejected the service token for %s %s", method, path)
+        logger.error("[%s] bot-backend rejected the service token for %s %s", tag, method, path)
         return _gateway_error(
             502, "UPSTREAM_AUTH_REJECTED",
             "The bot service rejected this backend's service credential (check that both services share "

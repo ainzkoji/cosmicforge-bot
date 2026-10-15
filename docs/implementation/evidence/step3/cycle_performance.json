@@ -1,0 +1,697 @@
+{
+ "fixtures": {
+  "accounts": "SyntheticAccounts: invented connected accounts, EXECUTABLE policy, risk levels in rotation",
+  "cycles": 2,
+  "first_cycle": "2020-09-01",
+  "market": {
+   "days": 547,
+   "first_day": "2020-01-01",
+   "kind": "deterministic random walk (synthetic_market)",
+   "seed": 7,
+   "symbols": 26
+  },
+  "research_register": "the committed register, read-only"
+ },
+ "generated_at": "2026-10-14T23:49:16Z",
+ "harness_version": "cycle-performance-2",
+ "host": {
+  "cpu_count": 8,
+  "machine": "AMD64",
+  "numpy": "2.4.1",
+  "platform": "Windows-11-10.0.26200-SP0",
+  "processor": "Intel64 Family 6 Model 140 Stepping 1, GenuineIntel",
+  "python": "3.12.2",
+  "sqlite": "3.43.1",
+  "sqlite_synchronous": "NORMAL (default)",
+  "statement": "Measured on the host described under 'host'. A Windows workstation measurement is not a Linux certification, and synthetic accounts are not connected customer accounts. Step 5 scale certification is not claimed.",
+  "system": "Windows"
+ },
+ "label": "completion-candidate",
+ "market_data_feed": {
+  "accounts": 10,
+  "cycles": [
+   {
+    "bar_coverage": 1.0,
+    "bars_stored": 6310,
+    "cycle_key": "2020-09-01",
+    "end_to_end_ms": 822.631,
+    "market_data_requests": 54,
+    "market_stage_ms": 752.173,
+    "panel": "READ_WHOLE",
+    "reason": null,
+    "status": "COMPLETED",
+    "symbol_days_requested": 6370,
+    "symbol_failure_rate": 0.0,
+    "symbols_failed": 0,
+    "symbols_requested": 26
+   },
+   {
+    "bar_coverage": 0.9230769230769231,
+    "bars_stored": 24,
+    "cycle_key": "2020-09-02",
+    "end_to_end_ms": 199.221,
+    "market_data_requests": 52,
+    "market_stage_ms": 44.959,
+    "panel": "EXTENDED_BY_THE_NEW_DAY",
+    "reason": null,
+    "status": "COMPLETED",
+    "symbol_days_requested": 26,
+    "symbol_failure_rate": 0.076923,
+    "symbols_failed": 2,
+    "symbols_requested": 26
+   }
+  ],
+  "failing_cycle": {
+   "bar_coverage": 0.9230769230769231,
+   "bars_stored": 24,
+   "cycle_key": "2020-09-02",
+   "end_to_end_ms": 199.221,
+   "market_data_requests": 52,
+   "market_stage_ms": 44.959,
+   "panel": "EXTENDED_BY_THE_NEW_DAY",
+   "reason": null,
+   "status": "COMPLETED",
+   "symbol_days_requested": 26,
+   "symbol_failure_rate": 0.076923,
+   "symbols_failed": 2,
+   "symbols_requested": 26
+  },
+  "first_cycle_is_first_contact": "the whole history is fetched once, by the first cycle",
+  "replayed": true,
+  "requests_per_daily_cycle": [],
+  "requests_total": 106,
+  "requests_when_a_completed_cycle_is_run_again": 0,
+  "symbol_days_per_cycle_if_the_history_were_downloaded_again": 6396,
+  "symbol_days_per_daily_cycle": []
+ },
+ "market_data_feed_by_history": [
+  {
+   "bars": 14015,
+   "daily_update": {
+    "ms": 121.69,
+    "requests": 52,
+    "symbol_days": 25
+   },
+   "database_bytes": 8777728,
+   "days": 547,
+   "extended_equals_whole": true,
+   "first_contact": {
+    "ms": 9025.4,
+    "requests": 54,
+    "symbol_days": 14196
+   },
+   "funding_records": 42663,
+   "market_stage_ms_on_the_served_panel": 45.9,
+   "panel_extended_by_one_day_ms": 21.7,
+   "panel_read_whole_ms": 274.9,
+   "panel_read_whole_ms_second": 221.0,
+   "panel_read_whole_peak_bytes": 18279650,
+   "prices_equal_the_source_panel": true,
+   "symbols": 26
+  }
+ ],
+ "market_stage_by_history": [
+  {
+   "cells": 14222,
+   "data_snapshot_id": "a6b6fe26ff53ce54927a5a279c8881e8f0984333b15db758897835010f52db09",
+   "days": 547,
+   "market_stage_ms": {
+    "median": 43.717,
+    "min": 41.263
+   },
+   "panel_bytes": 1023984,
+   "peak_over_panel": 8.632,
+   "symbols": 26,
+   "tracemalloc_peak_bytes": 8838819,
+   "universe": 20
+  },
+  {
+   "cells": 180000,
+   "data_snapshot_id": "01f3dbb8978991afa7ba5d5b5babab416d64099c82ec3c33e6ee08e9d9e6e9bb",
+   "days": 1200,
+   "market_stage_ms": {
+    "median": 364.045,
+    "min": 357.907
+   },
+   "panel_bytes": 12960000,
+   "peak_over_panel": 5.024,
+   "symbols": 150,
+   "tracemalloc_peak_bytes": 65116328,
+   "universe": 20
+  },
+  {
+   "cells": 1482000,
+   "data_snapshot_id": "0ecb83901541a6473041fc56aa9dfe4cd440926af556232a58b6a01b26f831ca",
+   "days": 2470,
+   "market_stage_ms": {
+    "median": 2785.07,
+    "min": 2604.887
+   },
+   "panel_bytes": 106704000,
+   "peak_over_panel": 2.903,
+   "symbols": 600,
+   "tracemalloc_peak_bytes": 309772919,
+   "universe": 20
+  }
+ ],
+ "recovery": {
+  "accounts": 100,
+  "accounts_left_alone": 50,
+  "accounts_processed_on_recovery": 50,
+  "books_equal_uninterrupted_run": true,
+  "decisions_equal_uninterrupted_run": true,
+  "duplicate_decisions": 0,
+  "interrupted_after_accounts": 50,
+  "recovered_status": "COMPLETED",
+  "recovery_ms": 167.674,
+  "stage_ms": {
+   "ACCOUNT_LIST": 0.7916,
+   "ACCOUNT_STAGE": 86.2674,
+   "MARKET_STAGE": 19.7129,
+   "VERIFY_MANDATE": 3.4498
+  },
+  "state_left_behind": {
+   "accounts_done": 50,
+   "cycle_status": "MARKET_DECIDED"
+  },
+  "uninterrupted_cycle_ms": 868.686
+ },
+ "registry_and_register": {
+  "entry_ms (once per cycle)": 10.14,
+  "evaluable_ms (once per run_due)": 53.956,
+  "families_defined": 6,
+  "research_register": "the committed register, read-only",
+  "verify_mandate_ms (once per cycle)": 1.781
+ },
+ "scenarios": [
+  {
+   "accounts": 1,
+   "counted": [
+    {
+     "account_stage_statements": 12,
+     "by_verb": {
+      "BEGIN": 5,
+      "COMMIT": 5,
+      "DELETE": 1,
+      "INSERT": 9,
+      "SELECT": 13,
+      "UPDATE": 2
+     },
+     "connection_pragmas": 3,
+     "connections_opened": 1,
+     "connections_reused": 9,
+     "cycle_key": "2020-09-01",
+     "cycle_overhead_statements": 23,
+     "statements": 35,
+     "statements_per_account": {
+      "max": 12,
+      "mean": 12.0,
+      "min": 12
+     }
+    },
+    {
+     "account_stage_statements": 22,
+     "by_verb": {
+      "BEGIN": 5,
+      "COMMIT": 5,
+      "DELETE": 1,
+      "INSERT": 18,
+      "SELECT": 14,
+      "UPDATE": 2
+     },
+     "connection_pragmas": 3,
+     "connections_opened": 1,
+     "connections_reused": 9,
+     "cycle_key": "2020-09-02",
+     "cycle_overhead_statements": 23,
+     "statements": 45,
+     "statements_per_account": {
+      "max": 22,
+      "mean": 22.0,
+      "min": 22
+     }
+    }
+   ],
+   "cycles": 2,
+   "first_cycle": "2020-09-01",
+   "market_data_provider_calls": 2,
+   "memory": {
+    "note": "Python allocations during one cycle, the market stage included; the panel the provider already holds is not counted again",
+    "peak_mib": 3.606,
+    "tracemalloc_peak_bytes_per_cycle": [
+     3764184,
+     3780776
+    ]
+   },
+   "summary": {
+    "account_stage_ms_median": 2.048,
+    "accounts_per_second_median": 488.28,
+    "connections_per_cycle_median": 1,
+    "cycle_overhead_statements": [
+     23
+    ],
+    "end_to_end_ms_median": 101.267,
+    "market_stage_ms_median": 18.075,
+    "ms_per_account_median": 2.048,
+    "note": "medians over the cycles after the first (the first cycle only opens the books)",
+    "queue_max_depth": 1,
+    "statements_per_account_mean": 22.0,
+    "statements_per_cycle_median": 45
+   },
+   "timed": [
+    {
+     "accounts_done": 1,
+     "accounts_per_second": 473.37,
+     "cycle_key": "2020-09-01",
+     "end_to_end_ms": 146.3986,
+     "intents": 4,
+     "queue": {
+      "account_ms": {
+       "max": 2.0953,
+       "p50": 2.0953,
+       "p95": 2.0953
+      },
+      "longest_wait_ms": 0.002,
+      "max_depth": 1,
+      "runner": "SEQUENTIAL (the driver's default)",
+      "time_weighted_mean_depth": 1.0
+     },
+     "stage_ms": {
+      "ACCOUNT_LIST": 0.1981,
+      "ACCOUNT_STAGE": 2.1125,
+      "MARKET_STAGE": 35.2768,
+      "OTHER (registry entry, cycle rows, controls, counts)": 104.4772,
+      "VERIFY_MANDATE": 4.334
+     }
+    },
+    {
+     "accounts_done": 1,
+     "accounts_per_second": 488.28,
+     "cycle_key": "2020-09-02",
+     "end_to_end_ms": 101.2669,
+     "intents": 2,
+     "queue": {
+      "account_ms": {
+       "max": 2.0354,
+       "p50": 2.0354,
+       "p95": 2.0354
+      },
+      "longest_wait_ms": 0.002,
+      "max_depth": 1,
+      "runner": "SEQUENTIAL (the driver's default)",
+      "time_weighted_mean_depth": 1.0
+     },
+     "stage_ms": {
+      "ACCOUNT_LIST": 0.1961,
+      "ACCOUNT_STAGE": 2.048,
+      "MARKET_STAGE": 18.0745,
+      "OTHER (registry entry, cycle rows, controls, counts)": 77.4752,
+      "VERIFY_MANDATE": 3.4731
+     }
+    }
+   ]
+  },
+  {
+   "accounts": 10,
+   "counted": [
+    {
+     "account_stage_statements": 120,
+     "by_verb": {
+      "BEGIN": 14,
+      "COMMIT": 14,
+      "DELETE": 10,
+      "INSERT": 45,
+      "SELECT": 67,
+      "UPDATE": 2
+     },
+     "connection_pragmas": 3,
+     "connections_opened": 1,
+     "connections_reused": 27,
+     "cycle_key": "2020-09-01",
+     "cycle_overhead_statements": 32,
+     "statements": 152,
+     "statements_per_account": {
+      "max": 12,
+      "mean": 12.0,
+      "min": 12
+     }
+    },
+    {
+     "account_stage_statements": 256,
+     "by_verb": {
+      "BEGIN": 14,
+      "COMMIT": 14,
+      "DELETE": 10,
+      "INSERT": 171,
+      "SELECT": 77,
+      "UPDATE": 2
+     },
+     "connection_pragmas": 3,
+     "connections_opened": 1,
+     "connections_reused": 27,
+     "cycle_key": "2020-09-02",
+     "cycle_overhead_statements": 32,
+     "statements": 288,
+     "statements_per_account": {
+      "max": 30,
+      "mean": 25.6,
+      "min": 22
+     }
+    }
+   ],
+   "cycles": 2,
+   "first_cycle": "2020-09-01",
+   "market_data_provider_calls": 2,
+   "memory": {
+    "note": "Python allocations during one cycle, the market stage included; the panel the provider already holds is not counted again",
+    "peak_mib": 3.605,
+    "tracemalloc_peak_bytes_per_cycle": [
+     3763960,
+     3780552
+    ]
+   },
+   "summary": {
+    "account_stage_ms_median": 16.666,
+    "accounts_per_second_median": 600.03,
+    "connections_per_cycle_median": 1,
+    "cycle_overhead_statements": [
+     32
+    ],
+    "end_to_end_ms_median": 77.102,
+    "market_stage_ms_median": 16.145,
+    "ms_per_account_median": 1.6666,
+    "note": "medians over the cycles after the first (the first cycle only opens the books)",
+    "queue_max_depth": 10,
+    "statements_per_account_mean": 25.6,
+    "statements_per_cycle_median": 288
+   },
+   "timed": [
+    {
+     "accounts_done": 10,
+     "accounts_per_second": 750.68,
+     "cycle_key": "2020-09-01",
+     "end_to_end_ms": 411.1231,
+     "intents": 58,
+     "queue": {
+      "account_ms": {
+       "max": 1.8928,
+       "p50": 1.2102,
+       "p95": 1.8928
+      },
+      "longest_wait_ms": 12.285,
+      "max_depth": 10,
+      "runner": "SEQUENTIAL (the driver's default)",
+      "time_weighted_mean_depth": 5.859
+     },
+     "stage_ms": {
+      "ACCOUNT_LIST": 0.2944,
+      "ACCOUNT_STAGE": 13.3212,
+      "MARKET_STAGE": 17.6028,
+      "OTHER (registry entry, cycle rows, controls, counts)": 376.3417,
+      "VERIFY_MANDATE": 3.563
+     }
+    },
+    {
+     "accounts_done": 10,
+     "accounts_per_second": 600.03,
+     "cycle_key": "2020-09-02",
+     "end_to_end_ms": 77.1023,
+     "intents": 26,
+     "queue": {
+      "account_ms": {
+       "max": 2.1474,
+       "p50": 1.6117,
+       "p95": 2.1474
+      },
+      "longest_wait_ms": 15.291,
+      "max_depth": 10,
+      "runner": "SEQUENTIAL (the driver's default)",
+      "time_weighted_mean_depth": 5.738
+     },
+     "stage_ms": {
+      "ACCOUNT_LIST": 0.2191,
+      "ACCOUNT_STAGE": 16.6658,
+      "MARKET_STAGE": 16.1451,
+      "OTHER (registry entry, cycle rows, controls, counts)": 40.8695,
+      "VERIFY_MANDATE": 3.2028
+     }
+    }
+   ]
+  },
+  {
+   "accounts": 100,
+   "counted": [
+    {
+     "account_stage_statements": 1200,
+     "by_verb": {
+      "BEGIN": 104,
+      "COMMIT": 104,
+      "DELETE": 100,
+      "INSERT": 405,
+      "SELECT": 607,
+      "UPDATE": 2
+     },
+     "connection_pragmas": 3,
+     "connections_opened": 1,
+     "connections_reused": 207,
+     "cycle_key": "2020-09-01",
+     "cycle_overhead_statements": 122,
+     "statements": 1322,
+     "statements_per_account": {
+      "max": 12,
+      "mean": 12.0,
+      "min": 12
+     }
+    },
+    {
+     "account_stage_statements": 2596,
+     "by_verb": {
+      "BEGIN": 104,
+      "COMMIT": 104,
+      "DELETE": 100,
+      "INSERT": 1701,
+      "SELECT": 707,
+      "UPDATE": 2
+     },
+     "connection_pragmas": 3,
+     "connections_opened": 1,
+     "connections_reused": 207,
+     "cycle_key": "2020-09-02",
+     "cycle_overhead_statements": 122,
+     "statements": 2718,
+     "statements_per_account": {
+      "max": 30,
+      "mean": 25.96,
+      "min": 22
+     }
+    }
+   ],
+   "cycles": 2,
+   "first_cycle": "2020-09-01",
+   "market_data_provider_calls": 2,
+   "memory": {
+    "note": "Python allocations during one cycle, the market stage included; the panel the provider already holds is not counted again",
+    "peak_mib": 3.605,
+    "tracemalloc_peak_bytes_per_cycle": [
+     3763776,
+     3780376
+    ]
+   },
+   "summary": {
+    "account_stage_ms_median": 320.907,
+    "accounts_per_second_median": 311.62,
+    "connections_per_cycle_median": 1,
+    "cycle_overhead_statements": [
+     122
+    ],
+    "end_to_end_ms_median": 445.669,
+    "market_stage_ms_median": 21.999,
+    "ms_per_account_median": 3.2091,
+    "note": "medians over the cycles after the first (the first cycle only opens the books)",
+    "queue_max_depth": 100,
+    "statements_per_account_mean": 25.96,
+    "statements_per_cycle_median": 2718
+   },
+   "timed": [
+    {
+     "accounts_done": 100,
+     "accounts_per_second": 541.99,
+     "cycle_key": "2020-09-01",
+     "end_to_end_ms": 265.7381,
+     "intents": 598,
+     "queue": {
+      "account_ms": {
+       "max": 39.267,
+       "p50": 1.4606,
+       "p95": 2.1245
+      },
+      "longest_wait_ms": 183.108,
+      "max_depth": 100,
+      "runner": "SEQUENTIAL (the driver's default)",
+      "time_weighted_mean_depth": 40.966
+     },
+     "stage_ms": {
+      "ACCOUNT_LIST": 0.9126,
+      "ACCOUNT_STAGE": 184.5044,
+      "MARKET_STAGE": 17.8725,
+      "OTHER (registry entry, cycle rows, controls, counts)": 59.1426,
+      "VERIFY_MANDATE": 3.306
+     }
+    },
+    {
+     "accounts_done": 100,
+     "accounts_per_second": 311.62,
+     "cycle_key": "2020-09-02",
+     "end_to_end_ms": 445.6687,
+     "intents": 266,
+     "queue": {
+      "account_ms": {
+       "max": 89.5584,
+       "p50": 1.862,
+       "p95": 5.0238
+      },
+      "longest_wait_ms": 319.496,
+      "max_depth": 100,
+      "runner": "SEQUENTIAL (the driver's default)",
+      "time_weighted_mean_depth": 52.435
+     },
+     "stage_ms": {
+      "ACCOUNT_LIST": 0.9587,
+      "ACCOUNT_STAGE": 320.907,
+      "MARKET_STAGE": 21.999,
+      "OTHER (registry entry, cycle rows, controls, counts)": 97.4876,
+      "VERIFY_MANDATE": 4.3164
+     }
+    }
+   ]
+  },
+  {
+   "accounts": 1000,
+   "counted": [
+    {
+     "account_stage_statements": 12000,
+     "by_verb": {
+      "BEGIN": 1004,
+      "COMMIT": 1004,
+      "DELETE": 1000,
+      "INSERT": 4005,
+      "SELECT": 6007,
+      "UPDATE": 2
+     },
+     "connection_pragmas": 3,
+     "connections_opened": 1,
+     "connections_reused": 2007,
+     "cycle_key": "2020-09-01",
+     "cycle_overhead_statements": 1022,
+     "statements": 13022,
+     "statements_per_account": {
+      "max": 12,
+      "mean": 12.0,
+      "min": 12
+     }
+    },
+    {
+     "account_stage_statements": 25996,
+     "by_verb": {
+      "BEGIN": 1004,
+      "COMMIT": 1004,
+      "DELETE": 1000,
+      "INSERT": 17001,
+      "SELECT": 7007,
+      "UPDATE": 2
+     },
+     "connection_pragmas": 3,
+     "connections_opened": 1,
+     "connections_reused": 2007,
+     "cycle_key": "2020-09-02",
+     "cycle_overhead_statements": 1022,
+     "statements": 27018,
+     "statements_per_account": {
+      "max": 30,
+      "mean": 25.996,
+      "min": 22
+     }
+    }
+   ],
+   "cycles": 2,
+   "first_cycle": "2020-09-01",
+   "market_data_provider_calls": 2,
+   "memory": {
+    "note": "Python allocations during one cycle, the market stage included; the panel the provider already holds is not counted again",
+    "peak_mib": 3.605,
+    "tracemalloc_peak_bytes_per_cycle": [
+     3763680,
+     3780280
+    ]
+   },
+   "summary": {
+    "account_stage_ms_median": 4674.1,
+    "accounts_per_second_median": 213.94,
+    "connections_per_cycle_median": 1,
+    "cycle_overhead_statements": [
+     1022
+    ],
+    "end_to_end_ms_median": 4831.374,
+    "market_stage_ms_median": 19.526,
+    "ms_per_account_median": 4.6741,
+    "note": "medians over the cycles after the first (the first cycle only opens the books)",
+    "queue_max_depth": 1000,
+    "statements_per_account_mean": 25.996,
+    "statements_per_cycle_median": 27018
+   },
+   "timed": [
+    {
+     "accounts_done": 1000,
+     "accounts_per_second": 366.57,
+     "cycle_key": "2020-09-01",
+     "end_to_end_ms": 2825.3525,
+     "intents": 5998,
+     "queue": {
+      "account_ms": {
+       "max": 342.801,
+       "p50": 1.3184,
+       "p95": 2.2609
+      },
+      "longest_wait_ms": 2726.07,
+      "max_depth": 1000,
+      "runner": "SEQUENTIAL (the driver's default)",
+      "time_weighted_mean_depth": 583.094
+     },
+     "stage_ms": {
+      "ACCOUNT_LIST": 6.4088,
+      "ACCOUNT_STAGE": 2727.9664,
+      "MARKET_STAGE": 18.2163,
+      "OTHER (registry entry, cycle rows, controls, counts)": 69.3873,
+      "VERIFY_MANDATE": 3.3737
+     }
+    },
+    {
+     "accounts_done": 1000,
+     "accounts_per_second": 213.94,
+     "cycle_key": "2020-09-02",
+     "end_to_end_ms": 4831.3744,
+     "intents": 2666,
+     "queue": {
+      "account_ms": {
+       "max": 257.7368,
+       "p50": 1.5948,
+       "p95": 2.6738
+      },
+      "longest_wait_ms": 4672.187,
+      "max_depth": 1000,
+      "runner": "SEQUENTIAL (the driver's default)",
+      "time_weighted_mean_depth": 474.223
+     },
+     "stage_ms": {
+      "ACCOUNT_LIST": 7.2158,
+      "ACCOUNT_STAGE": 4674.1005,
+      "MARKET_STAGE": 19.5264,
+      "OTHER (registry entry, cycle rows, controls, counts)": 127.5793,
+      "VERIFY_MANDATE": 2.9524
+     }
+    }
+   ]
+  }
+ ],
+ "schema": "cati-cycle-performance-v1"
+}

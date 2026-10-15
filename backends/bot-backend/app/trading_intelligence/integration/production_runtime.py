@@ -13,6 +13,7 @@ from shared_lib.broker.environment import BrokerEnvironment, normalize_environme
 from shared_lib.broker.resolver import resolve_broker_auth
 from shared_lib.broker.client_factory import build_client_from_auth
 from shared_lib.core.production import order_submission_gate
+from app.trading_intelligence.pipeline.coordination import PreemptionGate
 from .residual_prospective import FAMILY, REGISTRY_HASH, owner_current, schedule as residual_schedule
 from .forward_observe import schedule as forward_schedule
 
@@ -33,6 +34,15 @@ _idle.set()
 #: and an operator emergency flatten take the SAME lock, so a flatten can never
 #: interleave with a cycle on the same account (or share a client with it).
 _cycle_lock = threading.RLock()
+#: An emergency flatten that is waiting for (or holds) the cycle lock. The
+#: cycle asks it at its safe points -- between two accounts, and before an
+#: account's entry-capable step -- and hands the lock over there instead of
+#: finishing its round first (Step 3.13). In-process only: the one process
+#: that may flatten is the lease owner, which is the one that runs the cycle.
+_preemption = PreemptionGate()
+#: How long a cycle that yielded waits for the flatten before it queues on the
+#: lock again (it then simply blocks behind the flatten; nothing is skipped).
+PREEMPTION_RESUME_WAIT_SECONDS = 300.
 
 #: The broker client of each account, reused across cycles. Building one costs
 #: an exchangeInfo download and a time sync, which used to be paid per account
@@ -268,7 +278,16 @@ def _sync_with_client(db, account, auth, env, gate, client, factory, execute):
                        "entry_permission": "BLOCKED", "reason": gate["reason"]
                        if not gate["enabled"] else "ACCOUNT_RISK_PENDING"},
               "observed_at": now}
-    if execute:
+    if execute and _preemption.covers(account["id"]):
+        # Safe point inside an account: an emergency flatten is waiting for THIS
+        # account. Its entry-capable step is not started -- the kill switch the
+        # flatten set first already refuses the entry at the boundary; this hands
+        # the account over without first spending its venue reads. The flatten
+        # reads the actual positions and runs the same maintenance itself, and
+        # the next ordinary cycle processes the account as usual.
+        result["execution"] = {"execution_permission": "BLOCKED_ACCOUNT", "reason": "CATI_NEW_ENTRY_KILL_SWITCH",
+                               "emergency_preempted": True}
+    elif execute:
         from .production_execution import process_account
         try:
             result["execution"] = process_account(db, account, client, result)
@@ -326,17 +345,27 @@ def save(db, account_id, user_id, now, result):
 
 
 def sync(db):
+    """One round over every execution account. Returns None when the round is
+    over, or the accounts it had not started when it yielded to an emergency
+    flatten (``broker_cycle`` resumes those once the flatten has run)."""
     if not owner_current(db):
         return
     initialize(db)
-    accounts = execution_accounts(db)
-    for account in accounts:
+    return _sync_accounts(db, execution_accounts(db))
+
+
+def _sync_accounts(db, accounts):
+    for index, account in enumerate(accounts):
         if not owner_current(db):
             return
         from app.ops.runtime_shutdown import stop_requested
         if stop_requested():
             # A stop lets the account in flight finish; it does not start another.
             return
+        if _preemption.pending():
+            # Safe point between accounts: the account in flight has finished
+            # (entry, protection and all); the flatten gets the lock now.
+            return accounts[index:]
         if account["broker_id"].lower() not in {"binance", "bybit", "bingx"}:
             save(db, account["id"], account["user_id"], int(time.time()*1000),
                  {**account_identity(account), "status": "CAPABILITY_UNAVAILABLE",
@@ -459,12 +488,21 @@ def broker_cycle(db):
     try:
         with _cycle_lock:  # shared with flatten(): one broker-mutating actor at a time
             from app.ops.runtime_shutdown import stop_requested
-            if not stop_requested():
+            if not stop_requested() and not _preemption.pending():   # no labelled order work ahead of a flatten
                 from app.execution.demo_transport_smoke import process_local_request
                 _isolated("demo_transport_request", process_local_request, db)
                 from app.execution.demo_boundary_certification import process_local_request as certify_boundary
                 _isolated("demo_certification_request", certify_boundary, db)
-            sync(db)
+            remaining = sync(db)
+        while isinstance(remaining, list) and remaining:
+            # The round yielded to an emergency flatten between two accounts. The
+            # lock is free here, so the flatten runs now; the accounts it did not
+            # reach are then taken up again under the lock, each one checked
+            # (lease, stop, another emergency) exactly as in an ordinary round.
+            _progress["preemptions"] = _progress.get("preemptions", 0) + 1
+            _preemption.wait_clear(PREEMPTION_RESUME_WAIT_SECONDS)
+            with _cycle_lock:
+                remaining = _sync_accounts(db, remaining)
     finally:
         _idle.set()
 
@@ -473,8 +511,43 @@ class EngineUnavailable(RuntimeError):
     """The production engine in THIS process cannot act on a broker right now."""
 
 
-#: How long an emergency flatten waits for the cycle in flight to finish.
+#: The longest an emergency flatten waits for the broker-cycle lock. The cycle
+#: hands the lock over at its next safe point, so the ordinary wait is what is
+#: left of ONE account, not of a round; this bound is the fallback for an
+#: account whose venue calls hang (the flatten then answers BROKER_CYCLE_BUSY
+#: and reports that nothing was closed -- it never claims otherwise).
 FLATTEN_LOCK_WAIT_SECONDS = 60.
+
+
+def _emergency_step(db, step, request_id, **kw):
+    """Advance the durable emergency record (Step 3.13). Best effort by design:
+    the record coordinates OTHER workers and keeps the audit trail; a flatten
+    that could not write it still runs (the kill switch is already on)."""
+    try:
+        from app.trading_intelligence.pipeline.coordination import EmergencyControl
+        return getattr(EmergencyControl(db), step)(request_id, **kw)
+    except Exception as exc:
+        logger.warning("[EMERGENCY_FLATTEN] request=%s coordination record step %s failed (%s)", request_id, step,
+                       type(exc).__name__)
+        return None
+
+
+def _emergency_lease(db, account_id, request_id):
+    """The account's durable lease, taken WITH PRIORITY for the flatten: an
+    ordinary worker that holds it loses it and stops at its next check. None
+    when it could not be taken (logged; the flatten goes on under the cycle lock)."""
+    try:
+        from app.trading_intelligence.pipeline.coordination import (
+            EMERGENCY, EMERGENCY_LEASE_TTL_MS, AccountLeases)
+        leases = AccountLeases(db)
+        claim = leases.acquire(account_id, "emergency:" + str(request_id), ttl_ms=EMERGENCY_LEASE_TTL_MS, purpose=EMERGENCY)
+        if claim:
+            return leases, claim
+        logger.warning("[EMERGENCY_FLATTEN] request=%s account=%s lease not taken (%s)", request_id, account_id, claim.reason)
+    except Exception as exc:
+        logger.warning("[EMERGENCY_FLATTEN] request=%s account=%s lease unavailable (%s)", request_id, account_id,
+                       type(exc).__name__)
+    return None
 
 
 def flatten(db, *, account_id=None, request_id, factory=build_client_from_auth, lock_wait=FLATTEN_LOCK_WAIT_SECONDS):
@@ -484,7 +557,13 @@ def flatten(db, *, account_id=None, request_id, factory=build_client_from_auth, 
     close as the fail-safe (``production_execution.flatten_account``). It
     submits no entry and bypasses no gate. Raises ``EngineUnavailable`` when
     this process cannot act at all -- it never reports success for nothing.
-    Returns one result per account position (or one failed row per account)."""
+    Returns one result per account position (or one failed row per account).
+
+    It PREEMPTS the broker cycle (Step 3.13): from the moment the request is
+    registered the cycle starts no further account and no entry-capable step
+    of an account in scope, and releases the lock at that safe point. Nothing
+    is interrupted mid-account: an entry that has reached the broker still
+    gets its protection, and the flatten then reads the ACTUAL positions."""
     if not settings.production:
         raise EngineUnavailable("CATI_PRODUCTION_PROFILE_REQUIRED")
     if not owner_current(db):
@@ -499,37 +578,56 @@ def flatten(db, *, account_id=None, request_id, factory=build_client_from_auth, 
         raise EngineUnavailable("BROKER_ACCOUNT_REQUIRED")
     if not any(order_submission_gate(a["environment"])["enabled"] for a in accounts):
         raise EngineUnavailable("ORDER_SUBMISSION_DISABLED")
-    if not _cycle_lock.acquire(timeout=lock_wait):
-        raise EngineUnavailable("BROKER_CYCLE_BUSY")
+    ticket = _preemption.request(request_id, account_id)       # the cycle yields at its next safe point
+    outcome = "FAILED"
     try:
-        from .production_execution import ACCOUNT_LEVEL, flatten_account
-        results = []
-        for account in accounts:
-            try:
-                if account["broker_id"].lower() not in {"binance", "bybit", "bingx"}:
-                    # No account-scoped read exists here for these venues.
-                    raise ValueError("EMERGENCY_FLATTEN_UNSUPPORTED_BROKER")
-                auth = resolve_broker_auth(account["id"], account["user_id"], db)
-                env = normalize_environment(auth.environment)
-                if normalize_environment(account["environment"]) != env:
-                    raise ValueError("BROKER_ENVIRONMENT_MISMATCH")
-                scoped = {**account, "environment": env.value.upper()}
-                client = account_client(db, account["id"], auth, factory)
-                client._production_credential_version = getattr(auth, "credential_version", None)
-                results.extend(flatten_account(db, scoped, client, request_id=request_id))
-            except Exception as exc:
-                if client_doubt(exc):
-                    invalidate_client(account["id"])
-                code = getattr(exc, "reason_code", None)
-                if not code and isinstance(exc, ValueError):
-                    candidate = str(exc)
-                    code = candidate if candidate.replace("_", "").isalnum() and candidate.upper() == candidate else None
-                # Never publish credentials or signed exception URLs.
-                results.append({"account_id": account["id"], "symbol": ACCOUNT_LEVEL, "status": "failed",
-                                "detail": code or type(exc).__name__})
-        return results
+        _emergency_step(db, "begin", request_id, account_id=account_id)
+        if not _cycle_lock.acquire(timeout=lock_wait):
+            outcome = "ENGINE_UNAVAILABLE:BROKER_CYCLE_BUSY"
+            raise EngineUnavailable("BROKER_CYCLE_BUSY")
+        try:
+            from .production_execution import ACCOUNT_LEVEL, flatten_account
+            results = []
+            for account in accounts:
+                held = _emergency_lease(db, account["id"], request_id)
+                try:
+                    if account["broker_id"].lower() not in {"binance", "bybit", "bingx"}:
+                        # No account-scoped read exists here for these venues.
+                        raise ValueError("EMERGENCY_FLATTEN_UNSUPPORTED_BROKER")
+                    auth = resolve_broker_auth(account["id"], account["user_id"], db)
+                    env = normalize_environment(auth.environment)
+                    if normalize_environment(account["environment"]) != env:
+                        raise ValueError("BROKER_ENVIRONMENT_MISMATCH")
+                    scoped = {**account, "environment": env.value.upper()}
+                    client = account_client(db, account["id"], auth, factory)
+                    client._production_credential_version = getattr(auth, "credential_version", None)
+                    results.extend(flatten_account(db, scoped, client, request_id=request_id))
+                except Exception as exc:
+                    if client_doubt(exc):
+                        invalidate_client(account["id"])
+                    code = getattr(exc, "reason_code", None)
+                    if not code and isinstance(exc, ValueError):
+                        candidate = str(exc)
+                        code = candidate if candidate.replace("_", "").isalnum() and candidate.upper() == candidate else None
+                    # Never publish credentials or signed exception URLs.
+                    results.append({"account_id": account["id"], "symbol": ACCOUNT_LEVEL, "status": "failed",
+                                    "detail": code or type(exc).__name__})
+                finally:
+                    if held is not None:
+                        try:
+                            held[0].release(held[1])
+                        except Exception as exc:
+                            logger.warning("[EMERGENCY_FLATTEN] request=%s account=%s lease release failed (%s)",
+                                           request_id, account["id"], type(exc).__name__)
+                    _emergency_step(db, "heartbeat", request_id)
+            outcome = "COMPLETED" if results and all(
+                r.get("status") in ("closed", "submitted", "no_position") for r in results) else "INCOMPLETE"
+            return results
+        finally:
+            _cycle_lock.release()
     finally:
-        _cycle_lock.release()
+        _preemption.release(ticket)
+        _emergency_step(db, "finish", request_id, outcome=outcome)
 
 
 def operations_summary(db):
@@ -568,6 +666,30 @@ def operations_summary(db):
 async def run(db):
     if not settings.production:
         raise ValueError("CATI_PRODUCTION_PROFILE_REQUIRED")
+    from .platform_runtime import ShadowScheduler
+    from .venue_runtime import VenueRuntime
+    import os
+
+    scheduler = ShadowScheduler(db, owns_runtime=owner_current)
+    services = [scheduler]
+    # A single conservative scope shares the budget when the deployment hasn't
+    # supplied its egress IP identity. It never creates a per-customer allowance.
+    services.append(VenueRuntime(db, owns_runtime=owner_current,
+                                 server_address=os.environ.get("CATI_EGRESS_SCOPE", "shared-runtime-egress"),
+                                 accounts=execution_accounts, resolve=resolve_broker_auth,
+                                 build=build_client_from_auth))
+    workers = [asyncio.create_task(service.run()) for service in services]
+    try:
+        await _broker_loop(db)
+    finally:
+        for service in services:
+            service.request_stop()
+        for worker in workers:
+            worker.cancel()
+        await asyncio.gather(*workers, return_exceptions=True)
+
+
+async def _broker_loop(db):
     runner = SimpleNamespace(db=db)
     fx_check = 0.
     _progress["loop_started"] = time.monotonic()

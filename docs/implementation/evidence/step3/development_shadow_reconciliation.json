@@ -1,0 +1,130 @@
+{
+ "accounts_against_the_recomputed_evaluator": {
+  "MODEL:EXECUTABLE:aggressive": {
+   "against": "EVALUATOR_RECOMPUTED_ON_THE_SAME_BARS",
+   "by_status": {
+    "MATCH": 1827
+   },
+   "days": 1827,
+   "divergences_by_classification": {},
+   "first_alerts": [],
+   "largest_relative_difference": 0.0,
+   "precision_band": 1e-06,
+   "tolerance": 1e-09
+  },
+  "MODEL:EXECUTABLE:balanced": {
+   "against": "EVALUATOR_RECOMPUTED_ON_THE_SAME_BARS",
+   "by_status": {
+    "MATCH": 1827
+   },
+   "days": 1827,
+   "divergences_by_classification": {},
+   "first_alerts": [],
+   "largest_relative_difference": 0.0,
+   "precision_band": 1e-06,
+   "tolerance": 1e-09
+  },
+  "MODEL:EXECUTABLE:conservative": {
+   "against": "EVALUATOR_RECOMPUTED_ON_THE_SAME_BARS",
+   "by_status": {
+    "MATCH": 1827
+   },
+   "days": 1827,
+   "divergences_by_classification": {},
+   "first_alerts": [],
+   "largest_relative_difference": 0.0,
+   "precision_band": 1e-06,
+   "tolerance": 1e-09
+  },
+  "MODEL:MANDATE:aggressive": {
+   "against": "EVALUATOR_RECOMPUTED_ON_THE_SAME_BARS",
+   "by_status": {
+    "MATCH": 1827
+   },
+   "days": 1827,
+   "divergences_by_classification": {},
+   "first_alerts": [],
+   "largest_relative_difference": 0.0,
+   "precision_band": 1e-06,
+   "tolerance": 1e-09
+  },
+  "MODEL:MANDATE:balanced": {
+   "against": "EVALUATOR_RECOMPUTED_ON_THE_SAME_BARS",
+   "by_status": {
+    "MATCH": 1827
+   },
+   "days": 1827,
+   "divergences_by_classification": {},
+   "first_alerts": [],
+   "largest_relative_difference": 0.0,
+   "precision_band": 1e-06,
+   "tolerance": 1e-09
+  },
+  "MODEL:MANDATE:conservative": {
+   "against": "EVALUATOR_RECOMPUTED_ON_THE_SAME_BARS",
+   "by_status": {
+    "MATCH": 1827
+   },
+   "days": 1827,
+   "divergences_by_classification": {},
+   "first_alerts": [],
+   "largest_relative_difference": 0.0,
+   "precision_band": 1e-06,
+   "tolerance": 1e-09
+  }
+ },
+ "cycles": 1827,
+ "dataset_hash": "0c3392d8daf78e08244fdd21edac5a93ef0c6cfd5386e3cecbf6cb379fde284e",
+ "hypothesis_id": "H-018",
+ "mandate_id": "MANDATE_004",
+ "manifest_hash": "38d940f14f98a604ffe7bd3336e51b51e07fdda571b057db19327b4019a6a450",
+ "mode": "SHADOW",
+ "orders_sent": 0,
+ "period": {
+  "first_cycle": "2020-01-01",
+  "held_back_rows_read": 0,
+  "last_cycle": "2024-12-31",
+  "note": "the dataset handle refuses rows after the development period"
+ },
+ "primary_account_against_the_committed_reference": {
+  "account": "MODEL:MANDATE:balanced",
+  "by_status": {
+   "MATCH": 1827
+  },
+  "days": 1827,
+  "days_compared": 1827,
+  "days_with_targets": 1708,
+  "divergences_by_classification": {},
+  "files": [
+   "development_primary_daily_targets.csv",
+   "development_primary_daily.csv",
+   "development_primary_rejections.csv"
+  ],
+  "first_alerts": [],
+  "largest_relative_difference": 0.0,
+  "precision_band": 1e-06,
+  "tolerance": 1e-09
+ },
+ "reference_result_hash": "a48879dde9f4a9c6cdf38ea86c9e7d1ef986f3a99f56202cc83b9a7ed36f64e9",
+ "reference_run_id": "run_0b88d389f8da50dc48de5e51",
+ "rule_hash": "7795ad79de962300351fcf4d419cd511256dce356c9ee46cdbbc21842582cbb9",
+ "source_commit": "75435cd56313b1557bafce5ea11af8f8c2cee9c5",
+ "timing": {
+  "host": "Windows workstation (not a certification of Linux behaviour)",
+  "replay_seconds": 1786.0,
+  "seconds_per_cycle": 0.978,
+  "stage_seconds": {
+   "ACCOUNT_LIST": 3.3,
+   "ACCOUNT_STAGE": 15.1,
+   "MARKET_STAGE": 1604.7,
+   "VERIFY_MANDATE": 4.5
+  }
+ },
+ "tolerance": {
+  "precision_band": 1e-06,
+  "relative": 1e-09
+ },
+ "verdict": "REPRODUCED",
+ "what": "Section H Step 3.6 / 3.15: the development period replayed through the CATI platform cycle driver in shadow, reconciled with the Step 2 evaluator",
+ "working_tree_dirty": true
+}

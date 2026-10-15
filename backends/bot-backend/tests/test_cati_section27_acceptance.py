@@ -130,6 +130,7 @@ def test_certification_universes_separate_and_no_path_advances_authority(tmp_pat
                             p.read_text(encoding="utf-8", errors="ignore"))]
     assert writers == ["trading_intelligence/governance/promotion.py"]  # only the explicit governance API writes phases
     api_code = "\n".join(p.read_text(encoding="utf-8", errors="ignore") for p in (app / "api").glob("*.py"))
-    # no HTTP route can advance governance, grant a live scope, authorize or open a holdout
-    for forbidden in ("PromotionGovernance", "grant_scope", "authorize_holdout", "holdouts.open", "HoldoutRegistry("):
+    # Step 3 adds authenticated M0-M6 family governance, tested in test_step3_governance_api.
+    # No HTTP route may grant a live scope or open a research holdout.
+    for forbidden in ("grant_scope", "authorize_holdout", "holdouts.open", "HoldoutRegistry("):
         assert forbidden not in api_code, forbidden

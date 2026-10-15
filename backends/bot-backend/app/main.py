@@ -460,6 +460,11 @@ from app.api.emergency import router as emergency_router
 app.include_router(ibkr_router)  # Prefix already defined in router
 app.include_router(emergency_router)  # /api/v1/admin/emergency/* (admin only)
 
+# Section H Step 3.11: family governance (registry, M0-M6 promotion, family and account kill switches)
+from app.api.family_governance import router as family_governance_router
+
+app.include_router(family_governance_router)  # /api/v1/admin/governance/* (admin emergency token only)
+
 # Register News Intelligence API router (Phase 3)
 from app.api.news_intelligence import router as news_intelligence_router
 

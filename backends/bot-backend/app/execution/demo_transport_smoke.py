@@ -2,6 +2,23 @@
 
 Executed by the canonical lease owner. Durable CREATE ownership precedes the
 network call. Restart reads the deterministic ID; uncertain results never retry.
+
+This is an OPERATOR TRANSPORT TOOL, NOT A STRATEGY PATH (Step 3.4 audit). It is
+the one place in the application that sends an opening order to a venue without
+``CATIExecutionBoundary``: one MARKET BUY on a Binance DEMO account, posted
+through the client's signed transport under this module's own call-scoped
+permit, then protected, verified and closed. It is kept, and kept apart:
+
+* it carries no strategy family, no trade plan, no portfolio reservation and no
+  execution attempt, and nothing it does is recorded as a trade of any family:
+  its rows live in ``demo_transport_smoke``, its order ids start with
+  ``CFSMOKE`` and its intent identity with ``TESTNET_SMOKE:``;
+* its permit is never honoured while the final boundary is submitting a
+  strategy entry or the boundary certification harness is running in the same
+  context, and ``run`` refuses to start there (``_boundary_submission_active``);
+* it opens nothing on an account whose strategy execution is unresolved (an
+  entry whose outcome is unknown, a position of a trade plan, a pending close):
+  the same lineage the runtime maintains (``production_execution.open_lineage``).
 """
 from contextvars import ContextVar
 from decimal import Decimal, ROUND_UP
@@ -10,6 +27,15 @@ import json
 import time
 
 _permit = ContextVar("demo_transport_smoke", default=None)
+
+
+def _boundary_submission_active():
+    """True while this context is inside a strategy submission of the final
+    boundary, or inside the boundary certification harness. Either one owns the
+    account's order authority for that moment; this tool has none there."""
+    from app.execution import demo_boundary_certification
+    from app.trading_intelligence.execution import entry_permit
+    return entry_permit._PERMIT.get() is not None or demo_boundary_certification._permit.get() is not None
 
 
 def lookup(client, symbol, cid):
@@ -30,7 +56,7 @@ def lookup(client, symbol, cid):
 
 def permitted(client, payload):
     scope = _permit.get()
-    if scope is None or client is not scope[0]:
+    if scope is None or client is not scope[0] or _boundary_submission_active():
         return False
     from shared_lib.broker.environment import normalize_environment, resolve_base_url
     from app.trading_intelligence.integration.residual_prospective import owner_current
@@ -52,6 +78,8 @@ def run(db, account_id, *, run_id="closure-43178689", symbol="ADAUSDT"):
     from app.models.unified_trading import ProtectionRequest, Side
     if not owner_current(db):
         raise ValueError("CANONICAL_RUNTIME_LEASE_REQUIRED")
+    if _boundary_submission_active():
+        raise ValueError("DEMO_SMOKE_INSIDE_BOUNDARY_SUBMISSION")
     with db.connect() as c:
         account = dict(c.execute("SELECT * FROM broker_accounts WHERE id=?", (account_id,)).fetchone())
         bots = [dict(r) for r in c.execute("SELECT * FROM bot_instances WHERE broker_account_id=? AND status='active'", (account_id,))]
@@ -77,6 +105,13 @@ def run(db, account_id, *, run_id="closure-43178689", symbol="ADAUSDT"):
         if not order or str(order.get("status")) != "FILLED":
             raise ValueError("DEMO_SMOKE_CREATE_OUTCOME_UNKNOWN")
     else:
+        # Before any venue read of a NEW smoke: an account with unresolved
+        # strategy execution is not this tool's to open anything on. (Resuming
+        # an existing smoke is not gated: it only verifies, protects and closes.)
+        from app.trading_intelligence.integration.production_execution import open_lineage
+        lineage = open_lineage(db, account_id)
+        if lineage["bots"] or lineage["pending_close"]:
+            raise ValueError("DEMO_SMOKE_STRATEGY_EXECUTION_UNRESOLVED")
         positions, orders = client.position_risk(), client.open_orders()
         if client.get_algo_orders(symbol, raise_on_error=True):
             raise ValueError("DEMO_SMOKE_EXISTING_PROTECTION")

@@ -133,7 +133,8 @@ def test_certificate_plan_cannot_authorize_itself_outside_local_scope(fresh):
     plan=cert.build_plan(fresh.account,{'id':fresh.plan.bot_instance_id},fresh.instrument('ADAUSDT'),fresh.plan.portfolio_reservation_id,'forged',100.,fresh.now)
     assert not cert.permitted(fresh.db,plan)
     result=fresh.run(fresh.demo_boundary(),plan=plan,atr=1.)
-    assert result.reason_codes==('PRODUCTION_REQUIRES_FROZEN_RESIDUAL_DECISION',)
+    # Step 3.3: a certification plan without its operator permit is not a strategy family at all
+    assert result.reason_codes==('FAMILY_UNKNOWN',)
     fresh.client.place_order.assert_not_called()
 
 

@@ -24,8 +24,9 @@ from app.exchange.instruments import (
 )
 from app.models.unified_trading import OrderRequest, OrderType, ProtectionRequest, ProtectionUpdateRequest, Side
 
-CLIENTS = {"binance": BinanceFuturesClient("k", "s", base_url="https://x"), "bybit": BybitClient("k", "s", base_url="https://x"),
-           "bingx": BingXClient("k", "s", base_url="https://x")}
+# This is a method-surface check. Constructing a Binance client performs a
+# time-sync request during collection, before network-isolation fixtures run.
+CLIENTS = {"binance": BinanceFuturesClient, "bybit": BybitClient, "bingx": BingXClient}
 
 
 # ── the contract ───────────────────────────────────────────────────────────

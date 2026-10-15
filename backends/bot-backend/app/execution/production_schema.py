@@ -129,6 +129,9 @@ def ensure(db, *, force: bool = False) -> bool:
             equity_history(c)
             from app.observability.user_events import initialize as user_events
             user_events(c)
+            # Section H Steps 3-4: the platform pipeline's tables, likewise once per database.
+            from shared_lib.persistence.cati_platform_schema import ensure_on_connection as platform_pipeline
+            platform_pipeline(c)
         # Identity again: the file may not have existed before the first connection.
         key, size = _identity(db)
         _READY[key] = size

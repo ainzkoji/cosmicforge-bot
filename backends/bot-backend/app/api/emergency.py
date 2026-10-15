@@ -6,6 +6,7 @@ service token minted by the user-backend admin emergency proxy
 token is refused with 403.
 
     GET  /api/v1/admin/emergency/status
+    GET  /api/v1/admin/emergency/requests      the durable emergency requests and their holds
     POST /api/v1/admin/emergency/kill-switch   {"enabled": bool, "reason": str}
     POST /api/v1/admin/emergency/flatten       {"scope": "all"|"account", "account_id": str|null,
                                                 "confirm": "FLATTEN", "reason": str}
@@ -26,6 +27,16 @@ What these controls are and are not:
   broker-cycle lock. It bypasses no gate: the order-submission flags, the
   endpoint/environment check and the runtime lease all still apply. A
   reduce-only close can never open or increase a position.
+* Flatten PREEMPTS ordinary work (Step 3.13). Its request is recorded durably
+  (``pipeline.coordination.EmergencyControl``: who, when, scope, reason,
+  state) right after the kill switch: from then on no worker that opens this
+  database starts ordinary work for the scope, and the broker cycle of this
+  process hands its lock over at its next safe point instead of finishing its
+  round. A flatten of ONE account also switches on that account's own kill
+  switch, so the account stays closed to entries after the platform switch is
+  lifted, until an operator lifts the account's switch as well
+  (``/api/v1/admin/governance/accounts/{id}/kill-switch``). Writing the record
+  is best effort and never delays or prevents the close.
 * It never reports success for work it did not do: 409 when this process
   cannot act at all, 502 when any in-scope close failed. ``ok`` is true only
   when every in-scope position is confirmed ``closed`` / ``no_position``, or
@@ -145,6 +156,32 @@ def _open_positions(db: Any, now_ms: int) -> Optional[List[Dict[str, Any]]]:
         return None
 
 
+def _emergency_record(db: Any, request_id: str, account_id: Optional[str], admin_id: str, reason: str) -> None:
+    """The durable emergency request. Never raises: the close does not depend on it."""
+    try:
+        from app.trading_intelligence.pipeline.coordination import ACCOUNT, ALL, EmergencyControl
+
+        EmergencyControl(db).request(scope=ACCOUNT if account_id else ALL, account_id=account_id,
+                                     requested_by=f"admin:{admin_id}", reason=reason, request_id=request_id)
+    except Exception:
+        logger.exception("[EMERGENCY] the emergency request record could not be written: %s", request_id)
+
+
+def _emergency_finish(db: Any, request_id: str, outcome: str, admin_id: str,
+                      results: Optional[List[Dict[str, Any]]] = None) -> None:
+    """Close the durable request with THIS route's verdict (the one the operator is shown). Never raises."""
+    try:
+        from app.trading_intelligence.pipeline.coordination import EmergencyControl
+
+        counts: Dict[str, int] = {}
+        for row in results or []:
+            counts[str(row.get("status"))] = counts.get(str(row.get("status")), 0) + 1
+        EmergencyControl(db).finish(request_id, outcome=outcome, detail={"result_counts": counts},
+                                    actor_ref=f"admin:{admin_id}")
+    except Exception:
+        logger.exception("[EMERGENCY] the emergency request record could not be closed: %s", request_id)
+
+
 def _status(db: Any) -> Dict[str, Any]:
     from app.trading_intelligence.governance.promotion import kill_switch_status
     from shared_lib.core.production import order_submission_gate
@@ -187,6 +224,19 @@ def emergency_status(admin_id: str = Depends(require_admin_emergency), db: DB = 
     return _status(db)
 
 
+@router.get("/requests")
+def emergency_requests(admin_id: str = Depends(require_admin_emergency), db: DB = Depends(get_db)):
+    """The durable emergency requests, newest first: state, outcome, and whether each one's scope is still
+    closed to entries (read from the kill switch of that scope). Read-only."""
+    try:
+        from app.trading_intelligence.pipeline.coordination import EmergencyControl
+
+        return EmergencyControl(db).status()
+    except Exception as exc:
+        # Unreadable coordination state is never shown as "nothing pending".
+        raise HTTPException(status_code=503, detail=f"Emergency request state is unavailable ({type(exc).__name__}).")
+
+
 @router.post("/kill-switch")
 def set_kill_switch(body: KillSwitchRequest, admin_id: str = Depends(require_admin_emergency), db: DB = Depends(get_db)):
     reason = body.reason.strip()
@@ -224,17 +274,22 @@ def emergency_flatten(body: FlattenRequest, admin_id: str = Depends(require_admi
         return _error(503, "KILL_SWITCH_NOT_PERSISTED", "The kill switch could not be set, so NO position was closed.",
                       ok=False, kill_switch_enabled=False, results=[])
 
-    # 2. The same durable reduce-only close as the fail-safe, under the cycle lock.
+    # 2. The durable request: ordinary work for the scope stops starting, here and in every other worker.
+    _emergency_record(db, request_id, account_id, admin_id, reason)
+
+    # 3. The same durable reduce-only close as the fail-safe, under the cycle lock (which the cycle hands over).
     from app.trading_intelligence.integration import production_runtime as runtime
 
     try:
         results = runtime.flatten(db, account_id=account_id, request_id=request_id)
     except runtime.EngineUnavailable as exc:
+        _emergency_finish(db, request_id, f"ENGINE_UNAVAILABLE:{exc}", admin_id)
         _audit(db, "FLATTEN_ENGINE_UNAVAILABLE", admin_id, {**context, "engine": str(exc)})
         return _error(409, str(exc), "The production engine in this process cannot act on a broker "
                       f"({exc}); NO position was closed. The kill switch is on (no new entries).",
                       ok=False, kill_switch_enabled=True, results=[])
     except Exception as exc:
+        _emergency_finish(db, request_id, f"FAILED:{type(exc).__name__}", admin_id)
         _audit(db, "FLATTEN_FAILED", admin_id, {**context, "error": type(exc).__name__})
         return JSONResponse(status_code=502, content={
             "ok": False, "kill_switch_enabled": True,
@@ -254,6 +309,7 @@ def emergency_flatten(body: FlattenRequest, admin_id: str = Depends(require_admi
     # Success needs evidence: at least one account answered and none failed.
     ok = bool(results) and all(r["status"] in ("closed", "submitted", "no_position") for r in results)
     payload = {"ok": ok, "kill_switch_enabled": True, "results": results}
+    _emergency_finish(db, request_id, "COMPLETED" if ok else "INCOMPLETE", admin_id, results)
     _audit(db, "FLATTEN_COMPLETED" if ok else "FLATTEN_INCOMPLETE", admin_id, {**context, "results": results})
     if ok:
         return payload

@@ -33,3 +33,4 @@ feedparser
 apscheduler
 pytest
 httpx
+websockets

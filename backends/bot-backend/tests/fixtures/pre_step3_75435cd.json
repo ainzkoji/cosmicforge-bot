@@ -1,0 +1,7 @@
+{
+  "baseline": "75435cd56313b1557bafce5ea11af8f8c2cee9c5",
+  "source": "backends/shared/shared_lib/persistence/migrations.py",
+  "migration_source_sha256": "decaf230d5da91dee8d96af161853100e02e39a8453b3e895b5008ba07ab5ad5",
+  "sql_sha256": "4e642c247b418c3e95111ad69a8bcfeffeb6815392411b89adcf65f36480b4cc",
+  "description": "Fresh database created by the actual baseline migration module, including its seed records. No production data."
+}

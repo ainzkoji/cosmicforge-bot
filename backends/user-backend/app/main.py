@@ -201,6 +201,9 @@ app.include_router(admin_cati_router, prefix="/api", tags=["Admin CATI"])
 from app.api.admin_emergency import router as admin_emergency_router  # kill switch / flatten -> bot-backend
 app.include_router(admin_emergency_router, prefix="/api", tags=["Admin Emergency"])
 
+from app.api.admin_governance import router as admin_governance_router  # family governance (Step 3.11) -> bot-backend
+app.include_router(admin_governance_router, prefix="/api", tags=["Admin Governance"])
+
 from app.api.admin_billing import router as admin_billing_router  # operator plan grants (Step 1.5)
 app.include_router(admin_billing_router, prefix="/api", tags=["Admin Billing"])
 

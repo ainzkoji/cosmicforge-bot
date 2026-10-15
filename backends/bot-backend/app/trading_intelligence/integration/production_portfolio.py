@@ -38,7 +38,7 @@ def durable_occupancy(conn, account_id, now):
         WHERE r.broker_account_id=? AND ((r.status='RESERVED' AND r.expires_at>?)
         OR r.status='RESOLUTION_PENDING') AND (r.mode='PRODUCTION' OR EXISTS
         (SELECT 1 FROM cati_trade_plans p WHERE p.reservation_id=r.reservation_id
-         AND p.broker_account_id=r.broker_account_id AND p.mode='LIVE'))""", (account_id, now)).fetchall()
+         AND p.broker_account_id=r.broker_account_id AND p.mode IN ('LIVE','DEMO')))""", (account_id, now)).fetchall()
     for r in rows:
         (unknown if r['status'] == 'RESOLUTION_PENDING' else active).append(r['reservation_id'])
     latest = {}

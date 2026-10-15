@@ -69,6 +69,13 @@ def test_no_decision_module_consumes_global_state_or_asset_contexts():
                "build_fx_context", "FXMarketContext", "CryptoMarketContext")
     users = {p.relative_to(APP).as_posix() for p in APP.rglob("*.py")
              if any(n in p.read_text(encoding="utf-8", errors="ignore") for n in needles)}
+    # Retention names the protected legacy table; it does not consume its market state.
+    retention = APP / "trading_intelligence/pipeline/retention.py"
+    tree = ast.parse(retention.read_text(encoding="utf-8"))
+    imports = [n.module or "" for n in ast.walk(tree) if isinstance(n, ast.ImportFrom)]
+    imports += [a.name for n in ast.walk(tree) if isinstance(n, ast.Import) for a in n.names]
+    assert not any(needle in module for module in imports for needle in needles)
+    users.discard("trading_intelligence/pipeline/retention.py")
     assert users <= SHADOW_ONLY_ALLOWLIST, sorted(users - SHADOW_ONLY_ALLOWLIST)
     overlay_callers = {p.relative_to(APP).as_posix() for p in APP.rglob("*.py")
                        if "fx_perp_overlay" in p.read_text(encoding="utf-8", errors="ignore")}

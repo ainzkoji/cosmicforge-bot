@@ -2826,6 +2826,12 @@ def migrate(db_path: str | DB = None):
     from shared_lib.persistence.market_data_schema import ensure_market_data_schema
     ensure_market_data_schema(db)
 
+    # 48g) Section H Steps 3-4: the CATI platform pipeline (family governance, cycle driver, immutable
+    # family decisions, shadow book, portfolio ledger and brakes, execution, exchange infrastructure).
+    # Additive: only new tables and new columns; no existing table, row or credential is touched.
+    from shared_lib.persistence.cati_platform_schema import ensure_cati_platform_schema
+    ensure_cati_platform_schema(db)
+
     # 47) Event/News automatic runtime mode controller.
     # Keep this after the main migration connection closes so the helper can
     # self-heal temporary test databases through the normal DB context manager.

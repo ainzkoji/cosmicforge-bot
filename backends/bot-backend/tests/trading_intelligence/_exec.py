@@ -160,6 +160,14 @@ class Harness:
         from app.trading_intelligence.governance.promotion import StaticAuthority
 
         kw.setdefault("authority", StaticAuthority(True, "TEST_AUTHORITY_M6_DEMO"))
+        # Step 3.3: likewise an explicit test verdict on the plan's source (a real deployment needs a
+        # registered, research-certified family at M6 and an immutable decision record). Production
+        # settings accept only the real gate, so a production harness gets it (see conftest).
+        from app.core.config import settings as _settings
+        from app.trading_intelligence.pipeline.provenance import StaticFamilyGate
+
+        if not _settings.production:
+            kw.setdefault("family_gate", StaticFamilyGate(True, "TEST_FAMILY_GATE"))
         # Section 18: the adapter's own account + current instrument/capability revalidation
         kw.setdefault("account_scope", (self.plan.user_id, self.plan.broker_account_id))
         if "preflight" not in kw:

@@ -8,7 +8,7 @@
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "preview": "vite preview",
-    "test": "node --experimental-strip-types src/tests/fix_f.test.ts"
+    "test": "node --experimental-strip-types src/tests/fix_f.test.ts && node --experimental-strip-types src/tests/family_governance.test.ts"
   },
   "dependencies": {
     "@tailwindcss/postcss": "^4.1.18",

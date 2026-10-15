@@ -169,11 +169,76 @@ _add("RISK_SIZE_INSUFFICIENT_MARGIN", BLOCKED, "The account has no free margin f
 _add("RISK_SIZE_ZERO", BLOCKED, "The sized position is zero.", "No action needed.")
 
 
+# ── Section H Step 3: strategy family authorization at the final boundary ───────────────
+_SHADOW = "The strategy runs in observation mode: it records what it would do and sends no order."
+for _code, _message in (
+    ("FAMILY_UNKNOWN", "This order did not come from a registered strategy."),
+    ("FAMILY_NOT_REGISTERED", "The strategy is not registered for trading."),
+    ("FAMILY_FAILED_RESEARCH", "The strategy did not pass its research certification."),
+    ("FAMILY_NOT_CERTIFIED", "The strategy has not completed its research certification."),
+    ("FAMILY_CERTIFICATION_REVOKED", "The strategy's certification was withdrawn."),
+    ("FAMILY_EVIDENCE_MISSING", "The strategy's certification evidence could not be read."),
+    ("FAMILY_RULE_HASH_MISMATCH", "The strategy's rules differ from the registered version."),
+    ("FAMILY_DISABLED", "The strategy is disabled by an operator."),
+    ("FAMILY_STAGE_NO_ORDER_AUTHORITY", "The strategy has not been promoted to trading."),
+    ("FAMILY_MODE_NOT_EXECUTABLE", "This decision was made in observation mode."),
+    ("FAMILY_ENVIRONMENT_NOT_AUTHORIZED", "The strategy is not authorized for this account environment."),
+    ("FAMILY_MARKET_NOT_SUPPORTED", "The strategy does not trade on this exchange."),
+    ("VENUE_ADAPTER_NOT_CERTIFIED", "The connection to this exchange is not certified for automated orders."),
+    ("VENUE_NOT_SUPPORTED_BY_PLATFORM", "Automated orders are not available on this exchange."),
+):
+    _add(_code, BLOCKED, _message, _SHADOW + " No action is needed.")
+_add("FAMILY_KILL_SWITCH", BLOCKED, "An operator kill switch blocks new entries of this strategy.",
+     "Existing positions stay protected; the operator lifts the switch.")
+for _code, _message in (
+    ("FAMILY_GATE_UNAVAILABLE", "The strategy authorization could not be checked."),
+    ("FAMILY_GATE_NOT_AUTHORITATIVE", "The strategy authorization was not the platform's own."),
+    ("DECISION_EVIDENCE_MISSING", "The decision behind this order has no stored record."),
+    ("DECISION_TAMPERED", "The decision behind this order does not match its stored record."),
+    ("DECISION_PLAN_MISMATCH", "This order differs from the decision it refers to."),
+    ("DECISION_ACCOUNT_MISMATCH", "The decision behind this order was made for another account."),
+    ("DECISION_FUTURE_DATED", "The decision behind this order carries a time in the future."),
+):
+    _add(_code, ATTENTION, _message, "No order was sent. Operator review.")
+_add("DECISION_STALE", WAITING, "The decision behind this order was too old to act on.", "No action needed.")
+
+# ── Section H Step 3.4: checked broker health and capital readiness ──────────────────────
+for _code, _message in (
+    ("BROKER_IDENTITY_MISSING", "The exchange account could not be identified for this order."),
+    ("BROKER_EVALUATION_TIME_MISSING", "The exchange check carried no time."),
+    ("BROKER_ENVIRONMENT_UNREADABLE", "The exchange environment of the connection could not be read."),
+    ("BROKER_ACCOUNT_SNAPSHOT_INCOMPLETE", "The latest account figures from the exchange were incomplete."),
+    ("BROKER_AUTHENTICATED_READ_UNPROVEN", "No recent successful account read from the exchange is on record."),
+    ("BROKER_AUTHENTICATED_READ_FUTURE_DATED", "The last account read from the exchange carries a time in the future."),
+    ("BROKER_AUTHENTICATED_READ_STALE", "The last account read from the exchange is too old."),
+    ("BROKER_VENUE_READ_UNPROVEN", "The current price could not be read from the exchange."),
+    ("BROKER_RATE_LIMIT_STATE_UNREADABLE", "The exchange request budget could not be read."),
+    ("BROKER_RATE_LIMIT_BACKOFF", "The exchange asked the platform to slow down."),
+    ("CAPITAL_EVALUATION_TIME_MISSING", "The capital check carried no time."),
+    ("CAPITAL_ACCOUNT_MISMATCH", "The capital check was made for another account."),
+    ("TRANSFER_STATE_UNREADABLE", "The state of internal transfers could not be read."),
+    ("CAPITAL_REQUIREMENT_UNKNOWN", "The capital this order needs could not be determined."),
+    ("IN_FLIGHT_MARGIN_UNREADABLE", "The margin held by orders in progress could not be read."),
+    ("RESERVATION_PLAN_MISMATCH", "The capital reservation belongs to another order."),
+    ("RESERVATION_ACCOUNT_MISMATCH", "The capital reservation belongs to another account."),
+    ("RESERVATION_BOT_MISMATCH", "The capital reservation belongs to another bot."),
+    ("RESERVATION_NOT_EXECUTION_SCOPED", "The capital reservation was not made for an order."),
+):
+    _add(_code, ATTENTION, _message, "No order was sent. It is checked again on the next cycle.")
+_add("BROKER_REQUEST_WEIGHT_NEAR_LIMIT", WAITING, "The exchange request budget is nearly used.", "No action needed.")
+_add("INSUFFICIENT_FREE_MARGIN", BLOCKED, "The account has too little free margin for the smallest order.",
+     "Add funds to the futures account or close a position.")
+_add("RESERVATION_EXPIRED", WAITING, "The capital reservation of this order had expired.", "No action needed.")
+
+
 def describe(code: Optional[str]) -> Dict[str, Any]:
-    """The registry entry for ``code``; an unknown code is reported as such, never as fine."""
+    """The registry entry for ``code``; an unknown code is reported as such, never as fine. A code with a
+    detail after a colon (``FAMILY_STAGE_NO_ORDER_AUTHORITY:M0``) is described by its part before the colon."""
     if not code:
         return {"code": None, "severity": UNKNOWN, "message": "No reason was recorded.", "action": ""}
     entry = _R.get(str(code))
+    if entry is None and ":" in str(code) and str(code).split(":", 1)[0] in _R:
+        entry = dict(_R[str(code).split(":", 1)[0]], code=str(code))
     if entry is None:
         text = str(code)
         if text.isidentifier() and not text.isupper() and text.endswith(("Error", "Exception", "Timeout", "Failure")):

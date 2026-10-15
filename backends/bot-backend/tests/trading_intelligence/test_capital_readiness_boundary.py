@@ -43,7 +43,8 @@ def _physical_plan():
 def test_missing_capital_readiness_never_reaches_risk_or_the_broker(h):
     orch = MagicMock()
     ref = h.boundary()  # test governance authority + enabled config
-    b = CATIExecutionBoundary(orchestrator=orch, adapter=h.adapter, db=h.db, config=ref.config, authority=ref.authority)
+    b = CATIExecutionBoundary(orchestrator=orch, adapter=h.adapter, db=h.db, config=ref.config, authority=ref.authority,
+                              family_gate=ref.family_gate)
     res = h.run(b, capital=None)
     assert res.status == B.CAPITAL_NOT_READY and res.reason_codes == ("CAPITAL_READINESS_NOT_ESTABLISHED",)
     orch.process_trade_plan.assert_not_called()

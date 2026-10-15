@@ -200,6 +200,49 @@ def block_live_order_submission(monkeypatch, request):
     yield
 
 
+#: Step 1 proved the execution tail (exactly-once submit, unknown-outcome reconciliation, native protection,
+#: flatten, restart recovery) by driving it with the residual family under production settings. Since Step 3.3
+#: the final boundary refuses every family that is not research-certified and promoted, and the residual
+#: family FAILED its research gate, so those tests would now stop at the gate and prove nothing about the tail.
+#: In the modules below, and nowhere else, the family-authorization part of the gate is reduced to "the family
+#: is defined in the registry" and the venue-certification part (Step 4.2, which these tests also predate) is
+#: answered by the adapter's own declared status, as it was when they were written; the decision-verification
+#: part (the immutable decision, its age, the plan geometry) still runs for real. The product has no such
+#: switch: this is a monkeypatch that exists only inside the test process.
+#: ``tests/trading_intelligence/test_step3_family_gate.py`` and ``test_step3_no_uncertified_orders.py`` prove
+#: the unpatched gate refuses the same plans.
+LEGACY_EXECUTION_TAIL_MODULES = frozenset({
+    "test_cati_execution_policy_production",
+    "test_natural_signal_replay",
+    "test_production_demo_execution",
+    "test_production_execution",
+    "test_production_final_audit",
+    "test_production_loop",
+    "test_production_position_safety",
+    "test_production_research_separation",
+    "test_user_events",
+})
+
+
+@pytest.fixture(autouse=True)
+def _legacy_execution_tail_family_authorization(request, monkeypatch):
+    module = getattr(request, "module", None)
+    if module is None or module.__name__.rsplit(".", 1)[-1] not in LEGACY_EXECUTION_TAIL_MODULES:
+        return
+    from types import SimpleNamespace
+
+    from app.trading_intelligence.pipeline import contracts, family_registry, provenance
+
+    def defined_family_only(self, plan):
+        definition = family_registry.definitions().get(contracts.provenance_of(plan).get("family_id"))
+        if definition is None:
+            return None, provenance.FAMILY_UNKNOWN
+        return SimpleNamespace(definition=definition), None
+
+    monkeypatch.setattr(provenance.FamilyExecutionGate, "family_authorization", defined_family_only)
+    monkeypatch.setattr(provenance.FamilyExecutionGate, "venue_certification", lambda self, plan, now_ms: None)
+
+
 def pytest_configure(config):
     config.addinivalue_line(
         "markers",

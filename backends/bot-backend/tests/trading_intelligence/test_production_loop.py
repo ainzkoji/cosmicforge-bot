@@ -2,7 +2,7 @@
 by injected clocks and controlled broker fakes (no real 30-second or one-hour
 waits).
 
-Entry points exercised: ``production_runtime.run`` (the asyncio loop),
+Entry points exercised: ``production_runtime._broker_loop`` (the broker cadence),
 ``broker_cycle`` / ``sync`` / ``sync_account`` (the 30-second broker cycle),
 ``residual_prospective.schedule`` (the hourly collector's scheduler) and
 ``production_execution.process_account`` (one account evaluation). Exchange-side
@@ -78,7 +78,7 @@ def loop(monkeypatch):
         monkeypatch.setattr(runtime, "asyncio", SimpleNamespace(sleep=clock.sleep, to_thread=asyncio.to_thread,
                                                                 CancelledError=asyncio.CancelledError))
         with pytest.raises(asyncio.CancelledError):
-            asyncio.run(runtime.run("db"))
+            asyncio.run(runtime._broker_loop("db"))
         return clock
     return SimpleNamespace(start=start, calls=calls)
 

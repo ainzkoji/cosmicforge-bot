@@ -128,13 +128,20 @@ class CATIExecutionBoundary:
     def __init__(self, *, orchestrator: Any, adapter: Any, db: Any, config: Optional[CATIExecutionConfig] = None,
                  position_manager: Any = None, clock=None,
                  resolution_escalation_ms: int = DEFAULT_RESOLUTION_ESCALATION_MS, authority: Any = None,
-                 account_scope: Optional[Tuple[Optional[str], str]] = None, preflight: Any = None) -> None:
+                 account_scope: Optional[Tuple[Optional[str], str]] = None, preflight: Any = None,
+                 family_gate: Any = None) -> None:
         """``account_scope``: (user_id, broker_account_id) whose credentials ``adapter`` uses -- a plan of any
         other tenant/account is refused. ``preflight``: ``execution.preflight.SubmissionPreflight``. Both are
-        REQUIRED to reach the broker; absent, the boundary fails closed with an explicit reason."""
+        REQUIRED to reach the broker; absent, the boundary fails closed with an explicit reason.
+        ``family_gate``: the registry-backed source verification (``pipeline.provenance``). Absent, the real
+        gate is used; a substitute is honoured outside production only."""
         self.orchestrator = orchestrator
         self.account_scope = tuple(account_scope) if account_scope is not None else None
         self.preflight = preflight
+        if family_gate is None:
+            from app.trading_intelligence.pipeline.provenance import FamilyExecutionGate
+            family_gate = FamilyExecutionGate(db)
+        self.family_gate = family_gate
         self.adapter = adapter
         self.config = config if config is not None else CATIExecutionConfig.from_env()
         self.position_manager = position_manager
@@ -194,9 +201,10 @@ class CATIExecutionBoundary:
             except (ValueError, AttributeError):
                 return BoundaryResult(BoundaryStatus.ENVIRONMENT_NOT_ALLOWED, plan.trade_plan_id,
                                       ("BROKER_ENVIRONMENT_MISMATCH",))
-            why = self._production_plan_reason(plan, now)
-            if why:
-                return BoundaryResult(BoundaryStatus.GOVERNANCE_NOT_AUTHORIZED, plan.trade_plan_id, (why,))
+        # Step 3.3 -- the source of the plan, verified against the family registry, in every setting
+        why = self._plan_source_reason(plan, now)
+        if why:
+            return BoundaryResult(BoundaryStatus.GOVERNANCE_NOT_AUTHORIZED, plan.trade_plan_id, (why,))
         ids = dict(cycle_id=plan.cycle_id, user_id=plan.user_id, broker_account_id=plan.broker_account_id,
                    bot_instance_id=plan.bot_instance_id)
         # 20.18 -- the path exists but is OFF unless explicitly enabled (no orchestrator call, no mutation)
@@ -327,13 +335,13 @@ class CATIExecutionBoundary:
             return self._fail_before_risk(plan, now, BoundaryStatus.PREFLIGHT_BLOCKED,
                                           "DEMO_CAPABILITY_UNAVAILABLE" if plan.environment == "DEMO" else
                                           "NATIVE_REDUCE_ONLY_PROTECTION_REQUIRED")
-        if settings.production:
-            # Include time spent inside metadata, risk and sizing; a supplied
-            # observation timestamp must not freeze the prospective deadline.
-            submit_now = now + int((time.monotonic()-started)*1000)
-            why = self._production_plan_reason(plan, submit_now)
-            if why:
-                return self._fail_before_risk(plan,submit_now,BoundaryStatus.GOVERNANCE_NOT_AUTHORIZED,why)
+        # Asked again at the last moment before the order: a family revoked, killed or re-registered since
+        # the first check is stopped here. Includes time spent inside metadata, risk and sizing; a supplied
+        # observation timestamp must not freeze the prospective deadline.
+        submit_now = now + int((time.monotonic()-started)*1000)
+        why = self._plan_source_reason(plan, submit_now)
+        if why:
+            return self._fail_before_risk(plan,submit_now,BoundaryStatus.GOVERNANCE_NOT_AUTHORIZED,why)
         # The claim row must stay a pure function of the plan and the cycle's ``now``: two
         # cycles racing for the same plan have to produce the IDENTICAL row so that exactly
         # one insert wins (the other is DUPLICATE_PLAN). Its ``submitted_at`` is therefore
@@ -689,25 +697,23 @@ class CATIExecutionBoundary:
         METRICS.inc("cati_execution_boundary_total", status=status)
         return BoundaryResult(status, plan.trade_plan_id, tuple(codes), reservation_status=self._res_status(plan))
 
-    def _production_plan_reason(self, plan, now):
-        from app.trading_intelligence.integration.production_execution import eligibility, latest_decision
-        from app.trading_intelligence.integration.residual_prospective import FAMILY, REGISTRY_HASH
+    def _plan_source_reason(self, plan, now):
+        """None when the plan may go on; otherwise the refusal code. Two sources exist and they are never
+        confused: the operator-scoped infrastructure harness (its own narrow permit, no strategy involved) and
+        a registered strategy family (``pipeline.provenance``: certification, stage and the immutable
+        decision). There is no third way in, and no setting that skips this."""
+        from app.core.config import settings
         from app.execution.demo_boundary_certification import permitted
         if permitted(self._db, plan):
             return 'PROSPECTIVE_ENTRY_WINDOW_EXPIRED' if now >= plan.plan_expiry_time else None
-        if plan.setup_family != FAMILY or dict(plan.versions).get('residual_registry') != REGISTRY_HASH:
-            return 'PRODUCTION_REQUIRES_FROZEN_RESIDUAL_DECISION'
-        row = latest_decision(self._db)
-        if row is None or row['decision_id'] != plan.source_candidate_id:
-            return 'CURRENT_CATI_DECISION_CHANGED'
-        why = eligibility(row, now)
-        if why:
-            return why
-        if row['side'] != plan.side or row['selected_symbol'] != plan.instrument_key.venue_symbol \
-                or float(row['stop']) != plan.structural_invalidation_price \
-                or not plan.target_zones or float(row['target']) != plan.target_zones[0].price_high:
-            return 'FROZEN_RESIDUAL_PLAN_GEOMETRY_MISMATCH'
-        return None
+        from app.trading_intelligence.pipeline.provenance import FamilyExecutionGate
+        if settings.production and type(self.family_gate) is not FamilyExecutionGate:
+            return 'FAMILY_GATE_NOT_AUTHORITATIVE'
+        try:
+            allowed, why = self.family_gate.authorize(plan, now_ms=now)
+        except Exception:  # an undecidable source is a refusal
+            allowed, why = False, 'FAMILY_GATE_UNAVAILABLE'
+        return None if allowed else why
 
     def _release_unsubmitted(self, plan, now):
         return self.reservations.release_unsubmitted(plan.portfolio_reservation_id, now,

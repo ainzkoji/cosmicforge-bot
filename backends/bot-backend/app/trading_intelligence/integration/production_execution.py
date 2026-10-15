@@ -349,10 +349,21 @@ def persisted_risk_controls(db, bot_id, risk, now):
 def build_plan(row, account, bot_id, instrument, reservation_id):
     """Transport the frozen decision unchanged. Forecast fields are explicitly
     inapplicable: no prediction, confidence model, or alpha is manufactured.
+
+    The plan's mode is the account's environment (``DEMO`` on a demo account,
+    ``LIVE`` on a live one). It used to be ``LIVE`` everywhere, which described
+    no demo plan truthfully; the family gate at the final boundary admits a plan
+    only when its mode is an executing mode equal to its environment
+    (``pipeline.provenance``). The mode is part of the plan hash, so the same
+    decision on a demo account now has another plan id than before. Exactly-once
+    per decision does not rest on that id: the reservation id is derived from the
+    account, the bot and the decision, and a decision that already has an
+    attempt is refused when its reservation is requested again.
     """
     from app.trading_intelligence.contracts.instrument import InstrumentKey
     from app.trading_intelligence.contracts.trade_plan import (
         TradePlan, AllowedEntryZone, TargetZone, ExpectedCosts, ExecutionPreferences)
+    environment = normalize_environment(account["environment"]).value.upper()
     did, px = row["decision_id"], float(row["entry_price"])
     costs = json.loads(row["modeled_costs_json"])["parts_estimated_at_decision"]
     deadline = row["decision_time"] + Q
@@ -364,7 +375,7 @@ def build_plan(row, account, bot_id, instrument, reservation_id):
     bps = rates["slippage"] * 10000
     return TradePlan.build(**lineage, forecast_id="NOT_APPLICABLE_FROZEN_RESIDUAL",
         portfolio_reservation_id=reservation_id, user_id=account["user_id"], broker_account_id=account["id"],
-        bot_instance_id=bot_id, run_id=None, cycle_id=did, instrument_key=key, venue=key.venue, environment=normalize_environment(account["environment"]).value.upper(),
+        bot_instance_id=bot_id, run_id=None, cycle_id=did, instrument_key=key, venue=key.venue, environment=environment,
         side=row["side"], setup_family=FAMILY, setup_version=REGISTRY_HASH,
         decision_time=row["decision_time"], entry_reference=px,
         allowed_entry_zone=AllowedEntryZone(px, px*(1-bps/10000), px*(1+bps/10000), bps, 0., deadline),
@@ -379,7 +390,7 @@ def build_plan(row, account, bot_id, instrument, reservation_id):
         execution_preferences=ExecutionPreferences("MARKET", (), bps, "NORMAL", "ALLOW_PARTIAL_FILL", "GTC",
             rates["half_spread"]*20000, 30_000), thesis_conditions=(), invalidation_conditions=(),
         reason_codes=("FROZEN_RESIDUAL_TOP1", "FORECAST_NOT_APPLICABLE"), versions=(("residual_registry", REGISTRY_HASH),),
-        mode="LIVE", plan_created_at=row["recorded_at"])
+        mode=environment, plan_created_at=row["recorded_at"])
 
 
 def boundary_for(db, account, bot, client):
@@ -1012,14 +1023,21 @@ def residual_cost_rates(db, plan):
 
 
 def prepare_submission(db, account, bot, client, boundary, plan, instrument, risk, *, now_ms=None, atr=None):
-    """Common production preparation for natural entries and labelled DEMO certification."""
+    """Common production preparation for natural entries and labelled DEMO certification.
+
+    Broker health and capital readiness are verdicts over evidence this cycle
+    already holds (``pipeline.readiness``), never constants: nothing is asked of
+    the venue for them, and a piece of evidence that is missing or cannot be read
+    makes the broker not healthy or the capital not ready, with a reason code.
+    """
     from app.trading_intelligence.execution.boundary import AccountState
-    from app.trading_intelligence.capital.planner import CapitalReadiness
+    from app.trading_intelligence.pipeline import readiness as tail
+    from app.trading_intelligence.portfolio.account_capital import PRODUCT_BY_ASSET_CLASS
     from app.trading_intelligence.trade_plan.validation import MarketReference
-    from app.trading_intelligence.contracts.system_health import BrokerHealthContext
     from app.trading_intelligence.venue.binance import BinanceUsdmEconomicAdapter
     from app.trading_intelligence.venue.adapter import VenueRawSnapshot
     from app.product_safety.execution_safety import evaluate_execution_kyc, evaluate_execution_readiness
+    from shared_lib.broker.environment import resolve_base_url
     now = int(time.time()*1000) if now_ms is None else now_ms
     if account['broker_id'].lower() == 'binance':
         info = client.exchange_info_cached()
@@ -1055,13 +1073,78 @@ def prepare_submission(db, account, bot, client, boundary, plan, instrument, ris
             book = None
         if not (isinstance(book, dict) and isinstance(book.get('bids'), list) and isinstance(book.get('asks'), list)):
             book = {'unavailable': True}
+
+    def held(read):
+        """A piece of evidence the cycle already holds, or None when it cannot
+        be read. Never a default: the evaluators refuse on None."""
+        try:
+            return read()
+        except Exception:
+            return None
+
+    # Collected after the last venue read of this preparation (the depth read
+    # swallows its own failure, so a Retry-After it provoked is seen here).
+    broker_id = account['broker_id'].lower()
+    rate = None
+    if broker_id == 'binance':
+        # Limits are per address and per venue endpoint. The record is looked up
+        # for the canonical endpoint of the account's environment, the one every
+        # mutation of this account is forced to use. No other venue keeps one.
+        from app.exchange.binance.client import (REQUEST_WEIGHT_LIMIT_1M, REQUEST_WEIGHT_PAUSE_FRACTION,
+                                                 rate_limit_backoff_remaining)
+        endpoint = held(lambda: resolve_base_url(broker_id, normalize_environment(account['environment'])))
+        rate = tail.RateLimitEvidence(
+            held(lambda: rate_limit_backoff_remaining(endpoint)) if isinstance(endpoint, str) else None,
+            getattr(client, 'last_used_weight_1m', None), REQUEST_WEIGHT_LIMIT_1M, REQUEST_WEIGHT_PAUSE_FRACTION)
+    ledger = risk.get('income_ledger')
+    broker_evidence = tail.BrokerEvidence(
+        broker_account_id=account['id'], venue=plan.venue, plan_environment=plan.environment,
+        client_environment=held(lambda: normalize_environment(client.broker_environment).value.upper()),
+        now_ms=observed, equity=risk.get('equity'), wallet=risk.get('wallet'), free_margin=risk.get('free_capital'),
+        margin_used=risk.get('margin_used'),
+        # The income ledger refresh is the authenticated read whose completion time the cycle records.
+        authenticated_read_at_ms=ledger.get('refreshed_at') if isinstance(ledger, dict) else None,
+        venue_price=price, venue_price_at_ms=observed, rate_limit=rate)
+
+    def unresolved_transfers():
+        from app.transfers.models import TERMINAL
+        terminal = sorted(status.value for status in TERMINAL)
+        with db.connect() as c:
+            return c.execute('SELECT COUNT(*) FROM broker_transfer_requests WHERE broker_account_id=? AND status '
+                             'NOT IN (' + ','.join('?' for _ in terminal) + ')', (account['id'], *terminal)).fetchone()[0]
+
+    def leverage_cap():
+        # The highest leverage hard risk may resolve for this bot and symbol: the orchestrator's own lookup.
+        orchestrator = boundary.orchestrator
+        return getattr(getattr(orchestrator, 'effective_policy', None), 'max_leverage', None) \
+            or orchestrator.validated_config.requested_leverage.get(instrument.venue_symbol)
+
+    def in_flight_margin():
+        from app.risk.capital_ledger import ACCOUNT_RESERVATIONS
+        return ACCOUNT_RESERVATIONS.pending_margin(str(account['id']))
+
+    capital_evidence = tail.CapitalEvidence(
+        broker=broker_id, product=PRODUCT_BY_ASSET_CLASS.get(plan.instrument_key.asset_class),
+        broker_account_id=account['id'], plan_broker_account_id=plan.broker_account_id,
+        plan_bot_instance_id=plan.bot_instance_id, plan_reservation_id=plan.portfolio_reservation_id,
+        plan_key=plan.trade_plan_id, now_ms=observed, free_margin=risk.get('free_capital'),
+        in_flight_margin=held(in_flight_margin),
+        required_margin=tail.minimum_order_margin(getattr(instrument, 'min_notional', None), held(leverage_cap)),
+        unresolved_transfers=held(unresolved_transfers),
+        reservation=held(lambda: boundary.reservations.get(plan.portfolio_reservation_id)))
+    health = tail.evaluate_broker_health(broker_evidence)
+    capital = tail.evaluate_capital_readiness(capital_evidence)
+    # The verdicts and what they were reached on go into the cycle's evaluation record; the risk path receives
+    # the controls unchanged.
+    evidence = {**controls, 'execution_readiness': tail.readiness_document(health, capital, broker=broker_evidence,
+                                                                          funds=capital_evidence)}
     return dict(market_reference=MarketReference(price,observed),
-        broker_health=BrokerHealthContext(account['id'],plan.venue,plan.environment,'HEALTHY',now,'BROKER_SYNC'),
+        broker_health=health,
         venue_capabilities=caps, account=AccountState(risk['equity'],risk['margin_used'],risk['free_capital'],risk['open_positions']),
-        klines=klines, atr=atr, now_ms=observed, capital=CapitalReadiness(True,'LOGICAL'),
+        klines=klines, atr=atr, now_ms=observed, capital=capital,
         user_kyc_approved=kyc.allowed, live_readiness_approved=readiness.allowed,
         kyc_status=kyc.state,live_readiness_status=readiness.state,execution_mode='broker',market_type='CRYPTO',
-        entry_cost_rates=rates, order_book=book, controls_evidence=controls, **controls)
+        entry_cost_rates=rates, order_book=book, controls_evidence=evidence, **controls)
 
 
 def reconcile_executions(db, boundary, client, now):

@@ -52,7 +52,7 @@ def test_active_execution_is_governance_gated_by_default(h, monkeypatch):
     monkeypatch.setenv("CATI_CYCLE_SHADOW_ENABLED", "1")  # shadow evidence never implies active trading
     assert CATIExecutionConfig.from_env().active_execution_enabled is True
     orch = MagicMock()
-    b = CATIExecutionBoundary(orchestrator=orch, adapter=h.adapter, db=h.db)
+    b = CATIExecutionBoundary(orchestrator=orch, adapter=h.adapter, db=h.db, family_gate=h.boundary().family_gate)
     res = h.run(b)
     assert res.status == B.GOVERNANCE_NOT_AUTHORIZED and res.reason_codes == ("GOVERNANCE_PHASE_M0_NO_CATI_AUTHORITY",)
     orch.process_trade_plan.assert_not_called()
@@ -64,7 +64,7 @@ def test_operator_off_override_disables_the_boundary(h, monkeypatch):
     monkeypatch.setenv(exec_config.ENV_ACTIVE_EXECUTION, "off")
     assert CATIExecutionConfig.from_env().active_execution_enabled is False
     orch = MagicMock()
-    b = CATIExecutionBoundary(orchestrator=orch, adapter=h.adapter, db=h.db)
+    b = CATIExecutionBoundary(orchestrator=orch, adapter=h.adapter, db=h.db, family_gate=h.boundary().family_gate)
     res = h.run(b)
     assert res.status == B.DISABLED
     orch.process_trade_plan.assert_not_called()

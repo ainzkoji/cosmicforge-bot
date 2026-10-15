@@ -109,6 +109,35 @@ class Limits:
     #: An API-only process that never takes the lease is a fault by default.
     require_ownership: bool = True
 
+    # ── The platform cycle driver (Section H Step 3.13) ─────────────────────
+    # Separate from everything above, which keeps its meaning for the residual
+    # loop. These are derived from the MEASURED behaviour of the platform cycle
+    # (``pipeline.driver``) on the synthetic market, not copied from the loop's
+    # numbers; the measurements and the arithmetic are written out in
+    # docs/implementation/STEP3_COORDINATION_AND_RETENTION.md. They are read by
+    # ``pipeline.coordination.platform_faults``.
+    #: A cycle heartbeats when it starts, when its market stage is decided and
+    #: when it finishes; the account stage lies between the last two. Measured
+    #: account stage: 1.0-1.3 ms per account (1.0-1.5 s for 1,000 accounts),
+    #: 2.9 s at worst with 8 contending workers, and 15 ms per account on a
+    #: loaded workstation. 1,000 accounts x 15 ms = 15 s, times 8 for headroom.
+    #: Scale it with the account count beyond 1,000 (8 x accounts x 15 ms).
+    platform_cycle_stall_seconds: float = 120.0
+    #: One account is one write transaction: under 1 ms at the median, 16 ms at
+    #: p99, 2.4 s at worst while 8 workers queued for the single SQLite writer.
+    #: The database's busy timeout is 10 s -- an account that waited that long
+    #: has already failed and been recorded for retry -- so anything slower
+    #: than it is not waiting for the write lock, it is stuck in its own work.
+    platform_account_stall_seconds: float = 10.0
+    #: A healthy runner holds an account's lease for 1-3 ms and always releases
+    #: it. One that is unreleased this long AFTER it expired (60 s lease) is a
+    #: worker that died mid-account: two examinations of the supervisor.
+    account_lease_abandoned_seconds: float = 30.0
+    #: An emergency request heartbeats per account while it runs. It waits at
+    #: most 60 s for the broker-cycle lock and stops counting as active 180 s
+    #: after its last heartbeat; one still pending after both has no executor.
+    emergency_stall_seconds: float = 240.0
+
     @classmethod
     def from_env(cls) -> "Limits":
         base = cls()
@@ -131,6 +160,14 @@ class Limits:
                 "RUNTIME_SUPERVISOR_SHUTDOWN_GRACE_SECONDS", base.shutdown_grace_seconds),
             require_ownership=os.environ.get("RUNTIME_SUPERVISOR_REQUIRE_OWNERSHIP", "true").strip().lower()
             not in ("0", "false", "no", "off"),
+            platform_cycle_stall_seconds=_env_float(
+                "RUNTIME_SUPERVISOR_PLATFORM_CYCLE_STALL_SECONDS", base.platform_cycle_stall_seconds),
+            platform_account_stall_seconds=_env_float(
+                "RUNTIME_SUPERVISOR_PLATFORM_ACCOUNT_STALL_SECONDS", base.platform_account_stall_seconds),
+            account_lease_abandoned_seconds=_env_float(
+                "RUNTIME_SUPERVISOR_ACCOUNT_LEASE_ABANDONED_SECONDS", base.account_lease_abandoned_seconds),
+            emergency_stall_seconds=_env_float(
+                "RUNTIME_SUPERVISOR_EMERGENCY_STALL_SECONDS", base.emergency_stall_seconds),
         )
 
 
