@@ -11,6 +11,20 @@ from pathlib import Path
 logger = logging.getLogger(__name__)
 
 
+def budgeted_archive_get(db):
+    """Inject read-only HTTP into the feed without coupling it to execution."""
+    from urllib.parse import urlsplit
+    from app.exchange.platform_adapter.http_budget import public_get
+    from app.market_data.binance_archive import http_get
+    def get(url):
+        if urlsplit(url).hostname == "fapi.binance.com":
+            response = public_get(db, url, timeout=(5, 30))
+            response.raise_for_status()
+            return response.content
+        return http_get(url)  # archive CDN has a separate allowance
+    return get
+
+
 class ShadowScheduler:
     def __init__(self, db, *, owns_runtime, driver=None, runner=None, clock=None):
         self.db = db
@@ -38,7 +52,7 @@ class ShadowScheduler:
             self.db, registry=registry,
             accounts=CombinedAccounts(ModelAccounts(initial_equity=spec.INTERPRETATION["initial_equity_usdt"]),
                                       ConnectedAccounts(self.db)),
-            data={"1d": default_daily_bars(self.db)}, account_runner=self.runner,
+            data={"1d": default_daily_bars(self.db, http_get=budgeted_archive_get(self.db))}, account_runner=self.runner,
             owner="shadow-runtime:" + uuid.uuid4().hex, compare_models=True)
 
     def tick(self):

@@ -26,6 +26,8 @@ BINANCE_PATHS = frozenset((
     "/fapi/v1/ticker/bookTicker", "/fapi/v1/ticker/price", "/fapi/v1/time",
     "/fapi/v1/userTrades", "/fapi/v2/account", "/fapi/v2/balance",
     "/fapi/v2/positionRisk", "/fapi/v1/listenKey",
+    "/fapi/v1/commissionRate", "/fapi/v1/positionSide/dual",
+    "/fapi/v1/aggTrades", "/fapi/v1/openInterest", "/fapi/v2/ticker/price",
 ))
 
 
@@ -127,3 +129,16 @@ def build_budgeted_client(db, auth):
     except BaseException:
         http.close()
         raise
+
+
+def public_get(db, url, **kwargs):
+    """Unauthenticated runtime market reads share the same egress allowance."""
+    from .rate_budget import MARKET_DATA
+    http = BudgetedHTTP(RateBudget(db), C.BINANCE, account_ref="PUBLIC_MARKET_DATA",
+                        server_address=os.environ.get("CATI_EGRESS_SCOPE", "shared-runtime-egress"))
+    token = priority_context.set(MARKET_DATA)
+    try:
+        return http.get(url, **kwargs)
+    finally:
+        priority_context.reset(token)
+        http.close()

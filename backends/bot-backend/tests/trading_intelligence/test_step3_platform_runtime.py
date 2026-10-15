@@ -12,6 +12,21 @@ from test_step3_cycle_driver import Setup, START
 from app.trading_intelligence.pipeline.daily_trend import close_ms
 
 
+def test_runtime_feed_metadata_uses_shared_budget_and_archives_use_cdn(monkeypatch):
+    from app.trading_intelligence.integration.platform_runtime import budgeted_archive_get
+    from app.exchange.platform_adapter import http_budget
+    from app.market_data import binance_archive
+    response = Mock(content=b"metadata")
+    public = Mock(return_value=response)
+    archive = Mock(return_value=b"archive")
+    monkeypatch.setattr(http_budget, "public_get", public)
+    monkeypatch.setattr(binance_archive, "http_get", archive)
+    getter = budgeted_archive_get("isolated-db")
+    assert getter("https://fapi.binance.com/fapi/v1/exchangeInfo") == b"metadata"
+    assert getter("https://data.binance.vision/archive.zip") == b"archive"
+    assert public.call_count == archive.call_count == response.raise_for_status.call_count == 1
+
+
 def test_scheduler_runs_real_pipeline_only_with_runtime_ownership(tmp_path):
     setup = Setup(tmp_path)
     owns = [False]

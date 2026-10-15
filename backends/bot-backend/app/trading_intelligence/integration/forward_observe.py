@@ -6,7 +6,6 @@ import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 
-import requests
 from app.market_data.store import MarketDataStore, SeriesId
 
 logger = logging.getLogger(__name__)
@@ -40,7 +39,8 @@ def collect(db, *, fetch=None, symbols=SYMBOLS):
     store = MarketDataStore(db)
     if fetch is None:
         def fetch(path, params):
-            response = requests.get("https://fapi.binance.com"+path, params=params, timeout=(3, 6))
+            from app.exchange.platform_adapter.http_budget import public_get
+            response = public_get(db, "https://fapi.binance.com"+path, params=params, timeout=(3, 6))
             response.raise_for_status()
             return response.json()
     written = 0

@@ -148,3 +148,53 @@ def test_skew_changes_timestamp_and_resigns_real_http_request(server, venue):
     assert calls[-1] == "/ok?timestamp=1000&signature=original"
     faults.close()
 
+
+def test_factory_injects_budget_before_constructor_and_adapter_does_not_double_charge(database):
+    import json
+    import requests
+    from types import SimpleNamespace
+    from app.exchange.platform_adapter.factory import adapter_for
+    from app.exchange.platform_adapter.rate_budget import BudgetedVenueAdapter
+    from shared_lib.broker.client_factory import build_client_from_auth
+    from shared_lib.broker.environment import BrokerEnvironment, resolve_base_url
+
+    calls = []
+    class Wire:
+        def request(self, method, url, **kwargs):
+            calls.append(url)
+            response = requests.Response()
+            response.status_code = 200
+            response._content = json.dumps({"symbols": [], "serverTime": 100_000}).encode()
+            return response
+
+    budget = RateBudget(database)
+    transport = BudgetedHTTP(budget, C.BINANCE, account_ref="one", server_address="egress",
+                             transport=Wire(), clock=lambda: 100_000)
+    auth = SimpleNamespace(broker_type=C.BINANCE, environment=BrokerEnvironment.DEMO,
+                           base_url=resolve_base_url(C.BINANCE, BrokerEnvironment.DEMO),
+                           api_key="synthetic", api_secret="synthetic", account_id="one", user_id="u",
+                           key_fingerprint="synthetic")
+    client = build_client_from_auth(auth, http=transport)
+    assert calls  # The constructor fetched metadata through the injected budget.
+    adapter = BudgetedVenueAdapter(adapter_for(client, C.BINANCE, C.DEMO), budget,
+                                   account_ref="one", server_address="egress", clock=lambda: 100_000)
+    adapter.server_time()
+    assert budget.snapshot(C.BINANCE, "egress", 100_000)["used"] == 100 * len(calls)
+
+
+def test_bybit_clock_fault_resigns_headers_without_mutating_callers_headers():
+    import hashlib
+    import hmac
+    from types import SimpleNamespace
+    from app.exchange.platform_adapter.http_faults import HTTPFaultInjector
+    captured = []
+    wire = SimpleNamespace(request=lambda *a, **kw: captured.append(kw) or SimpleNamespace())
+    faults = HTTPFaultInjector(wire, C.BYBIT, signing_secret="test-only", external_reduce=lambda *_: None)
+    headers = {"X-BAPI-TIMESTAMP": "1000", "X-BAPI-API-KEY": "synthetic", "X-BAPI-RECV-WINDOW": "5000"}
+    faults.skew_clock(60000)
+    faults.request("GET", "https://example.invalid/read?symbol=TEST", headers=headers)
+    signed = captured[0]["headers"]
+    assert signed["X-BAPI-TIMESTAMP"] == "61000"
+    assert signed["X-BAPI-SIGN"] == hmac.new(b"test-only", b"61000synthetic5000symbol=TEST", hashlib.sha256).hexdigest()
+    assert headers["X-BAPI-TIMESTAMP"] == "1000" and "X-BAPI-SIGN" not in headers
+
