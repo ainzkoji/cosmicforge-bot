@@ -103,6 +103,21 @@ def test_manual_positions_are_not_adopted_into_a_family_book(world, monkeypatch)
     assert runtime._owned_positions(full, world.definition.family_id, account).positions == ()
 
 
+def test_native_stop_then_reentry_starts_a_new_owned_position_lifecycle(world, monkeypatch):
+    runtime, account, _ = setup(world, monkeypatch)
+    assert world.run(E.entry(E.BTC)).status == X.BATCH_PROCESSED
+    stop = world.stop_prices(E.BTC)[0]
+    world.fake.set_price(E.BTC, stop - 1)
+    assert world.signed(E.BTC) == 0
+    world.boundary().recover()
+    world.fake.set_price(E.BTC, E.PRICES[E.BTC])
+    assert world.run(E.entry(E.BTC)).status == X.BATCH_PROCESSED
+    full = world.boundary().account_snapshot()
+    owned = runtime._owned_positions(full, world.definition.family_id, account)
+    assert len(owned.positions) == 1
+    assert owned.positions[0].quantity == pytest.approx(world.signed(E.BTC))
+
+
 def test_production_rejects_injected_portfolio_dependencies(world, monkeypatch):
     from app.core.config import settings
     monkeypatch.setattr(settings, "APP_ENV", "PRODUCTION")

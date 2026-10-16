@@ -57,6 +57,10 @@ for _code, _message in (
 _add("ACCOUNT_INSTRUMENT_NOT_ALLOWED", BLOCKED, "This instrument is outside the bot's allowed trading list.")
 _add("DAILY_ENTRY_CAP_REACHED", BLOCKED, "The account's daily entry allowance is fully used.", "No new entry until the next risk day.")
 _add("FAMILY_BROKER_DECISION_STALE", WAITING, "The strategy's broker decision is too old to execute.", "Wait for the next decision close.")
+_add("EXECUTABLE_PRICE_RISK_CHANGED", BLOCKED, "The executable price would exceed the order's reserved stop risk.", "Wait for a fresh authorized decision.")
+_add("EXECUTABLE_STOP_GEOMETRY_INVALID", BLOCKED, "The current executable price is no longer protected by the proposed stop.")
+_add("FILLED_RISK_EVIDENCE_REQUIRED", ATTENTION, "Risk consumed by an earlier partial fill could not be established.", "The operator reviews the execution evidence.")
+_add("RESERVATION_RISK_EVIDENCE_REQUIRED", ATTENTION, "The order's approved risk reservation could not be established.", "The operator reviews the reservation evidence.")
 
 # ── eligibility / signal ─────────────────────────────────────────────────────
 _add("AWAITING_NATURAL_CATI_DECISION", WAITING, "No qualifying CATI decision is open right now.", "No action needed; decisions are evaluated hourly.")

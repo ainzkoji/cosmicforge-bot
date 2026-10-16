@@ -863,6 +863,8 @@ class PortfolioExecutionBoundary:
         if why is None and row.order_type == MARKET and row.max_slippage_bps is not None:
             why = self._slippage_refusal(row, float(row.reference_price))
         if why is None:
+            why = self._executable_risk_refusal(row, reservation)
+        if why is None:
             # the same family authorization, asked again immediately before the order
             refusal, blocked = self._source(run.batch, self.journal.now())
             why = refusal or blocked or self._increase_refusal() or self._symbol_block(symbol)
@@ -923,6 +925,37 @@ class PortfolioExecutionBoundary:
             return MARK_PRICE_UNAVAILABLE
         if not _within_bound(row.side, float(mark), reference, float(row.max_slippage_bps)):
             return f"{SLIPPAGE_BOUND_EXCEEDED}: mark {mark} against {reference} with {row.max_slippage_bps} bps"
+        return None
+
+    def _executable_risk_refusal(self, row: _Row, reservation: R.Reservation) -> Optional[str]:
+        """A known adverse price cannot spend more stop risk than was authorized.
+
+        Limits use the worst fill their price permits; markets use a fresh mark.
+        A fallback also accounts for the risk its earlier partial fill consumed.
+        This does not guarantee a market fill price or remove gap/slippage risk.
+        """
+        try:
+            price = float(row.limit_price) if row.order_type == LIMIT else self._mark(row.symbol)
+        except AdapterError as error:
+            if error.code in _LIMITED:
+                raise
+            return f"{MARK_PRICE_UNAVAILABLE}:{error.code}"
+        if price is None or not math.isfinite(float(price)) or price <= 0:
+            return MARK_PRICE_UNAVAILABLE
+        distance = float(price) - float(row.stop_price) if row.direction == LONG else float(row.stop_price) - float(price)
+        if distance <= 0:
+            return "EXECUTABLE_STOP_GEOMETRY_INVALID"
+        used = 0.0
+        for prior in self._rows("reservation_id=? AND intent_id<>? AND filled_quantity>0",
+                                (row.reservation_id, row.intent_id)):
+            if prior.average_price is None:
+                return "FILLED_RISK_EVIDENCE_REQUIRED"
+            used += prior.filled_quantity * abs(float(prior.average_price) - float(prior.stop_price))
+        if reservation.risk_amount is None:
+            return "RESERVATION_RISK_EVIDENCE_REQUIRED"
+        risk = used + float(row.quantity) * distance
+        if risk > float(reservation.risk_amount) * (1 + _TOL) + _TOL:
+            return "EXECUTABLE_PRICE_RISK_CHANGED"
         return None
 
     def _mark(self, symbol: str) -> Optional[float]:
@@ -1162,6 +1195,10 @@ class PortfolioExecutionBoundary:
         if why is None and row.increases_risk:
             refusal, blocked = self._source(run.batch, self.journal.now())
             why = refusal or blocked or self._increase_refusal() or self._symbol_block(row.symbol)
+            if why is None:
+                reservation = self.ledger.get(account_id=self.account_id, reservation_id=row.reservation_id)
+                why = "RESERVATION_RISK_EVIDENCE_REQUIRED" if reservation is None else self._executable_risk_refusal(
+                    self._update(fallback, quantity=remaining), reservation)
         if why is not None:
             self._finalize(run, self._close(fallback, REFUSED, why))
             return

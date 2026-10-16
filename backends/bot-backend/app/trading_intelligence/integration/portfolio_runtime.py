@@ -233,9 +233,15 @@ class ConnectedPortfolioRuntime:
         """
         with self.db.connect() as conn:
             rows = conn.execute(
-                "SELECT symbol,SUM(CASE WHEN side='BUY' THEN filled_quantity ELSE -filled_quantity END) "
-                "FROM cati_execution_intents WHERE account_id=? AND user_id=? AND venue=? AND environment=? "
-                "AND family_id=? AND filled_quantity>0 GROUP BY symbol",
+                "WITH scoped AS (SELECT * FROM cati_execution_intents WHERE account_id=? AND user_id=? "
+                "AND venue=? AND environment=? AND family_id=?), "
+                "openings AS (SELECT p.symbol,MAX(p.created_at) AS opened FROM scoped p "
+                "WHERE p.kind='ENTRY' AND p.role='PRIMARY' AND EXISTS "
+                "(SELECT 1 FROM scoped f WHERE f.decision_id=p.decision_id AND f.symbol=p.symbol AND f.filled_quantity>0) "
+                "GROUP BY p.symbol) "
+                "SELECT i.symbol,SUM(CASE WHEN i.side='BUY' THEN i.filled_quantity ELSE -i.filled_quantity END) "
+                "FROM scoped i JOIN openings o ON o.symbol=i.symbol WHERE i.created_at>=o.opened "
+                "AND i.filled_quantity>0 GROUP BY i.symbol",
                 (account["id"], account["user_id"], account["broker_id"].lower(), account["environment"], family_id)).fetchall()
         quantities = {r[0]: float(r[1]) for r in rows}
         owned = []

@@ -550,6 +550,41 @@ def test_a_limit_falls_back_to_a_market_order_only_inside_its_slippage_bound(wor
     assert entry_orders(world, BTC) == [] and refused.outcome(BTC).reservation_state == R.RELEASED
 
 
+def test_adverse_quote_exceeds_reserved_risk_even_without_an_optional_slippage_bound(world):
+    world.fake.set_price(BTC, 50_200)
+    result = world.run(E.entry(BTC))
+    assert states(result) == {BTC: X.REFUSED}
+    assert "EXECUTABLE_PRICE_RISK_CHANGED" in why(result, BTC)
+    assert entry_orders(world, BTC) == [] and result.outcome(BTC).reservation_state == R.RELEASED
+
+
+def test_favorable_quote_stays_inside_reserved_stop_risk(world):
+    world.fake.set_price(BTC, 49_800)
+    result = world.run(E.entry(BTC))
+    assert states(result) == {BTC: X.FILLED} and covered(world, BTC)
+
+
+def test_limit_price_cannot_offer_more_stop_risk_than_the_reservation(world):
+    result = world.run(E.entry(BTC, order_style=C.LIMIT_THEN_MARKET, limit_price=51_000, max_slippage_bps=50))
+    assert states(result) == {BTC: X.REFUSED}
+    assert "EXECUTABLE_PRICE_RISK_CHANGED" in why(result, BTC)
+    assert entry_orders(world, BTC) == []
+
+
+def test_fallback_accounts_for_stop_risk_consumed_by_the_partial_limit_fill(world):
+    batch = world.decide(E.entry(ETH, order_style=C.LIMIT_THEN_MARKET,
+                                 limit_price=2_490, max_slippage_bps=100))
+    first = world.boundary().execute(batch, brake_state=E.NO_BRAKE)
+    world.fake.fill(first.outcome(ETH).client_order_ids[0], 0.05)
+    world.clock.advance(61_000)
+    world.fake.set_price(ETH, 2_510)  # within slippage; combined stop risk would exceed the reservation
+    done = world.boundary().execute(batch, brake_state=E.NO_BRAKE)
+    assert "EXECUTABLE_PRICE_RISK_CHANGED" in why(done, ETH)
+    assert len(entry_orders(world, ETH)) == 1
+    assert world.signed(ETH) == pytest.approx(0.05) and covered(world, ETH)
+    assert done.outcome(ETH).reservation_state == R.FILLED
+
+
 def test_where_the_stop_cannot_grow_a_partly_filled_order_is_cut_before_it_is_protected(tmp_path_factory, tmp_path):
     """BingX-like: a stop carries a quantity, a second stop is refused and none can be amended. A limit order
     that fills in parts would outgrow its stop, so its remainder is cancelled first and the stop is placed once."""
