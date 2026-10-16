@@ -726,11 +726,15 @@ class CertificationRunner:
             known.append(venue_order_id)
 
     def _place(self, request: C.OrderRequest) -> C.OrderInfo:
+        from app.trading_intelligence.execution.entry_permit import certification_order_permit
+        def send():
+            with certification_order_permit(self.db, self._run_id, self.permit, request):
+                return self.adapter.place_order(request)
         return self._mutate(
             "PLACE_ORDER", request.client_order_id,
             {"side": request.side, "order_type": request.order_type, "quantity": request.quantity,
              "price": request.price, "stop_price": request.stop_price, "reduce_only": request.reduce_only},
-            lambda: self.adapter.place_order(request))
+            send)
 
     def _cancel(self, client_order_id: str) -> C.OrderInfo:
         return self._mutate("CANCEL_ORDER", client_order_id, {},

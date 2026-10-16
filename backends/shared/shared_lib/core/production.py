@@ -155,7 +155,7 @@ def require_broker_mutation_permission(method: str, path: str = "", *, environme
             if not closing:
                 try:
                     from app.trading_intelligence.execution.entry_permit import transport_entry_permitted
-                    permitted = transport_entry_permitted(client, params.get("symbol"), params.get("side"))
+                    permitted = transport_entry_permitted(client, params.get("symbol"), params.get("side"), payload=params)
                 except ImportError:
                     permitted = False
                 if not permitted and gate["environment"] == "DEMO" and broker == "binance":

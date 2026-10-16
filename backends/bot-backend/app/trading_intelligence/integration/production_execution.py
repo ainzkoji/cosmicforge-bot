@@ -496,8 +496,17 @@ def process_account(db, account, client, snapshot, *, now_ms=None, boundary_fact
     result = {}
     failure = None
     try:
-        _process_account(db, account, client, snapshot, now_ms=now_ms,
-                         boundary_factory=boundary_factory, evaluation=result)
+        from .portfolio_runtime import dispatch_account
+        portfolio = dispatch_account(
+            db, account, client, broker_snapshot=snapshot, legacy_maintenance=lambda: maintain_only(
+                db, account, client, now_ms=now_ms, boundary_factory=boundary_factory))
+        if portfolio is not None:
+            result.update(portfolio)
+        else:
+            # Families without executable registry authority retain their refusal
+            # diagnostics. All authorized family decisions use the portfolio tail.
+            _process_account(db, account, client, snapshot, now_ms=now_ms,
+                             boundary_factory=boundary_factory, evaluation=result)
     except Exception as exc:
         failure = exc
         from app.execution import production_schema

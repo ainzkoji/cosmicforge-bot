@@ -373,6 +373,13 @@ class PortfolioExecutionBoundary:
     def account_id(self) -> str:
         return self.account.broker_account_id
 
+    def account_snapshot(self) -> P.AccountSnapshot:
+        """Fresh, reconciled broker holdings for a connected-account decision.
+
+        This reads no model/shadow book and grants no submission permission.
+        """
+        return self._snapshot()[0]
+
     # =============================================================================================== execute
     def execute(self, batch: IntentBatch, *, brake_state: Optional[BrakeFlags], now_ms: Optional[int] = None) -> BatchResult:
         """Drive the intents of one decision as far as they can go now. Calling it again with the same batch
@@ -937,10 +944,12 @@ class PortfolioExecutionBoundary:
         the call, so a process that dies here leaves an order that will be looked up, not sent again."""
         row = self._update(row, state=SUBMITTING, submitted_at=self.journal.now(), reason="")
         try:
-            info = self.journal.mutate("place_order", lambda: self._adapter.place_order(request), symbol=row.symbol,
-                                       client_order_id=row.client_order_id, intent_id=row.intent_id,
-                                       detail={"side": row.side, "type": row.order_type, "quantity": row.quantity,
-                                               "reduce_only": bool(row.reduce_only), "role": row.role})
+            from app.trading_intelligence.execution.entry_permit import portfolio_entry_permit
+            with portfolio_entry_permit(self._db, row.intent_id, request):
+                info = self.journal.mutate("place_order", lambda: self._adapter.place_order(request), symbol=row.symbol,
+                                           client_order_id=row.client_order_id, intent_id=row.intent_id,
+                                           detail={"side": row.side, "type": row.order_type, "quantity": row.quantity,
+                                                   "reduce_only": bool(row.reduce_only), "role": row.role})
         except AdapterError as error:
             return self._send_failed(run, row, error)
         return self._absorb(run, row, info)

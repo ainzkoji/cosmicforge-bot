@@ -74,7 +74,10 @@ def test_the_harness_records_every_required_measurement_from_the_real_driver(mea
         "symbol failure rate": measured["market_data_feed"]["failing_cycle"]["symbol_failure_rate"] == pytest.approx(2 / 26, abs=1e-6),
     }
     assert set(found) == set(REQUIRED) and all(found.values()), found
-    assert cycle["accounts_done"] == 8 and sum(cycle["stage_ms"].values()) == pytest.approx(cycle["end_to_end_ms"], rel=1e-6)
+    # Each reported stage and the total are independently rounded to 4 decimals.
+    rounding_bound = (len(cycle["stage_ms"]) + 1) * 0.00005
+    assert cycle["accounts_done"] == 8 and sum(cycle["stage_ms"].values()) == pytest.approx(
+        cycle["end_to_end_ms"], rel=0, abs=rounding_bound)
     assert measured["fixtures"]["market"] == {"kind": "deterministic random walk (synthetic_market)", "days": 547, "symbols": 26,
                                               "seed": 7, "first_day": "2020-01-01"}
     host = P.host_description()

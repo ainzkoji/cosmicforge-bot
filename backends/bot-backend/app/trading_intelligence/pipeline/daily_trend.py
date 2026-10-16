@@ -454,6 +454,48 @@ class DailyTrendPipeline:
     family_id = FAMILY_ID
     timeframe = TIMEFRAME
 
+    def broker_account(self, market, snapshot, *, risk_level, brake_flags, capital_budget=None):
+        """Apply the frozen rule to actual holdings without simulating any fills.
+
+        The runtime supplies broker-confirmed positions and independently recorded
+        account-close brakes. Model books cannot enter this interface.
+        """
+        from .portfolio import AccountSnapshot
+        from .brakes import BrakeFlags
+        from .position_management import trailing_stop_intents
+
+        if not isinstance(snapshot, AccountSnapshot) or not isinstance(brake_flags, BrakeFlags):
+            raise ValueError("BROKER_SNAPSHOT_AND_ACCOUNT_BRAKES_REQUIRED")
+        equity = snapshot.equity
+        if capital_budget is not None:
+            if not math.isfinite(float(capital_budget)) or capital_budget <= 0:
+                raise ValueError("ACCOUNT_CAPITAL_BUDGET_REQUIRED")
+            equity = min(equity, float(capital_budget))
+        book = new_book(risk_level, T.EXECUTABLE, equity, market.day + 1)
+        book.paused, book.halved, book.halted = brake_flags.paused, brake_flags.halve, brake_flags.halted
+        targets = {}
+        for held in snapshot.positions:
+            if held.direction != C.LONG or not held.protected:
+                raise ValueError("BROKER_POSITION_NOT_SUPPORTED_OR_UNPROTECTED")
+            j = market.index(held.symbol)
+            if not math.isfinite(float(market.features.close[market.row, j])):
+                raise ValueError("BROKER_POSITION_DECISION_BAR_MISSING")
+            book.positions[held.symbol] = Position(
+                quantity=held.quantity, stop=held.stop_price, mark=held.mark_price,
+                entry_day=market.day, entry_price=held.entry_price,
+                entry_stop_distance=abs(held.entry_price - held.stop_price) / held.entry_price)
+            distance = float(market.features.stop_distance[market.row, j])
+            if math.isfinite(distance):
+                targets[held.symbol] = max(held.stop_price, float(market.features.close[market.row, j]) * (1 - distance))
+        decision = decide(book, market)
+        trailing = trailing_stop_intents(targets, snapshot, skip=[i.symbol for i in decision.intents])
+        decision.intents += trailing
+        decision.document["intents"] = [C.to_plain(i) for i in decision.intents]
+        decision.document["holdings_source"] = "RECONCILED_BROKER_SNAPSHOT"
+        decision.document["broker_snapshot_at_ms"] = snapshot.as_of_ms
+        decision.document["broker_account_equity"] = snapshot.equity
+        return decision
+
     def compare_models(self, db: Any, market: MarketDecision, accounts: Sequence[Any], *, now_ms: int) -> None:
         """Daily model audit against the frozen evaluator, after account commits.
 

@@ -141,6 +141,27 @@ def test_intents_are_valid_family_neutral_contracts_without_a_profit_target(mark
             assert all(r["symbol"] not in {i.symbol for i in entries} for r in wide)    # refused, never clipped
 
 
+def test_connected_account_stage_uses_broker_holdings_without_shadow_accounting(market, monkeypatch):
+    from app.trading_intelligence.pipeline.brakes import NO_BRAKE, BrakeFlags
+    from app.trading_intelligence.pipeline.portfolio import AccountSnapshot
+    dataset, panel, _ = market
+    m = DT.market_stage(panel, dataset.metadata, LAST)
+    snapshot = AccountSnapshot("broker-account", EQUITY, EQUITY, EQUITY, (), (), DT.close_ms(LAST) + 10)
+    def forbidden(*args, **kwargs):
+        raise AssertionError("connected account simulated a fill")
+    monkeypatch.setattr(DT, "advance_day", forbidden)
+    decision = DT.PIPELINE.broker_account(m, snapshot, risk_level="aggressive", brake_flags=NO_BRAKE)
+    reference = DT.decide(DT.new_book("aggressive", T.EXECUTABLE, EQUITY, LAST + 1), m)
+    assert decision.intents == reference.intents
+    assert decision.document["holdings_source"] == "RECONCILED_BROKER_SNAPSHOT"
+    assert decision.document["broker_snapshot_at_ms"] == snapshot.as_of_ms
+    halted = DT.PIPELINE.broker_account(m, snapshot, risk_level="aggressive",
+                                       brake_flags=BrakeFlags(False, True, True))
+    assert not any(C.increases_risk(i) for i in halted.intents)
+    with pytest.raises(ValueError, match="BROKER_SNAPSHOT_AND_ACCOUNT_BRAKES_REQUIRED"):
+        DT.PIPELINE.broker_account(m, snapshot, risk_level="aggressive", brake_flags=None)
+
+
 def test_the_market_stage_is_causal_and_names_its_data(market):
     dataset, panel, _ = market
     day = DT.day_of("2021-01-15")

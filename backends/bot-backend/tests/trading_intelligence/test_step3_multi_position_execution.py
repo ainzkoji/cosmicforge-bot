@@ -1061,9 +1061,9 @@ def test_two_accounts_never_affect_each_other(world, tmp_path_factory, tmp_path)
     assert other.protection().unsettled() == () and world.adapter.open_transactions == [] and other.adapter.open_transactions == []
 
 
-# ======================================================================================== not wired anywhere
-def test_nothing_in_this_build_reaches_the_boundary_but_tests():
-    """The boundary is not wired into the cycle driver, the production runtime, the API or the application."""
+# ======================================================================================== one runtime handoff
+def test_only_the_canonical_connected_runtime_reaches_the_boundary():
+    """Only the broker-backed runtime dispatches; shadow and APIs cannot submit."""
     import ast
     from pathlib import Path
 
@@ -1085,7 +1085,7 @@ def test_nothing_in_this_build_reaches_the_boundary_but_tests():
                 found |= inside and module == "execution"
         if found:
             users.append(path.name)
-    assert users == []
+    assert users == ["portfolio_runtime.py"]
     driver = (pipeline / "driver.py").read_text(encoding="utf-8")   # the driver's hand-off exists and is empty
     assert "handoff: Any = None" in driver
     for module in (X, PR):                                          # and neither module can switch a gate off
