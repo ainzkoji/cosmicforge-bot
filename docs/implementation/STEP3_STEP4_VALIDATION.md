@@ -16,7 +16,7 @@ scheduling, concrete stream transport, rules-refresh integration and replay evid
 
 ## B. Step 3 requirements
 
-The companion implementation-status register lists all 15 requirements and their
+The [implementation-status register](STEP3_STEP4_IMPLEMENTATION_STATUS.md) lists all 15 requirements and their
 component tests. The canonical broker cycle now routes authorized families through
 ConnectedPortfolioRuntime and PortfolioExecutionBoundary. It reconstructs holdings
 from fresh broker truth, records a separate executable decision, and resumes that
@@ -28,6 +28,7 @@ of falsely recording a dispatch that never happened.
 
 ## C. Step 4 requirements
 
+Rows 4.1–4.6, evidence and commits are recorded in the same requirement register.
 The neutral contract, three adapters, certification register, rules cache, stream
 manager and shared budget have synthetic coverage. AccountSession composes them;
 VenueRuntime schedules read-only reconciliation independently of strategy work.
@@ -153,6 +154,29 @@ constructor admission and no adapter double charge); 48 account/factory/emergenc
 tests passed after fixing injected-factory handling. The local real-HTTP suite
 also covers redirects, cross-account 429 closure, lost acknowledgements,
 pre-send interruptions and signed clock skew.
+
+Representative actual commands (repository root, `backends/venv` Python,
+isolated TEST database and paper execution; no production database):
+
+```powershell
+.\backends\venv\Scripts\python.exe -m pytest backends/bot-backend/tests/exchange backends/bot-backend/tests/trading_intelligence/test_step3_connected_portfolio.py backends/bot-backend/tests/test_cati_production_config.py -q --disable-warnings --maxfail=2
+# 641 passed; 2 old transport mocks failed. They were corrected at Session.request.
+.\backends\venv\Scripts\python.exe -m pytest backends/bot-backend/tests/test_cati_production_config.py -q --disable-warnings --maxfail=2
+# 35 passed after that correction.
+.\backends\venv\Scripts\python.exe -m pytest backends/bot-backend/tests/trading_intelligence/test_step3_connected_portfolio.py backends/bot-backend/tests/exchange/test_certification_harness.py backends/bot-backend/tests/trading_intelligence/test_step3_execution_tail.py backends/bot-backend/tests/test_cati_section25_security.py backends/bot-backend/tests/trading_intelligence/test_step3_performance.py -q --disable-warnings --maxfail=3
+# 320 passed, 2 existing skips.
+.\backends\venv\Scripts\python.exe -m pytest backends/bot-backend/tests/exchange/test_stream_transport.py backends/bot-backend/tests/exchange/test_account_session.py backends/bot-backend/tests/trading_intelligence/test_step3_connected_portfolio.py -q --disable-warnings --maxfail=2
+# 20 passed.
+.\backends\venv\Scripts\python.exe -m ruff check backends/bot-backend/app backends/user-backend/app backends/shared/shared_lib --select E9,F63,F7,F82
+# Passed.
+```
+
+Component-directory commands: `../venv/Scripts/python.exe -m pytest tests -q
+--disable-warnings --maxfail=3` completed successfully in `backends/user-backend`
+and passed 96 tests in `backends/shared`. The subsequently added shared factory/
+IP/UID cases passed with `python -m pytest tests/test_shared_request_budget.py -q`:
+3 passed. CI runs the full component suites with the existing quarantine plugin;
+its totals and exact final SHA are reported with the final Actions result.
 
 Counts overlap and must not be summed into a unique-test total.
 
