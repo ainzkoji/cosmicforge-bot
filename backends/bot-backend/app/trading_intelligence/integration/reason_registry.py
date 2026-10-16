@@ -33,6 +33,30 @@ _add("BLOCKED_RISK", BLOCKED, "A risk rule is blocking new entries right now.", 
 _add("BLOCKED_DEMO_ORDER_GATE", BLOCKED, "Demo order submission is switched off on this server.", "The operator must enable the demo order switch after the safety tests pass.")
 _add("BLOCKED_LIVE_ORDER_GATE", BLOCKED, "Live order submission is disabled on this server (Step 1 keeps it off).", "No live orders are possible yet.")
 _add("ACCOUNT_SCOPED", INFO, "Execution is evaluated per connected exchange account.", "")
+_add("PORTFOLIO_PROCESSED", INFO, "The portfolio decision was processed; individual order results are recorded.")
+_add("PORTFOLIO_DEFERRED", WAITING, "Portfolio execution is waiting for reconciliation or an exchange budget.")
+_add("PORTFOLIO_RECOVERY", WAITING, "The engine is reconciling existing portfolio orders and protection.")
+_add("PORTFOLIO_DECISION_PROCESSED", INFO, "The portfolio decision was checked and its individual outcomes were recorded.")
+_add("PORTFOLIO_EXECUTION_REFUSED", BLOCKED, "A portfolio execution gate refused this decision.", "Read the recorded execution reasons.")
+_add("PORTFOLIO_EXECUTION_DEFERRED", WAITING, "The portfolio decision is waiting for reconciliation or an exchange budget.", "No action needed; it is checked again.")
+_add("PORTFOLIO_EXECUTION_HALTED", ATTENTION, "Portfolio execution stopped because an outcome needs reconciliation.", "The operator reviews the recorded order outcomes.")
+_add("PORTFOLIO_RECOVERY_REQUIRED", ATTENTION, "Existing portfolio orders or protection need reconciliation before execution.", "Read the recorded recovery reasons.")
+_add("NO_EXECUTABLE_FAMILY", WAITING, "No strategy family has order authority for this account environment.", "Observation and existing-order recovery continue.")
+for _code, _message in (
+    ("ACCOUNT_BRAKE_CLOSE_GAP", "A required daily broker equity observation is missing."),
+    ("ACCOUNT_BROKER_CLOSE_EVIDENCE_REQUIRED", "Consecutive broker equity observations at the decision close are required."),
+    ("ACCOUNT_PORTFOLIO_RISK_PROFILE_REQUIRED", "The account's portfolio risk profile could not be resolved."),
+    ("BROKER_ACCOUNT_RISK_SNAPSHOT_REQUIRED", "The account's broker risk snapshot is missing."),
+    ("FAMILY_BROKER_ACCOUNT_STAGE_REQUIRED", "The strategy has no connected-account decision stage."),
+    ("FAMILY_BROKER_PIPELINE_ADAPTER_REQUIRED", "The strategy has no supported broker execution pipeline."),
+    ("FAMILY_TIMEFRAME_DATA_PROVIDER_REQUIRED", "Market data is unavailable for the strategy timeframe."),
+    ("PORTFOLIO_OWNED_POSITION_CHANGED_EXTERNALLY", "A strategy position changed outside the recorded execution flow."),
+    ("PRODUCTION_PORTFOLIO_DEPENDENCIES_MUST_BE_AUTHORITATIVE", "The runtime portfolio dependencies are not the platform's own."),
+):
+    _add(_code, ATTENTION, _message, "New entries remain blocked; the operator reviews the account evidence.")
+_add("ACCOUNT_INSTRUMENT_NOT_ALLOWED", BLOCKED, "This instrument is outside the bot's allowed trading list.")
+_add("DAILY_ENTRY_CAP_REACHED", BLOCKED, "The account's daily entry allowance is fully used.", "No new entry until the next risk day.")
+_add("FAMILY_BROKER_DECISION_STALE", WAITING, "The strategy's broker decision is too old to execute.", "Wait for the next decision close.")
 
 # ── eligibility / signal ─────────────────────────────────────────────────────
 _add("AWAITING_NATURAL_CATI_DECISION", WAITING, "No qualifying CATI decision is open right now.", "No action needed; decisions are evaluated hourly.")

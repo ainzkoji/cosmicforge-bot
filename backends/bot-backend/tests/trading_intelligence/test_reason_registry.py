@@ -15,6 +15,7 @@ SOURCES = [
     APP / "trading_intelligence" / "integration" / "production_execution.py",
     APP / "trading_intelligence" / "integration" / "production_runtime.py",
     APP / "trading_intelligence" / "integration" / "production_portfolio.py",
+    APP / "trading_intelligence" / "integration" / "portfolio_runtime.py",
     APP / "trading_intelligence" / "integration" / "income_ledger.py",
     APP / "execution" / "protection_state.py",
     APP / "core" / "deployment_service.py",

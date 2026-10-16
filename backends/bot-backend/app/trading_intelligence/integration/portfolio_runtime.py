@@ -276,7 +276,8 @@ class ConnectedPortfolioRuntime:
                   "reason": "NO_EXECUTABLE_FAMILY"}
         if recovery.status != X.BATCH_PROCESSED or len(active) != 1:
             result.update(execution_permission="BLOCKED_ACCOUNT",
-                          reason=(recovery.reasons[0] if recovery.reasons else "ACCOUNT_EXECUTION_OWNER_AMBIGUOUS"))
+                          reason=("PORTFOLIO_RECOVERY_REQUIRED" if recovery.status != X.BATCH_PROCESSED
+                                  else "ACCOUNT_EXECUTION_OWNER_AMBIGUOUS"))
             return result
         risk_block = None
         if settings.production:
@@ -347,7 +348,13 @@ class ConnectedPortfolioRuntime:
             outcome = boundary.execute(batch, brake_state=None if risk_block else flags, now_ms=self.clock())
             result["families"].append({"family_id": definition.family_id, "decision_id": batch.provenance.decision_id,
                                        "execution": asdict(outcome)})
-            result.update(execution_permission="PORTFOLIO_PROCESSED", reason=outcome.status)
+            reason = {X.BATCH_PROCESSED: "PORTFOLIO_DECISION_PROCESSED", X.BATCH_REFUSED: "PORTFOLIO_EXECUTION_REFUSED",
+                      X.BATCH_DEFERRED: "PORTFOLIO_EXECUTION_DEFERRED", X.BATCH_HALTED: "PORTFOLIO_EXECUTION_HALTED"}[outcome.status]
+            permission = ("PORTFOLIO_DEFERRED" if outcome.status == X.BATCH_DEFERRED else "BLOCKED_ACCOUNT")
+            if outcome.status == X.BATCH_PROCESSED:
+                permission = "BLOCKED_RISK" if risk_block else "PORTFOLIO_PROCESSED"
+                reason = risk_block or reason
+            result.update(execution_permission=permission, reason=reason)
         return result
 
 

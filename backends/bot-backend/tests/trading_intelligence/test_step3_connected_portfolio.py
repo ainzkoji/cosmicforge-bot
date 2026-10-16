@@ -41,7 +41,8 @@ def test_broker_handoff_executes_multiple_positions_and_restart_reuses_decision(
     runtime, account, stage = setup(world, monkeypatch)
     maintenance = Mock()
     first = runtime.process(account, None, legacy_maintenance=maintenance)
-    assert first["reason"] == X.BATCH_PROCESSED
+    assert first["reason"] == "PORTFOLIO_DECISION_PROCESSED"
+    assert first["families"][0]["execution"]["status"] == X.BATCH_PROCESSED
     assert world.signed(E.BTC) > 0 and world.signed(E.ETH) > 0
     before = len(world.orders_sent(protective=False))
     snapshot = stage.call_args.args[1]
@@ -64,6 +65,21 @@ def test_current_real_registry_cannot_reach_broker_decision_or_boundary(world):
     assert runtime.process(account, None) is None
     factory.assert_not_called()
     assert world.fake.mutations == world.fake.reads == []
+
+
+@pytest.mark.parametrize("status,permission", [(X.BATCH_REFUSED, "BLOCKED_ACCOUNT"),
+                                               (X.BATCH_DEFERRED, "PORTFOLIO_DEFERRED"),
+                                               (X.BATCH_HALTED, "BLOCKED_ACCOUNT")])
+def test_batch_refusal_or_wait_is_not_reported_as_success(world, monkeypatch, status, permission):
+    from app.trading_intelligence.integration.reason_registry import describe
+    runtime, account, _ = setup(world, monkeypatch)
+    boundary = world.boundary()
+    boundary.execute = Mock(return_value=X.BatchResult(status, ("synthetic outcome",), ()))
+    runtime.make_boundary = lambda *args: boundary
+    result = runtime.process(account, None)
+    assert result["execution_permission"] == permission
+    assert describe(result["reason"])["severity"] in ("blocked", "waiting", "attention")
+    assert world.fake.mutations == []
 
 
 def test_missing_broker_close_evidence_refuses_before_a_family_decision(world, monkeypatch):
