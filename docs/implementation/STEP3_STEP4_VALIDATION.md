@@ -3,7 +3,7 @@
 ## A. Executive outcome
 
 Implementation commits: `2bc06fb5775c692fabfd01f1233fe55aabbf3a1a`,
-`cda273aab6dfb0db5ecefbe08c358da57f5075e6`, `49b81ae`, `6e4d725`, `6372b83`, `20527f3` and `61d3199`.
+`cda273aab6dfb0db5ecefbe08c358da57f5075e6`, `49b81ae`, `6e4d725`, `6372b83`, `20527f3`, `61d3199` and `32b0278`.
 The runtime now schedules independent shadow cycles and account streams. No
 strategy is certified, no family was promoted, and no trading was enabled.
 The remaining runtime handoff, shared backend budget and concrete certification
@@ -28,7 +28,7 @@ of falsely recording a dispatch that never happened.
 
 ## C. Step 4 requirements
 
-Rows 4.1–4.6, evidence and commits are recorded in the same requirement register.
+Rows 4.1â€“4.6, evidence and commits are recorded in the same requirement register.
 The neutral contract, three adapters, certification register, rules cache, stream
 manager and shared budget have synthetic coverage. AccountSession composes them;
 VenueRuntime schedules read-only reconciliation independently of strategy work.
@@ -62,6 +62,12 @@ marks and refuses missing closes. It also carries forward intraday loss latches,
 weekly/monthly drawdown, loss-streak cooldown, transfer/margin ambiguity, capital
 allocation, allowed symbols, and daily-entry caps. Manual holdings still count
 toward account risk but are not adopted into a family book.
+Owned position attribution starts at the latest filled opening, so a native stop
+followed by reentry does not inherit the previous position's fills. Before an
+increase, the boundary checks executable price-to-stop risk against the approved
+reservation, including earlier partial fills before a market fallback. Limits use
+their worst permitted price; markets use a fresh mark. This check does not guarantee
+the eventual market fill price or eliminate gap/slippage risk.
 
 The raw CREATE gate checks a call-scoped permit against a SUBMITTING intent and
 its durable reservation. Account, user, environment, quantity, order type, limit
@@ -180,6 +186,21 @@ its totals and exact final SHA are reported with the final Actions result.
 
 Counts overlap and must not be summed into a unique-test total.
 
+Final risk/lifecycle correction `32b0278` was checked with:
+
+```powershell
+.\backends\venv\Scripts\python.exe -m pytest backends/bot-backend/tests/trading_intelligence/test_step3_multi_position_execution.py backends/bot-backend/tests/trading_intelligence/test_step3_connected_portfolio.py backends/bot-backend/tests/trading_intelligence/test_reason_registry.py -q --disable-warnings --maxfail=2
+# 91 passed in 266.50s; collected before the additional fallback test was added.
+.\backends\venv\Scripts\python.exe -m pytest backends/bot-backend/tests/trading_intelligence/test_step3_multi_position_execution.py -k 'fallback_accounts' -q --disable-warnings --maxfail=1
+# 1 passed, 64 deselected in 3.71s; partial fill plus fallback risk accounting.
+.\backends\venv\Scripts\python.exe -m pytest backends/bot-backend/tests/trading_intelligence/test_step3_connected_portfolio.py -q --disable-warnings --maxfail=2
+# 16 passed in 7.95s, including native stop then reentry lifecycle attribution.
+```
+
+The same isolated TEST/paper environment was used. Correctness lint, whitespace,
+added-line secret-pattern checks and unchanged research/deployment/quarantine paths
+were verified before pushing. The final Actions run validates the combined suite.
+
 ## J. Performance
 
 Synthetic Windows measurements, two cycles each, warmed-up cycle:
@@ -225,6 +246,9 @@ Engineering corrections completed locally:
 Final reporting correction `61d3199`: portfolio refusals, deferrals and recovery
 blocks now have registered customer reasons; a refused batch is not reported as
 healthy processing. The expanded reason-registry and handoff tests passed 27 cases.
+Correction `32b0278` adds executable-price reservation checks and restarts owned
+position attribution after a genuinely filled reentry; the above regression evidence
+covers both corrections.
 
 The final remaining engineering gate is green exact-final-commit Linux CI. Local
 component evidence does not substitute for it. Existing known failures remain

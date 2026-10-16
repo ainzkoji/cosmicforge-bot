@@ -1,12 +1,12 @@
 # Section H: Steps 3 and 4 implementation status
 
-Completion audit started 15 October 2026. Baseline: `75435cd56313b1557bafce5ea11af8f8c2cee9c5`, identical to fetched `origin/main`. GitHub Actions run [37960746421](https://github.com/ainzkoji/cosmicforge-bot/actions/runs/37960746421) passed for that commit. The preserved implementation was committed in `2bc06fb`; integration corrections are in `cda273a`, `49b81ae`, `6e4d725`, `6372b83`, `20527f3` and `61d3199` (continued 16 October).
+Completion audit started 15 October 2026. Baseline: `75435cd56313b1557bafce5ea11af8f8c2cee9c5`, identical to fetched `origin/main`. GitHub Actions run [37960746421](https://github.com/ainzkoji/cosmicforge-bot/actions/runs/37960746421) passed for that commit. The preserved implementation was committed in `2bc06fb`; integration corrections are in `cda273a`, `49b81ae`, `6e4d725`, `6372b83`, `20527f3`, `61d3199` and `32b0278` (continued 16 October).
 
 Authority: the supplied Section H master implementation prompt, the Step 2 handoff, and the frozen mandate. The separate master plan is absent. No research verdict, holdout, risk ceiling, stop limit, credential, or governance promotion is changed. Operation remains **SHADOW_ONLY**. Local component tests do not certify a strategy or venue.
 
 ## Requirement register
 
-PASS rows describe verified component engineering acceptance. Overall engineering acceptance additionally requires green exact-final-commit CI; consult the final delivery and Actions for that result. External closure gates are listed separately below. Component tests pass where stated; full exact-commit CI remains a separate gate. Implementation commit for every row: `2bc06fb`; runtime, HTTP and audit corrections: `cda273a`, `49b81ae`, `6e4d725`, `6372b83`, `20527f3`, `61d3199`. Paths beginning `pipeline/` are relative to `backends/bot-backend/app/trading_intelligence/`. Tests are under `backends/bot-backend/tests/` unless otherwise named. The owner-action column is `None` for local engineering; it never authorizes venue orders.
+PASS rows describe verified component engineering acceptance. Overall engineering acceptance additionally requires green exact-final-commit CI; consult the final delivery and Actions for that result. External closure gates are listed separately below. Component tests pass where stated; full exact-commit CI remains a separate gate. Implementation commit for every row: `2bc06fb`; runtime, HTTP and audit corrections: `cda273a`, `49b81ae`, `6e4d725`, `6372b83`, `20527f3`, `61d3199`, `32b0278`. Paths beginning `pipeline/` are relative to `backends/bot-backend/app/trading_intelligence/`. Tests are under `backends/bot-backend/tests/` unless otherwise named. The owner-action column is `None` for local engineering; it never authorizes venue orders.
 
 | requirement_id | status | implementation_files | tests / evidence | blocking_dependency / required_owner_action | next_verification |
 |---|---|---|---|---|---|
@@ -17,7 +17,7 @@ PASS rows describe verified component engineering acceptance. Overall engineerin
 | 3.5 | PASS | pipeline/contracts.py | test_step3_contracts.py | None | Contract regression |
 | 3.6 | PASS | pipeline/daily_trend.py | test_step3_daily_trend_pipeline.py | No strategy certification | Development replay reproduced; holdout rows read: zero |
 | 3.7 | PASS | pipeline/portfolio.py, reservations.py | test_step3_portfolio.py, test_step3_reservations.py | Preserve current approved risk limits | Cross-worker and migration checks |
-| 3.8 | PASS | pipeline/execution.py | test_step3_multi_position_execution.py | Real trading separately gated | Broker handoff opens/protects multiple synthetic positions and restarts without duplicate orders |
+| 3.8 | PASS | pipeline/execution.py | test_step3_multi_position_execution.py | Real trading separately gated | Broker handoff opens/protects multiple synthetic positions; executable-price risk includes partial fills; native stop/reentry resets attribution |
 | 3.9 | PASS | pipeline/position_management.py, protection.py | test_step3_stop_replacement.py | Venue protocols need real certification | Coverage and ambiguity tests |
 | 3.10 | PASS | pipeline/brakes.py | test_step3_brakes.py | High-water mark retained; no risk relaxation | Consecutive broker-close samples and complete cashflow feed durable brakes; missing evidence blocks entry |
 | 3.11 | PASS | api/family_governance.py, user-backend admin_governance.py, admin frontend | test_step3_governance_api.py, test_admin_governance_proxy.py, family_governance.test.ts | Families remain M0 | Auth, revocation, frontend lint/build |
@@ -41,10 +41,11 @@ PASS rows describe verified component engineering acceptance. Overall engineerin
 - The connected portfolio handoff, account-close brake wiring, scoped certification harness and shared backend budget are now implemented. Component acceptance is separate from exact-final-commit CI and the external closure register.
 - Follow-up: 320 tail/security/performance tests passed with 2 existing skips; 42 targeted handoff/harness/rate-budget tests passed; shared suite 96 passed plus 3 new shared-budget cases. User backend completed successfully. Counts overlap.
 - CI run 38788716818 failed 3 cases: two tests bypassed constructor injection and one compared independently rounded timings too strictly. These were corrected; the latter is bounded by the actual four-decimal rounding error.
+- Final risk/lifecycle correction `32b0278`: 91 execution/handoff/reason tests passed, plus the additional partial-fill fallback test passed; 16 lifecycle/handoff tests passed. Counts overlap.
 - No exchange mutation, strategy activation, research promotion, or production database migration performed during this completion audit.
 
 ## Closure gates
 
 Full Step 3 operational closure is BLOCKED by the absence of a certified family, legitimate promotion, and measured one-week/four-week continuous operation. Full Step 4 venue closure is BLOCKED until genuinely authorized account-specific venue tests pass. Neither gate may be replaced with simulated elapsed time or synthetic fills.
 
-See [carry-forward register](STEP3_STEP4_CARRY_FORWARD.md), [Step 5 handoff](STEP5_HANDOFF.md) and [A–N validation report](STEP3_STEP4_VALIDATION.md).
+See [carry-forward register](STEP3_STEP4_CARRY_FORWARD.md), [Step 5 handoff](STEP5_HANDOFF.md) and [Aâ€“N validation report](STEP3_STEP4_VALIDATION.md).
