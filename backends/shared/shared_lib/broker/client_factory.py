@@ -43,6 +43,19 @@ def build_client_from_auth(auth: BrokerAuth, *, http=None) -> Any:
     from shared_lib.core.production import require_execution_account
     require_execution_account(auth.environment, auth.broker_type.lower(), auth.base_url)
     broker = auth.broker_type.lower()
+    if http is None and getattr(auth, "database", None) is None:
+        from shared_lib.core.production import production_enabled
+        if production_enabled():
+            raise BrokerResolverError(BrokerResolverError.REASON_AUTH_FAILED,
+                                      "BUDGET_DATABASE_REQUIRED", account_id=auth.account_id)
+    if http is None and getattr(auth, "database", None) is not None:
+        import os
+        from shared_lib.broker.http_budget import BudgetedHTTP
+        from shared_lib.broker.rate_budget import RateBudget
+        from shared_lib.persistence.cati_platform_schema import ensure_cati_platform_schema
+        ensure_cati_platform_schema(auth.database)
+        http = BudgetedHTTP(RateBudget(auth.database), broker, account_ref=auth.account_id,
+                            server_address=os.environ.get("CATI_EGRESS_SCOPE", "shared-runtime-egress"))
     logger.debug(
         "build_client_from_auth broker=%s account=%s env=%s fingerprint=%s",
         broker, auth.account_id, auth.environment.value, auth.key_fingerprint,

@@ -11,7 +11,9 @@ class BingXClient:
     """
     BingX Client for User Backend (Verification & Balance only).
     """
-    def __init__(self, api_key: str, api_secret: str, testnet: bool = False, base_url: str = ""):
+    def __init__(self, api_key: str, api_secret: str, testnet: bool = False, base_url: str = "", *, http=None):
+        from shared_lib.broker.http_budget import client_http
+        self.http = client_http("bingx", http, lambda: requests)
         self.api_key = api_key
         self.api_secret = api_secret
         
@@ -48,10 +50,10 @@ class BingXClient:
         
         try:
             if method == "GET":
-                r = requests.get(f"{url}?{final_query}", headers=headers, timeout=10)
+                r = self.http.get(f"{url}?{final_query}", headers=headers, timeout=10)
             elif method == "POST":
                 headers["Content-Type"] = "application/x-www-form-urlencoded"
-                r = requests.post(url, data=final_query, headers=headers, timeout=10)
+                r = self.http.post(url, data=final_query, headers=headers, timeout=10)
             else:
                  raise ValueError(f"Method {method} not supported")
                  

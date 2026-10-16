@@ -137,7 +137,8 @@ class BinanceFuturesClient:
         self.recv_window = recv_window
 
         # Use session for connection pooling
-        self.session = http if http is not None else requests.Session()
+        from shared_lib.broker.http_budget import client_http
+        self.session = client_http("binance", http, requests.Session)
 
         self._exchange_info_cache: dict | None = None
         self._exchange_info_cache_ts: float = 0.0

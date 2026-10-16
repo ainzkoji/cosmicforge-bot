@@ -51,6 +51,7 @@ class BrokerAuth:
     key_fingerprint:     str   # last 4 chars of api_key — safe for logs
     # Extra fields for brokers that need more (e.g. OANDA account_id, MT bridge URL)
     extra: Dict[str, Any] = field(default_factory=dict, compare=False, hash=False)
+    database: Any = field(default=None, compare=False, hash=False, repr=False)
 
     def safe_log_dict(self) -> dict:
         """Return a dict safe to include in structured logs (no secrets)."""
@@ -381,4 +382,5 @@ def resolve_broker_auth(
             credential_version=cred.get("version") or 1,
             key_fingerprint=fingerprint,
             extra=extra,
+            database=db,
         )

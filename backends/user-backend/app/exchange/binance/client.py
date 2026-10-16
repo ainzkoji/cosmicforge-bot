@@ -30,7 +30,10 @@ class BinanceFuturesClient:
         api_secret: str,
         base_url: str,
         recv_window: int = 5000,
+        *, http=None,
     ):
+        from shared_lib.broker.http_budget import client_http
+        self.http = client_http("binance", http, lambda: requests)
         self.api_key = api_key
         self.api_secret = api_secret
         self.base_url = base_url.rstrip("/")
@@ -71,7 +74,7 @@ class BinanceFuturesClient:
         for attempt in range(max_retries + 1):
             try:
                 # ✅ DEBUG: Lower timeout to 5s to detection stalls faster
-                r = requests.request(
+                r = self.http.request(
                     method, url, params=params, headers=headers, timeout=5
                 )
 
@@ -111,7 +114,7 @@ class BinanceFuturesClient:
     # ---------------- TIME SYNC ----------------
 
     def _public_get(self, path: str, params: dict | None = None) -> dict:
-        r = requests.get(f"{self.base_url}{path}", params=params or {}, timeout=20)
+        r = self.http.get(f"{self.base_url}{path}", params=params or {}, timeout=20)
         if r.status_code >= 400:
             raise RuntimeError(f"Binance HTTP {r.status_code}: {r.text}")
         return r.json()
@@ -156,11 +159,11 @@ class BinanceFuturesClient:
         headers = {"X-MBX-APIKEY": self.api_key}
 
         if method == "GET":
-            r = requests.get(url, headers=headers, timeout=20)
+            r = self.http.get(url, headers=headers, timeout=20)
         elif method == "POST":
-            r = requests.post(url, headers=headers, timeout=20)
+            r = self.http.post(url, headers=headers, timeout=20)
         elif method == "DELETE":
-            r = requests.delete(url, headers=headers, timeout=20)
+            r = self.http.delete(url, headers=headers, timeout=20)
         else:
             raise ValueError(f"Unsupported HTTP method: {method}")
 
@@ -180,11 +183,11 @@ class BinanceFuturesClient:
                 url = f"{self.base_url}{path}?{query}&signature={signature}"
 
                 if method == "GET":
-                    r = requests.get(url, headers=headers, timeout=20)
+                    r = self.http.get(url, headers=headers, timeout=20)
                 elif method == "POST":
-                    r = requests.post(url, headers=headers, timeout=20)
+                    r = self.http.post(url, headers=headers, timeout=20)
                 elif method == "DELETE":
-                    r = requests.delete(url, headers=headers, timeout=20)
+                    r = self.http.delete(url, headers=headers, timeout=20)
 
         if r.status_code >= 400:
             raise RuntimeError(f"Binance HTTP {r.status_code}: {r.text}")
@@ -193,7 +196,7 @@ class BinanceFuturesClient:
     # ---------------- PUBLIC ----------------
 
     def ping(self) -> dict:
-        r = requests.get(f"{self.base_url}/fapi/v1/ping", timeout=20)
+        r = self.http.get(f"{self.base_url}/fapi/v1/ping", timeout=20)
         return {"status_code": r.status_code}
 
     def exchange_info(self) -> dict:

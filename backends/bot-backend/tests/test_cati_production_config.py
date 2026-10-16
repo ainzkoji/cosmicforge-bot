@@ -88,7 +88,7 @@ def test_other_live_read_transports_remain_functional(monkeypatch, broker):
     response = Mock(status_code=200, content=b"[]", headers={}, text="[]")
     response.json.return_value = {"retCode": 0, "result": {"list": []}} if broker == "bybit" else {"code": 0, "data": []}
     get = Mock(return_value=response)
-    monkeypatch.setattr("requests.get", get)
+    monkeypatch.setattr("requests.sessions.Session.request", get)
     if broker == "bybit":
         from app.exchange.bybit.client import BybitClient
         BybitClient("key", "secret")._request_v5("GET", "/v5/position/list")
@@ -100,6 +100,9 @@ def test_other_live_read_transports_remain_functional(monkeypatch, broker):
 
 def test_demo_identity_and_endpoint_cannot_enter_production(monkeypatch):
     monkeypatch.setattr(config, "settings", production())
+    response = Mock(status_code=200, headers={})
+    response.json.return_value = {"symbols": [], "serverTime": 1_780_000_000_000}
+    monkeypatch.setattr("requests.sessions.Session.request", Mock(return_value=response))
     with pytest.raises(ValueError, match="LIVE_BROKER_ACCOUNT"):
         require_live_account("demo")
     with pytest.raises(ValueError, match="CANONICAL_LIVE_ENDPOINT"):

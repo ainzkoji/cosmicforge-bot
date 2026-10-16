@@ -127,6 +127,7 @@ def test_bybit_signs_with_recv_window_and_never_retries_a_mutation():
     from app.exchange.bybit.client import BybitClient
 
     c = BybitClient.__new__(BybitClient)
+    c.http = requests
     c.api_key, c.api_secret, c.base_url, c.recv_window = "k", "s", "https://api-demo.bybit.com", 5000
     with patch.object(requests, "post", side_effect=requests.Timeout("read timed out")) as post:
         with pytest.raises(Exception):
@@ -142,6 +143,7 @@ def test_bingx_signs_every_request_with_a_fresh_timestamp():
     from app.exchange.bingx.client import BingXClient
 
     c = BingXClient.__new__(BingXClient)
+    c.http = requests
     c.api_key, c.api_secret, c.base_url = "k", "s", "https://open-api-vst.bingx.com"
     with patch.object(requests, "post", side_effect=requests.Timeout("t")) as post:
         try:

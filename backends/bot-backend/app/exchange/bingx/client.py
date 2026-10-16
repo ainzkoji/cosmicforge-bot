@@ -16,7 +16,8 @@ class BingXClient:
     """
     
     def __init__(self, api_key: str, api_secret: str, testnet: bool = False, base_url: str = "", *, http=None):
-        self.http = http if http is not None else requests
+        from shared_lib.broker.http_budget import client_http
+        self.http = client_http("bingx", http, lambda: requests)
         self.api_key = api_key
         self.api_secret = api_secret
         
