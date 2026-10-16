@@ -6,9 +6,9 @@ orders. It extends the single-entry boundary (``execution.boundary``) and keeps 
 authorization, exactly-once order identity, an unknown submit that is reconciled and never re-sent, and an
 exchange-side stop for every position that exists.
 
-**Nothing in this build calls it.** It is not wired into the cycle driver, the production runtime or any API, and
-every real family of this repository is refused by its first gates (none is certified, all are at stage M0). It
-is exercised by tests only, against ``FakeVenue``.
+The canonical broker cycle reaches this boundary through ``ConnectedPortfolioRuntime``. The independent shadow
+driver has no execution callback. Every real family in this repository is refused by the first gates (none is
+certified, all are at stage M0); execution tests use synthetic authorized families against ``FakeVenue``.
 
 **Gate order.** Every refusal below happens before any call that can change something at a venue.
 
@@ -945,6 +945,8 @@ class PortfolioExecutionBoundary:
         distance = float(price) - float(row.stop_price) if row.direction == LONG else float(row.stop_price) - float(price)
         if distance <= 0:
             return "EXECUTABLE_STOP_GEOMETRY_INVALID"
+        if row.kind == ENTRY and distance / float(price) > self.limits.max_entry_stop_distance * (1 + _TOL):
+            return P.ENTRY_STOP_TOO_WIDE
         used = 0.0
         for prior in self._rows("reservation_id=? AND intent_id<>? AND filled_quantity>0",
                                 (row.reservation_id, row.intent_id)):

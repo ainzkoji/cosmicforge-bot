@@ -585,6 +585,14 @@ def test_fallback_accounts_for_stop_risk_consumed_by_the_partial_limit_fill(worl
     assert done.outcome(ETH).reservation_state == R.FILLED
 
 
+def test_executable_entry_stop_cannot_exceed_fifteen_percent_despite_rounding_headroom(world):
+    intent = E.entry(BTC, distance=0.15, quantity=0.002, order_style=C.LIMIT, limit_price=51_000)
+    result = world.run(intent)  # risk is 17 < reserved 20; width is 8500/51000 > 15%
+    assert states(result) == {BTC: X.REFUSED}
+    assert "ENTRY_STOP_TOO_WIDE" in why(result, BTC)
+    assert entry_orders(world, BTC) == [] and result.outcome(BTC).reservation_state == R.RELEASED
+
+
 def test_where_the_stop_cannot_grow_a_partly_filled_order_is_cut_before_it_is_protected(tmp_path_factory, tmp_path):
     """BingX-like: a stop carries a quantity, a second stop is refused and none can be amended. A limit order
     that fills in parts would outgrow its stop, so its remainder is cancelled first and the stop is placed once."""
