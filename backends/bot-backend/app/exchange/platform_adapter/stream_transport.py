@@ -15,7 +15,8 @@ from .user_stream import HEARTBEAT, MAX_FRAME_BYTES, StreamClosed
 
 
 class WebSocketTransport:
-    def __init__(self):
+    def __init__(self, *, admit=None):
+        self._admit = admit
         self._connection = None
         self._pong = None
         self._logger = logging.Logger("cati.private_stream", level=logging.CRITICAL + 1)
@@ -25,6 +26,8 @@ class WebSocketTransport:
         self.close()
         if urlsplit(spec.url).scheme != "wss":
             raise StreamClosed("STREAM_TLS_REQUIRED")
+        if self._admit is not None and not self._admit():
+            raise StreamClosed("STREAM_CONNECTION_BUDGET_REFUSED")
         try:
             self._connection = connect(spec.url, open_timeout=10, close_timeout=2,
                                        ping_interval=None, max_size=MAX_FRAME_BYTES,
@@ -69,3 +72,22 @@ class WebSocketTransport:
                 connection.close()
             except (OSError, WebSocketException):
                 pass
+
+
+def connection_admission(db, venue, server_address, account_ref, clock):
+    """A shared handshake window, separate from the venue's REST request window.
+
+    Bybit documents 500 handshakes per IP per five minutes. Other venues retain
+    a local conservative envelope of 50 until authenticated certification.
+    """
+    from shared_lib.broker.rate_budget import RateBudget, VenueLimit, REQUESTS, VERIFIED_BY_DOC, UNVERIFIED, RECONCILIATION
+    capacity = 500 if venue == "bybit" else 50
+    limits = {venue: VenueLimit(venue, capacity, 300_000, REQUESTS,
+                               VERIFIED_BY_DOC if venue == "bybit" else UNVERIFIED,
+                               "Bybit: https://bybit-exchange.github.io/docs/v5/rate-limit (2026-10-16); "
+                               "other venues: conservative configured handshake envelope")}
+    budget = RateBudget(db, limits=limits)
+    def admit():
+        return budget.reserve(venue, server_address + ":ws-connections", clock(), priority=RECONCILIATION,
+                              account_ref=account_ref, category="WEBSOCKET_HANDSHAKE").granted
+    return admit

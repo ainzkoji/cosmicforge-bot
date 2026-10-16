@@ -11,7 +11,7 @@ from .certification import CertificationRegister, adapter_certified
 from .factory import adapter_for
 from .rate_budget import BudgetedVenueAdapter, RateBudget
 from .rules_cache import RulesCache
-from .stream_transport import WebSocketTransport
+from .stream_transport import WebSocketTransport, connection_admission
 from .user_stream import UserStreamManager, stream_allows_entries
 
 
@@ -30,7 +30,8 @@ class AccountSession:
                                            account_ref=account_ref, server_address=server_address,
                                            clock=self.clock)
         self.rules = RulesCache(db, worker=owner)
-        self.stream = UserStreamManager(db, self.adapter, WebSocketTransport(),
+        transport = WebSocketTransport(admit=connection_admission(db, raw.venue, server_address, account_ref, self.clock))
+        self.stream = UserStreamManager(db, self.adapter, transport,
                                         account_ref=account_ref, owner=owner, symbols=symbols)
 
     def step(self):

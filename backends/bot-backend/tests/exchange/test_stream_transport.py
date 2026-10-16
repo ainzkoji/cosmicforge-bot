@@ -10,6 +10,29 @@ from app.exchange.platform_adapter import stream_transport as T
 from app.exchange.platform_adapter.user_stream import HEARTBEAT, StreamClosed
 
 
+def test_denied_handshake_never_opens_socket(monkeypatch):
+    connector = Mock()
+    monkeypatch.setattr(T, "connect", connector)
+    transport = T.WebSocketTransport(admit=lambda: False)
+    with pytest.raises(StreamClosed, match="STREAM_CONNECTION_BUDGET_REFUSED"):
+        transport.connect(SimpleNamespace(url="wss://example.test/private"))
+    connector.assert_not_called()
+
+
+def test_accounts_share_a_persistent_handshake_window(tmp_path):
+    from shared_lib.persistence.cati_platform_schema import ensure_cati_platform_schema
+    from shared_lib.persistence.db import DB
+    db = DB(str(tmp_path / "connections.db"))
+    ensure_cati_platform_schema(db)
+    now = [1_800_000_000_000]
+    first = T.connection_admission(db, "bybit", "shared-egress", "one", lambda: now[0])
+    second = T.connection_admission(db, "bybit", "shared-egress", "two", lambda: now[0])
+    assert sum(first() for _ in range(500)) == 320  # 500 x 80% utilisation x 80% read ceiling
+    assert second() is False
+    now[0] += 300_000
+    assert second() is True
+
+
 def test_frames_pongs_timeout_and_shutdown(monkeypatch):
     socket = Mock()
     connector = Mock(return_value=socket)
