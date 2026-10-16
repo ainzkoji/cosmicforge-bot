@@ -12,6 +12,7 @@ from shared_lib.broker.environment import normalize_environment, resolve_base_ur
 from shared_lib.broker.resolver import BrokerAuth
 from shared_lib.broker import client_factory
 from shared_lib.core.production import LiveOrderSubmissionDisabled, DemoOrderSubmissionDisabled
+from shared_lib.persistence.db import DB
 
 
 @pytest.fixture
@@ -45,20 +46,21 @@ def accounts(tmp_path):
     return db
 
 
-def auth_for(account, broker="binance", environment="demo", user="alice"):
+def auth_for(account, broker="binance", environment="demo", user="alice", database=None):
     env=normalize_environment(environment)
     return BrokerAuth(account_id=account,user_id=user,broker_type=broker,environment=env,
         base_url=resolve_base_url(broker,env),api_key="isolated-key-"+account,api_secret="isolated-secret",
-        credential_version=3,key_fingerprint="test")
+        credential_version=3,key_fingerprint="test",database=database)
 
 
 @pytest.mark.parametrize("broker",["binance","bybit","bingx"])
 @pytest.mark.parametrize("environment",["demo","live"])
-def test_resolved_factory_uses_canonical_endpoint_and_isolates_accounts(operational,monkeypatch,broker,environment):
-    builder=Mock(side_effect=lambda auth:SimpleNamespace())
+def test_resolved_factory_uses_canonical_endpoint_and_isolates_accounts(operational,monkeypatch,tmp_path,broker,environment):
+    database=DB(str(tmp_path/"budget.db"))
+    builder=Mock(side_effect=lambda auth, **kwargs:SimpleNamespace())
     monkeypatch.setattr(client_factory,"_build_"+broker,builder)
-    auth_a=auth_for("a",broker,environment)
-    auth_b=auth_for("b",broker,environment,"bob")
+    auth_a=auth_for("a",broker,environment,database=database)
+    auth_b=auth_for("b",broker,environment,"bob",database=database)
     a=client_factory.build_client_from_auth(auth_a)
     b=client_factory.build_client_from_auth(auth_b)
     assert a is not b and a._broker_account_id == "a" and b._broker_account_id == "b"
@@ -66,12 +68,26 @@ def test_resolved_factory_uses_canonical_endpoint_and_isolates_accounts(operatio
     assert a.broker_environment == normalize_environment(environment)
     assert builder.call_args_list[0].args[0].base_url == resolve_base_url(broker,normalize_environment(environment))
     assert builder.call_args_list[0].args[0].api_key != builder.call_args_list[1].args[0].api_key
+    from shared_lib.broker.http_budget import BudgetedHTTP
+    for call, account in zip(builder.call_args_list, ("a", "b")):
+        assert isinstance(call.kwargs["http"], BudgetedHTTP)
+        assert call.kwargs["http"].account_ref == account
     bad=auth_for("bad",broker,environment)
     from dataclasses import replace
     bad=replace(bad,base_url=resolve_base_url(broker,normalize_environment("live" if environment == "demo" else "demo")))
     with pytest.raises(ValueError,match="BROKER_ENVIRONMENT_MISMATCH"):
         client_factory.build_client_from_auth(bad)
     assert builder.call_count == 2
+
+
+@pytest.mark.parametrize("broker",["binance","bybit","bingx"])
+def test_production_factory_requires_budget_database_before_construction(operational,monkeypatch,broker):
+    builder=Mock()
+    monkeypatch.setattr(client_factory,"_build_"+broker,builder)
+    from shared_lib.broker.errors import BrokerResolverError
+    with pytest.raises(BrokerResolverError,match="BUDGET_DATABASE_REQUIRED"):
+        client_factory.build_client_from_auth(auth_for("unbound",broker))
+    builder.assert_not_called()
 
 
 def test_production_sync_discovers_demo_and_live_and_keeps_users_separate(operational,accounts,monkeypatch):
@@ -115,26 +131,27 @@ def test_production_sync_discovers_demo_and_live_and_keeps_users_separate(operat
 
 
 @pytest.mark.parametrize("broker",["binance","bybit","bingx"])
-def test_real_client_transport_demo_gate_and_live_block_before_network(operational,monkeypatch,broker):
+def test_real_client_transport_demo_gate_and_live_block_before_network(operational,monkeypatch,tmp_path,broker):
     response=Mock(status_code=200,content=b"{}",headers={},text="{}")
     response.json.return_value={"symbols":[],"code":0,"retCode":0,"data":{},"result":{}}
-    monkeypatch.setattr("requests.sessions.Session.get",Mock(return_value=response))
-    post=Mock(return_value=response)
-    monkeypatch.setattr("requests.post",post)
-    monkeypatch.setattr("requests.sessions.Session.post",post)
-    demo=client_factory.build_client_from_auth(auth_for("demo",broker))
-    live=client_factory.build_client_from_auth(auth_for("live",broker,"live"))
+    physical=Mock(return_value=response)
+    monkeypatch.setattr("requests.sessions.Session.request",physical)
+    database=DB(str(tmp_path/"budget.db"))
+    demo=client_factory.build_client_from_auth(auth_for("demo",broker,database=database))
+    live=client_factory.build_client_from_auth(auth_for("live",broker,"live",database=database))
+    def post_count():
+        return sum(call.args[0] == "POST" for call in physical.call_args_list)
     method={"binance":"_signed_request","bybit":"_request_v5","bingx":"_request"}[broker]
     path={"binance":"/fapi/v1/leverage","bybit":"/v5/position/set-leverage","bingx":"/openApi/swap/v2/trade/leverage"}[broker]
     getattr(demo,method)("POST",path,{})
-    assert post.call_count==1
+    assert post_count()==1
     with pytest.raises(LiveOrderSubmissionDisabled):
         getattr(live,method)("POST",path,{})
-    assert post.call_count==1
+    assert post_count()==1
     monkeypatch.setattr(config,"settings",operational.model_copy(update={"DEMO_ORDER_SUBMISSION_ENABLED":False}))
     with pytest.raises(DemoOrderSubmissionDisabled):
         getattr(demo,method)("POST",path,{})
-    assert post.call_count==1
+    assert post_count()==1
 
 
 @pytest.mark.parametrize("broker,path",[("binance","/fapi/v1/order"),("bybit","/v5/order/create"),("bingx","/openApi/swap/v2/trade/order")])

@@ -203,6 +203,18 @@ A final follow-up also enforces the 15% stop-width limit at executable price.
 The combined price, fallback and stop-width selection passed 7 tests, 59 deselected
 in 8.06s with `python -m pytest backends/bot-backend/tests/trading_intelligence/test_step3_multi_position_execution.py -k 'quote or limit_price or fallback_accounts or fifteen_percent or falls_back' -q --disable-warnings --maxfail=1`.
 
+The canceled `dc95cfa` run's partial log exposed nine account-scoped test failures
+before cancellation. Reproducing the affected file showed legacy fixtures omitted
+the now-required production budget database and mocked the pre-budget HTTP seam.
+Those fixtures now bind a temporary budget database and mock Session.request;
+three new cases prove that unbound production construction is refused before
+any builder is called. No production gate or quarantine was changed.
+
+```powershell
+.\backends\venv\Scripts\python.exe -m pytest backends/bot-backend/tests/test_cati_account_scoped_execution.py backends/bot-backend/tests/test_cati_production_config.py backends/bot-backend/tests/exchange/test_account_session.py -q --disable-warnings --maxfail=2
+# 54 passed in 12.32s after fixture correction, including all three venue profiles.
+```
+
 The same isolated TEST/paper environment was used. Correctness lint, whitespace,
 added-line secret-pattern checks and unchanged research/deployment/quarantine paths
 were verified before pushing. The final Actions run validates the combined suite.
