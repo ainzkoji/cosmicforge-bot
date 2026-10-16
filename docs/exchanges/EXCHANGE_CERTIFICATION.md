@@ -221,14 +221,12 @@ by a caller; that LIVE cannot be certified; that no database transaction is open
 additive and idempotent schema, including completion after an interrupted application.
 
 Not proven: anything about Binance, Bybit or BingX. No real adapter was run through the catalogue, and the
-suite contains no real fault injector.
+suite now includes local real-HTTP fault tests; no genuine venue certification is claimed.
 
 ## 9. To certify a venue for real
 
 1. The owner authorises a DEMO account, a symbol and a notional bound, and names the operator.
-2. A `FaultInjector` is implemented on the adapter's HTTP transport (lose an answer, drop a request, return a
-   429 with Retry-After, shift the request timestamp). It does not exist yet; without it the result is
-   INCOMPLETE.
+2. Use `CertificationHarness`, which installs `HTTPFaultInjector` underneath the shared HTTP budget. It can lose an acknowledgement after one send, interrupt before send, inject 429 with Retry-After, and re-sign skewed timestamps. Local HTTP tests verify these behaviours; the owner-scoped venue run must still exercise the complete catalogue.
 3. An adapter factory for the same account is supplied (a second adapter object built from the same
    connected account).
 4. The outside reduction of `MANUAL_POSITION_CHANGE` is made by the injector or by the operator in the
@@ -237,3 +235,5 @@ suite contains no real fault injector.
 
 For BingX, whether a safe demo environment supports the required orders is the subject of Step 4.6. Until
 that is established the honest record is `block(BINGX, <environment>, reason=...)`, not a run.
+
+Integration update, 16 October 2026: the harness supplies the independent scoped external reduction and fresh-adapter factory. Its raw order permit must match the current DEMO run, owner authorization, pending action, account, symbol, order and quantity. It is serialized by the canonical broker-cycle lock, retains normal order flags, and has no automatic runtime trigger. See [carry-forward gates](../implementation/STEP3_STEP4_CARRY_FORWARD.md).

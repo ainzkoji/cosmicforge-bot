@@ -1,5 +1,7 @@
 # Step 3.11: operating family governance from the admin console
 
+Updated integration status (16 October 2026): [A–N validation](STEP3_STEP4_VALIDATION.md) and [requirement register](STEP3_STEP4_IMPLEMENTATION_STATUS.md). The baseline audit sections below describe the earlier implementation; runtime handoff, shared budgets, account-close brakes and the concrete certification harness are now wired. Actual research, venue and elapsed-time gates remain separate.
+
 Status on 2026-10-09: implemented and tested on Windows. Not run on Linux. Exercised in a browser only against
 local stand-ins of the two backends over a throwaway database; never against a deployed backend and never with
 a real admin sign-in. No family was registered, promoted or changed in any real database. Trading stays shadow

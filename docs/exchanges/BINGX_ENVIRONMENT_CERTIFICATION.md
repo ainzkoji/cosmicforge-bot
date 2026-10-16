@@ -227,3 +227,7 @@ the headers, and stop for the time stated.
 Only then can the adapter's BingX table, its capability flags and its parsers be corrected and the Step 4.2
 certification suite be run for (`bingx`, `DEMO`). Until that run is green and current, BingX stays not
 selectable for certified execution, on demo as well as on live.
+
+## 16 October 2026 evidence update
+
+Unauthenticated public metadata responses from LIVE and VST are recorded in `docs/implementation/evidence/step4/bingx_public_metadata.json`: both returned HTTP 200/code 0, with different contract coverage. This is not order or private-stream certification. The concrete certification harness is implemented, but no owner-scoped BingX run was performed. VST private-stream routing remains unverified and refused; certified execution remains unavailable.

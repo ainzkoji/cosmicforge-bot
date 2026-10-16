@@ -1,5 +1,7 @@
 # Step 4.1: one venue adapter contract for Binance, Bybit and BingX
 
+Integration update (16 October 2026): the canonical contract now resides in `shared_lib/broker/venue_contract.py`; the bot path re-exports it. Adapter versions are 1.1.0. Shared physical HTTP budgets preserve Retry-After before raw clients can discard it. Baseline code observations below are historical; see [current validation](../implementation/STEP3_STEP4_VALIDATION.md).
+
 Status on 2026-10-09: implemented and tested on Windows against a fake HTTP layer. Not run on Linux. No exchange
 was called, on any host, live or demo. The venues' online documentation was not consulted in this work: there
 was no network access. Trading stays shadow only; no flag, limit, governance phase or environment setting was

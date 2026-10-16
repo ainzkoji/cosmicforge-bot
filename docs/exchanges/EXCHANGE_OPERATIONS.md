@@ -1,5 +1,7 @@
 # Exchange operations: rule cache, user streams, REST reconciliation, rate budget (Section H, Steps 4.3 to 4.5)
 
+Current integration status (16 October 2026): [validation report](../implementation/STEP3_STEP4_VALIDATION.md). Concrete TLS transport, runtime lifecycle, shared-library HTTP budgets and scoped certification harness are implemented. No real venue certification was performed.
+
 Code: `backends/bot-backend/app/exchange/platform_adapter/` (`rules_cache.py`, `user_stream.py`,
 `reconcile.py`, `rate_budget.py`)
 Tables: `backends/shared/shared_lib/persistence/cati_exchange_schema.py`
@@ -334,20 +336,31 @@ unchanged. Nothing existing is altered. The append-only tables cannot be emptied
 | Binance `ALGO_UPDATE` shape | not read (hint) | nothing, unless field-level parsing of conditional orders is wanted |
 | Bybit stream fields for fee asset and realised profit of an execution | not read | nothing; REST supplies both |
 | BingX user-stream frame shapes, gzip framing, `Ping` / `Pong` | not read; `Ping` is answered | capture frames on the BingX demo environment before any field is read |
-| Bybit IP limit (recalled 600 per 5 s) | placeholder 150 per 5 s | read the current V5 rate-limit page and set `VenueLimit` |
-| BingX IP limit | placeholder 20 per 10 s | read the current BingX documentation and set `VenueLimit` |
-| Per-method request weights, all venues | `DEFAULT_METHOD_WEIGHTS` | derive from the adapters' actual HTTP calls |
+| Bybit limits | configured 150 per 5 s, below documented 600 per 5 s; separate connection and UID handling | [official rules checked 16 October 2026](https://bybit-exchange.github.io/docs/v5/rate-limit); validate endpoint-specific account throughput before tuning |
+| BingX limits | conservative local 20 per 10 s; never claimed as the venue limit | [official update](https://bingx.com/en/support/articles/31103871611289) distinguishes market, account and endpoint limits; confirm authenticated behaviour before tuning |
+| Per-method request weights | fallback only for adapters without a physical HTTP budget | runtime physical requests are charged individually; Binance reserves a conservative 100 units per registered endpoint, unknown paths fail closed; certify endpoint weights before throughput tuning |
 | Default closure without a venue instruction (60 s, 10 min) | `RateBudget` | configuration; adjust if a venue documents otherwise |
 | Whether `adapter.user_stream()` extends an existing listen key | stream keep-alive | confirm per adapter; see below |
 
-## 6. Outside this workstream
+## 6. Integration and remaining external checks
 
-* The contract has no keep-alive operation for a listen key. The manager renews by calling `user_stream()`
-  again. If an adapter cannot extend a key that way, the contract needs an explicit keep-alive method.
-* The contract reads fills per symbol only; an account-wide read would remove the scope limit of
-  reconciliation.
-* Wiring: `adapter_certified`, `RulesCache.rules_for_entry`, `stream_allows_entries` and
-  `BudgetedVenueAdapter` into the execution boundary and the adapter factory; `ensure_loaded` and `refresh`
-  into start-up and a scheduler; `record_adapter_version` into adapter construction.
-* A real `StreamTransport` and its dependency.
-* A `FaultInjector` on the adapters' HTTP transport, without which no real certification can be complete.
+`AccountSession` wires rules refresh, adapter-version recording, concrete TLS
+transport and stream health. `VenueRuntime` manages account removal, credential
+rotation and shutdown. The canonical portfolio boundary checks persisted
+certification and reconciled entry health.
+
+`shared_lib/broker/http_budget.py` is installed before raw client construction in
+both backends. It charges retries, stream keys and maintenance at the physical
+HTTP boundary. Direct production validation clients also share the same egress
+allowance. IP bans survive restart; Bybit UID closures do not close other accounts.
+A separate persistent handshake window bounds private WebSocket reconnections.
+
+`CertificationHarness` now composes the real adapters, shared budget,
+`HTTPFaultInjector`, a fresh-adapter restart and a bounded one-shot external
+reduce-only mutation. Actual certification remains subject to an explicit owner
+permit and a current canonical runtime lease. LIVE certification remains refused.
+
+Binance listen keys renew through POST; Bybit authenticates before subscribing;
+BingX LIVE has documented listen-key setup. BingX VST private routing remains
+unverified and refused. Authenticated frames, full venue certification and
+production throughput remain external acceptance gates.

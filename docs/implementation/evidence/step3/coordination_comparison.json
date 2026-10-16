@@ -1,0 +1,92 @@
+[
+  {
+    "variant": "driver default (sequential)",
+    "accounts": 101,
+    "cycles": 5,
+    "cycle_ms_median": 154.3,
+    "cycle_ms_max": 167.1,
+    "account_stage_ms_median": 117.6,
+    "account_stage_ms_max": 118.9,
+    "slowest_account_ms": 16
+  },
+  {
+    "variant": "runner x1",
+    "accounts": 101,
+    "cycles": 5,
+    "cycle_ms_median": 152.4,
+    "cycle_ms_max": 164.1,
+    "account_stage_ms_median": 109.8,
+    "account_stage_ms_max": 132.0,
+    "slowest_account_ms": 16
+  },
+  {
+    "variant": "runner x1 + lease",
+    "accounts": 101,
+    "cycles": 5,
+    "cycle_ms_median": 168.2,
+    "cycle_ms_max": 170.1,
+    "account_stage_ms_median": 127.1,
+    "account_stage_ms_max": 137.5,
+    "slowest_account_ms": 16
+  },
+  {
+    "variant": "runner x2",
+    "accounts": 101,
+    "cycles": 5,
+    "cycle_ms_median": 162.7,
+    "cycle_ms_max": 201.2,
+    "account_stage_ms_median": 124.1,
+    "account_stage_ms_max": 172.3,
+    "slowest_account_ms": 141
+  },
+  {
+    "variant": "runner x2 + lease",
+    "accounts": 101,
+    "cycles": 5,
+    "cycle_ms_median": 197.0,
+    "cycle_ms_max": 228.7,
+    "account_stage_ms_median": 161.6,
+    "account_stage_ms_max": 193.7,
+    "slowest_account_ms": 47
+  },
+  {
+    "variant": "runner x4",
+    "accounts": 101,
+    "cycles": 5,
+    "cycle_ms_median": 245.8,
+    "cycle_ms_max": 257.9,
+    "account_stage_ms_median": 202.7,
+    "account_stage_ms_max": 223.3,
+    "slowest_account_ms": 204
+  },
+  {
+    "variant": "runner x4 + lease",
+    "accounts": 101,
+    "cycles": 5,
+    "cycle_ms_median": 238.6,
+    "cycle_ms_max": 244.3,
+    "account_stage_ms_median": 202.9,
+    "account_stage_ms_max": 210.5,
+    "slowest_account_ms": 125
+  },
+  {
+    "variant": "runner x8",
+    "accounts": 101,
+    "cycles": 5,
+    "cycle_ms_median": 403.1,
+    "cycle_ms_max": 523.1,
+    "account_stage_ms_median": 364.7,
+    "account_stage_ms_max": 480.4,
+    "slowest_account_ms": 405
+  },
+  {
+    "variant": "runner x8 + lease",
+    "accounts": 101,
+    "cycles": 5,
+    "cycle_ms_median": 566.5,
+    "cycle_ms_max": 652.2,
+    "account_stage_ms_median": 491.6,
+    "account_stage_ms_max": 601.6,
+    "slowest_account_ms": 437
+  }
+]

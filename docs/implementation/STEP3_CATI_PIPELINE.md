@@ -1,5 +1,7 @@
 # The CATI platform pipeline
 
+Updated integration status (16 October 2026): [A–N validation](STEP3_STEP4_VALIDATION.md) and [requirement register](STEP3_STEP4_IMPLEMENTATION_STATUS.md). The baseline audit sections below describe the earlier implementation; runtime handoff, shared budgets, account-close brakes and the concrete certification harness are now wired. Actual research, venue and elapsed-time gates remain separate.
+
 Section H, Step 3 (requirements 3.1, 3.2, 3.3, 3.5, 3.6, 3.11 and 3.15). Version 1, 9 October 2026.
 
 Code: `backends/bot-backend/app/trading_intelligence/pipeline/`. Schema:

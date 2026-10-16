@@ -1,5 +1,7 @@
 # Step 3.7 and 3.10: per-account portfolio, reservation ledger, risk brakes
 
+Updated integration status (16 October 2026): [A–N validation](STEP3_STEP4_VALIDATION.md) and [requirement register](STEP3_STEP4_IMPLEMENTATION_STATUS.md). The baseline audit sections below describe the earlier implementation; runtime handoff, shared budgets, account-close brakes and the concrete certification harness are now wired. Actual research, venue and elapsed-time gates remain separate.
+
 Status on 2026-10-09: implemented and tested on Windows. Not run on Linux, not wired into a cycle driver or an
 execution stage, and never run against an exchange. Trading stays shadow only; no flag, limit, governance phase
 or environment setting was changed.
