@@ -1,12 +1,12 @@
 # Section H: Steps 3 and 4 implementation status
 
-Completion audit started 15 October 2026. Baseline: `75435cd56313b1557bafce5ea11af8f8c2cee9c5`, identical to fetched `origin/main`. GitHub Actions run [37960746421](https://github.com/ainzkoji/cosmicforge-bot/actions/runs/37960746421) passed for that commit. The preserved implementation was committed in `2bc06fb`; integration corrections are in `cda273a`, `49b81ae`, `6e4d725`, `6372b83` and `20527f3` (continued 16 October).
+Completion audit started 15 October 2026. Baseline: `75435cd56313b1557bafce5ea11af8f8c2cee9c5`, identical to fetched `origin/main`. GitHub Actions run [37960746421](https://github.com/ainzkoji/cosmicforge-bot/actions/runs/37960746421) passed for that commit. The preserved implementation was committed in `2bc06fb`; integration corrections are in `cda273a`, `49b81ae`, `6e4d725`, `6372b83`, `20527f3` and `61d3199` (continued 16 October).
 
 Authority: the supplied Section H master implementation prompt, the Step 2 handoff, and the frozen mandate. The separate master plan is absent. No research verdict, holdout, risk ceiling, stop limit, credential, or governance promotion is changed. Operation remains **SHADOW_ONLY**. Local component tests do not certify a strategy or venue.
 
 ## Requirement register
 
-PASS rows describe verified component engineering acceptance. Overall engineering acceptance additionally requires green exact-final-commit CI; consult the final delivery and Actions for that result. External closure gates are listed separately below. Component tests pass where stated; full exact-commit CI remains a separate gate. Implementation commit for every row: `2bc06fb`; runtime, HTTP and audit corrections: `cda273a`, `49b81ae`, `6e4d725`, `6372b83`, `20527f3`. Paths beginning `pipeline/` are relative to `backends/bot-backend/app/trading_intelligence/`. Tests are under `backends/bot-backend/tests/` unless otherwise named. The owner-action column is `None` for local engineering; it never authorizes venue orders.
+PASS rows describe verified component engineering acceptance. Overall engineering acceptance additionally requires green exact-final-commit CI; consult the final delivery and Actions for that result. External closure gates are listed separately below. Component tests pass where stated; full exact-commit CI remains a separate gate. Implementation commit for every row: `2bc06fb`; runtime, HTTP and audit corrections: `cda273a`, `49b81ae`, `6e4d725`, `6372b83`, `20527f3`, `61d3199`. Paths beginning `pipeline/` are relative to `backends/bot-backend/app/trading_intelligence/`. Tests are under `backends/bot-backend/tests/` unless otherwise named. The owner-action column is `None` for local engineering; it never authorizes venue orders.
 
 | requirement_id | status | implementation_files | tests / evidence | blocking_dependency / required_owner_action | next_verification |
 |---|---|---|---|---|---|

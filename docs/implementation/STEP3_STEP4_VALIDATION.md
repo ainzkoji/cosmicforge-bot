@@ -3,7 +3,7 @@
 ## A. Executive outcome
 
 Implementation commits: `2bc06fb5775c692fabfd01f1233fe55aabbf3a1a`,
-`cda273aab6dfb0db5ecefbe08c358da57f5075e6`, `49b81ae`, `6e4d725`, `6372b83` and `20527f3`.
+`cda273aab6dfb0db5ecefbe08c358da57f5075e6`, `49b81ae`, `6e4d725`, `6372b83`, `20527f3` and `61d3199`.
 The runtime now schedules independent shadow cycles and account streams. No
 strategy is certified, no family was promoted, and no trading was enabled.
 The remaining runtime handoff, shared backend budget and concrete certification
@@ -221,6 +221,10 @@ Engineering corrections completed locally:
    public observation, UID-specific rate refusal and per-IP stream connection budgets.
 3. Concrete CertificationHarness wired to HTTP faults and an independent, bounded,
    one-shot external reduction. No real certification run was performed.
+
+Final reporting correction `61d3199`: portfolio refusals, deferrals and recovery
+blocks now have registered customer reasons; a refused batch is not reported as
+healthy processing. The expanded reason-registry and handoff tests passed 27 cases.
 
 The final remaining engineering gate is green exact-final-commit Linux CI. Local
 component evidence does not substitute for it. Existing known failures remain
