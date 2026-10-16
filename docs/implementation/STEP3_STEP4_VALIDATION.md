@@ -66,7 +66,9 @@ Owned position attribution starts at the latest filled opening, so a native stop
 followed by reentry does not inherit the previous position's fills. Before an
 increase, the boundary checks executable price-to-stop risk against the approved
 reservation, including earlier partial fills before a market fallback. Limits use
-their worst permitted price; markets use a fresh mark. This check does not guarantee
+their worst permitted price; markets use a fresh mark. The 15% entry stop limit is
+also checked at that executable price, including when quantity rounding leaves risk
+headroom. This check does not guarantee
 the eventual market fill price or eliminate gap/slippage risk.
 
 The raw CREATE gate checks a call-scoped permit against a SUBMITTING intent and
@@ -196,6 +198,10 @@ Final risk/lifecycle correction `32b0278` was checked with:
 .\backends\venv\Scripts\python.exe -m pytest backends/bot-backend/tests/trading_intelligence/test_step3_connected_portfolio.py -q --disable-warnings --maxfail=2
 # 16 passed in 7.95s, including native stop then reentry lifecycle attribution.
 ```
+
+A final follow-up also enforces the 15% stop-width limit at executable price.
+The combined price, fallback and stop-width selection passed 7 tests, 59 deselected
+in 8.06s with `python -m pytest backends/bot-backend/tests/trading_intelligence/test_step3_multi_position_execution.py -k 'quote or limit_price or fallback_accounts or fifteen_percent or falls_back' -q --disable-warnings --maxfail=1`.
 
 The same isolated TEST/paper environment was used. Correctness lint, whitespace,
 added-line secret-pattern checks and unchanged research/deployment/quarantine paths
