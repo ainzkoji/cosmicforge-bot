@@ -229,6 +229,11 @@ for _code, _message in (
     ("DECISION_FUTURE_DATED", "The decision behind this order carries a time in the future."),
 ):
     _add(_code, ATTENTION, _message, "No order was sent. Operator review.")
+# ── Section H Step 6.1: the go-live gate (LIVE entries only) ───────────────────────────────
+_add("GO_LIVE_GATE", BLOCKED, "Live trading is not authorized for this account.",
+     "No order was sent. The blocking condition is shown to operators in the go-live console.")
+_add("GO_LIVE_GATE_UNAVAILABLE", ATTENTION, "The live-trading authorization could not be checked.",
+     "No order was sent. Operator review.")
 _add("DECISION_STALE", WAITING, "The decision behind this order was too old to act on.", "No action needed.")
 
 # ── Section H Step 3.4: checked broker health and capital readiness ──────────────────────

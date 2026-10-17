@@ -239,7 +239,18 @@ class Database:
                                       isolation_level=None)
                 raw.execute("PRAGMA foreign_keys=ON")
                 raw.execute(f"PRAGMA busy_timeout={SQLITE_BUSY_TIMEOUT_MS}")
-                raw.execute("PRAGMA journal_mode=WAL")
+                # Switching a new file to WAL needs an exclusive lock and does not reliably wait on the busy
+                # handler: several first connections at once would fail with "database is locked". Read first;
+                # switch (with retries) only when the file is not WAL yet.
+                for attempt in range(20):
+                    if str(raw.execute("PRAGMA journal_mode").fetchone()[0]).lower() == "wal":
+                        break
+                    try:
+                        raw.execute("PRAGMA journal_mode=WAL")
+                    except sqlite3.OperationalError as exc:
+                        if "locked" not in str(exc) or attempt == 19:
+                            raise
+                        time.sleep(0.05 * (attempt + 1))
                 return raw
             ping = lambda raw: raw.execute("SELECT 1").fetchone()  # noqa: E731
         else:

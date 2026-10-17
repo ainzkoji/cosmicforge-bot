@@ -19,6 +19,7 @@ incompatible binary against an irreversible schema.
 from __future__ import annotations
 
 import hashlib
+import sqlite3
 import time
 from dataclasses import dataclass, field
 from typing import Callable, Dict, List, Mapping, Optional, Sequence, Tuple, Union
@@ -121,30 +122,46 @@ def migrate(db: Database, migrations: Sequence[Migration], *, target: Optional[i
     for m in ordered:
         if target is not None and m.version > target:
             break
-        with db.transaction() as conn:
-            _lock(conn)                 # before the table exists: concurrent CREATE ... IF NOT EXISTS races on PG
-            _ensure_table(conn)
-            rows = {int(v): c for v, c in conn.all(f"SELECT version, checksum FROM {MIGRATION_TABLE}")}
-            for v, c in rows.items():
-                code = next((x for x in ordered if x.version == v), None)
-                if code is not None and code.checksum() != c:
-                    raise ChecksumMismatch(f"version {v} ({code.name}) was changed after it was applied")
-            if m.version in rows:
-                report.skipped.append(m.version)
-                continue
-            started = time.perf_counter()
-            for i, sql in enumerate(m.statements(db.dialect)):
-                conn.execute(sql)
-                if fail_after is not None:
-                    fail_after(m.version, i)
-            ms = (time.perf_counter() - started) * 1000
-            conn.execute(f"INSERT INTO {MIGRATION_TABLE} (version, name, checksum, applied_at, duration_ms, irreversible) "
-                         "VALUES (?,?,?,?,?,?)", (m.version, m.name, m.checksum(), conn.now_ms(), int(ms),
-                                                  1 if m.irreversible else 0))
-            report.applied.append(m.version)
-            report.durations_ms[m.version] = round(ms, 3)
+        for attempt in range(_LOCK_RETRIES):
+            try:
+                _apply_one(db, m, ordered, report, fail_after)
+                break
+            except sqlite3.OperationalError as exc:
+                # Another migration job holds SQLite's write lock beyond the busy timeout. The whole version
+                # rolled back; its "already applied?" check runs again inside the retried transaction.
+                if "locked" not in str(exc) or attempt == _LOCK_RETRIES - 1:
+                    raise
+                time.sleep(0.2 * (attempt + 1))
     report.final_version = current_version(db)
     return report
+
+
+_LOCK_RETRIES = 5
+
+
+def _apply_one(db: Database, m: Migration, ordered, report: "MigrationReport", fail_after) -> None:
+    with db.transaction() as conn:
+        _lock(conn)                 # before the table exists: concurrent CREATE ... IF NOT EXISTS races on PG
+        _ensure_table(conn)
+        rows = {int(v): c for v, c in conn.all(f"SELECT version, checksum FROM {MIGRATION_TABLE}")}
+        for v, c in rows.items():
+            code = next((x for x in ordered if x.version == v), None)
+            if code is not None and code.checksum() != c:
+                raise ChecksumMismatch(f"version {v} ({code.name}) was changed after it was applied")
+        if m.version in rows:
+            report.skipped.append(m.version)
+            return
+        started = time.perf_counter()
+        for i, sql in enumerate(m.statements(db.dialect)):
+            conn.execute(sql)
+            if fail_after is not None:
+                fail_after(m.version, i)
+        ms = (time.perf_counter() - started) * 1000
+        conn.execute(f"INSERT INTO {MIGRATION_TABLE} (version, name, checksum, applied_at, duration_ms, irreversible) "
+                     "VALUES (?,?,?,?,?,?)", (m.version, m.name, m.checksum(), conn.now_ms(), int(ms),
+                                              1 if m.irreversible else 0))
+        report.applied.append(m.version)
+        report.durations_ms[m.version] = round(ms, 3)
 
 
 def rollback(db: Database, migrations: Sequence[Migration], *, to_version: int) -> List[int]:

@@ -1,0 +1,569 @@
+{
+ "dialect": "postgresql",
+ "drills": [
+  {
+   "actions": [
+    {
+     "drill_actions": [
+      {
+       "other_scope_unaffected": true,
+       "read_back_on": true,
+       "set_kill_switch": "drill-acct"
+      }
+     ]
+    }
+   ],
+   "closed_at": 1792234405454,
+   "contained_at": 1792234405420,
+   "corrective_actions": [
+    "switch lowered by operator after review"
+   ],
+   "detected_at": 1792234405396,
+   "drill": true,
+   "environment": "SYNTHETIC",
+   "escalation": {
+    "escalate_after_minutes": 60,
+    "first": "OPERATIONS_OWNER_REQUIRED",
+    "first_role": "PRIMARY_ON_CALL",
+    "next": "OPERATIONS_OWNER_REQUIRED",
+    "next_role": "NEXT_BUSINESS_DAY_REVIEW"
+   },
+   "incident_id": "9adba711150549ea9bb6c0cedcdbfe7b",
+   "operator_ref": "operator:drill-runner@synthetic",
+   "passed": true,
+   "reconciliation_status": "NOT_AFFECTED",
+   "remaining_risk": "NONE: entries closed; exits and protection unaffected by design",
+   "retest_evidence": {
+    "entries_reopen_after_switch_off": true
+   },
+   "revision": 2,
+   "root_cause": "drill",
+   "scenario": "ACCOUNT_KILL_SWITCH",
+   "severity": "SEV3",
+   "started_at": 1792234405359,
+   "time_to_containment_ms": 61
+  },
+  {
+   "actions": [
+    {
+     "drill_actions": [
+      {
+       "family_kill_switch": "DAILY_TREND",
+       "registry_reads_on": true
+      }
+     ]
+    }
+   ],
+   "closed_at": 1792234406070,
+   "contained_at": 1792234406031,
+   "corrective_actions": [
+    "family switch lowered after review"
+   ],
+   "detected_at": 1792234406009,
+   "drill": true,
+   "environment": "SYNTHETIC",
+   "escalation": {
+    "escalate_after_minutes": 15,
+    "first": "OPERATIONS_OWNER_REQUIRED",
+    "first_role": "PRIMARY_ON_CALL",
+    "next": "OPERATIONS_OWNER_REQUIRED",
+    "next_role": "ENGINEERING_LEAD"
+   },
+   "incident_id": "79c04dbc4a3f4fe4a487e17045d80cc7",
+   "operator_ref": "operator:drill-runner@synthetic",
+   "passed": true,
+   "reconciliation_status": "NOT_AFFECTED",
+   "remaining_risk": "NONE",
+   "retest_evidence": {
+    "off": true
+   },
+   "revision": 2,
+   "root_cause": "drill",
+   "scenario": "FAMILY_KILL_SWITCH",
+   "severity": "SEV2",
+   "started_at": 1792234405457,
+   "time_to_containment_ms": 574
+  },
+  {
+   "actions": [
+    {
+     "drill_actions": [
+      {
+       "other_scope_unaffected": null,
+       "read_back_on": true,
+       "set_kill_switch": "GLOBAL"
+      }
+     ]
+    }
+   ],
+   "closed_at": 1792234406160,
+   "contained_at": 1792234406107,
+   "corrective_actions": [
+    "switch lowered by operator after review"
+   ],
+   "detected_at": 1792234406094,
+   "drill": true,
+   "environment": "SYNTHETIC",
+   "escalation": {
+    "escalate_after_minutes": 5,
+    "first": "OPERATIONS_OWNER_REQUIRED",
+    "first_role": "PRIMARY_ON_CALL",
+    "next": "OPERATIONS_OWNER_REQUIRED",
+    "next_role": "ENGINEERING_LEAD_AND_OWNER"
+   },
+   "incident_id": "dbc585d012e94291ba9a0c183f8cff9f",
+   "operator_ref": "operator:drill-runner@synthetic",
+   "passed": true,
+   "reconciliation_status": "NOT_AFFECTED",
+   "remaining_risk": "NONE: entries closed; exits and protection unaffected by design",
+   "retest_evidence": {
+    "entries_reopen_after_switch_off": true
+   },
+   "revision": 2,
+   "root_cause": "drill",
+   "scenario": "PLATFORM_KILL_SWITCH",
+   "severity": "SEV1",
+   "started_at": 1792234406073,
+   "time_to_containment_ms": 34
+  },
+  {
+   "actions": [
+    {
+     "drill_actions": [
+      {
+       "emergency_request": "9a375308e0a74bf9aec523c2972cd537",
+       "flat": true,
+       "hold_still_on": true,
+       "late_ordinary": true,
+       "ordinary_lease_preempted": true,
+       "ordinary_token": 1
+      }
+     ]
+    }
+   ],
+   "closed_at": 1792234406680,
+   "contained_at": 1792234406651,
+   "corrective_actions": [
+    "operator review before lowering the account switch"
+   ],
+   "detected_at": 1792234406552,
+   "drill": true,
+   "environment": "SYNTHETIC",
+   "escalation": {
+    "escalate_after_minutes": 5,
+    "first": "OPERATIONS_OWNER_REQUIRED",
+    "first_role": "PRIMARY_ON_CALL",
+    "next": "OPERATIONS_OWNER_REQUIRED",
+    "next_role": "ENGINEERING_LEAD_AND_OWNER"
+   },
+   "incident_id": "96ba4961838049a197828168ce001f89",
+   "operator_ref": "operator:drill-runner@synthetic",
+   "passed": true,
+   "reconciliation_status": "RECONCILED",
+   "remaining_risk": "NONE: flat; scope stays closed until an operator lowers the switch",
+   "retest_evidence": {
+    "flat": true,
+    "hold": true
+   },
+   "revision": 2,
+   "root_cause": "drill",
+   "scenario": "EMERGENCY_FLATTEN",
+   "severity": "SEV1",
+   "started_at": 1792234406163,
+   "time_to_containment_ms": 488
+  },
+  {
+   "actions": [
+    {
+     "drill_actions": [
+      {
+       "attempts": [
+        "RETRY",
+        "RETRY",
+        "RETRY",
+        "SUCCEEDED"
+       ],
+       "venue_orders": 1
+      }
+     ]
+    }
+   ],
+   "closed_at": 1792234406765,
+   "contained_at": 1792234406758,
+   "corrective_actions": [
+    "retry with the same client id"
+   ],
+   "detected_at": 1792234406725,
+   "drill": true,
+   "environment": "SYNTHETIC",
+   "escalation": {
+    "escalate_after_minutes": 15,
+    "first": "OPERATIONS_OWNER_REQUIRED",
+    "first_role": "PRIMARY_ON_CALL",
+    "next": "OPERATIONS_OWNER_REQUIRED",
+    "next_role": "ENGINEERING_LEAD"
+   },
+   "incident_id": "5a945a8192124d4bb9e109e28404792a",
+   "operator_ref": "operator:drill-runner@synthetic",
+   "passed": true,
+   "reconciliation_status": "RECONCILED",
+   "remaining_risk": "NONE",
+   "retest_evidence": {
+    "single_order": true,
+    "status": "ACKNOWLEDGED"
+   },
+   "revision": 2,
+   "root_cause": "drill: venue 5xx before acceptance",
+   "scenario": "EXCHANGE_OUTAGE",
+   "severity": "SEV2",
+   "started_at": 1792234406683,
+   "time_to_containment_ms": 75
+  },
+  {
+   "actions": [
+    {
+     "drill_actions": [
+      {
+       "iteration_refused": true,
+       "venue_mutations_during_outage": 0
+      }
+     ]
+    }
+   ],
+   "closed_at": 1792234406854,
+   "contained_at": 1792234406773,
+   "corrective_actions": [
+    "health probe; restore connectivity"
+   ],
+   "detected_at": 1792234406773,
+   "drill": true,
+   "environment": "SYNTHETIC",
+   "escalation": {
+    "escalate_after_minutes": 5,
+    "first": "OPERATIONS_OWNER_REQUIRED",
+    "first_role": "PRIMARY_ON_CALL",
+    "next": "OPERATIONS_OWNER_REQUIRED",
+    "next_role": "ENGINEERING_LEAD_AND_OWNER"
+   },
+   "incident_id": "3277ba2f69e942249d2b8298dbd2312c",
+   "operator_ref": "operator:drill-runner@synthetic",
+   "passed": true,
+   "reconciliation_status": "RECONCILED",
+   "remaining_risk": "NONE: no account work without a renewed claim",
+   "retest_evidence": {
+    "owned_after_recovery": 1
+   },
+   "revision": 2,
+   "root_cause": "drill: database unreachable",
+   "scenario": "DATABASE_OUTAGE",
+   "severity": "SEV1",
+   "started_at": 1792234406769,
+   "time_to_containment_ms": 4
+  },
+  {
+   "actions": [
+    {
+     "drill_actions": [
+      {
+       "takeover_ms": 415,
+       "ttl_ms": 400
+      }
+     ]
+    }
+   ],
+   "closed_at": 1792234407296,
+   "contained_at": 1792234407288,
+   "corrective_actions": [
+    "takeover by assignment expiry"
+   ],
+   "detected_at": 1792234407288,
+   "drill": true,
+   "environment": "SYNTHETIC",
+   "escalation": {
+    "escalate_after_minutes": 15,
+    "first": "OPERATIONS_OWNER_REQUIRED",
+    "first_role": "PRIMARY_ON_CALL",
+    "next": "OPERATIONS_OWNER_REQUIRED",
+    "next_role": "ENGINEERING_LEAD"
+   },
+   "incident_id": "656cb4abd61e4a7d94a65d6da9b47f08",
+   "operator_ref": "operator:drill-runner@synthetic",
+   "passed": true,
+   "reconciliation_status": "RECONCILED",
+   "remaining_risk": "NONE",
+   "retest_evidence": {
+    "recovered_before_new_work": true
+   },
+   "revision": 2,
+   "root_cause": "drill: worker process died",
+   "scenario": "WORKER_CRASH",
+   "severity": "SEV2",
+   "started_at": 1792234406859,
+   "time_to_containment_ms": 429
+  },
+  {
+   "actions": [
+    {
+     "drill_actions": [
+      {
+       "first_outcome": [
+        [
+         "4678e82edacc49a2879075c915662e71",
+         "RETRY"
+        ]
+       ],
+       "not_submitted_while_limited": true
+      }
+     ]
+    }
+   ],
+   "closed_at": 1792234407335,
+   "contained_at": 1792234407316,
+   "corrective_actions": [
+    "shared request budget; back off"
+   ],
+   "detected_at": 1792234407316,
+   "drill": true,
+   "environment": "SYNTHETIC",
+   "escalation": {
+    "escalate_after_minutes": 60,
+    "first": "OPERATIONS_OWNER_REQUIRED",
+    "first_role": "PRIMARY_ON_CALL",
+    "next": "OPERATIONS_OWNER_REQUIRED",
+    "next_role": "NEXT_BUSINESS_DAY_REVIEW"
+   },
+   "incident_id": "c71900207164449691869814c6dffb11",
+   "operator_ref": "operator:drill-runner@synthetic",
+   "passed": true,
+   "reconciliation_status": "RECONCILED",
+   "remaining_risk": "NONE",
+   "retest_evidence": {
+    "submitted_after_window": "ACKNOWLEDGED",
+    "venue_orders": 1
+   },
+   "revision": 2,
+   "root_cause": "drill: venue rate limit",
+   "scenario": "RATE_LIMIT_EXHAUSTION",
+   "severity": "SEV3",
+   "started_at": 1792234407296,
+   "time_to_containment_ms": 20
+  },
+  {
+   "actions": [
+    {
+     "drill_actions": [
+      {
+       "refusal": "DEPTH_STALE"
+      }
+     ]
+    }
+   ],
+   "closed_at": 1792234407362,
+   "contained_at": 1792234407356,
+   "corrective_actions": [
+    "refresh market data before allocation"
+   ],
+   "detected_at": 1792234407356,
+   "drill": true,
+   "environment": "SYNTHETIC",
+   "escalation": {
+    "escalate_after_minutes": 15,
+    "first": "OPERATIONS_OWNER_REQUIRED",
+    "first_role": "PRIMARY_ON_CALL",
+    "next": "OPERATIONS_OWNER_REQUIRED",
+    "next_role": "ENGINEERING_LEAD"
+   },
+   "incident_id": "c874a78993ed4896bdf3f3a2fc190e99",
+   "operator_ref": "operator:drill-runner@synthetic",
+   "passed": true,
+   "reconciliation_status": "NOT_AFFECTED",
+   "remaining_risk": "NONE: no order without fresh depth",
+   "retest_evidence": {
+    "fresh_depth_accepted": true
+   },
+   "revision": 2,
+   "root_cause": "drill: depth snapshot 60 s old",
+   "scenario": "STALE_MARKET_DATA",
+   "severity": "SEV2",
+   "started_at": 1792234407338,
+   "time_to_containment_ms": 18
+  },
+  {
+   "actions": [
+    {
+     "drill_actions": [
+      {
+       "elapsed_ms": 0,
+       "gaps_detected": 1,
+       "stop_placed": true
+      }
+     ]
+    }
+   ],
+   "closed_at": 1792234407369,
+   "contained_at": 1792234407367,
+   "corrective_actions": [
+    "maintenance places stop"
+   ],
+   "detected_at": 1792234407367,
+   "drill": true,
+   "environment": "SYNTHETIC",
+   "escalation": {
+    "escalate_after_minutes": 5,
+    "first": "OPERATIONS_OWNER_REQUIRED",
+    "first_role": "PRIMARY_ON_CALL",
+    "next": "OPERATIONS_OWNER_REQUIRED",
+    "next_role": "ENGINEERING_LEAD_AND_OWNER"
+   },
+   "incident_id": "0a3565336eab467a99bc33fbc65adf2e",
+   "operator_ref": "operator:drill-runner@synthetic",
+   "passed": true,
+   "reconciliation_status": "RECONCILED",
+   "remaining_risk": "NONE: stop resting",
+   "retest_evidence": {
+    "open_gaps": 0
+   },
+   "revision": 2,
+   "root_cause": "drill: position opened outside the platform",
+   "scenario": "UNPROTECTED_POSITION",
+   "severity": "SEV1",
+   "started_at": 1792234407365,
+   "time_to_containment_ms": 2
+  },
+  {
+   "actions": [
+    {
+     "drill_actions": [
+      {
+       "left_submitting": true,
+       "submits": 1,
+       "venue_orders": 1
+      }
+     ]
+    }
+   ],
+   "closed_at": 1792234407400,
+   "contained_at": 1792234407396,
+   "corrective_actions": [
+    "read back by client order id before any resubmission"
+   ],
+   "detected_at": 1792234407385,
+   "drill": true,
+   "environment": "SYNTHETIC",
+   "escalation": {
+    "escalate_after_minutes": 15,
+    "first": "OPERATIONS_OWNER_REQUIRED",
+    "first_role": "PRIMARY_ON_CALL",
+    "next": "OPERATIONS_OWNER_REQUIRED",
+    "next_role": "ENGINEERING_LEAD"
+   },
+   "incident_id": "8592953375bb4db9aa103809e0974ba3",
+   "operator_ref": "operator:drill-runner@synthetic",
+   "passed": true,
+   "reconciliation_status": "RECONCILED",
+   "remaining_risk": "NONE",
+   "retest_evidence": {
+    "recovered_by": "READBACK",
+    "venue_orders": 1
+   },
+   "revision": 2,
+   "root_cause": "drill: acknowledgement lost after acceptance",
+   "scenario": "LOST_SUBMISSION_ACK",
+   "severity": "SEV2",
+   "started_at": 1792234407371,
+   "time_to_containment_ms": 25
+  },
+  {
+   "actions": [
+    {
+     "drill_actions": [
+      {
+       "account_switch_raised": true,
+       "differences": [
+        "OPEN_ORDER_NOT_HELD_LOCALLY:1003",
+        "POSITION_DIFFERS:BTCUSDT",
+        "FILL_NOT_SEEN_ON_STREAM:BTCUSDT:T2"
+       ]
+      }
+     ]
+    }
+   ],
+   "closed_at": 1792234407584,
+   "contained_at": 1792234407457,
+   "corrective_actions": [
+    "account entries closed until reconciled; venue truth adopted"
+   ],
+   "detected_at": 1792234407441,
+   "drill": true,
+   "environment": "SYNTHETIC",
+   "escalation": {
+    "escalate_after_minutes": 5,
+    "first": "OPERATIONS_OWNER_REQUIRED",
+    "first_role": "PRIMARY_ON_CALL",
+    "next": "OPERATIONS_OWNER_REQUIRED",
+    "next_role": "ENGINEERING_LEAD_AND_OWNER"
+   },
+   "incident_id": "514c51d2621945928e19371414e5a8a9",
+   "operator_ref": "operator:drill-runner@synthetic",
+   "passed": true,
+   "reconciliation_status": "RECONCILED",
+   "remaining_risk": "NONE after adopting the venue state",
+   "retest_evidence": {
+    "second_pass_differences": []
+   },
+   "revision": 2,
+   "root_cause": "drill: venue position unknown to the platform",
+   "scenario": "EXCHANGE_POSITION_MISMATCH",
+   "severity": "SEV1",
+   "started_at": 1792234407403,
+   "time_to_containment_ms": 54
+  },
+  {
+   "actions": [
+    {
+     "drill_actions": [
+      {
+       "error": "VENUE_UNAVAILABLE",
+       "first_pass": "FAILED",
+       "retry": "OK"
+      }
+     ]
+    }
+   ],
+   "closed_at": 1792234407648,
+   "contained_at": 1792234407621,
+   "corrective_actions": [
+    "retry; entries wait for a good pass"
+   ],
+   "detected_at": 1792234407621,
+   "drill": true,
+   "environment": "SYNTHETIC",
+   "escalation": {
+    "escalate_after_minutes": 15,
+    "first": "OPERATIONS_OWNER_REQUIRED",
+    "first_role": "PRIMARY_ON_CALL",
+    "next": "OPERATIONS_OWNER_REQUIRED",
+    "next_role": "ENGINEERING_LEAD"
+   },
+   "incident_id": "364678fd9c7f46608039399faca117d0",
+   "operator_ref": "operator:drill-runner@synthetic",
+   "passed": true,
+   "reconciliation_status": "RECONCILED",
+   "remaining_risk": "NONE after retry",
+   "retest_evidence": {
+    "retry_ok": true
+   },
+   "revision": 2,
+   "root_cause": "drill: venue read failed",
+   "scenario": "RECONCILIATION_FAILURE",
+   "severity": "SEV2",
+   "started_at": 1792234407587,
+   "time_to_containment_ms": 34
+  }
+ ],
+ "environment": "SYNTHETIC (fake venue, disposable databases)",
+ "limits": "Synthetic. Live-money drills require separate explicit authorization and were not run.",
+ "passed": true,
+ "run_at_utc": "2026-10-17T10:53:27Z",
+ "schema": "cosmicforge-incident-drills-v1"
+}

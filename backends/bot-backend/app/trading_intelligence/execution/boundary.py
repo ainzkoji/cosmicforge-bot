@@ -222,8 +222,14 @@ class CATIExecutionBoundary:
         if not authorized:
             METRICS.inc("cati_execution_boundary_total", status=BoundaryStatus.GOVERNANCE_NOT_AUTHORIZED)
             return BoundaryResult(BoundaryStatus.GOVERNANCE_NOT_AUTHORIZED, plan.trade_plan_id, (why,))
+        # Step 6.1 -- every LIVE entry additionally passes the go-live gate; unreadable = refused
+        if plan.environment.upper() == "LIVE":
+            why = self._go_live_reason(plan, now)
+            if why:
+                METRICS.inc("cati_execution_boundary_total", status=BoundaryStatus.GOVERNANCE_NOT_AUTHORIZED)
+                return BoundaryResult(BoundaryStatus.GOVERNANCE_NOT_AUTHORIZED, plan.trade_plan_id, (why,))
 
-        attempt_id = ExecutionAttempt.build_id(trade_plan_id=plan.trade_plan_id, trade_plan_hash=plan.trade_plan_hash,
+        attempt_id =ExecutionAttempt.build_id(trade_plan_id=plan.trade_plan_id, trade_plan_hash=plan.trade_plan_hash,
                                                broker_account_id=plan.broker_account_id)
         # 20.9 -- repeated processing of the same plan never re-submits
         prior = self.attempts.latest(plan.broker_account_id, attempt_id)
@@ -714,6 +720,24 @@ class CATIExecutionBoundary:
         except Exception:  # an undecidable source is a refusal
             allowed, why = False, 'FAMILY_GATE_UNAVAILABLE'
         return None if allowed else why
+
+    def _go_live_reason(self, plan, now):
+        """None only when the go-live gate authorizes this LIVE entry; otherwise the first blocking condition.
+        No platform database, an unreadable gate or any error is a refusal (``app.golive.gate``)."""
+        try:
+            from app.golive.gate import Request, production_gate
+            from app.trading_intelligence.pipeline import contracts as PC
+            p = PC.provenance_of(plan)
+            decision = production_gate(self._db).evaluate(Request(
+                account_id=str(plan.broker_account_id), user_id=str(plan.user_id), family_id=str(p.get("family_id")),
+                family_version=str(p.get("family_version") or ""), venue=str(p.get("venue") or ""),
+                environment="LIVE"), now_ms=now)
+        except Exception as exc:
+            return f"GO_LIVE_GATE_UNAVAILABLE:{type(exc).__name__}"
+        if decision.authorized:
+            return None
+        first = decision.blocking[0]
+        return f"GO_LIVE_GATE:{first.id}:{first.reason}"
 
     def _release_unsubmitted(self, plan, now):
         return self.reservations.release_unsubmitted(plan.portfolio_reservation_id, now,

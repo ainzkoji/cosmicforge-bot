@@ -480,6 +480,9 @@ app.include_router(emergency_router)  # /api/v1/admin/emergency/* (admin only)
 from app.api.family_governance import router as family_governance_router
 
 app.include_router(family_governance_router)  # /api/v1/admin/governance/* (admin emergency token only)
+from app.api.golive import customer_router as golive_customer_router, router as golive_router  # noqa: E402
+app.include_router(golive_router)  # /api/v1/admin/golive/* (admin emergency token only; Step 6)
+app.include_router(golive_customer_router)  # /api/v1/golive/* (the customer's own token; ownership checked)
 
 # Register News Intelligence API router (Phase 3)
 from app.api.news_intelligence import router as news_intelligence_router
