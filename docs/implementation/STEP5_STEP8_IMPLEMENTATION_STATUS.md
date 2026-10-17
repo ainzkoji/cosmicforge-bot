@@ -80,14 +80,14 @@ See [SECTION_I_REMOVAL_INVENTORY.md](SECTION_I_REMOVAL_INVENTORY.md).
 | 2 | DEFERRED, owner (REM-01) |
 | 3 | DEFERRED, owner (REM-01) |
 | 4 | DEFERRED, owner (REM-01) |
-| 5 | READY, not executed in this delivery |
+| 5 | **REMOVED** in its own commit and CI run |
 | 6 | BLOCKED: conflicting retain-until-M9 governance rule |
 | 7 | BLOCKED: live dependencies |
 | 8 | BLOCKED: live dependencies |
 | 9 | KEEP pending the venue decision |
 | 10 | PARTIAL keep / pending |
 
-Quarantine: 117 entries, all still failing on Linux; not emptied.
+Quarantine: 117 entries, all still failing on Linux. Batch 5 removed the 11 that covered only removed tests, leaving 106. The list is not emptied.
 
 ## Verification log
 
@@ -122,4 +122,4 @@ Quarantine: 117 entries, all still failing on Linux; not emptied.
 | 6 | **PASS for infrastructure.** All five items are built, in disabled mode, with synthetic tests and drills. | **BLOCKED.** It needs at least 8 weeks of genuine Stage A live results inside the expected range, no unprotected position, no unresolved mismatch and closed incidents. A certified family, promotion, venue certification and an owner release of `BUILD_PERMITS_LIVE` are prerequisites. No automatic promotion exists. |
 | 7 | **PASS through the safe boundaries.** 7.2–7.4 PASS; 7.1 is a DRAFT specification. | **BLOCKED.** It needs owner decisions D1–D16, H-019 registered and frozen, passing the Step 2 standard and a matching demo run. Until then traditional markets stay disabled. |
 | 8 | **PASS for test and staging readiness.** 8.1–8.6 are built. | **BLOCKED.** It needs the authoritative Section J checklist (unavailable; a provisional checklist is in the gates register), counsel review, country determinations, an external penetration test, live billing verification, a named operations team and explicit owner launch approval. |
-| Section I | Batch 1 was already complete. No other batch was executed (see the inventory). | Batches 2–10 each need the decision or dependency named in the inventory. |
+| Section I | Batch 1 was already complete. Batch 5 was removed in its own commit. The rest were not executed (see the inventory). | Batches 2–10 each need the decision or dependency named in the inventory. |

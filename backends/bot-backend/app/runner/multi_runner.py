@@ -60,7 +60,6 @@ class MultiBotRunner:
         # ── Phase 4 TradingView processor state (per-bot) ─────────────────────
         # Overlap guard: True while a processor run is active for that bot.
         # Prevents double-processing if asyncio scheduling ever overlaps.
-        self._ext_sig_running: Dict[str, bool] = {}
 
         # Runtime ownership: only the lease holder may schedule trading.
         self._ownership = None
@@ -913,115 +912,6 @@ class MultiBotRunner:
                 
                 # ✅ Log cycle completion
                 print(f"[CYCLE] ✅ Bot {instance.id}: Cycle completed — status={cycle_result.get('status')} trades={cycle_result.get('trades_count', 0)}")
-
-                # ── Phase 4: TradingView external signal processing ────────────
-                if self._ext_sig_running.get(instance.id, False):
-                    logger.info(
-                        "[ExtSig] bot=%s processor still running from previous cycle — skipping",
-                        instance.id,
-                    )
-                    # Write skipped heartbeat (non-blocking best-effort)
-                    try:
-                        from shared_lib.persistence.tradingview import upsert_processor_heartbeat
-                        upsert_processor_heartbeat(
-                            self.db,
-                            bot_instance_id=instance.id,
-                            processor_enabled=True,
-                            last_skipped_reason="PREVIOUS_RUN_STILL_ACTIVE",
-                        )
-                    except Exception:
-                        pass
-                else:
-                    self._ext_sig_running[instance.id] = True
-                    _ext_start = utc_now_iso()
-                    try:
-                        from app.queue.external_signal_processor import ExternalSignalProcessor
-                        from app.core.config import settings as _ext_settings
-                        _ext_enabled = False  # external signals are advisory; no second entry scheduler
-
-                        if not _ext_enabled:
-                            logger.debug("[ExtSig] bot=%s processor disabled — skipping", instance.id)
-                        else:
-                            logger.debug("[ExtSig] bot=%s processor started", instance.id)
-                            _ext_proc = ExternalSignalProcessor(self.db)
-                            _ext_results = await asyncio.to_thread(
-                                _ext_proc.process_pending_for_bot,
-                                instance.id,
-                                runner,
-                            )
-                            _ext_finish = utc_now_iso()
-
-                            _processed = sum(
-                                1 for r in _ext_results
-                                if r.get("outcome") in {"EXECUTED", "EXECUTED_PAPER"}
-                            )
-                            _rejected = sum(
-                                1 for r in _ext_results
-                                if (r.get("outcome") or "").startswith("REJECTED")
-                            )
-                            _failed = sum(
-                                1 for r in _ext_results
-                                if r.get("outcome") == "FAILED"
-                            )
-                            _skipped = sum(
-                                1 for r in _ext_results
-                                if r.get("outcome") == "SKIPPED_ALREADY_CLAIMED"
-                            )
-
-                            if _ext_results:
-                                logger.info(
-                                    "[ExtSig] bot=%s completed: total=%d "
-                                    "processed=%d rejected=%d failed=%d skipped=%d",
-                                    instance.id,
-                                    len(_ext_results),
-                                    _processed, _rejected, _failed, _skipped,
-                                )
-
-                            # Persist heartbeat for admin visibility
-                            try:
-                                import json as _json
-                                from shared_lib.persistence.tradingview import upsert_processor_heartbeat
-                                upsert_processor_heartbeat(
-                                    self.db,
-                                    bot_instance_id=instance.id,
-                                    processor_enabled=True,
-                                    env_gate_reason=None,
-                                    last_started_at=_ext_start,
-                                    last_finished_at=_ext_finish,
-                                    last_processed_count=_processed,
-                                    last_rejected_count=_rejected,
-                                    last_failed_count=_failed,
-                                    last_skipped_count=_skipped,
-                                    last_result_json=_json.dumps(
-                                        [{r["symbol"]: r.get("outcome")} for r in _ext_results]
-                                    ) if _ext_results else None,
-                                    last_error=None,
-                                )
-                            except Exception as _hb_exc:
-                                logger.debug("[ExtSig] heartbeat write failed (non-fatal): %s", _hb_exc)
-
-                    except Exception as _ext_exc:
-                        _ext_finish = utc_now_iso()
-                        logger.warning(
-                            "[ExtSig] bot=%s processor error (caught safely): %s",
-                            instance.id, _ext_exc,
-                        )
-                        # Persist error heartbeat
-                        try:
-                            from shared_lib.persistence.tradingview import upsert_processor_heartbeat
-                            upsert_processor_heartbeat(
-                                self.db,
-                                bot_instance_id=instance.id,
-                                processor_enabled=True,
-                                last_started_at=_ext_start,
-                                last_finished_at=_ext_finish,
-                                last_error=str(_ext_exc),
-                            )
-                        except Exception:
-                            pass
-                    finally:
-                        self._ext_sig_running[instance.id] = False
-                # ──────────────────────────────────────────────────────────────
 
                 # G. Record Equity Snapshots
                 # Bot Start: First successful cycle

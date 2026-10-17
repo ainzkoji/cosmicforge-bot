@@ -5,7 +5,6 @@ interface ImportMetaEnv {
     readonly VITE_ADMIN_API_BASE: string;
     readonly VITE_USE_ADMIN_BACKEND_DASHBOARD: string;
     readonly VITE_USE_ADMIN_BACKEND_REVENUE: string;
-    readonly VITE_USE_ADMIN_BACKEND_TRADINGVIEW: string;
     readonly VITE_USE_ADMIN_BACKEND_BOT_MONITOR: string;
     readonly VITE_USE_ADMIN_BACKEND_SIGNALS: string;
     readonly VITE_USE_ADMIN_BACKEND_EVENTS: string;

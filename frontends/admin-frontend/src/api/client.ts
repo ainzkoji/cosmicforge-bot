@@ -20,7 +20,6 @@ function envFlag(value: unknown): boolean {
 
 export const useAdminBackendDashboard = envFlag(import.meta.env.VITE_USE_ADMIN_BACKEND_DASHBOARD);
 export const useAdminBackendRevenue = envFlag(import.meta.env.VITE_USE_ADMIN_BACKEND_REVENUE);
-export const useAdminBackendTradingView = envFlag(import.meta.env.VITE_USE_ADMIN_BACKEND_TRADINGVIEW);
 export const useAdminBackendBotMonitor = envFlag(import.meta.env.VITE_USE_ADMIN_BACKEND_BOT_MONITOR);
 export const useAdminBackendSignals = envFlag(import.meta.env.VITE_USE_ADMIN_BACKEND_SIGNALS);
 export const useAdminBackendEvents = envFlag(import.meta.env.VITE_USE_ADMIN_BACKEND_EVENTS);
@@ -71,11 +70,6 @@ export const adminProfitabilityApiClient = axios.create({
 
 export const adminMLApiClient = axios.create({
     baseURL: useAdminBackendML ? ADMIN_API_BASE : API_BASE,
-    timeout: DEFAULT_API_TIMEOUT_MS,
-});
-
-export const adminTradingViewApiClient = axios.create({
-    baseURL: useAdminBackendTradingView ? ADMIN_API_BASE : API_BASE,
     timeout: DEFAULT_API_TIMEOUT_MS,
 });
 
@@ -147,7 +141,6 @@ apiClient.interceptors.request.use(attachAdminAuthHeader);
 adminDashboardApiClient.interceptors.request.use(attachAdminAuthHeader);
 adminRevenueApiClient.interceptors.request.use(attachAdminAuthHeader);
 adminProfitabilityApiClient.interceptors.request.use(attachAdminAuthHeader);
-adminTradingViewApiClient.interceptors.request.use(attachAdminAuthHeader);
 adminBotMonitorApiClient.interceptors.request.use(attachAdminAuthHeader);
 adminSignalsApiClient.interceptors.request.use(attachAdminAuthHeader);
 adminEventsApiClient.interceptors.request.use(attachAdminAuthHeader);
@@ -169,10 +162,6 @@ adminRevenueApiClient.interceptors.response.use(
 adminProfitabilityApiClient.interceptors.response.use(
     (response) => response,
     createApiErrorHandler(adminProfitabilityApiClient)
-);
-adminTradingViewApiClient.interceptors.response.use(
-    (response) => response,
-    createApiErrorHandler(adminTradingViewApiClient)
 );
 adminBotMonitorApiClient.interceptors.response.use(
     (response) => response,

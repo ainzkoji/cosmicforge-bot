@@ -1,5 +1,5 @@
 // Admin API Client Functions
-import { adminBotMonitorApiClient, adminDashboardApiClient, adminMLApiClient, adminProfitabilityApiClient, adminRevenueApiClient, adminTradingViewApiClient, apiClient } from "./client";
+import { adminBotMonitorApiClient, adminDashboardApiClient, adminMLApiClient, adminProfitabilityApiClient, adminRevenueApiClient, apiClient } from "./client";
 
 export type MLMode = "shadow" | "active" | "disabled";
 export type MLOverviewStatus =
@@ -220,104 +220,6 @@ export interface MLAlertItem {
 export interface MLAlertsResponse {
     generated_at: string;
     items: MLAlertItem[];
-}
-
-export type TradingViewMode =
-    | "ADVISORY_ONLY"
-    | "EXTERNAL_SIGNAL_CANDIDATE"
-    | "CONFIRMATION_ONLY"
-    | "DISABLED";
-
-export type TradingViewAlertStatus =
-    | "ACCEPTED_ADVISORY"
-    | "REJECTED"
-    | "DUPLICATE"
-    | "STALE"
-    | "DISABLED_WEBHOOK"
-    | "INVALID_SIGNATURE"
-    | "INVALID_TOKEN"
-    | "INVALID_SCHEMA"
-    | "UNSUPPORTED_ACTION"
-    | "UNSUPPORTED_SYMBOL"
-    | "RATE_LIMITED";
-
-export interface TradingViewWebhook {
-    id: string;
-    bot_id: string;
-    name: string;
-    mode: TradingViewMode;
-    is_enabled: number;
-    allowed_symbols: string[] | null;
-    allowed_actions: string[];
-    max_alert_age_seconds: number;
-    rate_limit_per_minute: number;
-    created_at: string;
-    updated_at: string;
-    last_used_at: string | null;
-}
-
-export interface TradingViewAlert {
-    id: number;
-    webhook_id: string | null;
-    bot_id: string | null;
-    alert_id: string | null;
-    symbol_raw: string | null;
-    symbol_normalized: string | null;
-    action: string | null;
-    side: string | null;
-    timeframe: string | null;
-    strategy_name: string | null;
-    price: number | null;
-    received_at: string;
-    alert_timestamp: string | null;
-    status: TradingViewAlertStatus;
-    reject_reason: string | null;
-    idempotency_key: string | null;
-    source_ip: string | null;
-    signature_valid: number | null;
-    created_at: string;
-}
-
-export interface TradingViewDecision {
-    id: number;
-    alert_id: number;
-    bot_id: string | null;
-    symbol: string | null;
-    action: string | null;
-    mode: TradingViewMode;
-    normalized_signal?: Record<string, unknown>;
-    event_filter_result: string | null;
-    policy_result: string | null;
-    sizing_result: string | null;
-    execution_result: string | null;
-    decision_trace_id: string | null;
-    final_status: string;
-    final_reason: string;
-    queue_id: string | null;
-    created_at: string;
-}
-
-export interface ExternalSignalQueueRow {
-    id: string;
-    source: string;
-    source_alert_id: string;
-    bot_id: string;
-    symbol: string;
-    side: string | null;
-    action: string;
-    confidence: number | null;
-    status: "PENDING" | "CLAIMED" | "PROCESSED" | "REJECTED" | "EXPIRED" | "DUPLICATE" | "FAILED";
-    available_at: string;
-    expires_at: string;
-    claimed_at: string | null;
-    processed_at: string | null;
-    result: string | null;
-    result_json?: Record<string, unknown> | null;
-    created_at: string;
-}
-
-export interface TradingViewListResponse<T> {
-    items: T[];
 }
 
 export interface MLActionDefinition {
@@ -1001,40 +903,5 @@ export interface MLRuntimeStatusResponse {
 
 export async function getMLRuntimeStatus() {
     const response = await adminMLApiClient.get<MLRuntimeStatusResponse>("/api/admin/ml/runtime-status");
-    return response.data;
-}
-
-// TradingView Admin — 10 s per-request timeout prevents infinite hangs when backend is unresponsive
-const TV_TIMEOUT = 10_000;
-
-export async function getTradingViewWebhooks() {
-    const response = await adminTradingViewApiClient.get<TradingViewListResponse<TradingViewWebhook>>(
-        "/api/admin/tradingview/webhooks",
-        { timeout: TV_TIMEOUT },
-    );
-    return response.data;
-}
-
-export async function getTradingViewAlerts() {
-    const response = await adminTradingViewApiClient.get<TradingViewListResponse<TradingViewAlert>>(
-        "/api/admin/tradingview/alerts",
-        { timeout: TV_TIMEOUT },
-    );
-    return response.data;
-}
-
-export async function getTradingViewDecisions() {
-    const response = await adminTradingViewApiClient.get<TradingViewListResponse<TradingViewDecision>>(
-        "/api/admin/tradingview/decisions",
-        { timeout: TV_TIMEOUT },
-    );
-    return response.data;
-}
-
-export async function getTradingViewExternalSignals() {
-    const response = await adminTradingViewApiClient.get<TradingViewListResponse<ExternalSignalQueueRow>>(
-        "/api/admin/tradingview/external-signals",
-        { timeout: TV_TIMEOUT },
-    );
     return response.data;
 }

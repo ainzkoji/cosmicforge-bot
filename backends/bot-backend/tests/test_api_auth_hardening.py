@@ -102,7 +102,6 @@ PUBLIC_ROUTES = {
     "/": "service banner: no account data, no credentials",
     "/health": "liveness / readiness probe for uptime monitors",
     "/cati": "static monitor shell; every API call it makes is authenticated",
-    "/api/v1/tradingview/webhook/{token_or_id}": "authenticated by the per-webhook token, not a user session",
     "/api/v1/public/track-record": "published, aggregated, min-count-suppressed track record; read-only, no account data",
 }
 
@@ -236,8 +235,6 @@ PREVIOUSLY_OPEN = [
     ("get", "/api/v1/events/stream/health"),
     ("get", "/api/v1/forex/instruments"),
     ("get", "/api/admin/tradingview/runtime-fingerprint"),
-    ("get", "/api/admin/tradingview/limited-status"),
-    ("get", "/api/admin/tradingview/processor-status"),
 ]
 
 
@@ -306,8 +303,6 @@ def test_forex_instruments_cache_is_bounded():
 
 ADMIN_ONLY = [
     "/api/admin/tradingview/runtime-fingerprint",
-    "/api/admin/tradingview/limited-status",
-    "/api/admin/tradingview/processor-status",
     "/api/v1/shadow/status",
     "/api/v1/shadow/outcomes",
     "/api/v1/shadow/analytics/regime",
@@ -1323,150 +1318,8 @@ def test_docs_disabled_in_production_unless_enabled(api_client):
     assert not prod_paths & {"/docs", "/redoc", "/openapi.json"}
 
 
-# ── 8. TradingView webhook: HMAC where configured, no raw token at rest ─────
-
-def _tv_client(tmp_path, monkeypatch):
-    from fastapi import FastAPI
-    from fastapi.testclient import TestClient
-
-    from app.api import tradingview
-    from shared_lib.persistence.tradingview import create_webhook
-
-    db_path = tmp_path / "tradingview.db"
-    migrate(str(db_path))
-    tv_db = DB(path=str(db_path))
-    monkeypatch.setenv("TRADE_SYMBOLS", "BTCUSDT,ETHUSDT")
-    monkeypatch.setenv("LIVE_SYMBOLS", "BTCUSDT,ETHUSDT")
-    monkeypatch.setattr(tradingview, "_get_db", lambda: tv_db)
-    app = FastAPI()
-    app.include_router(tradingview.router, prefix="/api/v1/tradingview")
-    seeded = create_webhook(tv_db, bot_id="bot-tv-test", allowed_symbols=["BTCUSDT", "ETHUSDT"])
-    return TestClient(app), tv_db, seeded
-
-
-def _tv_payload(token, **overrides):
-    from shared_lib.persistence.tradingview import utc_now_iso
-
-    data = {
-        "token": token, "bot_id": "bot-tv-test", "alert_id": "alert-1", "symbol": "BINANCE:BTCUSDT.P",
-        "exchange": "BINANCE", "timeframe": "1m", "strategy_name": "TV Test", "action": "BUY", "side": "LONG",
-        "price": "100.5", "timestamp": utc_now_iso(), "confidence": 0.75,
-    }
-    data.update(overrides)
-    return data
-
-
-def _require_hmac(tv_db, webhook_id):
-    from shared_lib.persistence.tradingview import hash_secret
-
-    with tv_db.connect() as conn:
-        conn.execute("UPDATE tradingview_webhooks SET secret_hash=? WHERE id=?",
-                     (hash_secret("relay-shared-secret"), webhook_id))
-
-
-def _signed_headers(token, body: bytes):
-    timestamp, nonce = "1700000000", "nonce-1"
-    signature = hmac.new(token.encode(), timestamp.encode() + b"." + nonce.encode() + b"." + body,
-                         hashlib.sha256).hexdigest()
-    return {"Content-Type": "application/json", "X-CF-TV-Signature": f"sha256={signature}",
-            "X-CF-TV-Timestamp": timestamp, "X-CF-TV-Nonce": nonce}
-
-
-def test_webhook_without_hmac_secret_still_accepts_plain_tradingview_alerts(tmp_path, monkeypatch):
-    client, _tv_db, seeded = _tv_client(tmp_path, monkeypatch)
-    response = client.post(f"/api/v1/tradingview/webhook/{seeded['token']}", json=_tv_payload(seeded["token"]))
-    assert response.json()["status"] == "accepted"
-
-
-def test_webhook_with_hmac_secret_requires_the_signature_header(tmp_path, monkeypatch):
-    from shared_lib.persistence.tradingview import list_alerts
-
-    client, tv_db, seeded = _tv_client(tmp_path, monkeypatch)
-    _require_hmac(tv_db, seeded["id"])
-    url = f"/api/v1/tradingview/webhook/{seeded['token']}"
-
-    # Valid token, header simply omitted: no longer a way around the check.
-    missing = client.post(url, json=_tv_payload(seeded["token"]))
-    assert missing.json()["status"] == "rejected"
-    assert missing.json()["reason"] == "SIGNATURE_REQUIRED"
-    assert list_alerts(tv_db)[0]["status"] == "INVALID_SIGNATURE"
-
-    bad = client.post(url, json=_tv_payload(seeded["token"], alert_id="alert-bad"),
-                      headers={"X-CF-TV-Signature": "sha256=bad", "X-CF-TV-Timestamp": "1", "X-CF-TV-Nonce": "n"})
-    assert bad.json()["reason"] == "INVALID_SIGNATURE"
-
-    body = json.dumps(_tv_payload(seeded["token"], alert_id="alert-signed"), separators=(",", ":")).encode()
-    signed = client.post(url, content=body, headers=_signed_headers(seeded["token"], body))
-    assert signed.json()["status"] == "accepted", signed.json()
-
-
-def test_webhook_with_invalid_token_persists_nothing(tmp_path, monkeypatch):
-    """An unauthenticated request must not be able to write rows -- least of all under a bot it names."""
-    from app.api import tradingview
-    from shared_lib.persistence.tradingview import list_alerts, list_decisions
-
-    client, tv_db, seeded = _tv_client(tmp_path, monkeypatch)
-    before = tradingview.unauthenticated_rejection_count()
-
-    no_token = _tv_payload("unused", bot_id="victim-bot")
-    no_token.pop("token")
-    attempts = [
-        ("not-a-token", _tv_payload("wrong-token", bot_id="victim-bot", alert_id="forged-1")),
-        (seeded["id"], _tv_payload("wrong-token", bot_id="victim-bot", alert_id="forged-2")),   # known id, bad token
-        ("not-a-token", no_token),
-    ]
-    for path_token, payload in attempts:
-        response = client.post(f"/api/v1/tradingview/webhook/{path_token}", json=payload)
-        body = response.json()
-        # The caller sees exactly what it saw before.
-        assert response.status_code == 200
-        assert (body["status"], body["reason"], body["execution_enabled"]) == ("rejected", "INVALID_TOKEN", False)
-
-    assert list_alerts(tv_db) == [] and list_decisions(tv_db) == []
-    with tv_db.connect() as conn:
-        assert conn.execute("SELECT COUNT(*) FROM external_signal_queue").fetchone()[0] == 0
-    # Counted (and logged) instead.
-    assert tradingview.unauthenticated_rejection_count() == before + len(attempts)
-
-    # A valid token behaves exactly as before: accepted alerts and authenticated rejections are persisted.
-    url = f"/api/v1/tradingview/webhook/{seeded['token']}"
-    assert client.post(url, json=_tv_payload(seeded["token"])).json()["status"] == "accepted"
-    rejected = client.post(url, json=_tv_payload(seeded["token"], alert_id="alert-close", action="CLOSE"))
-    assert rejected.json()["status"] == "rejected"
-    rows = list_alerts(tv_db)
-    assert len(rows) == 2 and {row["bot_id"] for row in rows} == {"bot-tv-test"}
-    assert tradingview.unauthenticated_rejection_count() == before + len(attempts)
-
-
-def test_webhook_payload_is_persisted_without_token_or_secrets(tmp_path, monkeypatch):
-    from shared_lib.persistence.tradingview import PAYLOAD_REDACTED, list_alerts
-
-    client, tv_db, seeded = _tv_client(tmp_path, monkeypatch)
-    token = seeded["token"]
-    url = f"/api/v1/tradingview/webhook/{token}"
-
-    accepted = client.post(url, json=_tv_payload(
-        token, secret="relay-secret-value", passphrase="open-sesame", api_key="AKIA-not-for-disk",
-        comment=f"forwarded with {token}", nested={"webhook_token": token, "note": "keep me"},
-    ))
-    assert accepted.json()["status"] == "accepted", accepted.json()
-    # A rejected alert is stored too -- and must be just as clean.
-    rejected = client.post(url, json=_tv_payload(token, alert_id="alert-close", action="CLOSE", secret="another-secret"))
-    assert rejected.json()["status"] == "rejected"
-
-    rows = list_alerts(tv_db)
-    assert len(rows) == 2
-    for row in rows:
-        stored = row["payload_json"]
-        for leaked in (token, "relay-secret-value", "open-sesame", "AKIA-not-for-disk", "another-secret"):
-            assert leaked not in stored, leaked
-    stored = json.loads(next(r for r in rows if r["alert_id"] == "alert-1")["payload_json"])
-    assert stored["token"] == PAYLOAD_REDACTED
-    assert stored["secret"] == PAYLOAD_REDACTED and stored["passphrase"] == PAYLOAD_REDACTED
-    assert stored["nested"] == {"webhook_token": PAYLOAD_REDACTED, "note": "keep me"}
-    # Everything that is not a credential is kept for audit.
-    assert stored["symbol"] == "BINANCE:BTCUSDT.P" and stored["alert_id"] == "alert-1" and stored["action"] == "BUY"
-
+# ── 8. TradingView webhook payload redaction (the webhook route was removed in Section I Batch 5; the
+#    stored history and its redaction helper are kept) ─────────────────────────────
 
 def test_redact_webhook_payload_unit():
     from shared_lib.persistence.tradingview import PAYLOAD_REDACTED, generate_webhook_token, redact_webhook_payload

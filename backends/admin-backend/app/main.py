@@ -16,7 +16,6 @@ from app.api.news import router as news_router
 from app.api.profitability import router as profitability_router
 from app.api.revenue import router as revenue_router
 from app.api.signals import router as signals_router
-from app.api.tradingview import router as tradingview_router
 from app.api.users import router as users_router
 from app.core.cors import configure_cors
 
@@ -92,7 +91,6 @@ app.include_router(dashboard_router)
 app.include_router(users_router)
 app.include_router(revenue_router)
 app.include_router(profitability_router)
-app.include_router(tradingview_router)
 app.include_router(bot_monitor_router)
 app.include_router(signals_router)
 app.include_router(events_router)

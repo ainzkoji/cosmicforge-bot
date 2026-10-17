@@ -495,12 +495,7 @@ app.include_router(
     tags=["News Intelligence"],
 )
 
-# Register TradingView advisory-only webhook router (Stage 1)
-from app.api.tradingview import router as tradingview_router
-
-app.include_router(
-    tradingview_router, prefix="/api/v1/tradingview", tags=["TradingView"]
-)
+# The TradingView webhook (/api/v1/tradingview) was removed in Section I Batch 5.
 
 paper_runner_instance: PaperRunner | None = None
 run_tracker = RunTracker(DB(path=get_db_path()))
@@ -2757,12 +2752,7 @@ def _csv_runtime(value: str) -> list[str]:
 
 
 def _phase6_runtime_fingerprint() -> Dict[str, Any]:
-    try:
-        from app.queue.external_signal_processor import ExternalSignalProcessor
-
-        phase6_gate_available = hasattr(ExternalSignalProcessor, "_phase6_gate_for_row")
-    except Exception:
-        phase6_gate_available = False
+    phase6_gate_available = False  # the external-signal processor was removed (Section I Batch 5)
 
     lockout_status: dict[str, Any] | None = None
     try:
@@ -2834,163 +2824,6 @@ def _phase6_runtime_fingerprint() -> Dict[str, Any]:
 @app.get("/api/admin/tradingview/runtime-fingerprint", dependencies=_LEGACY_ADMIN_ONLY)
 async def tradingview_runtime_fingerprint():
     return _phase6_runtime_fingerprint()
-
-
-def _active_bot_id_for_tradingview() -> str | None:
-    try:
-        with DB(path=get_db_path()).connect() as conn:
-            row = conn.execute(
-                "SELECT id FROM bot_instances WHERE status='active' ORDER BY updated_at DESC LIMIT 1"
-            ).fetchone()
-        return str(row["id"]) if row else None
-    except Exception:
-        return None
-
-
-def _phase6_status_counts(bot_id: str | None) -> Dict[str, Any]:
-    if not bot_id:
-        return {
-            "signals_used_today": 0,
-            "executions_used_today": 0,
-            "rejected_due_to_limits": 0,
-            "unprotected_positions_count": 0,
-            "stuck_claimed_rows_count": 0,
-            "last_processor_result": None,
-            "last_tradingview_candidate": None,
-        }
-    day_ago = (datetime.now(timezone.utc) - timedelta(days=1)).isoformat()
-    with DB(path=get_db_path()).connect() as conn:
-        signal_count = conn.execute(
-            """
-            SELECT COUNT(*) AS c
-            FROM external_signal_queue
-            WHERE bot_id = ? AND source = 'TRADINGVIEW' AND created_at >= ?
-            """,
-            (bot_id, day_ago),
-        ).fetchone()["c"]
-        exec_count = conn.execute(
-            """
-            SELECT COUNT(*) AS c
-            FROM tradingview_signal_decisions
-            WHERE bot_id = ?
-              AND created_at >= ?
-              AND final_status IN ('PROCESSED_EXECUTED','PROCESSED_EXECUTED_PROTECTED')
-            """,
-            (bot_id, day_ago),
-        ).fetchone()["c"]
-        limit_rejects = conn.execute(
-            """
-            SELECT COUNT(*) AS c
-            FROM tradingview_signal_decisions
-            WHERE bot_id = ?
-              AND created_at >= ?
-              AND final_status IN (
-                'REJECTED_TV_RATE_LIMIT',
-                'REJECTED_TV_DAILY_EXECUTION_CAP',
-                'REJECTED_TV_TRADE_CAP_EXCEEDED'
-              )
-            """,
-            (bot_id, day_ago),
-        ).fetchone()["c"]
-        unprotected = conn.execute(
-            """
-            SELECT COUNT(*) AS c
-            FROM position_lifecycle_state
-            WHERE bot_instance_id = ?
-              AND COALESCE(exchange_position_active, 0) = 1
-              AND (
-                sl_order_id IS NULL OR tp_order_id IS NULL
-                OR sl_order_id LIKE 'DUPLICATE_%'
-                OR tp_order_id LIKE 'DUPLICATE_%'
-              )
-            """,
-            (bot_id,),
-        ).fetchone()["c"]
-        stuck = conn.execute(
-            """
-            SELECT COUNT(*) AS c
-            FROM external_signal_queue
-            WHERE bot_id = ? AND status = 'CLAIMED'
-            """,
-            (bot_id,),
-        ).fetchone()["c"]
-        heartbeat = conn.execute(
-            """
-            SELECT *
-            FROM tradingview_processor_heartbeat
-            WHERE bot_instance_id = ?
-            ORDER BY updated_at DESC
-            LIMIT 1
-            """,
-            (bot_id,),
-        ).fetchone()
-        last_candidate = conn.execute(
-            """
-            SELECT queue_id, symbol, action, final_status, final_reason,
-                   execution_result, created_at
-            FROM tradingview_signal_decisions
-            WHERE bot_id = ?
-            ORDER BY created_at DESC, id DESC
-            LIMIT 1
-            """,
-            (bot_id,),
-        ).fetchone()
-    return {
-        "signals_used_today": int(signal_count or 0),
-        "executions_used_today": int(exec_count or 0),
-        "rejected_due_to_limits": int(limit_rejects or 0),
-        "unprotected_positions_count": int(unprotected or 0),
-        "stuck_claimed_rows_count": int(stuck or 0),
-        "last_processor_result": dict(heartbeat) if heartbeat else None,
-        "last_tradingview_candidate": dict(last_candidate) if last_candidate else None,
-    }
-
-
-@app.get("/api/admin/tradingview/limited-status", dependencies=_LEGACY_ADMIN_ONLY)
-async def tradingview_limited_status():
-    bot_id = _active_bot_id_for_tradingview()
-    fp = _phase6_runtime_fingerprint()
-    counts = _phase6_status_counts(bot_id)
-    return {
-        "bot_id": bot_id,
-        "live_limited_mode_enabled": fp["TRADINGVIEW_LIVE_MODE_LIMITED_ENABLED"],
-        "external_signals_enabled": fp["TRADINGVIEW_EXTERNAL_SIGNALS_ENABLED"],
-        "allowed_symbols": fp["TRADINGVIEW_ALLOWED_SYMBOLS"],
-        "allowed_actions": fp["TRADINGVIEW_ALLOWED_ACTIONS"],
-        "max_trade_cap": fp["TRADINGVIEW_MAX_TRADE_USDT_CAP"],
-        "hourly_signal_limit": fp["TRADINGVIEW_MAX_SIGNALS_PER_HOUR"],
-        "daily_signal_limit": fp["TRADINGVIEW_MAX_SIGNALS_PER_DAY"],
-        "daily_execution_cap": fp["TRADINGVIEW_MAX_EXECUTIONS_PER_DAY"],
-        "max_queue_per_cycle": fp["TRADINGVIEW_MAX_QUEUE_PER_CYCLE"],
-        "require_sltp_protection": fp["TRADINGVIEW_REQUIRE_SLTP_PROTECTION"],
-        "auto_disable_on_invariant_fail": fp[
-            "TRADINGVIEW_AUTO_DISABLE_ON_INVARIANT_FAIL"
-        ],
-        "forbidden_capabilities": {
-            "close": fp["TRADINGVIEW_ALLOW_CLOSE"],
-            "reverse": fp["TRADINGVIEW_ALLOW_REVERSE"],
-            "reduce": fp["TRADINGVIEW_ALLOW_REDUCE"],
-            "cancel": fp["TRADINGVIEW_ALLOW_CANCEL"],
-            "external_sltp": fp["TRADINGVIEW_ALLOW_EXTERNAL_SLTP"],
-            "external_size": fp["TRADINGVIEW_ALLOW_EXTERNAL_SIZE"],
-            "risk_override": fp["TRADINGVIEW_ALLOW_RISK_OVERRIDE"],
-        },
-        "safety_lockout": {
-            "active": fp["active_safety_lockout"],
-            "reason": fp["active_safety_lockout_reason"],
-        },
-        **counts,
-    }
-
-
-@app.get("/api/admin/tradingview/processor-status", dependencies=_LEGACY_ADMIN_ONLY)
-async def tradingview_processor_status():
-    bot_id = _active_bot_id_for_tradingview()
-    return {
-        "bot_id": bot_id,
-        "runtime_fingerprint": _phase6_runtime_fingerprint(),
-        **_phase6_status_counts(bot_id),
-    }
 
 
 def _runtime_liveness() -> dict:

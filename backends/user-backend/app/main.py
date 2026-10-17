@@ -237,8 +237,6 @@ app.include_router(admin_events_router, prefix="/api", tags=["Admin Events"])
 from app.api.admin_news import router as admin_news_router
 app.include_router(admin_news_router, prefix="/api", tags=["Admin News"])
 
-from app.api.admin_tradingview import router as admin_tradingview_router
-app.include_router(admin_tradingview_router, prefix="/api", tags=["Admin TradingView"])
 
 from app.api.admin_signals import router as admin_signals_router
 app.include_router(admin_signals_router, prefix="/api", tags=["Admin Signals"])

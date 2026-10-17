@@ -30,7 +30,6 @@ import History from '@/pages/admin/ml/History';
 import EventCalendar from '@/pages/admin/EventCalendar';
 import EventReactionMonitor from '@/pages/admin/EventReactionMonitor';
 import { NewsIntelligence } from '@/pages/admin/NewsIntelligence';
-import TradingView from '@/pages/admin/TradingView';
 import Signals from '@/pages/admin/Signals';
 import SignalPairs from '@/pages/admin/SignalPairs';
 import Operations from '@/pages/admin/Operations';
@@ -88,7 +87,6 @@ function App() {
                 <Route path="/admin/news-intelligence" element={<NewsIntelligence />} />
                 <Route path="/admin/news-intelligence/realtime" element={<NewsIntelligence />} />
                 <Route path="/admin/news-intelligence/validation" element={<NewsIntelligence />} />
-                <Route path="/admin/tradingview" element={<TradingView />} />
                 <Route path="/admin/signals" element={<Signals />} />
                 <Route path="/admin/signals/pairs" element={<SignalPairs />} />
                 <Route path="/admin/audit" element={<AuditLogs />} />

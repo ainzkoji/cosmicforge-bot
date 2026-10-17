@@ -5,8 +5,8 @@ deploy files and tests; Git history; route registration; CI run 39024969808 for 
 master plan text is not in the repository. The batch scopes and approvals below are those stated in the Section H
 Steps 5–8 assignment. Where the repository holds a contrary rule, it is quoted and the batch is left pending.
 
-**Nothing in this document was deleted.** Section I removes nothing in this delivery, for the reasons given per batch.
-Historical evidence, research records and database tables are retained in every case.
+Only **Batch 5** was executed, in its own commit with its own CI run (see the Batch 5 record below). Every other batch
+is retained for the reason given. Historical evidence, research records and database tables are retained in every case.
 
 ## Summary
 
@@ -16,14 +16,14 @@ Historical evidence, research records and database tables are retained in every 
 | 2 | Retired backtest engine, 409 route, three portal pages | scheduled for Step 1 | **DEFERRED — OWNER DECISION** | REM-01 in the Step 1 record: "owner confirmation of prerequisites". An audit document asks to keep historical read and export. `BacktestWorker` is still started by `main.py`; list, detail and export routes are live and proxied; the portal nav links to them. Not used by the CATI research evaluator (verified: no import of `app.backtest` under `trading_intelligence/`, `app/research/` or `research/`). |
 | 3 | Old shadow-trade subsystem | scheduled for Step 1 | **DEFERRED — OWNER DECISION** | REM-01. Off by default, unused by CATI and by both frontends. Still registered (`/api/v1/shadow`, 10 routes), hooked in `multi_runner.py` (guarded), and asserted by `test_api_auth_hardening.py`. The CATI `ShadowScheduler` (`integration/platform_runtime.py`) is separate and does not import it. |
 | 4 | Callerless routers | scheduled for Step 1 | **DEFERRED — OWNER DECISION** | REM-01. Routers with no repository caller: `news_intelligence`, `threshold_diagnostics`, `trading_evidence`, `trading_operations`, `readiness_admin`, `shadow_routes`, `cati_simulation` (script caller), `ibkr`. `monitoring` has a proxy but no frontend caller. External or operator callers cannot be ruled out from the repository. |
-| 5 | TradingView signal path | **approved** | **READY — NOT EXECUTED IN THIS DELIVERY** | Dependency-safe on the evidence below. Not executed because its registrations are in files the concurrent security and operations work was still changing; it needs its own isolated commit and CI run. Plan below. |
+| 5 | TradingView signal path | **approved** | **REMOVED** (separate commit and CI run) | Executed after the concurrent work was committed; see the Batch 5 record below. |
 | 6 | Legacy V2 ML scorer | **approved** | **BLOCKED — CONFLICTING GOVERNANCE RULE** | `app/ml/scorer.py` is listed in `governance/destination_map.LEGACY_AFTER_PROMOTION` ("runtime files that become legacy AFTER promotion -- NOT deleted before M9"). `tests/trading_intelligence/test_sections23_26.py:308` asserts that every listed file exists ("retained until M9"). `ml/legacy.py` tags the scorer `OBSOLETE_AFTER_M9`. All families are at M0. Deleting it means changing an approved governance rule, which needs the owner. |
 | 7 | Legacy runner | scheduled during Step 3 | **BLOCKED — LIVE DEPENDENCIES** | `runner/multi_runner.py` is the runtime loop that takes the runtime-ownership lease (`main.py runner_loop`). `activation/cati.py runtime_authority_switch()` reads the source of `PaperRunner` and `BinanceExecutor`. `destination_map.verify` reports MISSING without `runner.py`, `multi_runner.py`, `market_snapshot.py`, `replay/engine.py`, `replay/historical_provider.py` and `exchange/interface.py`. CATI imports `runner/effective_policy.py`, `market_snapshot.py`, `bot_context.py` (through `exchange/factory.py`), `strategy_framework.py`, `regime` and most of `app/replay/`. 28 test files import `runner.py`. |
 | 8 | Duplicate CATI execution glue | scheduled after Step 3 | **BLOCKED — ACTIVE CALLERS** | `production_execution._process_account` and `build_plan` (hand-built residual plan) run whenever `portfolio_runtime.dispatch_account` returns None. Three `boundary_for` factories are live (`production_execution`, `portfolio_runtime`, `cati_dispatch`). The nine `LEGACY_EXECUTION_TAIL_MODULES` test modules (conftest.py:214) drive the residual path. Removing it needs the portfolio runtime to cover every account first. |
 | 9 | OANDA, IBKR, IBKR-TWS, MetaTrader, `mt-bridge`, MT pairing | decide after Step 7 | **KEEP PENDING OWNER DECISION** | Step 7 built venue-neutral calendars and contracts but no traditional-market execution adapter. None of these adapters is wired into `platform_adapter.factory` (crypto only). They remain reachable through the legacy factory and the broker-connection page. Recommendation: keep until the owner selects the traditional-market venue(s) for the H-019 draft (decision D1 in `research/trend_v2_tradfi/SPEC.md`); then remove the unselected ones. |
 | 10 | News, events, Signal Center | decide after Step 3 | **PARTIAL KEEP; REMAINDER PENDING** | **Keep:** `app/events` calendar sync and ingestion, `economic_events` / `event_blackout_windows` and `shared_lib/persistence/economic_events.py`. CATI reads them through `integration/context_adapters.py` (cycle_shadow, cati_dispatch, venue_context, pipeline/readiness). **Pending owner:** `app/news` (31 files), Signal Center (`app/signals`, user page `/dashboard/signals`, admin pages). These are live product surfaces, so their removal is a product decision. |
 
-## Batch 5 removal plan (approved, dependency-checked, ready)
+## Batch 5 record (approved, dependency-checked, executed)
 
 Evidence of current wiring:
 
@@ -65,6 +65,44 @@ Order of the removal commit:
 legacy `migrate()` creates them and `fill_provenance.py` references them; dropping them would be a destructive
 migration and is out of scope.
 
+### What was removed
+
+- `app/queue/` (the external-signal processor).
+- The TradingView webhook router and its registration.
+- The `/api/admin/tradingview/limited-status` and `/processor-status` routes, with their helpers.
+- The disabled external-signal block in `multi_runner.py`. It was dead code (`_ext_enabled = False`).
+- `shared_lib/tradingview_symbol_mapper.py`, used only by the webhook.
+- The user-backend `admin_tradingview.py` and the admin-backend TradingView API and repository, with their
+  registrations.
+- The admin TradingView page, route, sidebar entry, API functions, axios client and environment flag.
+- The 10 TradingView scripts.
+- The five dedicated test files: `test_tradingview_webhook.py`, `test_external_signal_processor.py`,
+  `test_tradingview_phase5_proof.py`, `test_phase6_limited_validation_runtime.py`, and user-backend
+  `test_admin_tradingview_api.py`.
+- The tests in mixed files that target the removed code:
+  - `TestExternalSignalConfidence` / `TestExternalConfidence`;
+  - the webhook section of `test_api_auth_hardening.py`;
+  - the admin-backend TradingView route tests.
+- 11 quarantine entries that covered only removed tests. The list goes from 117 to 106.
+
+### What was kept, and why
+
+- `shared_lib/persistence/tradingview.py`, its tables and the payload-redaction helper (with its unit test). They hold
+  historical signal and decision data; dropping them would be a destructive migration.
+- `reports/tradingview_phase6/`: historical evidence.
+- The configuration flags and the production-profile guards that force them off. A safety guard is not removed in a
+  cleanup.
+- `_phase6_runtime_fingerprint` and `/api/admin/tradingview/runtime-fingerprint`. Despite the name they are the
+  generic process fingerprint behind the `/health` redaction security tests. Renaming them is a follow-up.
+
+### Verification
+
+- Admin backend: 80 passed, 6 xfailed.
+- Auth hardening: 82 passed.
+- The TradingView-adjacent and runner suites: 343 passed.
+- Admin frontend: type check and lint clean; 49 tests passed.
+- Exact-commit CI: see the tracker.
+
 ## Batch 6 plan (blocked on the rule above)
 
 If the owner lifts the retain-until-M9 rule for the scorer, the change set is:
@@ -82,8 +120,9 @@ If the owner lifts the retain-until-M9 rule for the scorer, the change set is:
 
 ## Test quarantine disposition
 
-`.github/known-test-failures.list` holds **117 entries**: 108 bot-backend, 6 admin-backend, 3 root. On Linux CI
-run 39024969808 every one of them failed again (108 + 6 + 3 xfailed, **0 xpassed**). The quarantine is therefore an
+`.github/known-test-failures.list` held **117 entries** (108 bot-backend, 6 admin-backend, 3 root) before Batch 5, and
+holds **106** after it. On Linux CI run 39024969808 every one of the 117 failed again (108 + 6 + 3 xfailed,
+**0 xpassed**). The quarantine is therefore an
 accurate list of live failures. None can be removed without fixing the test or retiring its subsystem. The
 assignment says the list should be emptied after Batch 7 and before Step 6. Batch 7 is blocked (above), so the list
 is **not emptied**, and nothing was skipped or broadened to make it look emptier.

@@ -88,24 +88,6 @@ class TestGuardWiredInRunner:
         assert "_bot_id_guard" in self.SRC
 
 
-class TestExternalConfidence:
-    def test_none_returns_none(self):
-        from app.api.tradingview import _safe_confidence
-        assert _safe_confidence(None) is None
-
-    def test_empty_returns_none(self):
-        from app.api.tradingview import _safe_confidence
-        assert _safe_confidence("") is None
-
-    def test_not_1_for_none(self):
-        from app.api.tradingview import _safe_confidence
-        assert _safe_confidence(None) != 1.0
-
-    def test_valid_accepted(self):
-        from app.api.tradingview import _safe_confidence
-        assert _safe_confidence(0.75) == pytest.approx(0.75)
-
-
 class TestConfigD:
     def test_daily_close_enabled(self):
         from app.core.config import settings
