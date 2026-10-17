@@ -327,6 +327,19 @@ app = FastAPI(
     openapi_url="/openapi.json" if API_DOCS_ENABLED else None,
 )
 
+@app.middleware("http")
+async def _process_role_guard(request, call_next):
+    """PROCESS_ROLE=api refuses state-changing routes that only the trading process can perform."""
+    from app.ops import process_role
+
+    if process_role.refused_in_api_role(request.method, request.url.path):
+        from fastapi.responses import JSONResponse
+
+        return JSONResponse({"detail": "ROUTE_SERVED_BY_TRADING_PROCESS", "process_role": process_role.role()},
+                            status_code=409)
+    return await call_next(request)
+
+
 # --- CORS Middleware ---
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -615,13 +628,20 @@ async def _startup_runtime_supervisor():
     or collector stalled -- and exits non-zero so the service manager restarts
     the runtime. Production serving processes only.
     """
-    from app.ops import runtime_supervisor
+    from app.ops import process_role, runtime_supervisor
 
+    if not process_role.runs_trading():
+        return  # an API process has no trading loop to supervise
     runtime_supervisor.start()
 
 
 @app.on_event("startup")
 async def _startup_run_manager():
+    from app.ops import process_role
+
+    if not process_role.runs_trading():
+        print("[RUNNER] PROCESS_ROLE=api: no runner, no runtime-ownership lease, no background loops")
+        return
     # create a run record in DB
     info = run_manager.start()
     print(f"[RUN] started run_id={info.run_id} mode={info.mode}")
@@ -834,6 +854,10 @@ real_time_news_worker = build_real_time_news_worker(db=_worker_db)
 
 @app.on_event("startup")
 async def _startup_notifications():
+    from app.ops import process_role
+
+    if not process_role.runs_trading():
+        return
     # Start the worker loop in background
     asyncio.create_task(notification_worker.start())
     asyncio.create_task(backtest_worker.start())
@@ -910,6 +934,10 @@ async def _await_runtime_ownership(timeout_s: float = 90.0) -> tuple[bool, str]:
 @app.on_event("startup")
 async def _startup_background_jobs():
     """Register background jobs only in the process that owns the runtime."""
+    from app.ops import process_role
+
+    if not process_role.runs_trading():
+        return
 
     async def _when_owner() -> None:
         allowed, reason = await _await_runtime_ownership()
@@ -3081,7 +3109,12 @@ async def health(request: _HealthRequest = None, ready: bool = False):
     }
     if not _health_request_is_local(request):
         body = _redact_health_for_remote(body)
+    from app.ops import process_role
+
+    body["process_role"] = process_role.role()
     state = (production_health.get("runtime") or {}).get("state", "UNSUPERVISED")
+    if not process_role.runs_trading():
+        state = "UNSUPERVISED"  # an API process is ready when it answers; trading readiness is the trading process's
     if ready and state not in ("HEALTHY", "UNSUPERVISED"):
         from fastapi.encoders import jsonable_encoder
         from fastapi.responses import JSONResponse

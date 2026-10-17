@@ -1,0 +1,90 @@
+{
+ "postgresql": {
+  "accounts": 200,
+  "accounts_with_orders": 200,
+  "acknowledged_without_venue_order": 0,
+  "checks": {
+   "drain_faster_than_ttl": true,
+   "every_account_protected": true,
+   "every_intent_resolved_after_restart": true,
+   "no_ack_without_order": true,
+   "no_duplicate_orders": true,
+   "recovery_adds_only_never_reached_orders": true,
+   "takeover_within_one_lease_plus_poll": true,
+   "takeovers_recorded": true
+  },
+  "dialect": "postgresql",
+  "drain_faster_than_ttl": true,
+  "drain_handover_ms": 219,
+  "drain_releases": 300,
+  "duplicate_client_ids": 0,
+  "fair_split_s": 1.6090000001713634,
+  "intents": {
+   "ACKNOWLEDGED": 1984
+  },
+  "kill_to_full_ownership_wall_ms": 3032,
+  "left_submitting_at_stop": 28,
+  "limits": "Separate OS processes on one workstation against a database-backed fake venue. Not a hosted staging run, not venue latency, not a Linux certification.",
+  "passed": true,
+  "recovery_added_orders": 0,
+  "recovery_outcomes": {
+   "ACKNOWLEDGED": 28
+  },
+  "schema": "cosmicforge-worker-kill-drill-v1",
+  "split": {
+   "A": 100,
+   "B": 100
+  },
+  "started_at_utc": "2026-10-17T10:33:12Z",
+  "submitting_never_reached_venue": 0,
+  "takeover_events": 100,
+  "takeover_ms_after_kill": 2750,
+  "takeover_within_one_lease_plus_poll": true,
+  "ttl_ms": 3000,
+  "venue_orders": 1984
+ },
+ "sqlite": {
+  "accounts": 200,
+  "accounts_with_orders": 200,
+  "acknowledged_without_venue_order": 0,
+  "checks": {
+   "drain_faster_than_ttl": true,
+   "every_account_protected": true,
+   "every_intent_resolved_after_restart": true,
+   "no_ack_without_order": true,
+   "no_duplicate_orders": true,
+   "recovery_adds_only_never_reached_orders": true,
+   "takeover_within_one_lease_plus_poll": true,
+   "takeovers_recorded": true
+  },
+  "dialect": "sqlite",
+  "drain_faster_than_ttl": true,
+  "drain_handover_ms": 359,
+  "drain_releases": 300,
+  "duplicate_client_ids": 0,
+  "fair_split_s": 1.0629999998491257,
+  "intents": {
+   "ACKNOWLEDGED": 1995
+  },
+  "kill_to_full_ownership_wall_ms": 2859,
+  "left_submitting_at_stop": 19,
+  "limits": "Separate OS processes on one workstation against a database-backed fake venue. Not a hosted staging run, not venue latency, not a Linux certification.",
+  "passed": true,
+  "recovery_added_orders": 0,
+  "recovery_outcomes": {
+   "ACKNOWLEDGED": 19
+  },
+  "schema": "cosmicforge-worker-kill-drill-v1",
+  "split": {
+   "A": 100,
+   "B": 100
+  },
+  "started_at_utc": "2026-10-17T10:33:31Z",
+  "submitting_never_reached_venue": 0,
+  "takeover_events": 100,
+  "takeover_ms_after_kill": 2640,
+  "takeover_within_one_lease_plus_poll": true,
+  "ttl_ms": 3000,
+  "venue_orders": 1995
+ }
+}

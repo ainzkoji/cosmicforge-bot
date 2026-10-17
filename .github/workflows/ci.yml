@@ -233,3 +233,46 @@ jobs:
         GITHUB_TOKEN: ${{ github.token }}
         PR_NUMBER: ${{ github.event.pull_request.number }}
       run: python3 "$GITHUB_WORKSPACE/.github/scripts/ci_report.py" "Frontend (${{ github.job }})" "$RUNNER_TEMP/build.log" "$RUNNER_TEMP/test.log" "$RUNNER_TEMP/eslint.json"
+
+  containers:
+    name: Containers (build, migrate job, API smoke)
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    env:
+      IMAGE_TAG: ci-${{ github.sha }}
+    steps:
+    - uses: actions/checkout@v4
+    - name: Build backend images
+      run: |
+        for svc in bot-backend user-backend; do
+          docker build -f deploy/containers/backend.Dockerfile --build-arg SERVICE=$svc \
+            --build-arg BUILD_REVISION=${{ github.sha }} -t cosmicforge/$svc:$IMAGE_TAG .
+        done
+    - name: Image carries no local state or credentials
+      run: |
+        docker run --rm cosmicforge/bot-backend:$IMAGE_TAG sh -c \
+          'test -z "$(find /srv/cosmicforge -name .env -o -name "*.db" -o -name "*firebase-adminsdk*" | head -1)" && id -u | grep -qv "^0$"'
+    - name: Staging stack -- migrate job and bot API process
+      working-directory: deploy/staging
+      run: |
+        mkdir -p secrets && echo "ci-only-$RANDOM$RANDOM" > secrets/postgres_password
+        sed -e "s#<secret>#ci-placeholder#g" \
+            -e "s#^PLATFORM_DATABASE_URL=.*#PLATFORM_DATABASE_URL=postgresql://cosmicforge:$(cat secrets/postgres_password)@postgres:5432/cosmicforge#" \
+            staging.env.example > staging.env
+        docker compose -f docker-compose.staging.yml config -q
+        docker compose -f docker-compose.staging.yml up -d postgres
+        docker compose -f docker-compose.staging.yml run --rm migrate
+        docker compose -f docker-compose.staging.yml run --rm migrate python -m shared_lib.persistence.sql migrate | tee second.json
+        grep -q '"applied": \[\]' second.json
+        docker compose -f docker-compose.staging.yml run --rm migrate python -m shared_lib.persistence.sql check-compat --app-min 1 --app-max 99
+        docker compose -f docker-compose.staging.yml up -d --no-deps bot-api
+        for i in $(seq 1 60); do
+          docker compose -f docker-compose.staging.yml exec -T bot-api curl -fsS http://127.0.0.1:8000/health > health.json && break
+          sleep 3
+        done
+        python3 -c "import json;d=json.load(open('health.json'));assert d['process_role']=='api',d.get('process_role');print('bot-api ready, role api')"
+        test "$(docker compose -f docker-compose.staging.yml exec -T bot-api curl -s -o /dev/null -w '%{http_code}' -X POST http://127.0.0.1:8000/api/v1/emergency/flatten)" = 409
+    - name: Stack logs on failure
+      if: failure()
+      working-directory: deploy/staging
+      run: docker compose -f docker-compose.staging.yml logs --no-color --tail 200 || true

@@ -1,0 +1,117 @@
+# CosmicForge staging stack (Section H, Step 5.6). Production-representative topology on one host:
+#
+#   postgres          shared platform database (assignments, jobs, order budgets, launch records)
+#   migrate           one-shot: applies the versioned platform migrations, then exits; every service waits for it
+#   bot-trading       PROCESS_ROLE=trading: the ONLY process that may hold the runtime-ownership lease
+#                     (exactly one replica; it owns the canonical broker cycle, stop management and the shadow
+#                     scheduler). Graceful stop = SIGTERM -> runtime quiesce; exchange-side stops stay resting.
+#   bot-api           PROCESS_ROLE=api: customer/admin HTTP of the bot backend; never trades (2 replicas)
+#   user-backend      portal API (users and admins)
+#   admin-backend     admin read models
+#   user-frontend / admin-frontend   static portals
+#   healthcheck       readiness probe of the trading process every 2 minutes (scripts/vps_health_check.py)
+#
+# Secrets are never in this file or in an image: they come from STAGING_ENV_FILE (default ./staging.env,
+# created from staging.env.example and kept outside version control). Staging trades nothing: the env file
+# keeps LIVE_ORDER_SUBMISSION_ENABLED=false and DEMO_ORDER_SUBMISSION_ENABLED=false, and the CATI gates refuse
+# every uncertified family regardless.
+name: cosmicforge-staging
+
+x-backend: &backend
+  env_file: [${STAGING_ENV_FILE:-./staging.env}]
+  restart: unless-stopped
+  read_only: true
+  tmpfs: [/tmp]
+  security_opt: ["no-new-privileges:true"]
+  cap_drop: [ALL]
+  depends_on:
+    migrate: {condition: service_completed_successfully}
+  volumes:
+    - runtime-state:/var/lib/cosmicforge
+
+services:
+  postgres:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: cosmicforge
+      POSTGRES_DB: cosmicforge
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
+    secrets: [postgres_password]
+    volumes: [pg-data:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U cosmicforge -d cosmicforge"]
+      interval: 5s
+      retries: 20
+
+  migrate:
+    image: cosmicforge/bot-backend:${IMAGE_TAG:?set IMAGE_TAG}
+    env_file: [${STAGING_ENV_FILE:-./staging.env}]
+    depends_on:
+      postgres: {condition: service_healthy}
+    working_dir: /srv/cosmicforge/backends/shared
+    command: ["python", "-m", "shared_lib.persistence.sql", "migrate"]
+    restart: "no"
+
+  bot-trading:
+    <<: *backend
+    image: cosmicforge/bot-backend:${IMAGE_TAG:?set IMAGE_TAG}
+    environment:
+      PROCESS_ROLE: trading
+      DATABASE_URL: sqlite:////var/lib/cosmicforge/cosmicforge.db
+    stop_signal: SIGTERM
+    stop_grace_period: 120s       # long enough for the runtime to finish its cycle and quiesce
+    deploy: {replicas: 1}
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS 'http://127.0.0.1:8000/health?ready=1' || exit 1"]
+      interval: 15s
+      start_period: 120s
+
+  bot-api:
+    <<: *backend
+    image: cosmicforge/bot-backend:${IMAGE_TAG:?set IMAGE_TAG}
+    environment:
+      PROCESS_ROLE: api
+      DATABASE_URL: sqlite:////var/lib/cosmicforge/cosmicforge.db
+    deploy: {replicas: 2}
+
+  user-backend:
+    <<: *backend
+    image: cosmicforge/user-backend:${IMAGE_TAG:?set IMAGE_TAG}
+    environment:
+      DATABASE_URL: sqlite:////var/lib/cosmicforge/cosmicforge.db
+      BOT_BACKEND_URL: http://bot-trading:8000
+    ports: ["127.0.0.1:18000:8000"]
+
+  admin-backend:
+    <<: *backend
+    image: cosmicforge/admin-backend:${IMAGE_TAG:?set IMAGE_TAG}
+    environment:
+      DATABASE_URL: sqlite:////var/lib/cosmicforge/cosmicforge.db
+    ports: ["127.0.0.1:18100:8000"]
+
+  user-frontend:
+    image: cosmicforge/user-frontend:${IMAGE_TAG:?set IMAGE_TAG}
+    ports: ["127.0.0.1:18080:8080"]
+    restart: unless-stopped
+
+  admin-frontend:
+    image: cosmicforge/admin-frontend:${IMAGE_TAG:?set IMAGE_TAG}
+    ports: ["127.0.0.1:18081:8080"]
+    restart: unless-stopped
+
+  healthcheck:
+    image: cosmicforge/bot-backend:${IMAGE_TAG:?set IMAGE_TAG}
+    env_file: [${STAGING_ENV_FILE:-./staging.env}]
+    working_dir: /srv/cosmicforge
+    command: ["sh", "-c", "while true; do python scripts/vps_health_check.py --url http://bot-trading:8000 || true; sleep 120; done"]
+    depends_on: [bot-trading]
+    restart: unless-stopped
+
+secrets:
+  postgres_password:
+    file: ${POSTGRES_PASSWORD_FILE:-./secrets/postgres_password}
+
+volumes:
+  pg-data: {}
+  runtime-state: {}

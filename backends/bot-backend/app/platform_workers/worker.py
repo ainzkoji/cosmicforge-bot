@@ -128,7 +128,10 @@ class TradingWorker:
 
     def run_forever(self, *, interval_s: float = 5.0, stop: Optional[threading.Event] = None) -> None:
         stop = stop or threading.Event()
-        for sig in (signal.SIGTERM, signal.SIGINT):
+        # SIGTERM from systemd/containers; SIGBREAK is how Windows delivers CTRL_BREAK to a process group.
+        for sig in (signal.SIGTERM, signal.SIGINT, getattr(signal, "SIGBREAK", None)):
+            if sig is None:
+                continue
             try:
                 signal.signal(sig, lambda *_: stop.set())
             except ValueError:  # not the main thread

@@ -1,0 +1,152 @@
+{
+ "backup": {
+  "bytes": 4657152,
+  "sha256": "09eba6aa3f2991bea4833622d38e687f06e471ff50a1fdeac30ade9c9c0b3986"
+ },
+ "baseline": {
+  "foreign_key_violations": 1050,
+  "integrity_check": "ok",
+  "platform_version": 0,
+  "rows": 5756,
+  "tables": 254,
+  "user_version": 0
+ },
+ "changed_tables": [
+  "news_sources"
+ ],
+ "checks": {
+  "crash_left_no_partial_version": true,
+  "fk_violations_not_increased": true,
+  "historical_content_unchanged": true,
+  "integrity_ok": true,
+  "postgres_copy_counts_match": true,
+  "postgres_foreign_keys_present": true,
+  "postgres_restore_counts_match": true,
+  "read_write_after_restart": true,
+  "repeat_is_noop": true,
+  "restore_equals_baseline": true,
+  "rollback_leaves_legacy_untouched": true,
+  "rollback_removed_platform_tables": true,
+  "row_counts_preserved": true
+ },
+ "exercise": {
+  "assignment_claimed": 1,
+  "job_enqueued": true,
+  "legacy_users_read": 25,
+  "platform_health_ready": true,
+  "platform_schema_version": 3
+ },
+ "exercise_after_reapply": {
+  "assignment_claimed": 1,
+  "job_enqueued": true,
+  "legacy_users_read": 25,
+  "platform_health_ready": true,
+  "platform_schema_version": 3
+ },
+ "finished_at_utc": "2026-10-17T10:29:52Z",
+ "limits": "A disposable copy on a workstation. It rehearses the procedure; it is not a migration of the production database, which needs the owner's authorization and a maintenance window.",
+ "migration": {
+  "crash": "simulated crash inside platform migration 2",
+  "duration_ms": 204.7,
+  "partial_tables_after_crash": 0,
+  "platform_applied": [
+   2,
+   3
+  ],
+  "platform_version": 3,
+  "version_after_crash": 1
+ },
+ "new_tables": [
+  "platform_account_assignments",
+  "platform_accounts",
+  "platform_assignment_history",
+  "platform_job_attempts",
+  "platform_jobs",
+  "platform_order_intents",
+  "platform_order_slots",
+  "platform_schema_migrations",
+  "platform_symbol_budgets",
+  "platform_workers"
+ ],
+ "passed": true,
+ "postgresql": {
+  "applied": [
+   1,
+   2,
+   3
+  ],
+  "copy_matches_sqlite": true,
+  "counts_after_copy": {
+   "platform_account_assignments": 1,
+   "platform_accounts": 1,
+   "platform_assignment_history": 1,
+   "platform_job_attempts": 0,
+   "platform_jobs": 1,
+   "platform_order_intents": 0,
+   "platform_order_slots": 0,
+   "platform_symbol_budgets": 0,
+   "platform_workers": 1
+  },
+  "counts_after_restore": {
+   "platform_account_assignments": 1,
+   "platform_accounts": 1,
+   "platform_assignment_history": 1,
+   "platform_job_attempts": 0,
+   "platform_jobs": 1,
+   "platform_order_intents": 0,
+   "platform_order_slots": 0,
+   "platform_symbol_budgets": 0,
+   "platform_workers": 1
+  },
+  "database": "cfdrill_bddf766d59",
+  "dump_ms": 200.6,
+  "dump_sha256": "8a251d59cc3381393cd9767db345ba309e33ac3a71fe7e9c124c7c2eb70d4840",
+  "fk_constraints": 8,
+  "health_after_restore": true,
+  "numeric_money_columns": 8,
+  "restore_matches": true,
+  "restore_ms": 183.5
+ },
+ "reapply": [
+  1,
+  2,
+  3
+ ],
+ "reseeded_tables": {
+  "news_sources": "legacy migrate() upserts the built-in RSS sources and resets is_enabled, rss_url, fetch_interval_seconds and updated_at on every run (finding MIG-F1: an operator's disabled source is re-enabled by each deploy)"
+ },
+ "restore": {
+  "ms": 118.1
+ },
+ "rollback": {
+  "undone": [
+   3,
+   2,
+   1
+  ]
+ },
+ "sanitize": {
+  "emails_replaced": 125,
+  "secret_values_blanked": 500
+ },
+ "schema": "cosmicforge-migration-drill-v1",
+ "source": {
+  "kind": "REPRESENTATIVE_SYNTHETIC",
+  "refused_examples": {
+   "billing_payment_reviews": "CHECK constraint failed: kind IN ('REFUND', 'DISPUTE')",
+   "broker_transfer_requests": "CHECK constraint failed: status IN ('REQUESTED', 'VALIDATING', 'BLOCKED', 'SUBMITTING', 'SUBMITTED', 'CONFIRMATION_PENDI",
+   "broker_transfer_settings": "CHECK constraint failed: mode IN ('MANUAL_TRANSFER', 'AUTOMATED_INTERNAL_REALLOCATION')",
+   "cati_adapter_cert_actions": "NOT NULL constraint failed: cati_adapter_cert_actions.seq",
+   "cati_brake_restarts": "CHECK constraint failed: authorized_role IN ('USER', 'OPERATOR')",
+   "cati_emergency_requests": "CHECK constraint failed: scope IN ('ALL', 'ACCOUNT')",
+   "cati_execution_blocks": "CHECK constraint failed: scope IN ('ACCOUNT', 'SYMBOL')",
+   "cati_execution_events": "CHECK constraint failed: event_type IN ('STATE', 'VENUE_BEFORE', 'VENUE_AFTER', 'GATE', 'BLOCK', 'PROTECTION', 'NOTE')",
+   "cati_execution_intents": "CHECK constraint failed: state IN ('PLANNED', 'DEFERRED', 'SUBMITTING', 'OPEN', 'CANCELING', 'UNKNOWN', 'FILLED', 'PARTI",
+   "cati_exit_decisions": "CHECK constraint failed: action IN ('HOLD','REDUCE','EXIT','TIGHTEN_PROTECTION','TAKE_PARTIAL','NO_CHANGE_FALLBACK')"
+  },
+  "refused_tables": 25,
+  "rows_per_table": 25,
+  "seeded_tables": 229
+ },
+ "started_at_utc": "2026-10-17T10:29:48Z"
+}

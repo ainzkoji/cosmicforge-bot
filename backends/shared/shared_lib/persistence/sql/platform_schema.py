@@ -111,7 +111,28 @@ STEP5_MIGRATIONS: List[Migration] = [
 ]
 
 
+#: Per-area migration modules and their reserved version ranges. Each module exposes ``MIGRATIONS``; a
+#: version outside the module's range is refused, so independent work never collides on a number.
+MIGRATION_MODULES = (
+    ("launch_schema", 10, 19),          # Step 6: go-live authorization, beta stages, incidents
+    ("track_record_schema", 20, 29),    # Steps 6.4 / 8.6: performance recorder and publication
+    ("operations_schema", 30, 39),      # Step 8.5: alerting, on-call, status page, support desk
+)
+
+
 def all_migrations() -> List[Migration]:
-    """Every platform migration in version order. Later steps append their own lists here."""
-    from . import launch_schema
-    return sorted(STEP5_MIGRATIONS + launch_schema.MIGRATIONS, key=lambda m: m.version)
+    """Every platform migration in version order."""
+    import importlib
+    found: List[Migration] = list(STEP5_MIGRATIONS)
+    for name, lo, hi in MIGRATION_MODULES:
+        try:
+            module = importlib.import_module(f"{__package__}.{name}")
+        except ModuleNotFoundError as exc:
+            if exc.name != f"{__package__}.{name}":
+                raise
+            continue
+        for m in module.MIGRATIONS:
+            if not lo <= m.version <= hi:
+                raise ValueError(f"MIGRATION_VERSION_OUT_OF_RANGE:{name}:{m.version}")
+            found.append(m)
+    return sorted(found, key=lambda m: m.version)

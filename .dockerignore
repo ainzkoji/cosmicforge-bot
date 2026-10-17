@@ -1,0 +1,23 @@
+# Never ship local state, credentials or build output in an image.
+**/.env
+**/.env.*
+!**/.env.example
+**/*.db
+**/*.db-wal
+**/*.db-shm
+**/*firebase-adminsdk*.json
+**/venv
+**/node_modules
+**/dist
+**/__pycache__
+**/*.log
+**/*.txt.bak
+backups
+logs
+data
+reports
+tmp_*
+repo_cleanup_backup_*
+manual_tests
+models
+.git
