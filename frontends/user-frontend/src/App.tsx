@@ -35,6 +35,7 @@ import MyBots from '@/pages/MyBots';
 import BotDetails from '@/pages/BotDetails';
 import EditBot from '@/pages/EditBot';
 import Support from '@/pages/Support';
+import Status from '@/pages/Status';
 import DeveloperSettings from '@/pages/DeveloperSettings';
 import PaymentSuccess from '@/pages/PaymentSuccess';
 import Portfolio from '@/pages/Portfolio';
@@ -45,6 +46,7 @@ import BacktestDetails from '@/pages/Backtesting/BacktestDetails';
 import RiskDisclosure from '@/pages/legal/RiskDisclosure';
 import Terms from '@/pages/legal/Terms';
 import Privacy from '@/pages/legal/Privacy';
+import TrackRecord from '@/pages/TrackRecord';
 import { ErrorBoundary } from '@/components/System/ErrorBoundary';
 
 
@@ -75,6 +77,8 @@ function App() {
                 <Route path="/risk-disclosure" element={<RiskDisclosure />} />
                 <Route path="/terms" element={<Terms />} />
                 <Route path="/privacy" element={<Privacy />} />
+                <Route path="/status" element={<Status />} />
+                <Route path="/track-record" element={<TrackRecord />} />
                 <Route path="/login" element={<Login />} />
                 <Route path="/register" element={<Register />} />
                 <Route path="/verify-email" element={<VerifyEmail />} />

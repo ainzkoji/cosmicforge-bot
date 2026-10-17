@@ -1,0 +1,374 @@
+{
+ "backup": {
+  "bytes": 4235264,
+  "file": "cosmicforge-20261017T110603Z.db",
+  "quick_check": "ok",
+  "sha256": "4ec101135ae955d36e390bca535e7275584ed6cc540eb8d424ab63df0f11dcb9"
+ },
+ "checks": {
+  "account_configuration_equal": true,
+  "all_tables_equal_backup_snapshot": true,
+  "all_tables_equal_source_at_backup": true,
+  "artifact_is_not_plaintext_sqlite": true,
+  "backup_manifest_matches_file": true,
+  "credential_columns_not_plaintext": true,
+  "credentials_decrypt_only_with_secret_manager_key": true,
+  "decrypted_matches_manifest": true,
+  "foreign_key_violations_not_increased": true,
+  "governance_tables_have_rows": true,
+  "integrity_check_ok": true,
+  "offsite_uploader_refuses_plaintext": true,
+  "postgres_leg_passed": true,
+  "remote_copy_verified": true,
+  "remote_holds_no_plaintext_database": true,
+  "research_governance_equal": true,
+  "restored_credentials_still_ciphertext": true,
+  "rpo_measured_nonzero_for_post_backup_writes": true,
+  "secret_scan_clean": true,
+  "trading_intents_equal": true
+ },
+ "encryption": {
+  "age_available": false,
+  "gpg_available": true,
+  "key_fingerprint": "9e09df11694d1eed",
+  "key_source": "ephemeral key generated for this run, held in memory only (TEST ONLY)",
+  "method": "fernet-TEST-ONLY",
+  "note": "TEST-ONLY symmetric encryption: production off-site copies use age/gpg public-key encryption (scripts/offsite_backup.py); the private key is never on the server."
+ },
+ "finished_at": "2026-10-17T11:06:07.120720Z",
+ "limits": "Run on a workstation against a disposable database; the 'remote' is a local directory and the encryption is TEST-ONLY unless age/gpg recipients are configured. It rehearses the procedure; it does not prove the production off-site copy can be restored.",
+ "ok": true,
+ "outcome": "PASSED",
+ "postgres": {
+  "dump_ms": 272.1,
+  "health_after_restore": true,
+  "restore_equal": true,
+  "restored_database": "cfrestore_dst_c1a45442",
+  "rto_ms": 372.1,
+  "schema_version": 32,
+  "secret_scan": {
+   "findings": [],
+   "ok": true
+  },
+  "source_database": "cfrestore_src_d16182d1",
+  "status": "PASSED",
+  "tables": {
+   "ops_alert_deliveries": {
+    "hash_equal": true,
+    "rows_restored": 0,
+    "rows_source": 0
+   },
+   "ops_alert_events": {
+    "hash_equal": true,
+    "rows_restored": 6,
+    "rows_source": 6
+   },
+   "ops_alerts": {
+    "hash_equal": true,
+    "rows_restored": 2,
+    "rows_source": 2
+   },
+   "ops_status_incident_updates": {
+    "hash_equal": true,
+    "rows_restored": 1,
+    "rows_source": 1
+   },
+   "ops_status_incidents": {
+    "hash_equal": true,
+    "rows_restored": 1,
+    "rows_source": 1
+   },
+   "platform_account_assignments": {
+    "hash_equal": true,
+    "rows_restored": 5,
+    "rows_source": 5
+   },
+   "platform_accounts": {
+    "hash_equal": true,
+    "rows_restored": 5,
+    "rows_source": 5
+   },
+   "platform_assignment_history": {
+    "hash_equal": true,
+    "rows_restored": 5,
+    "rows_source": 5
+   },
+   "platform_job_attempts": {
+    "hash_equal": true,
+    "rows_restored": 0,
+    "rows_source": 0
+   },
+   "platform_jobs": {
+    "hash_equal": true,
+    "rows_restored": 5,
+    "rows_source": 5
+   },
+   "platform_order_intents": {
+    "hash_equal": true,
+    "rows_restored": 5,
+    "rows_source": 5
+   },
+   "platform_workers": {
+    "hash_equal": true,
+    "rows_restored": 1,
+    "rows_source": 1
+   }
+  },
+  "upload_verified": true
+ },
+ "rpo": {
+  "backup_age_at_restore_ms": 973,
+  "definition": "newest data in the source now minus newest data in the restored backup",
+  "restored_newest_ms": 1792235163606,
+  "rpo_ms": 441,
+  "simulated_post_backup_writes": true,
+  "source_newest_at_backup_ms": 1792235163606,
+  "source_newest_now_ms": 1792235164047,
+  "target": "UNSET (pending the operations owner's decision)"
+ },
+ "rto": {
+  "definition": "fetch from remote + decrypt + verify until the database is usable",
+  "rto_ms": 190.9,
+  "target": "UNSET (pending the operations owner's decision)"
+ },
+ "schema": "cosmicforge-restore-drill-v1",
+ "secret_restoration": "Broker credential, TOTP and KYC encryption keys are NOT in the backup and are never restored from it. They are restored from the secret manager (BROKER_SECRET_KEY, CREDENTIAL_KEY, KYC encryption key) into the service environment; see docs/operations/BACKUP_AND_RESTORE.md.",
+ "secret_scan": {
+  "credential_columns": {
+   "admin_sessions.refresh_token_hash": {
+    "HASH": 5
+   },
+   "admins.hashed_password": {
+    "HASH": 5
+   },
+   "admins.mfa_secret": {
+    "CIPHERTEXT": 5
+   },
+   "auth_sessions.refresh_token_hash": {
+    "HASH": 5
+   },
+   "broker_credentials.encrypted_blob": {
+    "CIPHERTEXT": 5
+   },
+   "broker_credentials_v2.encrypted_blob": {
+    "CIPHERTEXT": 5
+   },
+   "kyc_profiles.address_city_encrypted": {
+    "CIPHERTEXT": 5
+   },
+   "kyc_profiles.address_line1_encrypted": {
+    "CIPHERTEXT": 5
+   },
+   "kyc_profiles.address_postal_code_encrypted": {
+    "CIPHERTEXT": 5
+   },
+   "kyc_profiles.date_of_birth_encrypted": {
+    "CIPHERTEXT": 5
+   },
+   "kyc_profiles.full_legal_name_encrypted": {
+    "CIPHERTEXT": 5
+   },
+   "kyc_profiles.phone_encrypted": {
+    "CIPHERTEXT": 5
+   },
+   "kyc_reviews.notes_encrypted": {
+    "CIPHERTEXT": 5
+   },
+   "tradingview_webhooks.secret_hash": {
+    "HASH": 5
+   },
+   "tradingview_webhooks.token_hash": {
+    "HASH": 5
+   },
+   "users.hashed_password": {
+    "HASH": 5
+   },
+   "users.totp_secret": {
+    "CIPHERTEXT": 5
+   }
+  },
+  "finding_count": 0,
+  "findings": [],
+  "foreign_files": [],
+  "ok": true
+ },
+ "source": {
+  "credential_columns_made_realistic": {
+   "admin_sessions.refresh_token_hash": 5,
+   "admins.hashed_password": 5,
+   "admins.mfa_secret": 5,
+   "auth_sessions.refresh_token_hash": 5,
+   "broker_credentials.encrypted_blob": 5,
+   "broker_credentials_v2.encrypted_blob": 5,
+   "kyc_profiles.address_city_encrypted": 5,
+   "kyc_profiles.address_line1_encrypted": 5,
+   "kyc_profiles.address_postal_code_encrypted": 5,
+   "kyc_profiles.date_of_birth_encrypted": 5,
+   "kyc_profiles.full_legal_name_encrypted": 5,
+   "kyc_profiles.phone_encrypted": 5,
+   "kyc_reviews.notes_encrypted": 5,
+   "tradingview_webhooks.secret_hash": 5,
+   "tradingview_webhooks.token_hash": 5,
+   "users.hashed_password": 5,
+   "users.totp_secret": 5
+  },
+  "kind": "REPRESENTATIVE_SYNTHETIC",
+  "refused_examples": {
+   "billing_payment_reviews": "CHECK constraint failed: kind IN ('REFUND', 'DISPUTE')",
+   "broker_transfer_requests": "CHECK constraint failed: status IN ('REQUESTED', 'VALIDATING', 'BLOCKED', 'SUBMITTING', 'SUBMITTED', 'CONFIRMATION_PENDI",
+   "broker_transfer_settings": "CHECK constraint failed: mode IN ('MANUAL_TRANSFER', 'AUTOMATED_INTERNAL_REALLOCATION')",
+   "cati_adapter_cert_actions": "NOT NULL constraint failed: cati_adapter_cert_actions.seq",
+   "cati_brake_restarts": "CHECK constraint failed: authorized_role IN ('USER', 'OPERATOR')",
+   "cati_emergency_requests": "CHECK constraint failed: scope IN ('ALL', 'ACCOUNT')",
+   "cati_execution_blocks": "CHECK constraint failed: scope IN ('ACCOUNT', 'SYMBOL')",
+   "cati_execution_events": "CHECK constraint failed: event_type IN ('STATE', 'VENUE_BEFORE', 'VENUE_AFTER', 'GATE', 'BLOCK', 'PROTECTION', 'NOTE')",
+   "cati_execution_intents": "CHECK constraint failed: state IN ('PLANNED', 'DEFERRED', 'SUBMITTING', 'OPEN', 'CANCELING', 'UNKNOWN', 'FILLED', 'PARTI",
+   "cati_exit_decisions": "CHECK constraint failed: action IN ('HOLD','REDUCE','EXIT','TIGHTEN_PROTECTION','TAKE_PARTIAL','NO_CHANGE_FALLBACK')"
+  },
+  "refused_tables": 30,
+  "rows_per_table": 5,
+  "second_pass_seeded": {
+   "billing_payment_reviews": 5,
+   "broker_transfer_requests": 5,
+   "broker_transfer_settings": 5,
+   "cati_brake_restarts": 5,
+   "cati_execution_blocks": 5,
+   "cati_execution_events": 5,
+   "cati_execution_intents": 5,
+   "cati_exit_decisions": 5,
+   "cati_governance_controls": 5,
+   "cati_holdout_registry": 5,
+   "cati_portfolio_reservations": 5,
+   "cati_promotion_scopes": 5,
+   "cati_protection_replacements": 5,
+   "cati_protection_state": 5,
+   "cati_reservation_ledger": 5,
+   "cati_risk_decisions": 5,
+   "fx_reference_ingest_log": 5,
+   "market_ingest_log": 5,
+   "support_ticket_events": 5,
+   "support_ticket_messages": 5,
+   "support_tickets": 5,
+   "universe_manifests": 5
+  },
+  "seeded_tables": 232
+ },
+ "started_at": "2026-10-17T11:06:02.103842Z",
+ "upload": {
+  "objects": {
+   "cosmicforge-20261017T110603Z.db.enc": {
+    "bytes": 5647116,
+    "sha256_matches": true
+   },
+   "cosmicforge-20261017T110603Z.db.json": {
+    "bytes": 521,
+    "sha256_matches": true
+   }
+  },
+  "plaintext_databases_on_remote": [],
+  "remote_path_kind": "LOCAL_DIRECTORY_STANDING_IN_FOR_OFFSITE",
+  "verified": true
+ },
+ "verification": {
+  "account_configuration": {
+   "bot_instances": {
+    "hash_equal": true,
+    "rows_restored": 5,
+    "rows_source": 5
+   },
+   "broker_accounts": {
+    "hash_equal": true,
+    "rows_restored": 5,
+    "rows_source": 5
+   },
+   "broker_credentials": {
+    "hash_equal": true,
+    "rows_restored": 5,
+    "rows_source": 5
+   },
+   "broker_credentials_v2": {
+    "hash_equal": true,
+    "rows_restored": 5,
+    "rows_source": 5
+   }
+  },
+  "credentials_decrypt_only_with_secret_manager_key": true,
+  "integrity_check": "ok",
+  "research_governance": {
+   "cati_adapter_cert_actions": {
+    "hash_equal": true,
+    "rows_restored": 0,
+    "rows_source": 0
+   },
+   "cati_adapter_cert_checks": {
+    "hash_equal": true,
+    "rows_restored": 5,
+    "rows_source": 5
+   },
+   "cati_adapter_cert_events": {
+    "hash_equal": true,
+    "rows_restored": 5,
+    "rows_source": 5
+   },
+   "cati_certification_runs": {
+    "hash_equal": true,
+    "rows_restored": 5,
+    "rows_source": 5
+   },
+   "cati_certification_stage_results": {
+    "hash_equal": true,
+    "rows_restored": 5,
+    "rows_source": 5
+   },
+   "cati_experiment_registry": {
+    "hash_equal": true,
+    "rows_restored": 5,
+    "rows_source": 5
+   },
+   "cati_family_decisions": {
+    "hash_equal": true,
+    "rows_restored": 5,
+    "rows_source": 5
+   },
+   "cati_family_events": {
+    "hash_equal": true,
+    "rows_restored": 5,
+    "rows_source": 5
+   },
+   "cati_governance_controls": {
+    "hash_equal": true,
+    "rows_restored": 5,
+    "rows_source": 5
+   },
+   "cati_holdout_registry": {
+    "hash_equal": true,
+    "rows_restored": 5,
+    "rows_source": 5
+   },
+   "cati_promotion_phase_history": {
+    "hash_equal": true,
+    "rows_restored": 5,
+    "rows_source": 5
+   },
+   "cati_promotion_scopes": {
+    "hash_equal": true,
+    "rows_restored": 5,
+    "rows_source": 5
+   }
+  },
+  "rows": 1360,
+  "tables": 286,
+  "trading_intents": {
+   "cati_execution_intents": {
+    "hash_equal": true,
+    "rows_restored": 5,
+    "rows_source": 5
+   },
+   "platform_order_intents": {
+    "hash_equal": true,
+    "rows_restored": 5,
+    "rows_source": 5
+   }
+  }
+ }
+}

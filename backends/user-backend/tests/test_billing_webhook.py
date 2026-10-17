@@ -919,7 +919,7 @@ def test_period_end_is_read_from_the_subscription_item_and_filled_by_update(tmp_
 
 def test_unknown_event_type_is_ignored(tmp_path):
     db = _make_db(tmp_path)
-    result = _process(db, _event("charge.refunded", {"id": "ch_1"}, event_id="evt_unknown"))
+    result = _process(db, _event("customer.tax_id.created", {"id": "txi_1"}, event_id="evt_unknown"))
     assert result == {"status": "ignored", "result": "ignored:unhandled_type"}
     stored = _rows(db, "SELECT * FROM billing_events WHERE event_id = 'evt_unknown'")
     assert len(stored) == 1 and stored[0]["payload_json"] is None
@@ -931,8 +931,14 @@ def test_handled_event_types_are_exactly_the_documented_set():
         "checkout.session.completed",
         "invoice.paid",
         "invoice.payment_failed",
+        "customer.subscription.created",
         "customer.subscription.updated",
         "customer.subscription.deleted",
+        # Section H Step 8.1: refunds and disputes are recorded and flagged.
+        "charge.refunded",
+        "charge.dispute.created",
+        "charge.dispute.updated",
+        "charge.dispute.closed",
     }
 
 

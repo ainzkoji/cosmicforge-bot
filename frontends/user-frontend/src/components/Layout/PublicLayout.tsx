@@ -56,6 +56,7 @@ export function PublicLayout() {
                             <li><Link to="/features" className="hover:text-white">Features</Link></li>
                             <li><Link to="/pricing" className="hover:text-white">Pricing</Link></li>
                             <li><Link to="/how-it-works" className="hover:text-white">How it Works</Link></li>
+                            <li><Link to="/track-record" className="hover:text-white">Track Record</Link></li>
                         </ul>
                     </div>
                     <div>

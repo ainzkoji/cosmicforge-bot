@@ -1,7 +1,23 @@
 import { useState, useEffect } from "react";
-import { Check, CreditCard, Calendar, Zap, Shield, TrendingUp, Download, Loader2 } from "lucide-react";
+import { Check, CreditCard, Calendar, Zap, Shield, TrendingUp, Download, Loader2, AlertTriangle, ExternalLink } from "lucide-react";
 import { motion } from "framer-motion";
 import { api } from "../api/client";
+import { openBillingPortal } from "../api/billingPortal";
+import { deriveSubscriptionView, type Tone } from "../utils/billingStatus";
+
+const TONE_BADGE: Record<Tone, string> = {
+    ok: "bg-green-500/10 text-green-500 border-green-500/20",
+    warning: "bg-yellow-500/10 text-yellow-500 border-yellow-500/20",
+    error: "bg-red-500/10 text-red-500 border-red-500/20",
+    neutral: "bg-muted text-muted-foreground border-border",
+};
+
+const TONE_NOTICE: Record<Tone, string> = {
+    ok: "border-green-500/30 bg-green-500/10",
+    warning: "border-yellow-500/30 bg-yellow-500/10",
+    error: "border-red-500/30 bg-red-500/10",
+    neutral: "border-border bg-muted/40",
+};
 
 // --- Components ---
 
@@ -115,8 +131,10 @@ export default function Subscription() {
 
             if (subRes) {
                 setSubscription(subRes);
-                // If user has an active plan (that is not free), show dashboard by default
-                if (subRes.plan && subRes.plan.id !== 'plan_free') {
+                // Paid plan, or something the user must see (payment review /
+                // failure notices): show the dashboard by default.
+                const subView = deriveSubscriptionView(subRes);
+                if (subView.isPaid || subView.notices.length > 0) {
                     setView("dashboard");
                 }
             }
@@ -176,6 +194,16 @@ export default function Subscription() {
         }
     };
 
+    const handlePortal = async () => {
+        try {
+            // Payment method, cancellation and receipts are managed at the
+            // provider; any change reaches us only as a signed webhook.
+            window.location.href = await openBillingPortal();
+        } catch (err: unknown) {
+            alert(err instanceof Error && err.message ? err.message : "Could not open the billing portal.");
+        }
+    };
+
     const handleResume = async () => {
         try {
             await api.manageSubscription('resume');
@@ -198,7 +226,8 @@ export default function Subscription() {
         const entitlements = subscription.entitlements || {};
         // Real counts from GET /api/billing/subscription (bots / connected brokers).
         const usage = subscription.usage || {};
-        const formatDate = (value?: string | null) => value ? new Date(value).toLocaleDateString() : "—";
+        // Status, renewal date and notices come only from server-side state.
+        const billingView = deriveSubscriptionView(subscription);
 
         return (
             <div className="max-w-6xl mx-auto space-y-8 animate-in fade-in duration-500">
@@ -228,22 +257,11 @@ export default function Subscription() {
                                 <div>
                                     <div className="flex items-center gap-3 mb-1">
                                         <h2 className="text-2xl font-bold">{currentPlan.name} Plan</h2>
-                                        <span className={`px-2 py-0.5 rounded-full text-xs font-bold uppercase tracking-wide border ${subscription.status === 'active' ? 'bg-green-500/10 text-green-500 border-green-500/20' :
-                                            subscription.status === 'canceled' ? 'bg-yellow-500/10 text-yellow-500 border-yellow-500/20' :
-                                                'bg-red-500/10 text-red-500 border-red-500/20'
-                                            }`}>
-                                            {subscription.status}
+                                        <span className={`px-2 py-0.5 rounded-full text-xs font-bold uppercase tracking-wide border ${TONE_BADGE[billingView.tone]}`}>
+                                            {billingView.statusLabel}
                                         </span>
                                     </div>
-                                    <p className="text-muted-foreground text-sm">
-                                        {subscription.status === 'past_due'
-                                            ? `Your last payment failed. Update your payment method to keep your plan; access continues until ${formatDate(subscription.grace_period_end)}.`
-                                            : subscription.cancel_at_period_end
-                                                ? `Access continues until ${formatDate(subscription.current_period_end)}`
-                                                : subscription.current_period_end
-                                                    ? `Next billing date: ${formatDate(subscription.current_period_end)}`
-                                                    : "No billing scheduled."}
-                                    </p>
+                                    <p className="text-muted-foreground text-sm">{billingView.renewalLabel}</p>
                                 </div>
                                 <div className="text-right">
                                     <div className="text-xl font-bold">${currentPlan.price}<span className="text-sm font-normal text-muted-foreground">/{currentPlan.interval}</span></div>
@@ -253,11 +271,33 @@ export default function Subscription() {
                                 </div>
                             </div>
 
-                            <div className="flex gap-3 relative">
+                            {billingView.notices.length > 0 && (
+                                <div className="space-y-2 mb-6 relative">
+                                    {billingView.notices.map((notice) => (
+                                        <div key={notice.code} role="status" className={`flex items-start gap-2 rounded-lg border px-4 py-3 text-sm ${TONE_NOTICE[notice.tone]}`}>
+                                            <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" />
+                                            <span>
+                                                {notice.message}
+                                                {notice.until ? ` (until ${new Date(notice.until).toLocaleDateString()})` : ""}
+                                            </span>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+
+                            <div className="flex flex-wrap gap-3 relative">
                                 <button onClick={() => setView('pricing')} className="px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90 transition-colors">
                                     Change Plan
                                 </button>
-                                {subscription.status === 'active' && !subscription.cancel_at_period_end && currentPlan.id !== 'plan_free' && (
+                                {billingView.canOpenPortal && (
+                                    <button
+                                        onClick={handlePortal}
+                                        className="px-4 py-2 border border-border bg-background hover:bg-muted text-foreground rounded-lg text-sm font-medium transition-colors inline-flex items-center gap-2"
+                                    >
+                                        Manage payment & receipts <ExternalLink className="w-3 h-3" />
+                                    </button>
+                                )}
+                                {billingView.canCancel && (
                                     <button
                                         onClick={handleCancel}
                                         className="px-4 py-2 border border-border bg-background hover:bg-muted text-foreground rounded-lg text-sm font-medium transition-colors"
@@ -265,7 +305,7 @@ export default function Subscription() {
                                         Cancel Renewal
                                     </button>
                                 )}
-                                {subscription.cancel_at_period_end && currentPlan.id !== 'plan_free' && (
+                                {billingView.canResume && (
                                     <button
                                         onClick={handleResume}
                                         className="px-4 py-2 border border-border bg-background hover:bg-muted text-foreground rounded-lg text-sm font-medium transition-colors"

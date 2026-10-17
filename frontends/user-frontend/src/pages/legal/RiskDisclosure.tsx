@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { Link } from "react-router-dom";
+import { LegalDocumentView } from "@/components/Legal/LegalDocumentView";
 
 const SUPPORT_EMAIL = "support@cosmicforge.com";
 
@@ -12,7 +13,17 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
     );
 }
 
+/**
+ * The current published risk disclosure from /api/legal (shown with a DRAFT
+ * banner until counsel approval is recorded). The static text below is the
+ * fallback when the server cannot be reached; it is also the source of the
+ * seeded draft document.
+ */
 export default function RiskDisclosure() {
+    return <LegalDocumentView category="TRADING_RISK_DISCLOSURE" fallback={<StaticRiskDisclosure />} />;
+}
+
+function StaticRiskDisclosure() {
     return (
         <div className="bg-white">
             <article className="max-w-3xl mx-auto px-6 pt-32 pb-24 space-y-10 text-gray-700 leading-relaxed">

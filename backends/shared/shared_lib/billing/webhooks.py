@@ -31,6 +31,8 @@ import time
 from datetime import datetime, timedelta, timezone
 from typing import Any, Callable, Dict, List, Mapping, Optional
 
+from shared_lib.billing import audit as billing_audit
+from shared_lib.billing import reviews as billing_reviews
 from shared_lib.billing.entitlements import GRACE_PERIOD_DAYS, parse_ts, resolve_subscription
 from shared_lib.billing.plans import FREE_PLAN_ID, interval_for, is_paid_plan
 
@@ -299,25 +301,53 @@ def _save_subscription(conn, user_id: str, now_iso: str, **fields: Any) -> bool:
         operator_grants.defer_event(conn, active, {"at": now_iso, "fields": fields})
         log.warning("stripe write for user %s deferred: operator grant %s is active until %s",
                     user_id, active["grant_id"], active["expires_at"])
+        billing_audit.record(conn, action="subscription_write_deferred_by_operator_grant", user_id=user_id,
+                             details={"grant_id": active["grant_id"], "fields": fields}, now=now_iso)
         return False
-    exists = conn.execute("SELECT 1 FROM subscriptions WHERE user_id = ?", (user_id,)).fetchone()
-    if exists:
+    before = _get_subscription(conn, user_id)
+    if before is not None:
         cols = sorted(fields)
         assignments = ", ".join(f"{col} = ?" for col in cols)
         conn.execute(
             f"UPDATE subscriptions SET {assignments}, updated_at = ? WHERE user_id = ?",
             (*[fields[col] for col in cols], now_iso, user_id),
         )
-        return True
-    fields.setdefault("plan_id", FREE_PLAN_ID)
-    fields.setdefault("status", "incomplete")
-    cols = sorted(fields)
-    conn.execute(
-        f"INSERT INTO subscriptions (user_id, {', '.join(cols)}, created_at, updated_at) "
-        f"VALUES (?, {', '.join('?' for _ in cols)}, ?, ?)",
-        (user_id, *[fields[col] for col in cols], now_iso, now_iso),
-    )
+    else:
+        fields.setdefault("plan_id", FREE_PLAN_ID)
+        fields.setdefault("status", "incomplete")
+        cols = sorted(fields)
+        conn.execute(
+            f"INSERT INTO subscriptions (user_id, {', '.join(cols)}, created_at, updated_at) "
+            f"VALUES (?, {', '.join('?' for _ in cols)}, ?, ?)",
+            (user_id, *[fields[col] for col in cols], now_iso, now_iso),
+        )
+    # An open refund / dispute review keeps holding the entitlement whatever
+    # the provider writes (including on a freshly inserted row).
+    _sync_hold(conn, user_id)
+    after = _get_subscription(conn, user_id)
+    billing_audit.record(conn, action="subscription_updated" if before is not None else "subscription_created",
+                         user_id=user_id, before=billing_audit.snapshot(before),
+                         after=billing_audit.snapshot(after), now=now_iso)
     return True
+
+
+def _has_column(conn, table: str, column: str) -> bool:
+    return any(row[1] == column for row in conn.execute(f"PRAGMA table_info({table})").fetchall())
+
+
+def _reviews_table_exists(conn) -> bool:
+    return conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name='billing_payment_reviews'"
+    ).fetchone() is not None
+
+
+def _sync_hold(conn, user_id: str) -> None:
+    if not _reviews_table_exists(conn) or not _has_column(conn, "subscriptions", "billing_hold"):
+        return
+    hold = billing_reviews.holding_review_id(conn, user_id)
+    current = conn.execute("SELECT billing_hold FROM subscriptions WHERE user_id = ?", (user_id,)).fetchone()
+    if current is not None and current[0] != hold:
+        conn.execute("UPDATE subscriptions SET billing_hold = ? WHERE user_id = ?", (hold, user_id))
 
 
 def _user_exists(conn, user_id: str) -> bool:
@@ -507,7 +537,8 @@ def _upsert_invoice(
             created_at = excluded.created_at,
             provider_sub_id = excluded.provider_sub_id,
             plan_id = COALESCE(excluded.plan_id, invoices.plan_id)
-        WHERE invoices.status != 'paid' AND invoices.user_id = excluded.user_id
+        WHERE invoices.status NOT IN ('paid', 'refunded', 'partially_refunded', 'disputed')
+          AND invoices.user_id = excluded.user_id
         """,
         (
             inv["id"],
@@ -525,6 +556,19 @@ def _upsert_invoice(
             plan_id,
         ),
     )
+    # Lets a refund / dispute (which names a charge or payment intent) be
+    # traced to this invoice and its user, even when the row was not rewritten.
+    charge_id = _ref_id(inv.get("charge")) or _ref_id(_dig(inv, "payments", "data", 0, "payment", "charge"))
+    payment_intent_id = (
+        _ref_id(inv.get("payment_intent"))
+        or _ref_id(_dig(inv, "payments", "data", 0, "payment", "payment_intent"))
+    )
+    if (charge_id or payment_intent_id) and _has_column(conn, "invoices", "provider_charge_id"):
+        conn.execute(
+            "UPDATE invoices SET provider_charge_id = COALESCE(?, provider_charge_id), "
+            "provider_payment_intent_id = COALESCE(?, provider_payment_intent_id) WHERE id = ? AND user_id = ?",
+            (charge_id, payment_intent_id, inv["id"], user_id),
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -923,12 +967,130 @@ def _on_subscription_deleted(conn, ctx: _Ctx) -> str:
     return "ok:downgraded"
 
 
+def _invoice_for_charge(conn, charge_id: Optional[str], payment_intent_id: Optional[str],
+                        invoice_id: Optional[str]) -> Optional[Dict[str, Any]]:
+    has_cols = _has_column(conn, "invoices", "provider_charge_id")
+    if invoice_id:
+        row = _fetch_dict(conn, "SELECT * FROM invoices WHERE id = ?", (invoice_id,))
+        if row:
+            return row
+    if has_cols and charge_id:
+        row = _fetch_dict(conn, "SELECT * FROM invoices WHERE provider_charge_id = ?", (charge_id,))
+        if row:
+            return row
+    if has_cols and payment_intent_id:
+        row = _fetch_dict(conn, "SELECT * FROM invoices WHERE provider_payment_intent_id = ?", (payment_intent_id,))
+        if row:
+            return row
+    return None
+
+
+def _charge_owner(conn, *, customer_id: Optional[str], invoice: Optional[Dict[str, Any]],
+                  charge_id: Optional[str]) -> Optional[str]:
+    """User of a charge: stored customer mapping, then the invoice it paid, then
+    an earlier review of the same charge. Never metadata sent with the charge."""
+    owner = _customer_owner(conn, customer_id)
+    if owner:
+        return owner
+    if invoice and invoice.get("user_id"):
+        return str(invoice["user_id"])
+    if charge_id and _reviews_table_exists(conn):
+        row = conn.execute(
+            "SELECT user_id FROM billing_payment_reviews WHERE charge_id = ? AND user_id IS NOT NULL LIMIT 1",
+            (charge_id,),
+        ).fetchone()
+        if row:
+            return str(row[0])
+    return None
+
+
+def _mark_invoice(conn, invoice: Optional[Dict[str, Any]], status: str) -> None:
+    if invoice and invoice.get("id"):
+        conn.execute("UPDATE invoices SET status = ? WHERE id = ?", (status, invoice["id"]))
+
+
+def _on_charge_refunded(conn, ctx: _Ctx) -> str:
+    """Refund: recorded and flagged for an operator (see shared_lib.billing.reviews).
+
+    A full refund holds the paid entitlement until an operator decides; a
+    partial refund is flagged without holding it.
+    """
+    charge = ctx.obj
+    charge_id = charge.get("id")
+    if not charge_id:
+        return "ignored:no_charge_id"
+    if not _reviews_table_exists(conn):
+        raise RuntimeError("billing_payment_reviews is missing: run migrate()")
+    amount = _as_int(charge.get("amount"))
+    refunded = _as_int(charge.get("amount_refunded")) or 0
+    full = bool(charge.get("refunded")) or (amount is not None and amount > 0 and refunded >= amount)
+    payment_intent_id = _ref_id(charge.get("payment_intent"))
+    invoice = _invoice_for_charge(conn, charge_id, payment_intent_id, _ref_id(charge.get("invoice")))
+    user_id = _charge_owner(conn, customer_id=_ref_id(charge.get("customer")), invoice=invoice, charge_id=charge_id)
+    review = billing_reviews.upsert_review(
+        conn, kind="REFUND", provider_object_id=charge_id, user_id=user_id, charge_id=charge_id,
+        invoice_id=(invoice or {}).get("id"), amount_minor=amount, amount_refunded_minor=refunded,
+        currency=charge.get("currency"), reason=_dig(charge, "refunds", "data", 0, "reason"),
+        provider_status="refunded" if full else "partially_refunded", full_refund=full,
+        holds_entitlement=full and bool(user_id), event_id=ctx.event.get("id"), event_created=ctx.created,
+        now_iso=ctx.now_iso,
+    )
+    _mark_invoice(conn, invoice, "refunded" if full else "partially_refunded")
+    billing_reviews.recompute_hold(conn, user_id, ctx.now_iso)
+    if not user_id:
+        log.error("refund of charge %s could not be matched to a user; flagged for operator review", charge_id)
+        return "flagged:unmatched_refund"
+    return f"flagged:{'full' if full else 'partial'}_refund:{review['review_id']}"
+
+
+def _on_dispute(conn, ctx: _Ctx) -> str:
+    """Dispute (chargeback) opened or updated: recorded, flagged, entitlement held."""
+    dispute = ctx.obj
+    dispute_id = dispute.get("id")
+    if not dispute_id:
+        return "ignored:no_dispute_id"
+    if not _reviews_table_exists(conn):
+        raise RuntimeError("billing_payment_reviews is missing: run migrate()")
+    charge_obj = dispute.get("charge")
+    charge_id = _ref_id(charge_obj)
+    payment_intent_id = _ref_id(dispute.get("payment_intent")) or _ref_id(_dig(charge_obj, "payment_intent"))
+    invoice = _invoice_for_charge(conn, charge_id, payment_intent_id, _ref_id(_dig(charge_obj, "invoice")))
+    user_id = _charge_owner(conn, customer_id=_ref_id(_dig(charge_obj, "customer")), invoice=invoice,
+                            charge_id=charge_id)
+    status = str(dispute.get("status") or "").lower() or None
+    closed = ctx.event.get("type") == "charge.dispute.closed"
+    review = billing_reviews.upsert_review(
+        conn, kind="DISPUTE", provider_object_id=dispute_id, user_id=user_id, charge_id=charge_id,
+        invoice_id=(invoice or {}).get("id"), amount_minor=_as_int(dispute.get("amount")),
+        amount_refunded_minor=None, currency=dispute.get("currency"), reason=dispute.get("reason"),
+        provider_status=status, full_refund=False,
+        # A dispute holds the entitlement from the moment it is opened; its
+        # closing outcome (won / lost) is recorded but only an operator lifts it.
+        holds_entitlement=bool(user_id), event_id=ctx.event.get("id"), event_created=ctx.created,
+        now_iso=ctx.now_iso,
+    )
+    if not closed:
+        _mark_invoice(conn, invoice, "disputed")
+    billing_reviews.recompute_hold(conn, user_id, ctx.now_iso)
+    if not user_id:
+        log.error("dispute %s could not be matched to a user; flagged for operator review", dispute_id)
+        return "flagged:unmatched_dispute"
+    return f"flagged:dispute_{'closed' if closed else 'opened'}:{review['review_id']}"
+
+
 _HANDLERS: Dict[str, Callable[[Any, _Ctx], str]] = {
     "checkout.session.completed": _on_checkout_completed,
     "invoice.paid": _on_invoice_paid,
     "invoice.payment_failed": _on_invoice_payment_failed,
+    # created carries the same subscription object as updated; the same
+    # ordering guards apply (an "incomplete" snapshot never undoes a payment).
+    "customer.subscription.created": _on_subscription_updated,
     "customer.subscription.updated": _on_subscription_updated,
     "customer.subscription.deleted": _on_subscription_deleted,
+    "charge.refunded": _on_charge_refunded,
+    "charge.dispute.created": _on_dispute,
+    "charge.dispute.updated": _on_dispute,
+    "charge.dispute.closed": _on_dispute,
 }
 
 HANDLED_EVENT_TYPES = tuple(sorted(_HANDLERS))
@@ -984,7 +1146,11 @@ def process_stripe_event(
         if cur.rowcount == 0:
             return {"status": "duplicate", "result": "duplicate"}
 
-        result = handler(conn, ctx) if handler is not None else (forced_result or "ignored:unhandled_type")
+        with billing_audit.event_context(str(event_id), str(event_type)):
+            result = handler(conn, ctx) if handler is not None else (forced_result or "ignored:unhandled_type")
+            if handler is not None:
+                billing_audit.record(conn, action="provider_event_applied", details={"result": result},
+                                     now=ctx.now_iso)
         conn.execute(
             "UPDATE billing_events SET processed_at = ?, result = ? WHERE provider = ? AND event_id = ?",
             (ctx.now_iso, result, PROVIDER, str(event_id)),

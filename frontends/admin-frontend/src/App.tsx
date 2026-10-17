@@ -33,6 +33,8 @@ import { NewsIntelligence } from '@/pages/admin/NewsIntelligence';
 import TradingView from '@/pages/admin/TradingView';
 import Signals from '@/pages/admin/Signals';
 import SignalPairs from '@/pages/admin/SignalPairs';
+import Operations from '@/pages/admin/Operations';
+import SupportDesk from '@/pages/admin/SupportDesk';
 import { ErrorBoundary } from '@/components/System/ErrorBoundary';
 
 const queryClient = new QueryClient({
@@ -99,6 +101,8 @@ function App() {
                 <Route path="/admin/bot/runs/:runId" element={<BotRunDetails />} />
                 <Route path="/admin/transactions" element={<Transactions />} />
                 <Route path="/admin/activity" element={<ActivityFeed />} />
+                <Route path="/admin/operations" element={<Operations />} />
+                <Route path="/admin/support" element={<SupportDesk />} />
               </Route>
 
               {/* The legacy end-user pages (/welcome, /onboarding, /payment-success and

@@ -1,9 +1,17 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { useAuth } from "@/auth/AuthContext";
 import { Mail, Lock, CheckCircle, ArrowRight, ShieldCheck } from "lucide-react";
 
-import { api } from "@/api/client";
+import { api, type RegisterRequest } from "@/api/client";
+import { getCurrentDocuments } from "@/api/legal";
+import { acceptancePayload, allAccepted, categoryLabel, isDraft, type LegalDocument } from "@/utils/legalDocuments";
+
+const LEGAL_ROUTES: Record<string, string> = {
+    TERMS_OF_SERVICE: "/terms",
+    PRIVACY_POLICY: "/privacy",
+    TRADING_RISK_DISCLOSURE: "/risk-disclosure",
+};
 
 export default function Register() {
     const navigate = useNavigate();
@@ -20,10 +28,26 @@ export default function Register() {
 
     const { register } = useAuth();
     const [error, setError] = useState<string | null>(null);
-    // Must be ticked by the user; never pre-checked. This records ONLY the Risk
-    // Disclosure acknowledgement: the Terms and Privacy pages are placeholders,
-    // so no terms acceptance is claimed or recorded until real terms exist.
+    // Must be ticked by the user; never pre-checked. Terms / Privacy acceptance
+    // is asked for (and recorded) only once a version of them is published.
     const [acceptedRisk, setAcceptedRisk] = useState(false);
+    // Section H Step 8.2: the published documents sign-up asks for. Each one
+    // that exists must be ticked; the exact versions shown (doc id + content
+    // hash) are sent so the server records what was actually accepted.
+    const [legalDocs, setLegalDocs] = useState<LegalDocument[]>([]);
+    const [acceptedDocs, setAcceptedDocs] = useState<Record<string, boolean>>({});
+
+    useEffect(() => {
+        let active = true;
+        getCurrentDocuments({ purpose: "registration" })
+            .then((res) => { if (active) setLegalDocs(res.documents); })
+            .catch(() => { if (active) setLegalDocs([]); });
+        return () => { active = false; };
+    }, []);
+
+    const riskDoc = legalDocs.find((doc) => doc.category === "TRADING_RISK_DISCLOSURE") ?? null;
+    const otherDocs = legalDocs.filter((doc) => doc.category !== "TRADING_RISK_DISCLOSURE");
+    const legalComplete = acceptedRisk && allAccepted(otherDocs, acceptedDocs);
 
     const handleRegister = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -41,17 +65,25 @@ export default function Register() {
             setIsLoading(false);
             return;
         }
+        if (!allAccepted(otherDocs, acceptedDocs)) {
+            setError("Please accept each of the listed documents.");
+            setIsLoading(false);
+            return;
+        }
         const acceptedAt = new Date().toISOString();
+        const accepted = [...(riskDoc ? [riskDoc] : []), ...otherDocs];
 
         try {
-            await register({
+            const request: RegisterRequest & { legal_acceptances: ReturnType<typeof acceptancePayload> } = {
                 email: formData.email,
                 password: formData.password,
                 confirmed_password: formData.confirmPassword, // Updated backend expects this
-                // terms_accepted_at is deliberately not sent (optional on the
-                // backend): there are no published terms to accept yet.
+                // terms_accepted_at is deliberately not sent: acceptance of any
+                // published terms is recorded per version in legal_acceptances.
                 risk_disclaimer_accepted_at: acceptedAt,
-            });
+                legal_acceptances: acceptancePayload(accepted),
+            };
+            await register(request);
             // On success, backend usually returns user or token.
             // AuthContext.register typically auto-logs in or just returns.
             // Assuming we need to verify email next:
@@ -208,13 +240,35 @@ export default function Register() {
                             />
                             <span>
                                 I have read and understood the{" "}
-                                <Link to="/risk-disclosure" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline font-semibold">Risk Disclosure</Link>.
+                                <Link to="/risk-disclosure" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline font-semibold">Risk Disclosure</Link>
+                                {riskDoc && isDraft(riskDoc) ? " (draft, version " + riskDoc.version + ")" : ""}.
                             </span>
                         </label>
 
+                        {otherDocs.map((doc) => (
+                            <label key={doc.doc_id} className="flex items-start gap-3 text-sm cursor-pointer">
+                                <input
+                                    type="checkbox"
+                                    required
+                                    checked={acceptedDocs[doc.doc_id] === true}
+                                    onChange={e => setAcceptedDocs({ ...acceptedDocs, [doc.doc_id]: e.target.checked })}
+                                    className="mt-0.5 h-4 w-4 shrink-0"
+                                />
+                                <span>
+                                    I accept the{" "}
+                                    {LEGAL_ROUTES[doc.category] ? (
+                                        <Link to={LEGAL_ROUTES[doc.category]} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline font-semibold">{categoryLabel(doc.category)}</Link>
+                                    ) : (
+                                        <span className="font-semibold">{categoryLabel(doc.category)}</span>
+                                    )}
+                                    {isDraft(doc) ? ` (draft, version ${doc.version})` : ""}.
+                                </span>
+                            </label>
+                        ))}
+
                         <button
                             type="submit"
-                            disabled={isLoading || !acceptedRisk}
+                            disabled={isLoading || !legalComplete}
                             className="w-full h-11 bg-primary text-primary-foreground rounded-lg font-bold hover:bg-primary/90 transition-all shadow-lg hover:shadow-primary/25 disabled:opacity-50 flex items-center justify-center gap-2"
                         >
                             {isLoading ? "Creating Account..." : "Create Account"} <ArrowRight className="w-4 h-4" />

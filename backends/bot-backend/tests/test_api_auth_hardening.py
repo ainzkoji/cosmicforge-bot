@@ -103,6 +103,7 @@ PUBLIC_ROUTES = {
     "/health": "liveness / readiness probe for uptime monitors",
     "/cati": "static monitor shell; every API call it makes is authenticated",
     "/api/v1/tradingview/webhook/{token_or_id}": "authenticated by the per-webhook token, not a user session",
+    "/api/v1/public/track-record": "published, aggregated, min-count-suppressed track record; read-only, no account data",
 }
 
 # Served by FastAPI / Starlette itself (not application endpoints). The docs

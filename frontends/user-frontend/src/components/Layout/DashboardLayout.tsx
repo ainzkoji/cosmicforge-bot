@@ -12,6 +12,7 @@ import { useAuth } from "@/auth/AuthContext";
 import { motion, AnimatePresence } from "framer-motion";
 import { NotificationBell } from "../Dashboard/NotificationBell";
 import { TradingModeBanner } from "./TradingModeBanner";
+import { ReconsentPrompt } from "../Legal/ReconsentPrompt";
 
 export function DashboardLayout() {
     const [isSidebarOpen, setSidebarOpen] = useState(true);
@@ -263,6 +264,8 @@ export function DashboardLayout() {
                 <main className="flex-1 overflow-y-auto p-6 md:p-8 scroll-smooth">
                     <Outlet />
                 </main>
+                {/* Section H Step 8.2: new or materially changed legal documents */}
+                <ReconsentPrompt />
             </div>
 
             {/* Mobile Overlay */}

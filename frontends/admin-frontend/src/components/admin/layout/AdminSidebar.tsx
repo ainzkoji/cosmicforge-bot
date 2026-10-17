@@ -20,6 +20,8 @@ import {
     Network,
     Database,
     Gavel,
+    BellRing,
+    LifeBuoy,
 } from "lucide-react";
 import logo from "../../../assets/logo.png";
 
@@ -51,6 +53,8 @@ const navItems: NavItem[] = [
     { path: "/admin/signals", icon: RadioTower, label: "Admin Signals", exact: true },
     { path: "/admin/signals/pairs", icon: Network, label: "Signal Pairs", sub: true },
     { path: "/admin/compliance", icon: Shield, label: "Compliance" },
+    { path: "/admin/operations", icon: BellRing, label: "Operations" },
+    { path: "/admin/support", icon: LifeBuoy, label: "Support Desk" },
 ];
 
 export function AdminSidebar() {

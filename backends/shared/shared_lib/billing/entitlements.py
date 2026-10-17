@@ -125,6 +125,7 @@ def _free_state(row: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         "provider_status": row.get("status"),
         "checkout_session_id": row.get("checkout_session_id"),
         "previous_plan_id": row.get("previous_plan_id"),
+        "billing_hold": row.get("billing_hold"),
     }
 
 
@@ -145,6 +146,15 @@ def resolve_subscription(row: Optional[Dict[str, Any]], now: Optional[datetime] 
     if not is_paid_plan(plan_id) or plan_id not in PLAN_LIMITS:
         state = _free_state(row)
         state["expired"] = False
+        return state
+    if row.get("billing_hold"):
+        # A refund or dispute is under operator review (shared_lib.billing.reviews):
+        # the paid entitlement is suspended, not silently kept. Nothing is
+        # persisted -- the operator's resolution lifts or keeps the hold.
+        state = _free_state(row)
+        state["expired"] = False
+        state["previous_plan_id"] = plan_id
+        state["provider_status"] = status
         return state
 
     period_end = parse_ts(row.get("current_period_end"))
@@ -186,6 +196,7 @@ def resolve_subscription(row: Optional[Dict[str, Any]], now: Optional[datetime] 
             "provider_status": status,
             "checkout_session_id": row.get("checkout_session_id"),
             "previous_plan_id": row.get("previous_plan_id"),
+            "billing_hold": None,
             "expired": False,
         }
 
@@ -287,6 +298,17 @@ def get_effective_plan(
         if state.pop("expired", False) and persist and row:
             outcome = _try_persist_expiry(conn, row, now)
             if outcome:
+                try:
+                    from shared_lib.billing import audit as billing_audit
+                    billing_audit.record(
+                        conn, action="subscription_expired", user_id=str(user_id), actor_type="system",
+                        before=billing_audit.snapshot(row),
+                        after=billing_audit.snapshot(dict(row, plan_id=FREE_PLAN_ID, status="expired",
+                                                          previous_plan_id=row.get("plan_id"))),
+                        now=now.isoformat(),
+                    )
+                except sqlite3.Error as exc:  # the downgrade stands; the audit row is best effort here
+                    log.warning("subscription expiry audit not written for user=%s: %s", user_id, exc)
                 state["provider_status"] = "expired"
                 log.info(
                     "subscription expired: user=%s plan=%s status=%s period_end=%s -> %s",

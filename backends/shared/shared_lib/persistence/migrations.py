@@ -2846,3 +2846,12 @@ def migrate(db_path: str | DB = None):
     # Additive: one new table and its triggers; nothing existing is touched.
     from shared_lib.persistence.markets_schema import ensure_markets_schema
     ensure_markets_schema(db)
+
+    # 50) Section H Step 8.2: versioned legal documents, binding acceptances, country
+    # eligibility and the append-only legal audit log. Additive; seeds DRAFT documents only.
+    from shared_lib.legal.schema import ensure_legal_schema
+    ensure_legal_schema(db)
+
+    # 51) Section H Step 8.5: support desk (tickets, append-only messages and events). Additive.
+    from shared_lib.persistence.support_schema import ensure_support_schema
+    ensure_support_schema(db)

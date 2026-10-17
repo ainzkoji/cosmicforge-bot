@@ -188,6 +188,8 @@ from app.api.auto_pilot_proxy import router as auto_pilot_proxy_router
 app.include_router(auto_pilot_proxy_router, prefix="/api/v1/auto-pilot", tags=["Auto Pilot Proxy"])
 from app.api.markets_proxy import router as markets_proxy_router  # Step 7.3: market availability (read-only)
 app.include_router(markets_proxy_router)
+from app.api.track_record_proxy import router as track_record_proxy_router  # Steps 6.4/8.6: public, no auth
+app.include_router(track_record_proxy_router)
 
 
 # Events Proxy (SSE streaming for real-time updates)
@@ -215,7 +217,19 @@ app.include_router(admin_governance_router, prefix="/api", tags=["Admin Governan
 from app.api.admin_billing import router as admin_billing_router  # operator plan grants (Step 1.5)
 app.include_router(admin_billing_router, prefix="/api", tags=["Admin Billing"])
 
+from app.api.legal import router as legal_router  # Section H Step 8.2: legal documents + consent
+app.include_router(legal_router, prefix="/api", tags=["Legal"])
 
+from app.api.admin_legal import router as admin_legal_router  # Section H Step 8.2: publish / counsel review
+app.include_router(admin_legal_router, prefix="/api", tags=["Admin Legal"])
+
+# Section H Step 8.5: support desk, public status page, admin operations (alerts, on-call, drills, incidents)
+from app.api.support import router as support_router, admin_router as admin_support_router
+app.include_router(support_router, prefix="/api", tags=["Support"])
+app.include_router(admin_support_router, prefix="/api", tags=["Admin Support"])
+from app.api.operations import public_router as public_status_router, admin_router as admin_operations_router
+app.include_router(public_status_router, tags=["Public Status"])
+app.include_router(admin_operations_router, prefix="/api", tags=["Admin Operations"])
 
 from app.api.admin_events import router as admin_events_router
 app.include_router(admin_events_router, prefix="/api", tags=["Admin Events"])

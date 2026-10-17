@@ -381,6 +381,8 @@ app.include_router(auto_pilot_router, prefix="/api/v1/auto-pilot")
 
 from app.api.markets import router as markets_router  # Step 7.3: market availability (read-only)
 app.include_router(markets_router)
+from app.api.public_track_record import router as public_track_record_router  # Steps 6.4/8.6: public, read-only
+app.include_router(public_track_record_router)
 
 from app.api.readiness_admin import router as readiness_admin_router
 app.include_router(readiness_admin_router)

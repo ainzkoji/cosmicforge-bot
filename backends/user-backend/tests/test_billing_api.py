@@ -232,8 +232,8 @@ def test_old_unsigned_payload_shape_grants_nothing(tmp_path, monkeypatch):
 
 def test_webhook_unknown_event_type_is_acknowledged_and_ignored(tmp_path, monkeypatch):
     ctx = _make(tmp_path, monkeypatch)
-    event = {"id": "evt_other", "object": "event", "type": "charge.refunded", "created": int(time.time()),
-             "livemode": False, "data": {"object": {"id": "ch_1"}}}
+    event = {"id": "evt_other", "object": "event", "type": "customer.tax_id.created", "created": int(time.time()),
+             "livemode": False, "data": {"object": {"id": "txi_1"}}}
     payload = json.dumps(event).encode()
     res = _post_webhook(ctx, payload, _sign(payload))
     assert res.status_code == 200

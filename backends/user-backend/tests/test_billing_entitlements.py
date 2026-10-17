@@ -595,7 +595,12 @@ def test_test_mode_key_rejected_in_production_unless_opted_in(tmp_path, monkeypa
     provider = billing_service.get_provider()
     assert (provider.name, provider.mode) == ("stripe", "test")
 
+    # Section H Step 8.1: a live key is refused until live mode is explicitly authorized.
     _service(tmp_path / "c", monkeypatch, production=True, STRIPE_SECRET_KEY="sk_live_placeholder_not_a_key")
+    with pytest.raises(billing_service.BillingNotConfigured, match="BILLING_LIVE_MODE_AUTHORIZED"):
+        billing_service.get_provider()
+    _service(tmp_path / "d", monkeypatch, production=True, STRIPE_SECRET_KEY="sk_live_placeholder_not_a_key",
+             BILLING_LIVE_MODE_AUTHORIZED="true")
     provider = billing_service.get_provider()
     assert (provider.name, provider.mode) == ("stripe", "live")
     assert fake_stripe.api_key == "sk_live_placeholder_not_a_key"

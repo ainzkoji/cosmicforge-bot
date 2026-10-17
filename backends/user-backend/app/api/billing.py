@@ -160,6 +160,12 @@ def manage_subscription(
                 raise HTTPException(status_code=400, detail="No pending cancellation to resume.")
             return {"status": "resumed", "message": "Subscription will renew at period end."}
 
+        elif req.action == "portal":
+            # Provider-hosted portal: payment method, cancellation, receipts.
+            # Changes made there reach us only as signed webhooks.
+            result = billing_service.create_portal_session(user_id)
+            return {"status": "portal", "portal_url": result["url"]}
+
         elif req.action == "upgrade":
             if not req.plan_id:
                 raise HTTPException(status_code=400, detail="Plan ID required for upgrade.")

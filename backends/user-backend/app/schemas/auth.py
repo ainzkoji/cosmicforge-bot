@@ -57,6 +57,11 @@ class RefreshTokenReq(BaseModel):
 
 
 # --- User Schemas ---
+class LegalAcceptanceItem(BaseModel):
+    doc_id: str = Field(..., min_length=1, max_length=200)
+    content_sha256: str = Field(..., min_length=64, max_length=64)
+
+
 class UserCreate(BaseModel):
     email: EmailStr
     password: str = Field(..., min_length=PASSWORD_MIN_LENGTH, max_length=PASSWORD_MAX_BYTES)
@@ -68,6 +73,10 @@ class UserCreate(BaseModel):
     marketing_session_id: Optional[str] = None
     selected_plan_id: Optional[str] = None
     confirmed_password: Optional[str] = None
+    # Section H Step 8.2: the exact legal document versions the sign-up form
+    # showed and the user ticked, as {doc_id, content_sha256}. Recorded only
+    # when they match the current published text (shared_lib.legal).
+    legal_acceptances: Optional[List[LegalAcceptanceItem]] = Field(None, max_length=20)
 
     @field_validator("password")
     @classmethod

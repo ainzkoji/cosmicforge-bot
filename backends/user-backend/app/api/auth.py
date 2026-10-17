@@ -479,6 +479,24 @@ def register(user: UserCreate, request: Request):
 
             audit_event(conn, "user_registered", user_id=uid, email=email, ip=ip)
 
+            # Section H Step 8.2: record the legal document versions the form
+            # showed and the user accepted (bound to their content hash). Only
+            # for a newly created account; never fails the sign-up -- anything
+            # not recorded is asked for again after sign-in.
+            if user.legal_acceptances:
+                from shared_lib.legal.documents import record_registration_acceptances
+                try:
+                    conn.execute("SAVEPOINT legal_registration")
+                    record_registration_acceptances(
+                        conn, uid, [item.model_dump() for item in user.legal_acceptances],
+                        ip=ip, user_agent=request.headers.get("user-agent"),
+                    )
+                    conn.execute("RELEASE SAVEPOINT legal_registration")
+                except Exception as exc:
+                    conn.execute("ROLLBACK TO SAVEPOINT legal_registration")
+                    conn.execute("RELEASE SAVEPOINT legal_registration")
+                    logger.warning("[AUTH] registration legal acceptances not recorded: %s", type(exc).__name__)
+
         otp = _issue_code(conn, "email_verifications", uid, OTP_EXPIRE_MINUTES)
         audit_event(conn, "verification_sent", user_id=uid, email=email, ip=ip)
         _deliver_code(email, "verification", otp)

@@ -96,3 +96,99 @@ def ensure_billing_schema(conn) -> None:
         "CREATE UNIQUE INDEX IF NOT EXISTS idx_billing_events_provider_event "
         "ON billing_events(provider, event_id) WHERE event_id IS NOT NULL"
     )
+
+    ensure_billing_launch_schema(conn)
+
+
+def ensure_billing_launch_schema(conn) -> None:
+    """Section H Step 8.1 additions. Additive and idempotent.
+
+    * ``subscriptions.billing_hold``: id of the payment review (refund /
+      dispute) that suspends the paid entitlement until an operator decides.
+    * ``invoices.provider_charge_id`` / ``provider_payment_intent_id``: let a
+      refund or dispute (which names a charge) be traced back to the invoice
+      and its user.
+    * ``billing_payment_reviews``: every refund and dispute Stripe reports.
+    * ``billing_audit_log``: append-only record of every billing state change.
+    """
+    _add_column_if_missing(conn, "subscriptions", "billing_hold", "TEXT")
+    _add_column_if_missing(conn, "invoices", "provider_charge_id", "TEXT")
+    _add_column_if_missing(conn, "invoices", "provider_payment_intent_id", "TEXT")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_invoices_provider_charge ON invoices(provider_charge_id)")
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_invoices_provider_payment_intent ON invoices(provider_payment_intent_id)"
+    )
+
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS billing_payment_reviews (
+            review_id TEXT PRIMARY KEY,
+            kind TEXT NOT NULL CHECK (kind IN ('REFUND', 'DISPUTE')),
+            provider TEXT NOT NULL DEFAULT 'stripe',
+            provider_object_id TEXT NOT NULL,
+            charge_id TEXT,
+            invoice_id TEXT,
+            user_id TEXT,
+            amount_minor INTEGER,
+            amount TEXT,
+            amount_refunded_minor INTEGER,
+            currency TEXT,
+            reason TEXT,
+            provider_status TEXT,
+            full_refund INTEGER NOT NULL DEFAULT 0,
+            holds_entitlement INTEGER NOT NULL DEFAULT 0,
+            review_status TEXT NOT NULL DEFAULT 'OPEN'
+                CHECK (review_status IN ('OPEN', 'RESOLVED_KEEP_ACCESS', 'RESOLVED_REVOKE_ACCESS')),
+            first_event_id TEXT,
+            last_event_id TEXT,
+            last_event_created INTEGER,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            resolved_at TEXT,
+            resolved_by TEXT,
+            resolution_note TEXT,
+            UNIQUE (provider, kind, provider_object_id)
+        )
+        """
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_billing_payment_reviews_user ON billing_payment_reviews(user_id, review_status)"
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_billing_payment_reviews_charge ON billing_payment_reviews(charge_id)"
+    )
+
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS billing_audit_log (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            occurred_at TEXT NOT NULL,
+            actor_type TEXT NOT NULL,
+            actor_id TEXT,
+            user_id TEXT,
+            action TEXT NOT NULL,
+            provider_event_id TEXT,
+            provider_event_type TEXT,
+            before_json TEXT,
+            after_json TEXT,
+            details_json TEXT
+        )
+        """
+    )
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_billing_audit_user ON billing_audit_log(user_id, id)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_billing_audit_event ON billing_audit_log(provider_event_id)")
+    # Append-only: rows can be added, never changed or removed.
+    conn.execute(
+        """
+        CREATE TRIGGER IF NOT EXISTS trg_billing_audit_log_no_update
+        BEFORE UPDATE ON billing_audit_log
+        BEGIN SELECT RAISE(ABORT, 'billing_audit_log is append-only'); END
+        """
+    )
+    conn.execute(
+        """
+        CREATE TRIGGER IF NOT EXISTS trg_billing_audit_log_no_delete
+        BEFORE DELETE ON billing_audit_log
+        BEGIN SELECT RAISE(ABORT, 'billing_audit_log is append-only'); END
+        """
+    )

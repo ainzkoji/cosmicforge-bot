@@ -48,6 +48,13 @@ class SubscriptionStatus(BaseModel):
     grace_period_end: Optional[str] = None # set while past_due: access ends then
     entitlements: Dict[str, Any] # computed capabilities
     usage: SubscriptionUsage = SubscriptionUsage() # resources counted against the limits
+    # Section H Step 8.1 (all derived server-side from webhook-recorded state)
+    billing_enforced: bool = False
+    source: str = "free" # stripe | operator_grant | free
+    provider_status: Optional[str] = None # the provider's status even when the plan shown is free
+    billing_hold: bool = False # a refund / dispute review suspends the paid plan
+    notices: List[Dict[str, Any]] = []
+    portal_available: bool = False # a provider customer exists: the portal link can be requested
 
 class Invoice(BaseModel):
     id: str

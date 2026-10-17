@@ -81,6 +81,17 @@ def _stripe_key_mode(secret_key: str) -> str:
     return "test" if "_test_" in secret_key else "live"
 
 
+def live_mode_authorized() -> bool:
+    """A live Stripe key may only be used after an explicit operator decision.
+
+    ``BILLING_LIVE_MODE_AUTHORIZED=true`` is that decision. Without it a live
+    secret key (``sk_live_`` / ``rk_live_``, or any key that is not a test key)
+    is refused everywhere, so a live key pasted into the environment cannot
+    start charging customers on its own.
+    """
+    return _flag("BILLING_LIVE_MODE_AUTHORIZED")
+
+
 def _test_mode_allowed() -> bool:
     """Stripe test mode (test keys, test-card events) may only grant plans outside
     production, unless the operator explicitly opts in for a pre-launch dry run."""
@@ -112,10 +123,76 @@ def price_to_plan_map() -> Dict[str, str]:
 
 
 def _price_id_for(plan_id: str) -> str:
+    env_name = PLAN_PRICE_ENV.get(plan_id, plan_id)
     price_id = stripe_price_ids().get(plan_id)
-    if not price_id or price_id not in price_to_plan_map():
-        raise BillingNotConfigured(f"{PLAN_PRICE_ENV.get(plan_id, plan_id)} is not configured")
+    if not price_id:
+        raise BillingNotConfigured(
+            f"no Stripe price is configured for {plan_id}: set {env_name} to the Price ID from the Stripe dashboard"
+        )
+    if price_id not in price_to_plan_map():
+        raise BillingNotConfigured(f"{env_name} uses a Price ID that is also configured for another plan")
     return price_id
+
+
+def billing_config_status() -> Dict[str, Any]:
+    """Operator view of the billing configuration (no secret values).
+
+    ``ready`` is True only when checkout can work for every paid plan: a
+    secret key that may be used here, a webhook signing secret, and one
+    distinct Price ID per paid plan. ``errors`` explains every refusal.
+    """
+    from shared_lib.billing.enforcement import billing_enforced
+
+    errors: List[str] = []
+    warnings: List[str] = []
+    secret_key = _cfg("STRIPE_SECRET_KEY")
+    key_mode = _stripe_key_mode(secret_key) if secret_key else None
+    if not secret_key:
+        if is_production():
+            errors.append("STRIPE_SECRET_KEY is not set")
+        else:
+            warnings.append("STRIPE_SECRET_KEY is not set (the local mock provider is used)")
+    elif key_mode == "live" and not live_mode_authorized():
+        errors.append("a live Stripe secret key is configured but BILLING_LIVE_MODE_AUTHORIZED is not true")
+    elif key_mode == "test" and not _test_mode_allowed():
+        errors.append("a Stripe test-mode key is configured in production (BILLING_ALLOW_STRIPE_TEST_MODE is not set)")
+    if secret_key and stripe is None:
+        errors.append("the stripe library is not installed")
+    if not _cfg("STRIPE_WEBHOOK_SECRET"):
+        errors.append("STRIPE_WEBHOOK_SECRET is not set: every webhook is rejected")
+
+    configured = stripe_price_ids()
+    mapping = price_to_plan_map()
+    prices = []
+    for plan_id, env_name in PLAN_PRICE_ENV.items():
+        price_id = configured.get(plan_id)
+        ok = bool(price_id) and price_id in mapping
+        if not price_id:
+            errors.append(f"{env_name} is not set (plan {plan_id} cannot be purchased)")
+        elif not ok:
+            errors.append(f"{env_name} shares its Price ID with another plan")
+        prices.append({"plan_id": plan_id, "env": env_name, "configured": bool(price_id), "valid": ok,
+                       "price_id": price_id or None})
+    try:
+        _frontend_base_url()
+    except BillingNotConfigured as exc:
+        errors.append(str(exc))
+
+    return {
+        "ready": not errors,
+        "errors": errors,
+        "warnings": warnings,
+        "production": is_production(),
+        "secret_key_configured": bool(secret_key),
+        "secret_key_mode": key_mode,
+        "live_mode_authorized": live_mode_authorized(),
+        "test_mode_allowed": _test_mode_allowed(),
+        "webhook_secret_configured": bool(_cfg("STRIPE_WEBHOOK_SECRET")),
+        "stripe_sdk_installed": stripe is not None,
+        "prices": prices,
+        "billing_enforced": billing_enforced(),
+        "handled_event_types": list(billing_webhooks.HANDLED_EVENT_TYPES),
+    }
 
 
 def _frontend_base_url() -> str:
@@ -323,6 +400,11 @@ class PaymentProvider(ABC):
     def change_plan(self, provider_sub_id: str, price_id: str, plan_id: str) -> bool:
         pass
 
+    def create_portal_session(self, *, customer_id: str, return_url: str) -> Dict[str, Any]:
+        """Provider-hosted page where the customer manages payment methods,
+        cancels, and downloads receipts. Not every provider has one."""
+        raise BillingNotConfigured(f"the {self.name} provider has no customer portal")
+
 
 class MockPaymentProvider(PaymentProvider):
     """Local development only. It never grants a plan: the returned URL simply
@@ -425,6 +507,10 @@ class StripePaymentProvider(PaymentProvider):
             log.error(f"Stripe resume failed: {e}")
             return False
 
+    def create_portal_session(self, *, customer_id: str, return_url: str) -> Dict[str, Any]:
+        session = stripe.billing_portal.Session.create(customer=customer_id, return_url=return_url)
+        return {"id": session.id, "url": session.url}
+
     def change_plan(self, provider_sub_id: str, price_id: str, plan_id: str) -> bool:
         """Move the existing subscription to another price (no second subscription).
 
@@ -469,6 +555,10 @@ def get_provider() -> PaymentProvider:
             raise BillingNotConfigured("STRIPE_SECRET_KEY is set but the stripe library is not installed")
         if _stripe_key_mode(secret_key) == "test" and not _test_mode_allowed():
             raise BillingNotConfigured("a Stripe test-mode key is configured in production")
+        if _stripe_key_mode(secret_key) == "live" and not live_mode_authorized():
+            raise BillingNotConfigured(
+                "a live Stripe secret key is configured but BILLING_LIVE_MODE_AUTHORIZED is not true"
+            )
         return StripePaymentProvider(secret_key)
     if is_production():
         raise BillingNotConfigured("STRIPE_SECRET_KEY is not configured")
@@ -628,11 +718,19 @@ def handle_stripe_webhook(payload: bytes, signature_header: Optional[str]) -> Di
 
 
 def _set_cancel_flag(db: DB, user_id: str, value: int) -> None:
+    from shared_lib.billing import audit as billing_audit
+    now = utc_now_iso()
     with db.connect() as conn:
-        conn.execute(
+        cur = conn.execute(
             "UPDATE subscriptions SET cancel_at_period_end = ?, updated_at = ? WHERE user_id = ? AND plan_id != ?",
-            (value, utc_now_iso(), user_id, FREE_PLAN_ID)
+            (value, now, user_id, FREE_PLAN_ID)
         )
+        if cur.rowcount:
+            billing_audit.record(
+                conn, action="cancel_at_period_end_requested" if value else "cancellation_withdrawn",
+                user_id=user_id, actor_type="user", actor_id=user_id,
+                details={"cancel_at_period_end": bool(value)}, now=now,
+            )
 
 
 def _stripe_provider_for(state: Dict[str, Any]) -> Optional["StripePaymentProvider"]:
@@ -680,6 +778,61 @@ def resume_subscription(user_id: str) -> bool:
 
     _set_cancel_flag(db, user_id, 0)
     return True
+
+
+def create_portal_session(user_id: str) -> Dict[str, Any]:
+    """Provider customer-portal link (payment method, cancellation, receipts).
+
+    Only for a user who already has a provider customer in the current mode;
+    the return URL comes from server configuration.
+    """
+    user_id = str(user_id)
+    provider = get_provider()
+    if provider.name != "stripe":
+        raise BillingNotConfigured("the customer portal needs Stripe to be configured")
+    customer_id = _stored_customer_id(_db(), user_id, provider.mode)
+    if not customer_id:
+        raise BillingError("No billing account yet: subscribe to a plan first.")
+    return_url = f"{_frontend_base_url()}{CHECKOUT_CANCEL_PATH}"
+    try:
+        return provider.create_portal_session(customer_id=customer_id, return_url=return_url)
+    except BillingNotConfigured:
+        raise
+    except Exception as exc:
+        log.exception("customer portal session failed for user %s", user_id)
+        raise BillingProviderError("The payment provider could not open the billing portal.") from exc
+
+
+def subscription_notices(state: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """User-visible notices derived from server-side subscription state only."""
+    notices: List[Dict[str, Any]] = []
+    status = str(state.get("provider_status") or state.get("status") or "").lower()
+    held = bool(state.get("billing_hold"))
+    if held:
+        notices.append({
+            "code": "PAYMENT_UNDER_REVIEW", "severity": "error",
+            "message": "A refund or payment dispute on your account is being reviewed. Paid features are "
+                       "paused until the review is finished. Contact support if you have questions.",
+        })
+    if state.get("is_paid") and status == "past_due":
+        notices.append({
+            "code": "PAYMENT_FAILED", "severity": "error",
+            "message": "Your last payment failed. Update your payment method to keep your plan.",
+            "until": state.get("grace_period_end"),
+        })
+    if state.get("is_paid") and state.get("cancel_at_period_end"):
+        notices.append({
+            "code": "CANCELLATION_SCHEDULED", "severity": "info",
+            "message": "Your subscription is set to end at the end of the current period.",
+            "until": state.get("current_period_end"),
+        })
+    ended = status in ("canceled", "expired", "unpaid")
+    if not state.get("is_paid") and ended and state.get("previous_plan_id") and not held:
+        notices.append({
+            "code": "SUBSCRIPTION_ENDED", "severity": "info",
+            "message": "Your paid subscription has ended. You are on the free plan.",
+        })
+    return notices
 
 
 def _plan_rank(plan_id: Optional[str]) -> tuple:
@@ -759,7 +912,24 @@ def get_user_subscription(user_id: str, *, persist: bool = False) -> Dict[str, A
         "billing_enforced": billing_enforced(),
         "source": "operator_grant" if state.get("provider") == "operator" and state.get("is_paid")
                   else ("stripe" if state.get("provider") == "stripe" and state.get("is_paid") else "free"),
+        # Section H Step 8.1: server-derived notices and portal availability.
+        "provider_status": state.get("provider_status"),
+        "billing_hold": bool(state.get("billing_hold")),
+        "notices": subscription_notices(state),
+        "portal_available": _portal_available(db, user_id),
     }
+
+
+def _portal_available(db: DB, user_id: str) -> bool:
+    """A provider customer exists for this user (the portal link can be offered)."""
+    try:
+        with db.connect() as conn:
+            row = conn.execute(
+                "SELECT 1 FROM billing_customers WHERE user_id = ? AND provider = 'stripe' LIMIT 1", (user_id,)
+            ).fetchone()
+        return row is not None
+    except sqlite3.Error:
+        return False
 
 
 def get_checkout_status(user_id: str, session_id: str) -> Optional[Dict[str, Any]]:

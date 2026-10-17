@@ -16,7 +16,9 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from app.core.deps import require_admin
+from shared_lib.billing import audit as billing_audit
 from shared_lib.billing import operator_grants
+from shared_lib.billing import reviews as billing_reviews
 from shared_lib.billing.enforcement import billing_enforced
 from shared_lib.persistence.db import DB, utc_now_iso
 
@@ -46,6 +48,8 @@ def _audit(db: DB, admin: Dict[str, Any], event_type: str, user_id: Optional[str
                 "INSERT INTO auth_audit_log (id, event_type, user_id, email, details, created_at) VALUES (?,?,?,?,?,?)",
                 (str(uuid.uuid4()), event_type, user_id, admin.get("email"),
                  json.dumps({"admin_id": admin.get("id"), **details}, sort_keys=True, default=str), utc_now_iso()))
+            billing_audit.record(conn, action=event_type, user_id=user_id, actor_type="operator",
+                                 actor_id=str(admin.get("id")), details=details)
     except Exception:  # pragma: no cover - audit must not mask the outcome
         pass
 
@@ -82,6 +86,51 @@ def revoke_grant(grant_id: str, body: RevokeRequest, admin: dict = Depends(requi
                             detail={"error_code": exc.code, "message": str(exc)})
     _audit(db, admin, "operator_plan_revoked", result["user_id"], result)
     return result
+
+
+# --------------------------------------------------------------------------- Step 8.1
+
+class ReviewResolution(BaseModel):
+    decision: str = Field(pattern="^(RESOLVED_KEEP_ACCESS|RESOLVED_REVOKE_ACCESS)$")
+    note: str = Field(min_length=3, max_length=1000)
+
+
+@router.get("/config")
+def billing_config(admin: dict = Depends(require_admin)) -> Dict[str, Any]:
+    """Billing configuration status: key mode, live-mode authorization, webhook
+    secret, price IDs per plan. Never returns a secret value."""
+    from app.core import billing_service
+    return billing_service.billing_config_status()
+
+
+@router.get("/reviews")
+def list_payment_reviews(status: Optional[str] = Query(None), user_id: Optional[str] = Query(None),
+                         limit: int = Query(200, ge=1, le=1000),
+                         admin: dict = Depends(require_admin)) -> Dict[str, Any]:
+    """Refunds and disputes recorded from Stripe webhooks, newest first."""
+    return {"reviews": billing_reviews.list_reviews(_db(), status=status, user_id=user_id, limit=limit)}
+
+
+@router.post("/reviews/{review_id}/resolve")
+def resolve_payment_review(review_id: str, body: ReviewResolution,
+                           admin: dict = Depends(require_admin)) -> Dict[str, Any]:
+    db = _db()
+    try:
+        result = billing_reviews.resolve_review(db, review_id, decision=body.decision,
+                                                operator_id=str(admin["id"]), note=body.note)
+    except billing_reviews.ReviewError as exc:
+        raise HTTPException(status_code=404 if exc.code == "REVIEW_NOT_FOUND" else 400,
+                            detail={"error_code": exc.code, "message": str(exc)})
+    _audit(db, admin, "billing_payment_review_resolved", result.get("user_id"),
+           {"review_id": review_id, "decision": body.decision})
+    return result
+
+
+@router.get("/audit")
+def billing_audit_log(user_id: Optional[str] = Query(None), limit: int = Query(200, ge=1, le=1000),
+                      admin: dict = Depends(require_admin)) -> Dict[str, Any]:
+    """Append-only billing audit trail (state changes only; no payment details)."""
+    return {"entries": billing_audit.list_entries(_db(), user_id=user_id, limit=limit)}
 
 
 __all__ = ["router"]
