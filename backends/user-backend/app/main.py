@@ -133,6 +133,12 @@ async def add_security_headers(request, call_next):
     response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
     return response
 
+# Section H 8.4: httpOnly cookie sessions -> Authorization header, with
+# double-submit CSRF on state-changing requests. Added BEFORE CORS so CORS is
+# the outer layer (a 403 CSRF answer still carries the CORS headers).
+from app.core.session_cookies import install_session_cookie_middleware
+install_session_cookie_middleware(app)
+
 # CORS Middleware for frontend
 app.add_middleware(
     CORSMiddleware,
@@ -208,6 +214,8 @@ app.include_router(admin_governance_router, prefix="/api", tags=["Admin Governan
 
 from app.api.admin_billing import router as admin_billing_router  # operator plan grants (Step 1.5)
 app.include_router(admin_billing_router, prefix="/api", tags=["Admin Billing"])
+
+
 
 from app.api.admin_events import router as admin_events_router
 app.include_router(admin_events_router, prefix="/api", tags=["Admin Events"])

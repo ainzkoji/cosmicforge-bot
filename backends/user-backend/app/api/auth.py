@@ -5,7 +5,7 @@ Enhanced Authentication API
 - Session management (create, refresh, revoke)
 - Password reset flow
 """
-from fastapi import APIRouter, Depends, Form, HTTPException, status, Request
+from fastapi import APIRouter, Depends, Form, HTTPException, status, Request, Response
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 import pyotp
 from app.schemas.auth import (
@@ -24,6 +24,9 @@ from app.core.security import (
     encrypt_totp_secret, match_totp_counter,
 )
 from app.core.config import settings
+from app.core.session_cookies import (
+    USER_REALM, clear_cookies, issue_session_cookies, refresh_token_from, token_body,
+)
 from shared_lib.persistence.db import DB, utc_now_iso
 import logging
 import os
@@ -546,8 +549,9 @@ def resend_verification(req: ResendVerificationRequest, request: Request = None)
 
 
 # --- Login ---
-@router.post("/login", response_model=Token)
+@router.post("/login", response_model=Token, response_model_exclude_none=True)
 def login(
+    response: Response,
     form_data: OAuth2PasswordRequestForm = Depends(),
     request: Request = None,
     totp_code: Optional[str] = Form(None),
@@ -657,18 +661,31 @@ def login(
     # committed and its connection closed: building it reads the user's
     # entitlements on a connection of its own, and SQLite has a single writer.
     access_token = create_access_token(uid, role=role)
-    return {"access_token": access_token, "refresh_token": refresh_token, "token_type": "bearer"}
+    # Section H 8.4: httpOnly session cookies + CSRF token; the token strings
+    # stay in the body only during the AUTH_BEARER_COMPAT migration window.
+    csrf = issue_session_cookies(response, USER_REALM, access_token, refresh_token, request)
+    return token_body(access_token, refresh_token, csrf)
+
+
+@router.get("/csrf")
+def csrf_token(request: Request):
+    """CSRF token of the current cookie session, for a portal served from a host
+    that cannot read the csrf cookie. CORS keeps other origins from reading it."""
+    return {"csrf_token": request.cookies.get(USER_REALM.csrf_cookie)}
 
 
 # --- Token Refresh with Rotation ---
-@router.post("/refresh", response_model=Token)
-def refresh(req: RefreshTokenReq, request: Request = None):
-    payload = decode_token(req.refresh_token)
+@router.post("/refresh", response_model=Token, response_model_exclude_none=True)
+def refresh(response: Response, req: Optional[RefreshTokenReq] = None, request: Request = None):
+    # Legacy clients post {"refresh_token": ...}; the browser sends no body and
+    # its httpOnly refresh cookie is used (together with the CSRF header).
+    presented = refresh_token_from(request, USER_REALM, req.refresh_token if req else None)
+    payload = decode_token(presented or "")
     if not payload or payload.get("type") != "refresh":
         raise HTTPException(status_code=401, detail="Invalid refresh token")
-    
+
     uid = payload.get("sub")
-    old_hash = hash_token(req.refresh_token)
+    old_hash = hash_token(presented)
     
     db = DB()
     with db.connect() as conn:
@@ -690,6 +707,7 @@ def refresh(req: RefreshTokenReq, request: Request = None):
                 "UPDATE auth_sessions SET revoked_at = ? WHERE user_id = ?",
                 (utc_now_iso(), uid)
             )
+            audit_event(conn, "refresh_reuse_detected", user_id=uid, ip=_client_ip(request))
             # Commit before raising, or the revocation is rolled back with the 401.
             conn.commit()
             raise HTTPException(status_code=401, detail="Security alert: session invalidated")
@@ -727,22 +745,27 @@ def refresh(req: RefreshTokenReq, request: Request = None):
         )
 
     new_access = create_access_token(uid, role=role)
-    return {"access_token": new_access, "refresh_token": new_refresh, "token_type": "bearer"}
+    csrf = issue_session_cookies(response, USER_REALM, new_access, new_refresh, request)
+    return token_body(new_access, new_refresh, csrf)
 
 
 # --- Logout ---
 @router.post("/logout")
-def logout(req: RefreshTokenReq, user_id: str = Depends(get_current_user_id)):
-    """Revoke current session"""
-    db = DB()
-    token_hash = hash_token(req.refresh_token)
-    
-    with db.connect() as conn:
-        conn.execute(
-            "UPDATE auth_sessions SET revoked_at = ? WHERE refresh_token_hash = ? AND user_id = ?",
-            (utc_now_iso(), token_hash, user_id)
-        )
-    
+def logout(response: Response, req: Optional[RefreshTokenReq] = None, request: Request = None):
+    """Revoke the current session and clear the session cookies.
+
+    The refresh token itself (body, or cookie + CSRF header) identifies the
+    session, so signing out works even after the access token has expired."""
+    presented = refresh_token_from(request, USER_REALM, req.refresh_token if req else None)
+    payload = decode_token(presented) if presented else None
+    if payload and payload.get("type") == "refresh":
+        with DB().connect() as conn:
+            conn.execute(
+                "UPDATE auth_sessions SET revoked_at = ? WHERE refresh_token_hash = ? AND user_id = ? "
+                "AND revoked_at IS NULL",
+                (utc_now_iso(), hash_token(presented), payload.get("sub"))
+            )
+    clear_cookies(response, USER_REALM)
     return {"message": "Logged out successfully"}
 
 

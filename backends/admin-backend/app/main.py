@@ -29,6 +29,24 @@ from app.core.config import settings
 from shared_lib.core.http_surface import docs_kwargs  # no /docs in production unless API_DOCS_ENABLED=true
 app = FastAPI(title="CosmicForge Admin Backend", version="0.1.0", **docs_kwargs(settings))
 
+# Section H 8.4: the admin console's httpOnly session cookie (cf_admin_access,
+# issued by the user-backend) is accepted like a bearer header; state-changing
+# requests need the X-CSRF-Token double-submit header. Added before CORS so
+# CORS stays the outer layer.
+import os  # noqa: E402
+from shared_lib.core.security.session_cookies import ADMIN_REALM, SessionCookieMiddleware  # noqa: E402
+
+
+def _bearer_compat() -> bool:
+    raw = getattr(settings, "AUTH_BEARER_COMPAT", None)
+    if raw is None:
+        raw = os.environ.get("AUTH_BEARER_COMPAT", "true")
+    return str(raw).strip().lower() not in ("0", "false", "no", "off")
+
+
+app.add_middleware(SessionCookieMiddleware, realm_for_path=lambda _path: ADMIN_REALM,
+                   csrf_exempt=lambda _path: False, bearer_compat=_bearer_compat)
+
 configure_cors(app)
 
 

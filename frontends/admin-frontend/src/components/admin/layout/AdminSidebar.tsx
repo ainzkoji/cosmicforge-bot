@@ -1,4 +1,5 @@
-import { Link, useLocation } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
+import { useAuth } from "@/auth/AuthContext";
 import {
     LayoutDashboard,
     Users,
@@ -54,6 +55,8 @@ const navItems: NavItem[] = [
 
 export function AdminSidebar() {
     const location = useLocation();
+    const navigate = useNavigate();
+    const { logout } = useAuth();
 
     const isActive = (path: string, exact?: boolean) => {
         if (exact) {
@@ -109,7 +112,7 @@ export function AdminSidebar() {
                 </Link>
                 <button
                     className="admin-nav-item"
-                    onClick={() => {/* Handle logout */}}
+                    onClick={() => { logout(); navigate("/login"); }}
                 >
                     <LogOut className="w-4 h-4" />
                     <span>Logout</span>

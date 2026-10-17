@@ -6,7 +6,8 @@ import axios from "axios";
 import { DeploymentRefusedError, parseRefusal } from "../lib/deployment";
 import type { CatiBot, DeploymentPreview, DeploymentRequestBody } from "../lib/deployment";
 import type { MarketAvailability } from "../lib/markets";
-import { AUTH_UNAUTHORIZED_EVENT, apiFetch, clearSession, getAccessToken, isRefreshableUrl, refreshAccessToken } from "./http";
+import { AUTH_UNAUTHORIZED_EVENT, apiFetch, clearSession, getCsrfToken, isRefreshableUrl, refreshAccessToken } from "./http";
+import { CSRF_HEADER, isUnsafeMethod } from "../lib/sessionAuth";
 
 const API_BASE = import.meta.env.VITE_API_BASE || "http://localhost:8000";
 const AUTH_BASE = `${API_BASE}/api/v1/auth`;
@@ -34,21 +35,19 @@ async function fetchWithTimeout(input: RequestInfo | URL, init: RequestInit = {}
     }
 }
 
-// Axios instance for admin API calls
+// Axios instance for API calls. The session travels in httpOnly cookies
+// (Section H 8.4): withCredentials sends them, the CSRF header guards writes.
 export const apiClient = axios.create({
     baseURL: API_BASE,
     timeout: DEFAULT_API_TIMEOUT_MS,
+    withCredentials: true,
 });
 
-// Add auth header to every request
 apiClient.interceptors.request.use((config: any) => {
-    const url = String(config.url || "");
-    const isAdminRoute = url.startsWith("/api/admin") || url.startsWith("/api/v1/admin-auth");
-    const token = isAdminRoute
-        ? (localStorage.getItem("admin_access_token") || localStorage.getItem("access_token"))
-        : localStorage.getItem("access_token");
-    if (token) {
-        config.headers.Authorization = `Bearer ${token}`;
+    config._startedAt = Date.now();
+    if (isUnsafeMethod(config.method)) {
+        const csrf = getCsrfToken();
+        if (csrf) config.headers[CSRF_HEADER] = csrf;
     }
     return config;
 });
@@ -65,15 +64,12 @@ apiClient.interceptors.response.use(
             const url = String(original.url || "");
             const isAdminRoute = url.startsWith("/api/admin") || url.startsWith("/api/v1/admin-auth");
             if (isAdminRoute) {
-                // Legacy admin calls use a separate token that this app cannot refresh.
+                // Admin routes belong to the admin console's session, not this app's.
                 window.dispatchEvent(new Event(AUTH_UNAUTHORIZED_EVENT));
             } else if (!original._retriedAfterRefresh && isRefreshableUrl(url)) {
-                const sentHeader = String(original.headers?.Authorization || "");
-                const sentToken = sentHeader.startsWith("Bearer ") ? sentHeader.slice(7) : getAccessToken();
-                const outcome = await refreshAccessToken(sentToken);
+                const outcome = await refreshAccessToken(Number(original._startedAt) || 0);
                 if (outcome.status === "refreshed") {
                     original._retriedAfterRefresh = true;
-                    original.headers.Authorization = `Bearer ${outcome.token}`;
                     return apiClient.request(original);
                 }
                 if (outcome.status === "rejected") {
@@ -162,7 +158,9 @@ export interface RegisterRequest {
     terms_accepted_at?: string;
     risk_disclaimer_accepted_at?: string;
 }
-export interface AuthResponse { access_token: string; refresh_token: string; token_type: string; }
+/** Login/refresh answer. The session itself is in httpOnly cookies; the token strings are
+ * only present during the backend's AUTH_BEARER_COMPAT window and are never stored. */
+export interface AuthResponse { access_token?: string; refresh_token?: string; token_type: string; csrf_token?: string; }
 
 export interface PublicContent { [key: string]: any; }
 
@@ -716,7 +714,7 @@ function errorDetail(detail: unknown, fallback: string): string {
 
 /** GET on the CATI read model; a failure is an error, never an empty success. */
 async function catiGet(url: string): Promise<any> {
-    const response = await apiFetch(url, { headers: { 'Authorization': `Bearer ${localStorage.getItem('access_token')}` } });
+    const response = await apiFetch(url, { headers: {} });
     if (!response.ok) {
         const error = await response.json().catch(() => ({ detail: null }));
         throw new Error(errorDetail(error.detail, `The engine did not answer (HTTP ${response.status})`));
@@ -819,7 +817,6 @@ async function brokerJson(path: string, init: RequestInit = {}): Promise<any> {
         ...init,
         headers: {
             'Content-Type': 'application/json',
-            'Authorization': `Bearer ${localStorage.getItem('access_token')}`,
             ...(init.headers || {}),
         },
     });
@@ -916,10 +913,19 @@ export const api = {
         return res.json();
     },
 
+    /** Revoke the session on the server and clear its cookies (best effort). */
+    logout: async (): Promise<void> => {
+        try {
+            await fetchWithTimeout(`${AUTH_BASE}/logout`, { method: 'POST' }, "Sign-out request timed out.");
+        } catch {
+            // Offline or timed out: the local session is cleared anyway.
+        }
+    },
+
     // --- User Profile ---
     getMe: async (): Promise<User> => {
         const res = await fetchWithTimeout(`${AUTH_BASE}/me`, {
-            headers: { 'Authorization': `Bearer ${localStorage.getItem('access_token')}` }
+            headers: {}
         }, "Profile request timed out. Please try again.");
         if (!res.ok) throw new Error("Failed to fetch profile");
         return res.json();
@@ -931,7 +937,7 @@ export const api = {
 
         const res = await apiFetch(`${AUTH_BASE}/me?${params.toString()}`, {
             method: 'PATCH',
-            headers: { 'Authorization': `Bearer ${localStorage.getItem('access_token')}` }
+            headers: {}
         });
         if (!res.ok) throw new Error("Failed to update profile");
         return res.json();
@@ -942,9 +948,7 @@ export const api = {
     setup2FA: async (): Promise<TwoFASetupResponse> => {
         const res = await apiFetch(`${AUTH_BASE}/2fa/setup`, {
             method: 'POST',
-            headers: {
-                'Authorization': `Bearer ${localStorage.getItem('access_token')}`
-            }
+            headers: {}
         });
         if (!res.ok) throw await twoFAError(res, "Failed to setup 2FA");
         return res.json();
@@ -955,7 +959,6 @@ export const api = {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
-                'Authorization': `Bearer ${localStorage.getItem('access_token')}`
             },
             body: JSON.stringify({ code })
         });
@@ -968,7 +971,6 @@ export const api = {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
-                'Authorization': `Bearer ${localStorage.getItem('access_token')}`
             },
             body: JSON.stringify({ code })
         });
@@ -978,7 +980,7 @@ export const api = {
 
     getSessions: async (): Promise<SessionListResponse> => {
         const res = await fetchWithTimeout(`${AUTH_BASE}/sessions`, {
-            headers: { 'Authorization': `Bearer ${localStorage.getItem('access_token')}` }
+            headers: {}
         }, "Session request timed out. Please try again.");
         if (!res.ok) throw new Error("Failed to fetch sessions");
         return res.json();
@@ -989,7 +991,6 @@ export const api = {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
-                'Authorization': `Bearer ${localStorage.getItem('access_token')}`
             },
             body: JSON.stringify({ session_id: sessionId })
         }, "Session update timed out. Please try again.");
@@ -1056,7 +1057,7 @@ export const api = {
 
     getPortfolioSummary: async (): Promise<PortfolioSummaryResponse> => {
         const res = await apiFetch(`${API_BASE}/api/portfolio/summary`, {
-            headers: { 'Authorization': `Bearer ${localStorage.getItem('access_token')}` }
+            headers: {}
         });
         if (!res.ok) throw new Error("Failed to fetch portfolio summary");
         return res.json();
@@ -1064,7 +1065,7 @@ export const api = {
 
     getPortfolioTransactions: async (): Promise<PortfolioTransactionsResponse> => {
         const res = await apiFetch(`${API_BASE}/api/portfolio/transactions`, {
-            headers: { 'Authorization': `Bearer ${localStorage.getItem('access_token')}` }
+            headers: {}
         });
         if (!res.ok) throw new Error("Failed to fetch transactions");
         return res.json();
@@ -1081,7 +1082,7 @@ export const api = {
             ? `${API_BASE}/kyc/requirements?action=${encodeURIComponent(action)}`
             : `${API_BASE}/kyc/requirements`;
         const res = await apiFetch(url, {
-            headers: { 'Authorization': `Bearer ${localStorage.getItem('access_token')}` }
+            headers: {}
         });
         if (!res.ok) throw new Error("Failed to get KYC requirements");
         return res.json();
@@ -1090,7 +1091,7 @@ export const api = {
     kycStart: async (): Promise<{ case_id: string; status: string; message: string }> => {
         const res = await apiFetch(`${API_BASE}/kyc/start`, {
             method: 'POST',
-            headers: { 'Authorization': `Bearer ${localStorage.getItem('access_token')}` }
+            headers: {}
         });
         if (!res.ok) throw new Error("Failed to start KYC");
         return res.json();
@@ -1098,7 +1099,7 @@ export const api = {
 
     kycGetStatus: async (): Promise<any> => {
         const res = await apiFetch(`${API_BASE}/kyc/status`, {
-            headers: { 'Authorization': `Bearer ${localStorage.getItem('access_token')}` }
+            headers: {}
         });
         if (!res.ok) throw new Error("Failed to get KYC status");
         return res.json();
@@ -1106,7 +1107,7 @@ export const api = {
 
     kycGetChecklist: async (): Promise<any> => {
         const res = await apiFetch(`${API_BASE}/kyc/checklist`, {
-            headers: { 'Authorization': `Bearer ${localStorage.getItem('access_token')}` }
+            headers: {}
         });
         if (!res.ok) throw new Error("Failed to get KYC checklist");
         return res.json();
@@ -1127,7 +1128,6 @@ export const api = {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
-                'Authorization': `Bearer ${localStorage.getItem('access_token')}`
             },
             body: JSON.stringify(data)
         });
@@ -1140,7 +1140,7 @@ export const api = {
 
     kycGetPersonalInfo: async (): Promise<any> => {
         const res = await apiFetch(`${API_BASE}/kyc/personal-info`, {
-            headers: { 'Authorization': `Bearer ${localStorage.getItem('access_token')}` }
+            headers: {}
         });
         if (!res.ok) throw new Error("Failed to get personal info");
         return res.json();
@@ -1156,7 +1156,6 @@ export const api = {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
-                'Authorization': `Bearer ${localStorage.getItem('access_token')}`
             },
             body: JSON.stringify({ doc_type: docType, side })
         });
@@ -1172,7 +1171,6 @@ export const api = {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
-                'Authorization': `Bearer ${localStorage.getItem('access_token')}`
             },
             body: JSON.stringify({
                 doc_id: docId,
@@ -1195,7 +1193,7 @@ export const api = {
     kycUploadFile: async (uploadUrl: string, file: File): Promise<{ success: boolean; file_ref: string }> => {
         const res = await apiFetch(`${API_BASE}${uploadUrl}`, {
             method: 'PUT',
-            headers: { 'Authorization': `Bearer ${localStorage.getItem('access_token')}` },
+            headers: {},
             body: file
         });
         if (!res.ok) {
@@ -1207,7 +1205,7 @@ export const api = {
 
     kycGetDocuments: async (): Promise<{ documents: any[] }> => {
         const res = await apiFetch(`${API_BASE}/kyc/documents`, {
-            headers: { 'Authorization': `Bearer ${localStorage.getItem('access_token')}` }
+            headers: {}
         });
         if (!res.ok) throw new Error("Failed to get documents");
         return res.json();
@@ -1220,7 +1218,6 @@ export const api = {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
-                'Authorization': `Bearer ${localStorage.getItem('access_token')}`
             },
             body: JSON.stringify({ provider: 'internal' })
         });
@@ -1238,7 +1235,6 @@ export const api = {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
-                'Authorization': `Bearer ${localStorage.getItem('access_token')}`
             },
             body: JSON.stringify({ selfie_file_ref: selfieFileRef })
         });
@@ -1252,7 +1248,7 @@ export const api = {
     kycSubmit: async (): Promise<{ success: boolean; status: string; message: string }> => {
         const res = await apiFetch(`${API_BASE}/kyc/submit`, {
             method: 'POST',
-            headers: { 'Authorization': `Bearer ${localStorage.getItem('access_token')}` }
+            headers: {}
         });
         if (!res.ok) {
             const err = await res.json().catch(() => ({}));
@@ -1266,7 +1262,7 @@ export const api = {
     // --- Broker Management ---
     getBrokerCatalog: async (): Promise<{ brokers: any[] }> => {
         const res = await apiFetch(`${API_BASE}/api/v1/brokers/catalog`, {
-            headers: { 'Authorization': `Bearer ${localStorage.getItem('access_token')}` }
+            headers: {}
         });
         if (!res.ok) throw new Error("Failed to fetch catalog");
         return res.json();
@@ -1274,7 +1270,7 @@ export const api = {
 
     getBrokerAccounts: async (): Promise<{ accounts: any[] }> => {
         const res = await apiFetch(`${API_BASE}/api/v1/brokers/accounts`, {
-            headers: { 'Authorization': `Bearer ${localStorage.getItem('access_token')}` }
+            headers: {}
         });
         if (!res.ok) throw new Error("Failed to fetch accounts");
         return res.json();
@@ -1285,7 +1281,6 @@ export const api = {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
-                'Authorization': `Bearer ${localStorage.getItem('access_token')}`
             },
             body: JSON.stringify(data)
         });
@@ -1298,7 +1293,6 @@ export const api = {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
-                'Authorization': `Bearer ${localStorage.getItem('access_token')}`
             },
             body: config ? JSON.stringify(config) : undefined
         });
@@ -1314,7 +1308,6 @@ export const api = {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
-                'Authorization': `Bearer ${localStorage.getItem('access_token')}`
             },
             body: JSON.stringify({ credentials, environment })
         });
@@ -1327,7 +1320,6 @@ export const api = {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
-                'Authorization': `Bearer ${localStorage.getItem('access_token')}`
             }
         });
         if (!res.ok) throw new Error("Validation failed");
@@ -1339,7 +1331,6 @@ export const api = {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
-                'Authorization': `Bearer ${localStorage.getItem('access_token')}`
             }
         });
         if (!res.ok) throw new Error("Failed to disconnect");
@@ -1349,9 +1340,7 @@ export const api = {
     deleteBrokerAccount: async (accountId: string): Promise<{ success: boolean }> => {
         const res = await apiFetch(`${API_BASE}/api/v1/brokers/${accountId}`, {
             method: 'DELETE',
-            headers: {
-                'Authorization': `Bearer ${localStorage.getItem('access_token')}`
-            }
+            headers: {}
         });
         if (!res.ok) throw new Error("Failed to delete account");
         return res.json();
@@ -1359,7 +1348,7 @@ export const api = {
 
     getBrokerSummary: async (accountId: string): Promise<BrokerSummary> => {
         const res = await apiFetch(`${API_BASE}/api/v1/brokers/${accountId}/summary`, {
-            headers: { 'Authorization': `Bearer ${localStorage.getItem('access_token')}` }
+            headers: {}
         });
         if (!res.ok) throw new Error("Failed to fetch broker summary");
         return res.json();
@@ -1390,7 +1379,7 @@ export const api = {
     validateBroker: async (accountId: string): Promise<any> => {
         const res = await apiFetch(`${API_BASE}/api/v1/brokers/${accountId}/validate`, {
             method: 'POST',
-            headers: { 'Authorization': `Bearer ${localStorage.getItem('access_token')}` }
+            headers: {}
         });
         if (!res.ok) throw new Error("Validation call failed");
         return res.json();
@@ -1401,7 +1390,6 @@ export const api = {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
-                'Authorization': `Bearer ${localStorage.getItem('access_token')}`
             },
             body: JSON.stringify(data)
         });
@@ -1421,7 +1409,7 @@ export const api = {
         if (brokerAccountId) params.append('broker_account_id', brokerAccountId);
 
         const res = await apiFetch(`${API_BASE}/api/v1/forex/instruments?${params.toString()}`, {
-            headers: { 'Authorization': `Bearer ${localStorage.getItem('access_token')}` }
+            headers: {}
         });
         if (!res.ok) throw new Error("Failed to fetch forex instruments");
         return res.json();
@@ -1441,7 +1429,6 @@ export const api = {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
-                'Authorization': `Bearer ${localStorage.getItem('access_token')}`
             },
             body: JSON.stringify({ plan_id: planId })
         });
@@ -1456,7 +1443,7 @@ export const api = {
     // Read-only: the plan is activated server-side by the provider's webhook.
     getCheckoutStatus: async (sessionId: string): Promise<CheckoutStatus> => {
         const res = await apiFetch(`${API_BASE}/api/billing/checkout-status?session_id=${encodeURIComponent(sessionId)}`, {
-            headers: { 'Authorization': `Bearer ${localStorage.getItem('access_token')}` }
+            headers: {}
         });
         if (!res.ok) {
             const body = await res.json().catch(() => null);
@@ -1469,7 +1456,7 @@ export const api = {
 
     getSubscription: async (): Promise<any> => {
         const res = await apiFetch(`${API_BASE}/api/billing/subscription`, {
-            headers: { 'Authorization': `Bearer ${localStorage.getItem('access_token')}` }
+            headers: {}
         });
         if (!res.ok) throw new Error("Failed to fetch subscription");
         return res.json();
@@ -1477,7 +1464,7 @@ export const api = {
 
     getBillingHistory: async (): Promise<{ invoices: any[] }> => {
         const res = await apiFetch(`${API_BASE}/api/billing/history`, {
-            headers: { 'Authorization': `Bearer ${localStorage.getItem('access_token')}` }
+            headers: {}
         });
         if (!res.ok) throw new Error("Failed to fetch history");
         return res.json();
@@ -1488,7 +1475,6 @@ export const api = {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
-                'Authorization': `Bearer ${localStorage.getItem('access_token')}`
             },
             body: JSON.stringify({ action, plan_id: planId })
         });
@@ -1502,7 +1488,7 @@ export const api = {
     // --- Strategy System ---
     getStrategyCatalog: async (): Promise<{ strategies: any[] }> => {
         const res = await apiFetch(`${API_BASE}/api/strategies/catalog`, {
-            headers: { 'Authorization': `Bearer ${localStorage.getItem('access_token')}` }
+            headers: {}
         });
         if (!res.ok) throw new Error("Failed to fetch strategies");
         return res.json();
@@ -1510,14 +1496,14 @@ export const api = {
     // Alias for compatibility
     getStrategies: async (): Promise<{ strategies: any[] }> => {
         const res = await apiFetch(`${API_BASE}/api/strategies/catalog`, {
-            headers: { 'Authorization': `Bearer ${localStorage.getItem('access_token')}` }
+            headers: {}
         });
         if (!res.ok) throw new Error("Failed to fetch strategies");
         return res.json();
     },
     getStrategy: async (id: string) => {
         const res = await apiFetch(`${API_BASE}/api/strategies/${id}`, {
-            headers: { 'Authorization': `Bearer ${localStorage.getItem('access_token')}` }
+            headers: {}
         });
         if (!res.ok) throw new Error("Failed to fetch strategy");
         return res.json();
@@ -1527,7 +1513,6 @@ export const api = {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
-                'Authorization': `Bearer ${localStorage.getItem('access_token')}`
             },
             body: JSON.stringify(data)
         });
@@ -1542,7 +1527,7 @@ export const api = {
     // --- Onboarding ---
     getOnboardingState: async (): Promise<any> => {
         const res = await apiFetch(`${API_BASE}/api/onboarding/state`, {
-            headers: { 'Authorization': `Bearer ${localStorage.getItem('access_token')}` }
+            headers: {}
         });
         if (!res.ok) throw new Error("Failed to fetch onboarding state");
         return res.json();
@@ -1553,7 +1538,6 @@ export const api = {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
-                'Authorization': `Bearer ${localStorage.getItem('access_token')}`
             },
             body: JSON.stringify({ step, data })
         });
@@ -1567,7 +1551,7 @@ export const api = {
     completeOnboarding: async (): Promise<any> => {
         const res = await apiFetch(`${API_BASE}/api/onboarding/complete`, {
             method: 'POST',
-            headers: { 'Authorization': `Bearer ${localStorage.getItem('access_token')}` }
+            headers: {}
         });
         if (!res.ok) {
             const err = await res.json().catch(() => ({}));
@@ -1578,7 +1562,7 @@ export const api = {
 
     getOnboardingStrategies: async (): Promise<{ strategies: any[] }> => {
         const res = await apiFetch(`${API_BASE}/api/onboarding/strategies`, {
-            headers: { 'Authorization': `Bearer ${localStorage.getItem('access_token')}` }
+            headers: {}
         });
         if (!res.ok) throw new Error("Failed to fetch strategies");
         return res.json();
@@ -1586,7 +1570,7 @@ export const api = {
 
     getOnboardingNextSteps: async (): Promise<{ ready_for_live: boolean, blockers: string[], next_action: string }> => {
         const res = await apiFetch(`${API_BASE}/api/onboarding/next-steps`, {
-            headers: { 'Authorization': `Bearer ${localStorage.getItem('access_token')}` }
+            headers: {}
         });
         if (!res.ok) throw new Error("Failed to fetch next steps");
         return res.json();
@@ -1600,7 +1584,7 @@ export const api = {
         if (bot_instance_id) params.append('bot_instance_id', bot_instance_id);
 
         const res = await apiFetch(`${API_BASE}/api/analytics/overview?${params.toString()}`, {
-            headers: { 'Authorization': `Bearer ${localStorage.getItem('access_token')}` }
+            headers: {}
         });
         if (!res.ok) throw new Error("Failed to fetch analytics overview");
         return res.json();
@@ -1628,7 +1612,7 @@ export const api = {
         if (result) params.append('result', result);
 
         const res = await apiFetch(`${API_BASE}/api/analytics/trades?${params.toString()}`, {
-            headers: { 'Authorization': `Bearer ${localStorage.getItem('access_token')}` }
+            headers: {}
         });
         if (!res.ok) throw new Error("Failed to fetch trades");
         const data: TradesTableResponse = await res.json();
@@ -1640,7 +1624,7 @@ export const api = {
 
     getLatestEquity: async (): Promise<LatestEquityResponse> => {
         const res = await apiFetch(`${API_BASE}/api/v1/analytics/equity-latest`, {
-            headers: { 'Authorization': `Bearer ${localStorage.getItem('access_token')}` }
+            headers: {}
         });
         if (!res.ok) throw new Error("Failed to fetch latest equity");
         return res.json();
@@ -1652,7 +1636,7 @@ export const api = {
         if (bot_instance_id) params.append('bot_instance_id', bot_instance_id);
 
         const res = await apiFetch(`${API_BASE}/api/analytics/reconciliation?${params.toString()}`, {
-            headers: { 'Authorization': `Bearer ${localStorage.getItem('access_token')}` }
+            headers: {}
         });
         if (!res.ok) throw new Error("Failed to fetch reconciliation");
         return res.json();
@@ -1663,7 +1647,7 @@ export const api = {
         if (broker_account_id) params.append('broker_account_id', broker_account_id);
 
         const res = await apiFetch(`${API_BASE}/api/analytics/equity-curve?${params.toString()}`, {
-            headers: { 'Authorization': `Bearer ${localStorage.getItem('access_token')}` }
+            headers: {}
         });
         if (!res.ok) throw new Error("Failed to fetch equity curve");
         return res.json();
@@ -1674,7 +1658,7 @@ export const api = {
         if (broker_account_id) params.append('broker_account_id', broker_account_id);
 
         const res = await apiFetch(`${API_BASE}/api/analytics/drawdown?${params.toString()}`, {
-            headers: { 'Authorization': `Bearer ${localStorage.getItem('access_token')}` }
+            headers: {}
         });
         if (!res.ok) throw new Error("Failed to fetch drawdown");
         return res.json();
@@ -1683,7 +1667,7 @@ export const api = {
     getAnalyticsBenchmarks: async (timeframe = 'ALL', benchmark = 'BTCUSDT'): Promise<AnalyticsBenchmark> => {
         const params = new URLSearchParams({ timeframe, benchmark });
         const res = await apiFetch(`${API_BASE}/api/analytics/benchmarks?${params.toString()}`, {
-            headers: { 'Authorization': `Bearer ${localStorage.getItem('access_token')}` }
+            headers: {}
         });
         if (!res.ok) throw new Error("Failed to fetch benchmarks");
         return res.json();
@@ -1691,7 +1675,7 @@ export const api = {
 
     exportAnalytics: async (timeframe: string, format: string): Promise<Blob> => {
         const res = await apiFetch(`${API_BASE}/api/v1/analytics/export?timeframe=${timeframe}&format=${format}`, {
-            headers: { 'Authorization': `Bearer ${localStorage.getItem('access_token')}` }
+            headers: {}
         });
         if (!res.ok) {
             const error = await res.json().catch(() => ({ detail: 'Export failed' }));
@@ -1706,7 +1690,7 @@ export const api = {
         if (brokerAccountId) params.append('broker_account_id', brokerAccountId);
 
         const res = await apiFetch(`${API_BASE}/api/v1/analytics/tax-report?${params.toString()}`, {
-            headers: { 'Authorization': `Bearer ${localStorage.getItem('access_token')}` }
+            headers: {}
         });
 
         if (!res.ok) {
@@ -1724,7 +1708,7 @@ export const api = {
 
     getMyStrategies: async (): Promise<any> => {
         const res = await apiFetch(`${API_BASE}/api/strategies/my/my`, {
-            headers: { 'Authorization': `Bearer ${localStorage.getItem('access_token')}` }
+            headers: {}
         });
         if (!res.ok) throw new Error("Failed to fetch my strategies");
         return res.json();
@@ -1735,7 +1719,6 @@ export const api = {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
-                'Authorization': `Bearer ${localStorage.getItem('access_token')}`
             },
             body: JSON.stringify(data)
         });
@@ -1748,7 +1731,6 @@ export const api = {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
-                'Authorization': `Bearer ${localStorage.getItem('access_token')}`
             },
             body: JSON.stringify(spec)
         });
@@ -1761,7 +1743,6 @@ export const api = {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
-                'Authorization': `Bearer ${localStorage.getItem('access_token')}`
             },
             body: JSON.stringify({ ...spec, changelog })
         });
@@ -1774,7 +1755,6 @@ export const api = {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
-                'Authorization': `Bearer ${localStorage.getItem('access_token')}`
             },
             body: JSON.stringify(data)
         });
@@ -1787,7 +1767,7 @@ export const api = {
             ? `${API_BASE}/api/strategy-configs/?broker_account_id=${brokerAccountId}`
             : `${API_BASE}/api/strategy-configs/`;
         const res = await apiFetch(url, {
-            headers: { 'Authorization': `Bearer ${localStorage.getItem('access_token')}` }
+            headers: {}
         });
         if (!res.ok) throw new Error("Failed to fetch configs");
         return res.json();
@@ -1795,7 +1775,7 @@ export const api = {
 
     getStrategyConfig: async (configId: string) => {
         const res = await apiFetch(`${API_BASE}/api/strategy-configs/${configId}`, {
-            headers: { 'Authorization': `Bearer ${localStorage.getItem('access_token')}` }
+            headers: {}
         });
         if (!res.ok) throw new Error("Failed to fetch config");
         return res.json();
@@ -1806,7 +1786,6 @@ export const api = {
             method: 'PUT',
             headers: {
                 'Content-Type': 'application/json',
-                'Authorization': `Bearer ${localStorage.getItem('access_token')}`
             },
             body: JSON.stringify(data)
         });
@@ -1817,7 +1796,7 @@ export const api = {
     activateStrategyConfig: async (configId: string) => {
         const res = await apiFetch(`${API_BASE}/api/strategy-configs/${configId}/activate`, {
             method: 'POST',
-            headers: { 'Authorization': `Bearer ${localStorage.getItem('access_token')}` }
+            headers: {}
         });
         if (!res.ok) throw new Error("Failed to activate config");
         return res.json();
@@ -1826,7 +1805,7 @@ export const api = {
     deactivateStrategyConfig: async (configId: string) => {
         const res = await apiFetch(`${API_BASE}/api/strategy-configs/${configId}/deactivate`, {
             method: 'POST',
-            headers: { 'Authorization': `Bearer ${localStorage.getItem('access_token')}` }
+            headers: {}
         });
         if (!res.ok) throw new Error("Failed to deactivate config");
         return res.json();
@@ -1834,7 +1813,7 @@ export const api = {
 
     getActiveConfig: async (brokerAccountId: string) => {
         const res = await apiFetch(`${API_BASE}/api/strategy-configs/account/${brokerAccountId}/active`, {
-            headers: { 'Authorization': `Bearer ${localStorage.getItem('access_token')}` }
+            headers: {}
         });
         if (res.status === 404) return null;
         if (!res.ok) throw new Error("Failed to fetch active config");
@@ -1843,7 +1822,7 @@ export const api = {
 
     getProtectionStatus: async (configId: string) => {
         const res = await apiFetch(`${API_BASE}/api/strategy-configs/${configId}/protection-status`, {
-            headers: { 'Authorization': `Bearer ${localStorage.getItem('access_token')}` }
+            headers: {}
         });
         if (!res.ok) throw new Error("Failed to fetch protection status");
         return res.json();
@@ -1852,7 +1831,7 @@ export const api = {
     resetProtection: async (configId: string) => {
         const res = await apiFetch(`${API_BASE}/api/strategy-configs/${configId}/reset-protection`, {
             method: 'POST',
-            headers: { 'Authorization': `Bearer ${localStorage.getItem('access_token')}` }
+            headers: {}
         });
         if (!res.ok) throw new Error("Failed to reset protection");
         return res.json();
@@ -1860,7 +1839,7 @@ export const api = {
 
     getRiskTemplates: async () => {
         const res = await apiFetch(`${API_BASE}/api/risk/templates`, {
-            headers: { 'Authorization': `Bearer ${localStorage.getItem('access_token')}` }
+            headers: {}
         });
         if (!res.ok) throw new Error("Failed to fetch risk templates");
         return res.json();
@@ -1873,7 +1852,6 @@ export const api = {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
-                'Authorization': `Bearer ${localStorage.getItem('access_token')}`
             },
             body: JSON.stringify(data)
         });
@@ -1886,7 +1864,6 @@ export const api = {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
-                'Authorization': `Bearer ${localStorage.getItem('access_token')}`
             },
             body: JSON.stringify(data)
         });
@@ -1901,7 +1878,6 @@ export const api = {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
-                'Authorization': `Bearer ${localStorage.getItem('access_token')}`
             },
             body: JSON.stringify(data)
         });
@@ -1921,7 +1897,7 @@ export const api = {
     previewDeployment: async (body: DeploymentRequestBody, signal?: AbortSignal): Promise<DeploymentPreview> => {
         const response = await apiFetch(`${API_BASE}/api/v1/auto-pilot/preview`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('access_token')}` },
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(body),
             signal,
         });
@@ -1937,7 +1913,7 @@ export const api = {
     deployBot: async (body: DeploymentRequestBody): Promise<{ bot: CatiBot; idempotent_replay: boolean }> => {
         const response = await apiFetch(`${API_BASE}/api/v1/auto-pilot/deploy`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('access_token')}` },
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(body),
         });
         const payload = await response.json().catch(() => null);
@@ -1950,7 +1926,7 @@ export const api = {
 
     getAutoPilotBots: async (): Promise<CatiBot[]> => {
         const response = await apiFetch(`${API_BASE}/api/v1/auto-pilot/bots`, {
-            headers: { 'Authorization': `Bearer ${localStorage.getItem('access_token')}` }
+            headers: {}
         });
         if (!response.ok) {
             const error = await response.json().catch(() => ({ detail: 'Failed to load bots' }));
@@ -1978,7 +1954,7 @@ export const api = {
         phase: string | null; observe_mode: boolean; reason: string;
     }> => {
         const res = await apiFetch(`${API_BASE}/api/v1/bot-instances/${instanceId}/engine-status`, {
-            headers: { 'Authorization': `Bearer ${localStorage.getItem('access_token')}` }
+            headers: {}
         });
         if (!res.ok) throw new Error("CATI status unavailable");
         return res.json();
@@ -1987,9 +1963,7 @@ export const api = {
     // --- Bot Instances ---
     getBotInstances: async (): Promise<BotInstance[]> => {
         const response = await apiFetch(`${API_BASE}/api/v1/bot-instances`, {
-            headers: {
-                'Authorization': `Bearer ${localStorage.getItem('access_token')}`
-            }
+            headers: {}
         });
 
         if (!response.ok) {
@@ -2002,9 +1976,7 @@ export const api = {
 
     getBotDetails: async (instanceId: string): Promise<BotInstance> => {
         const response = await apiFetch(`${API_BASE}/api/v1/bot-instances/${instanceId}`, {
-            headers: {
-                'Authorization': `Bearer ${localStorage.getItem('access_token')}`
-            }
+            headers: {}
         });
 
         if (!response.ok) {
@@ -2020,7 +1992,7 @@ export const api = {
         user_override_pct: number | null; risk_profile_default_pct: number;
     }> => {
         const response = await apiFetch(`${API_BASE}/api/v1/bot-instances/${instanceId}/effective-policy`, {
-            headers: { 'Authorization': `Bearer ${localStorage.getItem('access_token')}` }
+            headers: {}
         });
         if (!response.ok) {
             const error = await response.json().catch(() => ({ detail: 'Effective policy unavailable' }));
@@ -2034,7 +2006,6 @@ export const api = {
             method: 'PATCH',
             headers: {
                 'Content-Type': 'application/json',
-                'Authorization': `Bearer ${localStorage.getItem('access_token')}`
             },
             body: JSON.stringify(payload)
         });
@@ -2050,9 +2021,7 @@ export const api = {
     startBotInstance: async (instanceId: string): Promise<void> => {
         const response = await apiFetch(`${API_BASE}/api/v1/bot-instances/${instanceId}/start`, {
             method: 'POST',
-            headers: {
-                'Authorization': `Bearer ${localStorage.getItem('access_token')}`
-            }
+            headers: {}
         });
 
         if (!response.ok) {
@@ -2064,9 +2033,7 @@ export const api = {
     pauseBotInstance: async (instanceId: string): Promise<void> => {
         const response = await apiFetch(`${API_BASE}/api/v1/bot-instances/${instanceId}/pause`, {
             method: 'POST',
-            headers: {
-                'Authorization': `Bearer ${localStorage.getItem('access_token')}`
-            }
+            headers: {}
         });
 
         if (!response.ok) {
@@ -2078,9 +2045,7 @@ export const api = {
     stopBotInstance: async (instanceId: string): Promise<void> => {
         const response = await apiFetch(`${API_BASE}/api/v1/bot-instances/${instanceId}/stop`, {
             method: 'POST',
-            headers: {
-                'Authorization': `Bearer ${localStorage.getItem('access_token')}`
-            }
+            headers: {}
         });
 
         if (!response.ok) {
@@ -2092,9 +2057,7 @@ export const api = {
     deleteBotInstance: async (instanceId: string): Promise<void> => {
         const response = await apiFetch(`${API_BASE}/api/v1/bot-instances/${instanceId}`, {
             method: 'DELETE',
-            headers: {
-                'Authorization': `Bearer ${localStorage.getItem('access_token')}`
-            }
+            headers: {}
         });
 
         if (!response.ok) {
@@ -2120,7 +2083,6 @@ export const api = {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
-                'Authorization': `Bearer ${localStorage.getItem('access_token')}`
             },
             body: JSON.stringify({ broker_id: brokerId, environment })
         });
@@ -2146,9 +2108,7 @@ export const api = {
     // sent to (or known by) the browser.
     getMTPairingStatus: async (sessionId: string): Promise<any> => {
         const res = await apiFetch(`${API_BASE}/api/v1/mt/connect/status?session_id=${encodeURIComponent(sessionId)}`, {
-            headers: {
-                'Authorization': `Bearer ${localStorage.getItem('access_token')}`
-            }
+            headers: {}
         });
         if (!res.ok) {
             const err = await res.json().catch(() => ({}));
@@ -2191,7 +2151,7 @@ export const api = {
         if (end_date) params.append('end_date', end_date);
 
         const res = await apiFetch(`${API_BASE}/api/analytics/positions/history?${params.toString()}`, {
-            headers: { 'Authorization': `Bearer ${localStorage.getItem('access_token')}` }
+            headers: {}
         });
         if (!res.ok) throw new Error("Failed to fetch position history");
         return res.json();
@@ -2217,7 +2177,7 @@ export const api = {
         if (end_date) params.append('end_date', end_date);
 
         const res = await apiFetch(`${API_BASE}/api/analytics/positions/history/export?${params.toString()}`, {
-            headers: { 'Authorization': `Bearer ${localStorage.getItem('access_token')}` }
+            headers: {}
         });
         if (!res.ok) {
             const error = await res.json().catch(() => ({ detail: 'Export failed' }));

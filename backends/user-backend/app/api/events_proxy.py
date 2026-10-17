@@ -9,6 +9,7 @@ from fastapi import APIRouter, Request, Query, HTTPException
 from fastapi.responses import StreamingResponse
 import httpx
 import logging
+from typing import Optional
 
 from app.core.security import decode_token
 from app.core.config import settings
@@ -23,7 +24,7 @@ from app.api.proxy_utils import BOT_BACKEND_BASE_URL as BOT_BACKEND_URL  # one s
 @router.get("/stream")
 async def stream_events(
     request: Request,
-    token: str = Query(..., description="JWT access token (EventSource doesn't support headers)")
+    token: Optional[str] = Query(None, description="DEPRECATED: JWT access token in the URL (legacy clients)")
 ):
     """
     Proxy SSE stream from bot-backend.
@@ -36,8 +37,17 @@ async def stream_events(
     2. Converts to Authorization header
     3. Proxies SSE stream from bot-backend
     """
-    # Validate token (EventSource can't send headers, so token comes from query param)
-    payload = decode_token(token)
+    # Section H 8.4: a browser sends its httpOnly session cookie (EventSource
+    # with withCredentials), which the session-cookie middleware turns into an
+    # Authorization header. ?token= is still read for legacy clients; tokens in
+    # URLs end up in access logs, so new code must not use it.
+    from app.core.session_cookies import bearer_compat
+    if token and not bearer_compat():
+        token = None  # after the migration window a URL token is ignored
+    if not token:
+        scheme, _, bearer = (request.headers.get("authorization") or "").partition(" ")
+        token = bearer.strip() if scheme.lower() == "bearer" else None
+    payload = decode_token(token) if token else None
     if not payload or payload.get("type") != "access":
         logger.warning(f"SSE auth failed: Invalid token type or payload")
         raise HTTPException(status_code=401, detail="Invalid or expired token")

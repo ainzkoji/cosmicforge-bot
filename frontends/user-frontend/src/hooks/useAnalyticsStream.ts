@@ -5,6 +5,7 @@
  */
 import { useEffect } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
+import { hasSessionHint } from '@/api/http';
 
 // The same base every other call uses (the previous variable name was never defined).
 const API_BASE_URL = import.meta.env.VITE_API_BASE || 'http://localhost:8000';
@@ -25,19 +26,15 @@ export function useAnalyticsStream() {
     const queryClient = useQueryClient();
 
     useEffect(() => {
-        // Get auth token from localStorage
-        const token = localStorage.getItem('access_token');
-
-        if (!token) {
-            console.warn('[Analytics Stream] No auth token, skipping SSE connection');
+        // Section H 8.4: the session is an httpOnly cookie. EventSource sends it
+        // with withCredentials; no token is ever put in the URL (URLs end up in
+        // proxy and access logs).
+        if (!hasSessionHint()) {
+            console.warn('[Analytics Stream] Not signed in, skipping SSE connection');
             return;
         }
 
-        // Note: EventSource doesn't support custom headers in standard browsers
-        // We'll use URL parameter for auth (less secure but works)
-        const eventSource = new EventSource(
-            `${API_BASE_URL}/api/v1/events/stream?token=${encodeURIComponent(token)}`
-        );
+        const eventSource = new EventSource(`${API_BASE_URL}/api/v1/events/stream`, { withCredentials: true });
 
         // Connection established
         eventSource.addEventListener('connected', (e) => {

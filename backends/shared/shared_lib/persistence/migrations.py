@@ -514,6 +514,11 @@ def migrate(db_path: str | DB = None):
         conn.execute("CREATE INDEX IF NOT EXISTS idx_auth_audit_user_id ON auth_audit_log(user_id)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_auth_audit_created_at ON auth_audit_log(created_at)")
 
+        # 13b) Section H 8.4: admin TOTP MFA (columns on admins / admin_sessions,
+        # hashed recovery codes). Additive only.
+        from shared_lib.persistence.admin_mfa_schema import ensure_admin_mfa_schema
+        ensure_admin_mfa_schema(conn)
+
         # 14) Broker Connection Tables (Page 4)
         conn.execute("""
             CREATE TABLE IF NOT EXISTS broker_accounts (

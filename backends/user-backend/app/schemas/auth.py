@@ -35,9 +35,13 @@ class UserRole(str, Enum):
 
 # --- Token Schemas ---
 class Token(BaseModel):
-    access_token: str
-    refresh_token: str
+    # The session itself travels in httpOnly cookies. The token strings are
+    # still returned while AUTH_BEARER_COMPAT is on (migration window) and are
+    # None afterwards. csrf_token is the double-submit value for X-CSRF-Token.
+    access_token: Optional[str] = None
+    refresh_token: Optional[str] = None
     token_type: str = "bearer"
+    csrf_token: Optional[str] = None
 
 
 class TokenPayload(BaseModel):
@@ -48,7 +52,8 @@ class TokenPayload(BaseModel):
 
 
 class RefreshTokenReq(BaseModel):
-    refresh_token: str
+    # Optional: a browser sends no body and the refresh cookie is used instead.
+    refresh_token: Optional[str] = None
 
 
 # --- User Schemas ---

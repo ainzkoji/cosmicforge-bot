@@ -232,7 +232,24 @@ class Settings(ProductionSettings):
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 15  # Short-lived for security
     REFRESH_TOKEN_EXPIRE_DAYS: int = 14   # 2 weeks
-    CREDENTIAL_KEY: str = "changeme_in_production_credential_key_32bytes!!!!"  # Must be 32 bytes for Fernet if used directly, or generated.
+    # Any length: the Fernet key is DERIVED from it with HKDF-SHA256 (security.py,
+    # ciphertext prefix "v2:"); values written with the old truncate/zero-pad
+    # derivation stay readable and can be re-encrypted (reencrypt_credential).
+    CREDENTIAL_KEY: str = "changeme_in_production_credential_key_32bytes!!!!"
+
+    # --- Section H 8.4: browser sessions and admin MFA ---
+    # Admin TOTP is mandatory when true. Unset: true under the production
+    # profile (APP_ENV=PRODUCTION), false in TEST / DEVELOPMENT.
+    ADMIN_MFA_REQUIRED: bool | None = None
+    # Migration window: Authorization: Bearer headers are still accepted and the
+    # login / refresh bodies still carry the tokens. Set false once every client
+    # uses the httpOnly session cookies (docs/security/SECURITY_HARDENING_REPORT.md).
+    AUTH_BEARER_COMPAT: bool = True
+    # Secure attribute of the session cookies. Unset: on in production, off
+    # elsewhere (plain-http localhost). Production always sets it.
+    AUTH_COOKIE_SECURE: bool | None = None
+    AUTH_COOKIE_SAMESITE: str = "strict"   # strict | lax (none is refused)
+    AUTH_COOKIE_DOMAIN: str = ""           # empty = host-only cookies (recommended)
 
     # --- Email Configuration ---
     SMTP_HOST: str = ""                    # e.g., "smtp.gmail.com"

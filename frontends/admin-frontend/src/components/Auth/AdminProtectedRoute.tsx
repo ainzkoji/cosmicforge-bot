@@ -3,7 +3,7 @@ import { useAuth } from "@/auth/AuthContext";
 import { Loader2 } from "lucide-react";
 
 export function AdminProtectedRoute() {
-    const { isAuthenticated, token, isLoading, isAdmin } = useAuth();
+    const { isAuthenticated, isLoading, isAdmin } = useAuth();
 
     // Wait for auth check to complete before deciding
     if (isLoading) {
@@ -15,7 +15,7 @@ export function AdminProtectedRoute() {
     }
 
     // Check authentication first
-    if (!isAuthenticated && !token) {
+    if (!isAuthenticated) {
         return <Navigate to="/login" replace />;
     }
 

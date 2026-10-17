@@ -3,6 +3,7 @@ import { Link, useSearchParams } from "react-router-dom";
 import { AlertCircle, ArrowRight, CheckCircle, Clock, Loader2 } from "lucide-react";
 import { motion } from "framer-motion";
 import { api } from "@/api/client";
+import { hasSessionHint } from "@/api/http";
 
 // The plan is activated server-side when the payment provider's webhook
 // arrives, which is usually seconds after the redirect back to this page.
@@ -60,7 +61,7 @@ export default function PaymentSuccess() {
             setPhase("missing");
             return;
         }
-        if (!localStorage.getItem("access_token")) {
+        if (!hasSessionHint()) {
             setPhase("unauthenticated");
             return;
         }

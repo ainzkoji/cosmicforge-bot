@@ -4,7 +4,8 @@
 
 import axios from "axios";
 import type { AxiosInstance } from "axios";
-import { apiFetch, clearSession, getAccessToken, isRefreshableUrl, refreshAccessToken } from "./http";
+import { apiFetch, clearSession, getCsrfToken, isRefreshableUrl, refreshAccessToken } from "./http";
+import { CSRF_HEADER, isUnsafeMethod } from "../lib/sessionAuth";
 
 const API_BASE = import.meta.env.VITE_API_BASE || "http://localhost:8000";
 const ADMIN_API_BASE = import.meta.env.VITE_ADMIN_API_BASE || API_BASE;
@@ -98,10 +99,16 @@ export const adminNewsApiClient = axios.create({
     timeout: DEFAULT_API_TIMEOUT_MS,
 });
 
+/**
+ * Section H 8.4: the admin session travels in httpOnly cookies. Every client
+ * sends them (withCredentials) and adds the CSRF header to state-changing calls.
+ */
 function attachAdminAuthHeader(config: any) {
-    const token = localStorage.getItem("admin_access_token");
-    if (token) {
-        config.headers.Authorization = `Bearer ${token}`;
+    config.withCredentials = true;
+    config._startedAt = Date.now();
+    if (isUnsafeMethod(config.method)) {
+        const csrf = getCsrfToken();
+        if (csrf) config.headers[CSRF_HEADER] = csrf;
     }
     return config;
 }
@@ -121,12 +128,9 @@ function createApiErrorHandler(client: AxiosInstance) {
         if (error.response && error.response.status === 401 && original && !original._retriedAfterRefresh) {
             const url = String(original.url || "");
             if (isRefreshableUrl(url)) {
-                const sentHeader = String(original.headers?.Authorization || "");
-                const sentToken = sentHeader.startsWith("Bearer ") ? sentHeader.slice(7) : getAccessToken();
-                const outcome = await refreshAccessToken(sentToken);
+                const outcome = await refreshAccessToken(Number(original._startedAt) || 0);
                 if (outcome.status === "refreshed") {
                     original._retriedAfterRefresh = true;
-                    original.headers.Authorization = `Bearer ${outcome.token}`;
                     return client.request(original);
                 }
                 if (outcome.status === "rejected") {
@@ -231,7 +235,57 @@ export interface RegisterRequest {
     country?: string;
     selected_plan_id?: string;
 }
-export interface AuthResponse { access_token: string; refresh_token: string; token_type: string; }
+/**
+ * Admin sign-in answer. A session is set as httpOnly cookies (the token
+ * strings appear only during the backend's AUTH_BEARER_COMPAT window and are
+ * never stored); otherwise a second step is asked for (see lib/adminMfa.ts).
+ */
+export interface AuthResponse {
+    access_token?: string;
+    refresh_token?: string;
+    token_type: string;
+    csrf_token?: string;
+    mfa_required?: boolean;
+    mfa_token?: string;
+    mfa_enrollment_required?: boolean;
+    enrollment_token?: string;
+    recovery_codes?: string[];
+    recovery_codes_remaining?: number;
+}
+
+export interface MfaSetupResponse { secret: string; provisioning_uri: string; }
+
+/** A failed admin auth call that keeps the backend's machine-readable code. */
+export class AdminAuthError extends Error {
+    readonly status: number;
+    readonly code: string | null;
+
+    constructor(message: string, status: number, code: string | null) {
+        super(message);
+        this.name = "AdminAuthError";
+        this.status = status;
+        this.code = code;
+    }
+}
+
+async function adminAuthError(res: Response, fallback: string): Promise<AdminAuthError> {
+    const body: any = await res.json().catch(() => ({}));
+    const detail = body?.detail;
+    const code = detail && typeof detail === "object" && typeof detail.code === "string" ? detail.code : null;
+    const message = typeof detail === "string" ? detail
+        : (detail && typeof detail.message === "string" ? detail.message : fallback);
+    return new AdminAuthError(message, res.status, code);
+}
+
+async function postAdminAuth(path: string, body: unknown, fallback: string): Promise<any> {
+    const res = await fetchWithTimeout(`${AUTH_BASE}${path}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body ?? {}),
+    }, LOGIN_TIMEOUT_MESSAGE);
+    if (!res.ok) throw await adminAuthError(res, fallback);
+    return res.json();
+}
 
 export interface PublicContent { [key: string]: any; }
 
@@ -325,10 +379,34 @@ export const api = {
             body: formData,
         }, LOGIN_TIMEOUT_MESSAGE);
         if (!res.ok) {
-            const err = await res.json().catch(() => ({}));
-            throw new Error(err.detail || "Login failed");
+            throw await adminAuthError(res, "Login failed");
         }
         return res.json();
+    },
+
+    /** Second sign-in step: the challenge token plus an authenticator or recovery code. */
+    mfaVerify: async (mfaToken: string, code: { totp?: string; recoveryCode?: string }): Promise<AuthResponse> =>
+        postAdminAuth('/mfa/verify', {
+            mfa_token: mfaToken,
+            code: code.totp || undefined,
+            recovery_code: code.recoveryCode || undefined,
+        }, "Verification failed"),
+
+    /** Start enrolment (enrolment token while signing in, or the current session). */
+    mfaSetup: async (enrollmentToken?: string): Promise<MfaSetupResponse> =>
+        postAdminAuth('/mfa/setup', enrollmentToken ? { enrollment_token: enrollmentToken } : {}, "MFA setup failed"),
+
+    /** Confirm the authenticator; answers with a session and the one-time recovery codes. */
+    mfaEnroll: async (code: string, enrollmentToken?: string): Promise<AuthResponse> =>
+        postAdminAuth('/mfa/enroll', { code, enrollment_token: enrollmentToken || undefined }, "MFA enrolment failed"),
+
+    /** Revoke the session on the server and clear its cookies (best effort). */
+    logout: async (): Promise<void> => {
+        try {
+            await fetchWithTimeout(`${AUTH_BASE}/logout`, { method: 'POST' }, "Sign-out request timed out.");
+        } catch {
+            // Offline or timed out: the local session is cleared anyway.
+        }
     },
 
     register: async (data: RegisterRequest): Promise<User> => {
@@ -393,7 +471,7 @@ export const api = {
     // --- User Profile ---
     getMe: async (): Promise<User> => {
         const res = await fetchWithTimeout(`${AUTH_BASE}/me`, {
-            headers: { 'Authorization': `Bearer ${localStorage.getItem('admin_access_token')}` }
+            headers: {}
         }, "Profile request timed out. Please try again.");
         if (!res.ok) throw new Error("Failed to fetch profile");
         return res.json();
@@ -405,7 +483,7 @@ export const api = {
 
         const res = await apiFetch(`${AUTH_BASE}/me?${params.toString()}`, {
             method: 'PATCH',
-            headers: { 'Authorization': `Bearer ${localStorage.getItem('admin_access_token')}` }
+            headers: {}
         });
         if (!res.ok) throw new Error("Failed to update profile");
         return res.json();
@@ -414,7 +492,7 @@ export const api = {
     // --- Sessions ---
     getSessions: async (): Promise<SessionListResponse> => {
         const res = await fetchWithTimeout(`${AUTH_BASE}/sessions`, {
-            headers: { 'Authorization': `Bearer ${localStorage.getItem('admin_access_token')}` }
+            headers: {}
         }, "Session request timed out. Please try again.");
         if (!res.ok) throw new Error("Failed to fetch sessions");
         return res.json();
@@ -425,7 +503,6 @@ export const api = {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
-                'Authorization': `Bearer ${localStorage.getItem('admin_access_token')}`
             },
             body: JSON.stringify({ session_id: sessionId })
         }, "Session update timed out. Please try again.");
@@ -516,7 +593,7 @@ export const api = {
     // --- Broker Management ---
     getBrokerCatalog: async (): Promise<{ brokers: any[] }> => {
         const res = await apiFetch(`${API_BASE}/api/brokers/catalog`, {
-            headers: { 'Authorization': `Bearer ${localStorage.getItem('admin_access_token')}` }
+            headers: {}
         });
         if (!res.ok) throw new Error("Failed to fetch catalog");
         return res.json();
@@ -524,7 +601,7 @@ export const api = {
 
     getBrokerAccounts: async (): Promise<{ accounts: any[] }> => {
         const res = await apiFetch(`${API_BASE}/api/brokers/accounts`, {
-            headers: { 'Authorization': `Bearer ${localStorage.getItem('admin_access_token')}` }
+            headers: {}
         });
         if (!res.ok) throw new Error("Failed to fetch accounts");
         return res.json();
@@ -535,7 +612,6 @@ export const api = {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
-                'Authorization': `Bearer ${localStorage.getItem('admin_access_token')}`
             },
             body: JSON.stringify(data)
         });
@@ -548,7 +624,6 @@ export const api = {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
-                'Authorization': `Bearer ${localStorage.getItem('admin_access_token')}`
             },
             body: JSON.stringify(credentials)
         });
@@ -561,7 +636,6 @@ export const api = {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
-                'Authorization': `Bearer ${localStorage.getItem('admin_access_token')}`
             }
         });
         if (!res.ok) throw new Error("Validation failed");
@@ -573,7 +647,6 @@ export const api = {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
-                'Authorization': `Bearer ${localStorage.getItem('admin_access_token')}`
             }
         });
         if (!res.ok) throw new Error("Failed to disconnect");
@@ -602,7 +675,6 @@ export const api = {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
-                'Authorization': `Bearer ${localStorage.getItem('admin_access_token')}`
             },
             body: JSON.stringify({ plan_id: planId, success_url: successUrl, cancel_url: cancelUrl })
         });
@@ -612,7 +684,7 @@ export const api = {
 
     getSubscription: async (): Promise<any> => {
         const res = await apiFetch(`${API_BASE}/api/billing/subscription`, {
-            headers: { 'Authorization': `Bearer ${localStorage.getItem('admin_access_token')}` }
+            headers: {}
         });
         if (!res.ok) throw new Error("Failed to fetch subscription");
         return res.json();
@@ -620,7 +692,7 @@ export const api = {
 
     getBillingHistory: async (): Promise<{ invoices: any[] }> => {
         const res = await apiFetch(`${API_BASE}/api/billing/history`, {
-            headers: { 'Authorization': `Bearer ${localStorage.getItem('admin_access_token')}` }
+            headers: {}
         });
         if (!res.ok) throw new Error("Failed to fetch history");
         return res.json();
@@ -631,7 +703,6 @@ export const api = {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
-                'Authorization': `Bearer ${localStorage.getItem('admin_access_token')}`
             },
             body: JSON.stringify({ action, plan_id: planId })
         });
@@ -642,7 +713,7 @@ export const api = {
     // --- Strategy System ---
     getStrategyCatalog: async (): Promise<{ strategies: any[] }> => {
         const res = await apiFetch(`${API_BASE}/api/strategies/catalog`, {
-            headers: { 'Authorization': `Bearer ${localStorage.getItem('admin_access_token')}` }
+            headers: {}
         });
         if (!res.ok) throw new Error("Failed to fetch strategies");
         return res.json();
@@ -650,14 +721,14 @@ export const api = {
     // Alias for compatibility
     getStrategies: async (): Promise<{ strategies: any[] }> => {
         const res = await apiFetch(`${API_BASE}/api/strategies/catalog`, {
-            headers: { 'Authorization': `Bearer ${localStorage.getItem('admin_access_token')}` }
+            headers: {}
         });
         if (!res.ok) throw new Error("Failed to fetch strategies");
         return res.json();
     },
     getStrategy: async (id: string) => {
         const res = await apiFetch(`${API_BASE}/api/strategies/${id}`, {
-            headers: { 'Authorization': `Bearer ${localStorage.getItem('admin_access_token')}` }
+            headers: {}
         });
         if (!res.ok) throw new Error("Failed to fetch strategy");
         return res.json();
@@ -667,7 +738,6 @@ export const api = {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
-                'Authorization': `Bearer ${localStorage.getItem('admin_access_token')}`
             },
             body: JSON.stringify(data)
         });
@@ -678,7 +748,7 @@ export const api = {
     // --- Onboarding ---
     getOnboardingStrategies: async () => {
         const res = await apiFetch(`${API_BASE}/api/onboarding/strategies`, {
-            headers: { 'Authorization': `Bearer ${localStorage.getItem('admin_access_token')}` }
+            headers: {}
         });
         if (!res.ok) throw new Error("Failed to fetch onboarding strategies");
         return res.json();
@@ -687,7 +757,7 @@ export const api = {
     // --- Onboarding ---
     getOnboardingState: async (): Promise<{ status: string, current_step: string, data: any, recommended_defaults?: any }> => {
         const res = await apiFetch(`${API_BASE}/api/onboarding/state`, {
-            headers: { 'Authorization': `Bearer ${localStorage.getItem('admin_access_token')}` }
+            headers: {}
         });
         if (!res.ok) throw new Error("Failed to fetch onboarding state");
         return res.json();
@@ -698,7 +768,6 @@ export const api = {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
-                'Authorization': `Bearer ${localStorage.getItem('admin_access_token')}`
             },
             body: JSON.stringify({ step, data })
         });
@@ -709,7 +778,7 @@ export const api = {
     completeOnboarding: async (): Promise<{ status: string, defaults: any }> => {
         const res = await apiFetch(`${API_BASE}/api/onboarding/complete`, {
             method: 'POST',
-            headers: { 'Authorization': `Bearer ${localStorage.getItem('admin_access_token')}` }
+            headers: {}
         });
         if (!res.ok) throw new Error("Failed to complete onboarding");
         return res.json();
@@ -719,7 +788,7 @@ export const api = {
 
     getOnboardingNextSteps: async (): Promise<{ can_proceed_to_live: boolean, blockers: string[], recommended_action: string }> => {
         const res = await apiFetch(`${API_BASE}/api/onboarding/next-steps`, {
-            headers: { 'Authorization': `Bearer ${localStorage.getItem('admin_access_token')}` }
+            headers: {}
         });
         if (!res.ok) throw new Error("Failed to fetch next steps");
         return res.json();
@@ -728,7 +797,7 @@ export const api = {
     // --- Analytics ---
     getAnalyticsOverview: async (timeframe = 'ALL'): Promise<OverviewStats> => {
         const res = await apiFetch(`${API_BASE}/api/analytics/overview?timeframe=${timeframe}`, {
-            headers: { 'Authorization': `Bearer ${localStorage.getItem('admin_access_token')}` }
+            headers: {}
         });
         if (!res.ok) throw new Error("Failed to fetch analytics overview");
         return res.json();
@@ -736,7 +805,7 @@ export const api = {
 
     getAnalyticsLeaderboard: async (limit = 20): Promise<StrategyPerfItem[]> => {
         const res = await apiFetch(`${API_BASE}/api/analytics/leaderboard?limit=${limit}`, {
-            headers: { 'Authorization': `Bearer ${localStorage.getItem('admin_access_token')}` }
+            headers: {}
         });
         if (!res.ok) throw new Error("Failed to fetch leaderboard");
         return res.json();
@@ -745,7 +814,7 @@ export const api = {
     getMarketplaceStrategies: async (filters: any = {}): Promise<any> => {
         const query = new URLSearchParams(filters).toString();
         const res = await apiFetch(`${API_BASE}/api/strategies/?${query}`, {
-            headers: { 'Authorization': `Bearer ${localStorage.getItem('admin_access_token')}` }
+            headers: {}
         });
         if (!res.ok) throw new Error("Failed to fetch marketplace strategies");
         return res.json();
@@ -753,7 +822,7 @@ export const api = {
 
     getStrategyDetails: async (id: string): Promise<any> => {
         const res = await apiFetch(`${API_BASE}/api/strategies/${id}`, {
-            headers: { 'Authorization': `Bearer ${localStorage.getItem('admin_access_token')}` }
+            headers: {}
         });
         if (!res.ok) throw new Error("Failed to fetch strategy details");
         return res.json();
@@ -761,7 +830,7 @@ export const api = {
 
     getMyStrategies: async (): Promise<any> => {
         const res = await apiFetch(`${API_BASE}/api/strategies/my/my`, {
-            headers: { 'Authorization': `Bearer ${localStorage.getItem('admin_access_token')}` }
+            headers: {}
         });
         if (!res.ok) throw new Error("Failed to fetch my strategies");
         return res.json();
@@ -772,7 +841,6 @@ export const api = {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
-                'Authorization': `Bearer ${localStorage.getItem('admin_access_token')}`
             },
             body: JSON.stringify(data)
         });
@@ -785,7 +853,6 @@ export const api = {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
-                'Authorization': `Bearer ${localStorage.getItem('admin_access_token')}`
             },
             body: JSON.stringify(spec)
         });
@@ -798,7 +865,6 @@ export const api = {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
-                'Authorization': `Bearer ${localStorage.getItem('admin_access_token')}`
             },
             body: JSON.stringify({ ...spec, changelog })
         });
@@ -811,7 +877,6 @@ export const api = {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
-                'Authorization': `Bearer ${localStorage.getItem('admin_access_token')}`
             },
             body: JSON.stringify(data)
         });
@@ -824,7 +889,7 @@ export const api = {
             ? `${API_BASE}/api/strategy-configs/?broker_account_id=${brokerAccountId}`
             : `${API_BASE}/api/strategy-configs/`;
         const res = await apiFetch(url, {
-            headers: { 'Authorization': `Bearer ${localStorage.getItem('admin_access_token')}` }
+            headers: {}
         });
         if (!res.ok) throw new Error("Failed to fetch configs");
         return res.json();
@@ -832,7 +897,7 @@ export const api = {
 
     getStrategyConfig: async (configId: string) => {
         const res = await apiFetch(`${API_BASE}/api/strategy-configs/${configId}`, {
-            headers: { 'Authorization': `Bearer ${localStorage.getItem('admin_access_token')}` }
+            headers: {}
         });
         if (!res.ok) throw new Error("Failed to fetch config");
         return res.json();
@@ -843,7 +908,6 @@ export const api = {
             method: 'PUT',
             headers: {
                 'Content-Type': 'application/json',
-                'Authorization': `Bearer ${localStorage.getItem('admin_access_token')}`
             },
             body: JSON.stringify(data)
         });
@@ -854,7 +918,7 @@ export const api = {
     activateStrategyConfig: async (configId: string) => {
         const res = await apiFetch(`${API_BASE}/api/strategy-configs/${configId}/activate`, {
             method: 'POST',
-            headers: { 'Authorization': `Bearer ${localStorage.getItem('admin_access_token')}` }
+            headers: {}
         });
         if (!res.ok) throw new Error("Failed to activate config");
         return res.json();
@@ -863,7 +927,7 @@ export const api = {
     deactivateStrategyConfig: async (configId: string) => {
         const res = await apiFetch(`${API_BASE}/api/strategy-configs/${configId}/deactivate`, {
             method: 'POST',
-            headers: { 'Authorization': `Bearer ${localStorage.getItem('admin_access_token')}` }
+            headers: {}
         });
         if (!res.ok) throw new Error("Failed to deactivate config");
         return res.json();
@@ -871,7 +935,7 @@ export const api = {
 
     getActiveConfig: async (brokerAccountId: string) => {
         const res = await apiFetch(`${API_BASE}/api/strategy-configs/account/${brokerAccountId}/active`, {
-            headers: { 'Authorization': `Bearer ${localStorage.getItem('admin_access_token')}` }
+            headers: {}
         });
         if (res.status === 404) return null;
         if (!res.ok) throw new Error("Failed to fetch active config");
@@ -880,7 +944,7 @@ export const api = {
 
     getProtectionStatus: async (configId: string) => {
         const res = await apiFetch(`${API_BASE}/api/strategy-configs/${configId}/protection-status`, {
-            headers: { 'Authorization': `Bearer ${localStorage.getItem('admin_access_token')}` }
+            headers: {}
         });
         if (!res.ok) throw new Error("Failed to fetch protection status");
         return res.json();
@@ -889,7 +953,7 @@ export const api = {
     resetProtection: async (configId: string) => {
         const res = await apiFetch(`${API_BASE}/api/strategy-configs/${configId}/reset-protection`, {
             method: 'POST',
-            headers: { 'Authorization': `Bearer ${localStorage.getItem('admin_access_token')}` }
+            headers: {}
         });
         if (!res.ok) throw new Error("Failed to reset protection");
         return res.json();
@@ -898,7 +962,7 @@ export const api = {
     // --- Risk Profiles ---
     getRiskTemplates: async () => {
         const res = await apiFetch(`${API_BASE}/api/risk-profiles/templates`, {
-            headers: { 'Authorization': `Bearer ${localStorage.getItem('admin_access_token')}` }
+            headers: {}
         });
         if (!res.ok) throw new Error("Failed to fetch risk templates");
         return res.json();
@@ -909,7 +973,6 @@ export const api = {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
-                'Authorization': `Bearer ${localStorage.getItem('admin_access_token')}`
             },
             body: JSON.stringify(data)
         });
@@ -922,7 +985,6 @@ export const api = {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
-                'Authorization': `Bearer ${localStorage.getItem('admin_access_token')}`
             },
             body: JSON.stringify(data)
         });

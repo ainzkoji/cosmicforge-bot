@@ -1,11 +1,18 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from "react";
-import { api, LoginRequest, RegisterRequest } from "@/api/client";
-import { jwtDecode } from "jwt-decode";
-import { AUTH_UNAUTHORIZED_EVENT, refreshAccessToken } from "@/api/http";
+import { api, AuthResponse, LoginRequest, RegisterRequest } from "@/api/client";
+import { AUTH_UNAUTHORIZED_EVENT, forgetLocalSession, hasSessionHint, markSignedIn } from "@/api/http";
+import { classifyAdminLogin } from "@/lib/adminMfa";
+import type { AdminLoginStep } from "@/lib/adminMfa";
+
+/*
+ * Section H 8.4: the admin session is held in httpOnly cookies the console
+ * cannot read; "signed in" means GET /admin-auth/me succeeds. Sign-in can take
+ * a second step (TOTP) or an enrolment first -- see lib/adminMfa.ts and
+ * pages/Login.tsx. No token is kept here or in localStorage.
+ */
 
 interface AuthState {
     isAuthenticated: boolean;
-    token: string | null;
     userEmail: string | null;
     userName: string | null;  // User's actual name (if set)
     isAdmin: boolean;  // Admin role flag
@@ -13,23 +20,42 @@ interface AuthState {
 }
 
 interface AuthContextType extends AuthState {
-    login: (data: LoginRequest) => Promise<boolean>;
+    /** Password step. Resolves with the next step; "session" means signed in. */
+    login: (data: LoginRequest) => Promise<AdminLoginStep>;
+    /** Finish a sign-in with the session answer of /mfa/verify or /mfa/enroll. */
+    completeSignIn: (res: AuthResponse, email?: string) => void;
     register: (data: RegisterRequest) => Promise<void>;
     logout: () => void;
     refreshUser: () => Promise<void>;
 }
 
+const SIGNED_OUT: AuthState = {
+    isAuthenticated: false,
+    userEmail: null,
+    userName: null,
+    isAdmin: false,
+    isLoading: false,
+};
+
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+function cache(key: string, value: string | null | undefined): void {
+    try {
+        if (value) localStorage.setItem(key, value);
+    } catch {
+        // Storage unavailable: display cache only.
+    }
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
-    const [state, setState] = useState<AuthState>({
+    // Loading only when there may be a session to check (see the effect below).
+    const [state, setState] = useState<AuthState>(() => ({
         isAuthenticated: false,
-        token: null,
         userEmail: null,
         userName: null,
         isAdmin: false,
-        isLoading: true,  // Start as loading until we check localStorage
-    });
+        isLoading: hasSessionHint(),
+    }));
 
     // Fetch user profile from API
     const fetchProfile = async () => {
@@ -37,10 +63,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             const profile = await api.getMe() as any;
             // Admin /me returns full_name; user /me returns name — handle both.
             const displayName: string | null = profile.full_name || profile.name || null;
-            localStorage.setItem("admin_email", profile.email);
-            if (displayName) {
-                localStorage.setItem("admin_name", displayName);
-            }
+            cache("admin_email", profile.email);
+            cache("admin_name", displayName);
             setState(prev => ({
                 ...prev,
                 userEmail: profile.email,
@@ -51,143 +75,71 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
     };
 
-    // Check localStorage on mount
+    // On mount: is there a cookie session?
     useEffect(() => {
-        const token = localStorage.getItem("admin_access_token");
-        if (token) {
-            try {
-                const decoded: any = jwtDecode(token);
-                // Basic expiration check
-                if (decoded.exp * 1000 < Date.now()) {
-                    // Access token expired: try the (rotating) refresh token before ending the session.
-                    refreshAccessToken(token).then((outcome) => {
-                        if (outcome.status === "refreshed") {
-                            setState({
-                                isAuthenticated: true,
-                                token: outcome.token,
-                                userEmail: localStorage.getItem("admin_email"),
-                                userName: localStorage.getItem("admin_name"),
-                                isAdmin: true,
-                                isLoading: false,
-                            });
-                            fetchProfile();
-                            return;
-                        }
-                        if (outcome.status === "rejected") {
-                            // Refresh token missing, expired or revoked: the session is over.
-                            localStorage.removeItem("admin_access_token");
-                            localStorage.removeItem("admin_refresh_token");
-                            localStorage.removeItem("admin_email");
-                            localStorage.removeItem("admin_name");
-                        }
-                        // "unavailable" (backend unreachable): keep the stored tokens so a
-                        // later reload can retry, but do not treat the admin as signed in.
-                        setState({
-                            isAuthenticated: false,
-                            token: null,
-                            userEmail: null,
-                            userName: null,
-                            isAdmin: false,
-                            isLoading: false,
-                        });
-                    });
-                } else {
-                    // Get cached data from localStorage
-                    const storedEmail = localStorage.getItem("admin_email");
-                    const storedName = localStorage.getItem("admin_name");
-                    // Admin token inherently proves admin
+        let cancelled = false;
+        if (hasSessionHint()) {
+            (api.getMe() as Promise<any>)
+                .then((profile) => {
+                    if (cancelled) return;
+                    const displayName: string | null = profile.full_name || profile.name || null;
+                    cache("admin_email", profile.email);
+                    cache("admin_name", displayName);
                     setState({
                         isAuthenticated: true,
-                        token,
-                        userEmail: storedEmail || null,
-                        userName: storedName || null,
-                        isAdmin: true,
+                        userEmail: profile.email,
+                        userName: displayName,
+                        isAdmin: true, // admin-auth /me answers for admin sessions only
                         isLoading: false,
                     });
-                    fetchProfile();
-                }
-            } catch {
-                // Invalid token...
-                localStorage.removeItem("admin_access_token");
-                localStorage.removeItem("admin_refresh_token");
-                localStorage.removeItem("admin_email");
-                localStorage.removeItem("admin_name");
-                setState({
-                    isAuthenticated: false,
-                    token: null,
-                    userEmail: null,
-                    userName: null,
-                    isAdmin: false,
-                    isLoading: false,
+                })
+                .catch(() => {
+                    if (!cancelled) setState(SIGNED_OUT);
                 });
-            }
-        } else {
-            // No token found
-            setState(prev => ({ ...prev, isLoading: false }));
         }
 
-        // The HTTP layer (api/http.ts) clears the stored session and dispatches this
-        // event when the refresh token is rejected; the protected routes then
-        // redirect to /login.
+        // The HTTP layer (api/http.ts) clears the local session and dispatches this
+        // event when the refresh is refused; the protected routes then redirect to /login.
         const handleUnauthorized = () => {
-            setState({
-                isAuthenticated: false,
-                token: null,
-                userEmail: null,
-                userName: null,
-                isAdmin: false,
-                isLoading: false,
-            });
+            setState(SIGNED_OUT);
         };
         window.addEventListener(AUTH_UNAUTHORIZED_EVENT, handleUnauthorized);
         return () => {
+            cancelled = true;
             window.removeEventListener(AUTH_UNAUTHORIZED_EVENT, handleUnauthorized);
         };
     }, []);
 
-    const login = async (data: LoginRequest) => {
-        const res = await api.login(data);
-        localStorage.setItem("admin_access_token", res.access_token);
-        localStorage.setItem("admin_refresh_token", res.refresh_token);
-        localStorage.setItem("admin_email", data.username);
-
-        // Update state
+    const completeSignIn = (res: AuthResponse, email?: string) => {
+        // The backend set the session cookies; keep only the CSRF token (in memory).
+        markSignedIn(res.csrf_token);
+        cache("admin_email", email);
         setState({
             isAuthenticated: true,
-            token: res.access_token,
-            userEmail: data.username,
+            userEmail: email || null,
             userName: null,
             isAdmin: true, // Login to admin auth inherently provides admin rights
             isLoading: false,
         });
-
-        // Fetch full profile in background
         fetchProfile();
-
-        return true; // Return for component redirect logic
     };
 
-
+    const login = async (data: LoginRequest): Promise<AdminLoginStep> => {
+        const res = await api.login(data);
+        const step = classifyAdminLogin(res);
+        if (!step) throw new Error("Unexpected sign-in answer");
+        if (step.kind === "session") completeSignIn(res, data.username);
+        return step;
+    };
 
     const register = async (data: RegisterRequest) => {
         await api.register(data);
-        // Auto-login after register? Or require explicit login. 
-        // For MVP, require explicit login
     };
 
     const logout = () => {
-        localStorage.removeItem("admin_access_token");
-        localStorage.removeItem("admin_refresh_token");
-        localStorage.removeItem("admin_email");
-        localStorage.removeItem("admin_name");
-        setState({
-            isAuthenticated: false,
-            token: null,
-            userEmail: null,
-            userName: null,
-            isAdmin: false,
-            isLoading: false,
-        });
+        // Revoke the server session and clear its cookies, then forget it locally.
+        void api.logout().finally(() => forgetLocalSession());
+        setState(SIGNED_OUT);
     };
 
     const refreshProfile = async () => {
@@ -195,7 +147,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
 
     return (
-        <AuthContext.Provider value={{ ...state, login, register, logout, refreshUser: refreshProfile }}>
+        <AuthContext.Provider value={{ ...state, login, completeSignIn, register, logout, refreshUser: refreshProfile }}>
             {children}
         </AuthContext.Provider>
     );

@@ -62,7 +62,17 @@ def get_current_admin(token: str = Depends(admin_oauth2_scheme)) -> dict:
             raise HTTPException(status_code=401, detail="Admin not found")
         if row["is_active"] != 1:
             raise HTTPException(status_code=403, detail="Admin account is inactive")
-        return dict(row)
+        admin = dict(row)
+    # Section H 8.4: while admin MFA is mandatory, a session of an admin who has
+    # not enrolled (e.g. one opened before the policy was switched on) is not
+    # accepted anywhere; the console sends the admin through enrolment.
+    from app.core.session_cookies import admin_mfa_required
+    if admin_mfa_required() and not (admin.get("mfa_enabled") and admin.get("mfa_secret")):
+        raise HTTPException(
+            status_code=403,
+            detail={"code": "MFA_ENROLLMENT_REQUIRED", "message": "Admin MFA enrolment is required"},
+        )
+    return admin
 
 def require_admin(current_admin: dict = Depends(get_current_admin)) -> dict:
     """

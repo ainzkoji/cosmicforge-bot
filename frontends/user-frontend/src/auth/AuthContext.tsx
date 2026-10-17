@@ -1,11 +1,16 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from "react";
 import { api, LoginRequest, RegisterRequest } from "@/api/client";
-import { jwtDecode } from "jwt-decode";
-import { refreshAccessToken } from "@/api/http";
+import { AUTH_UNAUTHORIZED_EVENT, forgetLocalSession, hasSessionHint, markSignedIn } from "@/api/http";
+
+/*
+ * Section H 8.4: the session is held in httpOnly cookies the page cannot read.
+ * "Signed in" therefore means "GET /me succeeds" (apiFetch refreshes an expired
+ * session through the refresh cookie on the way). No token is kept here or in
+ * localStorage; only the email/name of the profile are cached for display.
+ */
 
 interface AuthState {
     isAuthenticated: boolean;
-    token: string | null;
     userEmail: string | null;
     userName: string | null;  // User's actual name (if set)
     isLoading: boolean;  // Track if auth check is in progress
@@ -18,25 +23,46 @@ interface AuthContextType extends AuthState {
     refreshUser: () => Promise<void>;
 }
 
+const SIGNED_OUT: AuthState = {
+    isAuthenticated: false,
+    userEmail: null,
+    userName: null,
+    isLoading: false,
+};
+
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+function cache(key: string, value: string | null | undefined): void {
+    try {
+        if (value) localStorage.setItem(key, value);
+    } catch {
+        // Storage unavailable: display cache only.
+    }
+}
+
+function cached(key: string): string | null {
+    try {
+        return localStorage.getItem(key);
+    } catch {
+        return null;
+    }
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
-    const [state, setState] = useState<AuthState>({
+    // Loading only when there may be a session to check (see the effect below).
+    const [state, setState] = useState<AuthState>(() => ({
         isAuthenticated: false,
-        token: null,
         userEmail: null,
         userName: null,
-        isLoading: true,  // Start as loading until we check localStorage
-    });
+        isLoading: hasSessionHint(),
+    }));
 
     // Fetch user profile from API
     const fetchProfile = async () => {
         try {
             const profile = await api.getMe();
-            localStorage.setItem("user_email", profile.email);
-            if (profile.name) {
-                localStorage.setItem("user_name", profile.name);
-            }
+            cache("user_email", profile.email);
+            cache("user_name", profile.name);
             setState(prev => ({
                 ...prev,
                 userEmail: profile.email,
@@ -47,103 +73,51 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
     };
 
-
-
-    // Check localStorage on mount
+    // On mount: is there a cookie session?
     useEffect(() => {
-        const token = localStorage.getItem("access_token");
-        if (token) {
-            try {
-                const decoded: any = jwtDecode(token);
-                // Basic expiration check
-                if (decoded.exp * 1000 < Date.now()) {
-                    // Access token expired: try the (rotating) refresh token before ending the session.
-                    refreshAccessToken(token).then((outcome) => {
-                        if (outcome.status === "refreshed") {
-                            setState({
-                                isAuthenticated: true,
-                                token: outcome.token,
-                                userEmail: localStorage.getItem("user_email"),
-                                userName: localStorage.getItem("user_name"),
-                                isLoading: false,
-                            });
-                            fetchProfile();
-                            return;
-                        }
-                        if (outcome.status === "rejected") {
-                            // Refresh token missing, expired or revoked: the session is over.
-                            localStorage.removeItem("access_token");
-                            localStorage.removeItem("refresh_token");
-                            localStorage.removeItem("user_email");
-                            localStorage.removeItem("user_name");
-                        }
-                        // "unavailable" (backend unreachable): keep the stored tokens so a
-                        // later reload can retry, but do not treat the user as signed in.
-                        setState({
-                            isAuthenticated: false,
-                            token: null,
-                            userEmail: null,
-                            userName: null,
-                            isLoading: false,
-                        });
-                    });
-                } else {
-                    // Get cached data from localStorage
-                    const storedEmail = localStorage.getItem("user_email");
-                    const storedName = localStorage.getItem("user_name");
-
+        let cancelled = false;
+        // Never signed in on this browser (or signed out): nothing to check.
+        if (hasSessionHint()) {
+            api.getMe()
+                .then((profile) => {
+                    if (cancelled) return;
+                    cache("user_email", profile.email);
+                    cache("user_name", profile.name);
                     setState({
                         isAuthenticated: true,
-                        token,
-                        userEmail: storedEmail || null,
-                        userName: storedName || null,
+                        userEmail: profile.email,
+                        userName: profile.name || cached("user_name"),
                         isLoading: false,
                     });
-                    fetchProfile();
-                }
-            } catch {
-                // Invalid token... (existing code)
-                localStorage.removeItem("access_token");
-                localStorage.removeItem("refresh_token");
-                localStorage.removeItem("user_email");
-                localStorage.removeItem("user_name");
-                setState({
-                    isAuthenticated: false,
-                    token: null,
-                    userEmail: null,
-                    userName: null,
-                    isLoading: false,
+                })
+                .catch(() => {
+                    // Session over (the HTTP layer already cleared it on a refused
+                    // refresh) or backend unreachable: not signed in for now.
+                    if (!cancelled) setState(SIGNED_OUT);
                 });
-            }
-        } else {
-            // No token found
-            setState(prev => ({ ...prev, isLoading: false }));
         }
 
-        // Listen for 401 events from client.ts
+        // The HTTP layer clears the local session and dispatches this event when
+        // the refresh is refused; the protected routes then redirect to /login.
         const handleUnauthorized = () => {
-            logout();
+            setState(SIGNED_OUT);
         };
-        window.addEventListener("auth:unauthorized", handleUnauthorized);
+        window.addEventListener(AUTH_UNAUTHORIZED_EVENT, handleUnauthorized);
 
         return () => {
-            window.removeEventListener("auth:unauthorized", handleUnauthorized);
+            cancelled = true;
+            window.removeEventListener(AUTH_UNAUTHORIZED_EVENT, handleUnauthorized);
         };
     }, []);
 
     const login = async (data: LoginRequest) => {
         const res = await api.login(data);
-        localStorage.setItem("access_token", res.access_token);
-        localStorage.setItem("refresh_token", res.refresh_token);
-        localStorage.setItem("user_email", data.username);
+        // The backend set the session cookies; keep only the CSRF token (in memory).
+        markSignedIn(res.csrf_token);
+        cache("user_email", data.username);
 
-        // Check admin role immediately
-        // const isAdmin = await checkAdminRole(res.access_token); // Removed
-
-        // Update state
         setState({
             isAuthenticated: true,
-            token: res.access_token,
             userEmail: data.username,
             userName: null,
             isLoading: false,
@@ -155,26 +129,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return false; // Return false (not admin)
     };
 
-
-
     const register = async (data: RegisterRequest) => {
         await api.register(data);
-        // Auto-login after register? Or require explicit login. 
-        // For MVP, require explicit login
+        // Explicit login after registration (email verification comes first).
     };
 
     const logout = () => {
-        localStorage.removeItem("access_token");
-        localStorage.removeItem("refresh_token");
-        localStorage.removeItem("user_email");
-        localStorage.removeItem("user_name");
-        setState({
-            isAuthenticated: false,
-            token: null,
-            userEmail: null,
-            userName: null,
-            isLoading: false,
-        });
+        // Revoke the server session and clear its cookies, then forget it locally.
+        void api.logout().finally(() => forgetLocalSession());
+        setState(SIGNED_OUT);
     };
 
     const refreshProfile = async () => {

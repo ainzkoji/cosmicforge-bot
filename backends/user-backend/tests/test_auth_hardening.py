@@ -568,7 +568,8 @@ def test_2fa_secret_is_stored_encrypted_and_login_requires_the_code(ctx, monkeyp
     assert secret in setup.json()["uri"]
 
     stored = _rows(ctx, "SELECT totp_secret FROM users WHERE email = ?", (EMAIL,))[0]["totp_secret"]
-    assert stored.startswith("enc:v1:") and secret not in stored
+    # Section H 8.4: new secrets use the HKDF-derived key (format v2).
+    assert stored.startswith("enc:v2:") and secret not in stored
     assert security.decrypt_totp_secret(stored) == secret
 
     # Not enabled until a valid code proves the authenticator was set up.

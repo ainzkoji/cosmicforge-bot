@@ -218,6 +218,11 @@ def get_summary(
         summary = get_broker_summary(user_id, account_id)
         if summary is None:
             raise HTTPException(404, "Broker account not found")
+        # Section H 8.4: someone else's account answers exactly like a missing
+        # one (it used to be a 200 naming the account as "does not belong to
+        # user ...", which confirmed that the id exists).
+        if summary.get("error_code") in ("broker_not_found", "broker_access_denied"):
+            raise HTTPException(404, "Broker account not found")
         if "error" in summary and "Account not found" in summary["error"]:
             raise HTTPException(404, summary["error"])
         return summary

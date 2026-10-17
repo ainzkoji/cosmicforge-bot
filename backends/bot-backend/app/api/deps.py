@@ -45,6 +45,11 @@ def get_current_active_user(
         user_id: str = payload.get("sub")
         if user_id is None:
             raise credentials_exception
+        # Section H 8.4: only an ACCESS token authenticates a request. A refresh
+        # token (14-day lifetime, revocable only at the user-backend) carries
+        # the same issuer/audience and used to be accepted here as well.
+        if payload.get("type") != "access":
+            raise credentials_exception
         
         # Return user dict
         return {

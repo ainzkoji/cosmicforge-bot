@@ -899,9 +899,18 @@ def get_broker_account(user_id: str, account_id: str) -> Optional[Dict[str, Any]
 def disconnect_broker_account(user_id: str, account_id: str) -> bool:
     db = get_db()
     with db.connect() as conn:
+        # Section H 8.4 (tenant isolation): ownership first. Without it any
+        # signed-in user could delete another user's credentials and stop
+        # every bot running on that account just by knowing its id.
+        owned = conn.execute(
+            "SELECT id FROM broker_accounts WHERE id = ? AND user_id = ?", (account_id, user_id)
+        ).fetchone()
+        if not owned:
+            return False
+
         # We might want to keep history?
         # For now, HARD DELETE credentials, SOFT DELETE account (or set status 'disconnected')
-        
+
         # 1. Delete credentials (security first)
         conn.execute("DELETE FROM broker_credentials WHERE account_id = ?", (account_id,))
         
