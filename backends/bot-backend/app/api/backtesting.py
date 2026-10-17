@@ -21,10 +21,15 @@ import os
 
 # Configure logging to file
 log_path = os.path.join(os.path.dirname(__file__), "../../../debug_error.log")
-handler = logging.FileHandler(log_path)
-handler.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s'))
 logger = logging.getLogger(__name__)
-logger.addHandler(handler)
+try:
+    handler = logging.FileHandler(log_path)
+    handler.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s'))
+    logger.addHandler(handler)
+except OSError:
+    # A read-only deployment (the container images mount the code read-only) has no writable source tree:
+    # errors still reach the process's normal log handlers instead of stopping the service at import.
+    pass
 logger.setLevel(logging.ERROR)
 
 router = APIRouter()
