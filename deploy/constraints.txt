@@ -82,6 +82,8 @@ pycparser==2.23
 pydantic==2.12.5
 pydantic-core==2.41.5
 pydantic-settings==2.12.0
+psycopg==3.2.10
+psycopg-binary==3.2.10
 pygments==2.19.2
 pyjwt==2.11.0
 pyotp==2.9.0

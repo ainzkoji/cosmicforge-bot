@@ -60,6 +60,21 @@ jobs:
     name: Bot backend tests
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    # The platform layer (tests/platform_workers) runs every test on SQLite AND on this PostgreSQL server; the
+    # REQUIRED flag makes a missing server a failure instead of a silent skip.
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: cfci
+          POSTGRES_PASSWORD: cfci
+          POSTGRES_DB: postgres
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U cfci" --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      PLATFORM_TEST_POSTGRES_URL: postgresql://cfci:cfci@127.0.0.1:5432/postgres
+      PLATFORM_TEST_POSTGRES_REQUIRED: "1"
     steps:
     - uses: actions/checkout@v4
     - uses: actions/setup-python@v5

@@ -34,3 +34,5 @@ apscheduler
 pytest
 httpx
 websockets
+# PostgreSQL driver for the platform layer (shared_lib.persistence.sql); SQLite needs nothing extra
+psycopg[binary]

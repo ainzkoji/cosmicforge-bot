@@ -1,0 +1,101 @@
+{
+ "fixture": {
+  "days": 547,
+  "decision_day": "2020-12-01",
+  "seed": 7,
+  "symbols": 26
+ },
+ "host": {
+  "cpu_count": 8,
+  "machine": "AMD64",
+  "numpy": "2.4.1",
+  "platform": "Windows-11-10.0.26200-SP0",
+  "processor": "Intel64 Family 6 Model 140 Stepping 1, GenuineIntel",
+  "python": "3.12.2",
+  "sqlite": "3.43.1",
+  "sqlite_synchronous": "NORMAL (default)",
+  "statement": "Measured on the host described under 'host'. A Windows workstation measurement is not a Linux certification, and synthetic accounts are not connected customer accounts. Step 5 scale certification is not claimed.",
+  "system": "Windows"
+ },
+ "interpretation": "The shared market stage runs once per cycle whatever the account count; its time varies only with host noise. Total sizing work grows with the number of accounts. Thread parallelism helps only where the sizer releases the GIL; the figures say how much it did on this host.",
+ "measured_at_utc": "2026-10-17T10:22:16Z",
+ "not_a_certification": "Measured on the host described under 'host'. A Windows workstation measurement is not a Linux certification, and synthetic accounts are not connected customer accounts. Step 5 scale certification is not claimed.",
+ "repeats": 3,
+ "rows": [
+  {
+   "accounts": 1,
+   "all_within_cycle_budget": true,
+   "cycle_budget_ms": 60000.0,
+   "peak_traced_memory_bytes": 5282523,
+   "per_account_latency_parallel": {
+    "max": 0.1701,
+    "p50": 0.1701,
+    "p95": 0.1701
+   },
+   "per_account_ms_sequential": 0.3126,
+   "shared_signal_computations_per_cycle": 1,
+   "shared_signal_ms_median": 18.121,
+   "sizing_cpu_ms_sequential_median": 0.0,
+   "sizing_parallel_concurrency": 8,
+   "sizing_parallel_ms_median": 0.798,
+   "sizing_sequential_ms_median": 0.313
+  },
+  {
+   "accounts": 10,
+   "all_within_cycle_budget": true,
+   "cycle_budget_ms": 60000.0,
+   "peak_traced_memory_bytes": 5282483,
+   "per_account_latency_parallel": {
+    "max": 0.3577,
+    "p50": 0.24,
+    "p95": 0.3577
+   },
+   "per_account_ms_sequential": 0.2094,
+   "shared_signal_computations_per_cycle": 1,
+   "shared_signal_ms_median": 15.92,
+   "sizing_cpu_ms_sequential_median": 0.0,
+   "sizing_parallel_concurrency": 8,
+   "sizing_parallel_ms_median": 3.743,
+   "sizing_sequential_ms_median": 2.094
+  },
+  {
+   "accounts": 100,
+   "all_within_cycle_budget": true,
+   "cycle_budget_ms": 60000.0,
+   "peak_traced_memory_bytes": 5282451,
+   "per_account_latency_parallel": {
+    "max": 0.5767,
+    "p50": 0.1358,
+    "p95": 0.2287
+   },
+   "per_account_ms_sequential": 0.2298,
+   "shared_signal_computations_per_cycle": 1,
+   "shared_signal_ms_median": 17.885,
+   "sizing_cpu_ms_sequential_median": 31.25,
+   "sizing_parallel_concurrency": 8,
+   "sizing_parallel_ms_median": 24.374,
+   "sizing_sequential_ms_median": 22.98
+  },
+  {
+   "accounts": 1000,
+   "all_within_cycle_budget": true,
+   "cycle_budget_ms": 60000.0,
+   "peak_traced_memory_bytes": 14958416,
+   "per_account_latency_parallel": {
+    "max": 105.7744,
+    "p50": 0.1451,
+    "p95": 0.2355
+   },
+   "per_account_ms_sequential": 0.2034,
+   "shared_signal_computations_per_cycle": 1,
+   "shared_signal_ms_median": 15.938,
+   "sizing_cpu_ms_sequential_median": 203.125,
+   "sizing_parallel_concurrency": 8,
+   "sizing_parallel_ms_median": 213.603,
+   "sizing_sequential_ms_median": 203.37
+  }
+ ],
+ "schema": "cati-signal-fanout-v1",
+ "shared_signal_ms_at_1_account": 18.121,
+ "shared_signal_ratio_max_over_min": 1.138
+}
