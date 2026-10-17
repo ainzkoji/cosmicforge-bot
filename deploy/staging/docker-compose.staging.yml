@@ -18,7 +18,8 @@
 name: cosmicforge-staging
 
 x-backend: &backend
-  env_file: [${STAGING_ENV_FILE:-./staging.env}]
+  env_file:
+    - ${STAGING_ENV_FILE:-./staging.env}
   restart: unless-stopped
   read_only: true
   tmpfs: [/tmp]
@@ -46,7 +47,8 @@ services:
 
   migrate:
     image: cosmicforge/bot-backend:${IMAGE_TAG:?set IMAGE_TAG}
-    env_file: [${STAGING_ENV_FILE:-./staging.env}]
+    env_file:
+    - ${STAGING_ENV_FILE:-./staging.env}
     depends_on:
       postgres: {condition: service_healthy}
     working_dir: /srv/cosmicforge/backends/shared
@@ -102,7 +104,8 @@ services:
 
   healthcheck:
     image: cosmicforge/bot-backend:${IMAGE_TAG:?set IMAGE_TAG}
-    env_file: [${STAGING_ENV_FILE:-./staging.env}]
+    env_file:
+    - ${STAGING_ENV_FILE:-./staging.env}
     working_dir: /srv/cosmicforge
     command: ["sh", "-c", "while true; do python scripts/vps_health_check.py --url http://bot-trading:8000 || true; sleep 120; done"]
     depends_on: [bot-trading]

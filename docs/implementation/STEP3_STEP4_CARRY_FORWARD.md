@@ -1,7 +1,8 @@
 # Section H carry-forward register
 
 Updated 16 October 2026. Code: `2bc06fb`, `cda273a`, `49b81ae`,
-`6e4d725`, `6372b83`, `20527f3`, `61d3199`. This register grants no trading authority.
+`6e4d725`, `6372b83`, `20527f3`, `61d3199`. This register grants no trading authority. Steps 5–8 continue it in
+[STEP5_STEP8_EXTERNAL_GATES.md](STEP5_STEP8_EXTERNAL_GATES.md) (17 October 2026); every gate below still applies.
 Local component evidence is in [the A–N report](STEP3_STEP4_VALIDATION.md).
 The final pushed commit must have green Linux CI before engineering closure.
 

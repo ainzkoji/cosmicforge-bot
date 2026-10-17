@@ -9,7 +9,8 @@ exception inside a check is that check's failure (``CHECK_ERROR``), never a pass
  3 STRATEGY_DEMO_RUN_COMPLETED      a recorded PASS demo run of this family version, at least the owner's
                                     minimum duration (unset -> BLOCKED_PENDING_POLICY)
  4 FAMILY_STAGE_PERMITS_LIVE        governance stage allows LIVE (registry allowed_modes)
- 5 CUSTOMER_LIVE_RISK_CONSENT       active, unrevoked live consent of the account owner, current version
+ 5 CUSTOMER_LIVE_RISK_CONSENT       active, unrevoked live consent of the account owner, current version, and
+                                    current acceptance of the risk disclosure and automated-execution consent
  6 IDENTITY_REQUIREMENT_SATISFIED   identity policy for "start_live_trading" (identity service)
  7 ACCOUNT_CONNECTION_VALID         account exists, belongs to the user, connected, LIVE environment
  8 RISK_PROFILE_VALID               a valid risk level on the account's bot
@@ -104,6 +105,7 @@ class Sources:
     kill_switch: Callable[[Optional[str]], bool]                        # scope (None = platform) -> ON?
     open_uncertainty: Callable[[str], List[str]]                        # account_id -> open uncertainty codes
     beta_budget_ceiling: Callable[[str], Optional[float]] = lambda account_id: None
+    legal_acceptance: Callable[[str], List[str]] = lambda user_id: []   # user -> missing legal acceptances
     now_ms: Callable[[], int] = None  # type: ignore[assignment]
 
 
@@ -185,6 +187,9 @@ class GoLiveGate:
         required = policy.get("LIVE_CONSENT_VERSION")
         if not st.active:
             return Condition("CUSTOMER_LIVE_RISK_CONSENT", FAIL, "CONSENT_REVOKED" if st.revoked else "CONSENT_MISSING")
+        missing_legal = list(self.sources.legal_acceptance(request.user_id))
+        if missing_legal:
+            return Condition("CUSTOMER_LIVE_RISK_CONSENT", FAIL, ",".join(missing_legal))
         if st.user_id != request.user_id:
             return Condition("CUSTOMER_LIVE_RISK_CONSENT", FAIL, "CONSENT_NOT_GIVEN_BY_ACCOUNT_OWNER")
         if required is None:
@@ -334,11 +339,21 @@ def production_sources(runtime_db: Any) -> Sources:
             from shared_lib.identity import identity_permits as permits   # Step 8.3 identity service
         except ImportError:
             return False, "IDENTITY_SERVICE_UNAVAILABLE"
-        result = permits(runtime_db, user_id, action)
-        if isinstance(result, tuple):
-            return bool(result[0]), str(result[1] if len(result) > 1 else "")
-        ok = bool(getattr(result, "permitted", result))
-        return ok, "" if ok else str(getattr(result, "reason", "IDENTITY_NOT_SATISFIED"))
+        decision = permits(str(user_id), action, db=runtime_db)
+        return bool(decision.permitted), "" if decision.permitted else f"{decision.code}:{decision.reason}"[:200]
+
+    def legal_acceptance(user_id):
+        """The customer's current acceptance of the documents automated live execution needs (Step 8.2)."""
+        try:
+            from shared_lib.legal.documents import has_current_acceptance
+        except ImportError:
+            return ["LEGAL_SERVICE_UNAVAILABLE"]
+        missing = []
+        with runtime_db.connect() as conn:
+            for category in ("TRADING_RISK_DISCLOSURE", "AUTOMATED_EXECUTION_CONSENT"):
+                if not has_current_acceptance(conn, str(user_id), category):
+                    missing.append(f"{category}_NOT_ACCEPTED")
+        return missing
 
     def account(account_id):
         with runtime_db.connect() as conn:
@@ -383,6 +398,7 @@ def production_sources(runtime_db: Any) -> Sources:
         return codes
 
     return Sources(adapter_certified=adapter_certified, family_entry=family_entry, identity_permits=identity_permits,
+                   legal_acceptance=legal_acceptance,
                    account=account, bot_for_account=bot_for_account, live_submission_enabled=live_submission_enabled,
                    kill_switch=kill_switch, open_uncertainty=open_uncertainty)
 

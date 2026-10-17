@@ -356,3 +356,12 @@ def test_execution_boundary_refuses_live_entries_through_the_gate(platform_db, d
     monkeypatch.setenv("GOLIVE_REVOCATION_ANCHOR", anchor)
     why = CATIExecutionBoundary._go_live_reason(boundary, plan, int(time.time() * 1000))
     assert why.startswith("GO_LIVE_GATE:") and why != "GO_LIVE_GATE:"
+
+
+def test_withdrawn_legal_acceptance_blocks_consent(ledger, monkeypatch):
+    monkeypatch.setattr(G, "BUILD_PERMITS_LIVE", True)
+    fully_authorized(ledger)
+    d = G.GoLiveGate(ledger, green_sources(legal_acceptance=lambda u: ["AUTOMATED_EXECUTION_CONSENT_NOT_ACCEPTED"])
+                     ).evaluate(REQ)
+    assert [c.id for c in d.blocking] == ["CUSTOMER_LIVE_RISK_CONSENT"]
+    assert d.blocking[0].reason == "AUTOMATED_EXECUTION_CONSENT_NOT_ACCEPTED"

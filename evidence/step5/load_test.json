@@ -1,0 +1,503 @@
+{
+ "postgresql": {
+  "host": {
+   "cpu_count": 8,
+   "machine": "AMD64",
+   "numpy": "2.4.1",
+   "platform": "Windows-11-10.0.26200-SP0",
+   "processor": "Intel64 Family 6 Model 140 Stepping 1, GenuineIntel",
+   "python": "3.12.2",
+   "sqlite": "3.43.1",
+   "sqlite_synchronous": "NORMAL (default)",
+   "statement": "Measured on the host described under 'host'. A Windows workstation measurement is not a Linux certification, and synthetic accounts are not connected customer accounts. Step 5 scale certification is not claimed.",
+   "system": "Windows"
+  },
+  "limits": "Synthetic replayed data and in-memory fake venues on one Windows workstation; threads for workers. Not exchange-demo throughput, not a hosted staging run, not a Linux certification.",
+  "measured_at_utc": "2026-10-17T11:19:37Z",
+  "rows": [
+   {
+    "accounts": 1,
+    "maintenance": {
+     "account_stage_p50_ms": 0.064,
+     "account_stage_p95_ms": 0.064,
+     "accounts_maintained": 1,
+     "cpu_ms": 0.0,
+     "max_worker_cycle_ms": 11.2,
+     "owned": 1,
+     "statements": 55,
+     "wall_ms": 12.1,
+     "workers": 4
+    },
+    "order_spreading": {
+     "cap_notional": "500095.000000000000000000",
+     "cpu_ms": 0.0,
+     "deferred": 0,
+     "depth_requests_per_account": 1.0,
+     "depth_snapshots_used": 1,
+     "granted_total": "250.000000000000000000",
+     "reserved": 1,
+     "statements": 14,
+     "wall_ms": 6.6,
+     "within_cap": true
+    },
+    "queue": {
+     "backlog_after": {
+      "SUCCEEDED": 1
+     },
+     "cpu_ms": 0.0,
+     "duplicate_orders": 0,
+     "failed_rate": 0.0,
+     "jobs": 1,
+     "statements": 24,
+     "succeeded": 1,
+     "throughput_jobs_per_s": 94.3,
+     "wall_ms": 10.6
+    },
+    "resources": {
+     "pool_peak_connections": 4,
+     "pool_size": 24,
+     "rss_mb": 60.6,
+     "statements_total": 320,
+     "transactions_total": 60
+    },
+    "signal": {
+     "errors": 0,
+     "per_account_p95_ms": 0.392,
+     "shared_signal_ms": 27.3,
+     "sizing_ms": 0.45
+    },
+    "takeover": {
+     "accounts_of_stopped_worker": 0,
+     "orphans_left": 0,
+     "takeover_ms": 9,
+     "ttl_ms": 2000
+    }
+   },
+   {
+    "accounts": 10,
+    "maintenance": {
+     "account_stage_p50_ms": 0.054,
+     "account_stage_p95_ms": 0.064,
+     "accounts_maintained": 10,
+     "cpu_ms": 15.6,
+     "max_worker_cycle_ms": 16.6,
+     "owned": 10,
+     "statements": 89,
+     "wall_ms": 18.0,
+     "workers": 4
+    },
+    "order_spreading": {
+     "cap_notional": "500095.000000000000000000",
+     "cpu_ms": 0.0,
+     "deferred": 0,
+     "depth_requests_per_account": 0.1,
+     "depth_snapshots_used": 1,
+     "granted_total": "2500.000000000000000000",
+     "reserved": 10,
+     "statements": 50,
+     "wall_ms": 19.5,
+     "within_cap": true
+    },
+    "queue": {
+     "backlog_after": {
+      "SUCCEEDED": 11
+     },
+     "cpu_ms": 31.2,
+     "duplicate_orders": 0,
+     "failed_rate": 0.0,
+     "jobs": 10,
+     "statements": 150,
+     "succeeded": 10,
+     "throughput_jobs_per_s": 165.6,
+     "wall_ms": 60.4
+    },
+    "resources": {
+     "pool_peak_connections": 6,
+     "pool_size": 24,
+     "rss_mb": 61.6,
+     "statements_total": 2733,
+     "transactions_total": 627
+    },
+    "signal": {
+     "errors": 0,
+     "per_account_p95_ms": 0.229,
+     "shared_signal_ms": 17.91,
+     "sizing_ms": 1.55
+    },
+    "takeover": {
+     "accounts_of_stopped_worker": 1,
+     "orphans_left": 0,
+     "takeover_ms": 1909,
+     "ttl_ms": 2000
+    }
+   },
+   {
+    "accounts": 100,
+    "maintenance": {
+     "account_stage_p50_ms": 0.056,
+     "account_stage_p95_ms": 0.077,
+     "accounts_maintained": 100,
+     "cpu_ms": 109.4,
+     "max_worker_cycle_ms": 118.1,
+     "owned": 100,
+     "statements": 448,
+     "wall_ms": 118.7,
+     "workers": 4
+    },
+    "order_spreading": {
+     "cap_notional": "500095.000000000000000000",
+     "cpu_ms": 62.5,
+     "deferred": 0,
+     "depth_requests_per_account": 0.01,
+     "depth_snapshots_used": 1,
+     "granted_total": "25000.000000000000000000",
+     "reserved": 100,
+     "statements": 410,
+     "wall_ms": 118.8,
+     "within_cap": true
+    },
+    "queue": {
+     "backlog_after": {
+      "SUCCEEDED": 111
+     },
+     "cpu_ms": 453.1,
+     "duplicate_orders": 0,
+     "failed_rate": 0.0,
+     "jobs": 100,
+     "statements": 1416,
+     "succeeded": 100,
+     "throughput_jobs_per_s": 359.3,
+     "wall_ms": 278.3
+    },
+    "resources": {
+     "pool_peak_connections": 12,
+     "pool_size": 24,
+     "rss_mb": 65.1,
+     "statements_total": 7972,
+     "transactions_total": 2248
+    },
+    "signal": {
+     "errors": 0,
+     "per_account_p95_ms": 0.3024,
+     "shared_signal_ms": 18.3,
+     "sizing_ms": 22.78
+    },
+    "takeover": {
+     "accounts_of_stopped_worker": 25,
+     "orphans_left": 0,
+     "takeover_ms": 1274,
+     "ttl_ms": 2000
+    }
+   },
+   {
+    "accounts": 1000,
+    "maintenance": {
+     "account_stage_p50_ms": 0.045,
+     "account_stage_p95_ms": 0.063,
+     "accounts_maintained": 1000,
+     "cpu_ms": 1546.9,
+     "max_worker_cycle_ms": 824.1,
+     "owned": 1000,
+     "statements": 4048,
+     "wall_ms": 825.3,
+     "workers": 4
+    },
+    "order_spreading": {
+     "cap_notional": "500095.000000000000000000",
+     "cpu_ms": 671.9,
+     "deferred": 0,
+     "depth_requests_per_account": 0.001,
+     "depth_snapshots_used": 1,
+     "granted_total": "250000.000000000000000000",
+     "reserved": 1000,
+     "statements": 4010,
+     "wall_ms": 1327.3,
+     "within_cap": true
+    },
+    "queue": {
+     "backlog_after": {
+      "SUCCEEDED": 1111
+     },
+     "cpu_ms": 4328.1,
+     "duplicate_orders": 0,
+     "failed_rate": 0.0,
+     "jobs": 1000,
+     "statements": 14088,
+     "succeeded": 1000,
+     "throughput_jobs_per_s": 366.3,
+     "wall_ms": 2730.1
+    },
+    "resources": {
+     "pool_peak_connections": 16,
+     "pool_size": 24,
+     "rss_mb": 88.8,
+     "statements_total": 51615,
+     "transactions_total": 14087
+    },
+    "signal": {
+     "errors": 0,
+     "per_account_p95_ms": 0.2635,
+     "shared_signal_ms": 16.05,
+     "sizing_ms": 207.77
+    },
+    "takeover": {
+     "accounts_of_stopped_worker": 0,
+     "orphans_left": 0,
+     "takeover_ms": 1764,
+     "ttl_ms": 2000
+    }
+   }
+  ]
+ },
+ "schema": "cosmicforge-step5-load-v1",
+ "sqlite": {
+  "host": {
+   "cpu_count": 8,
+   "machine": "AMD64",
+   "numpy": "2.4.1",
+   "platform": "Windows-11-10.0.26200-SP0",
+   "processor": "Intel64 Family 6 Model 140 Stepping 1, GenuineIntel",
+   "python": "3.12.2",
+   "sqlite": "3.43.1",
+   "sqlite_synchronous": "NORMAL (default)",
+   "statement": "Measured on the host described under 'host'. A Windows workstation measurement is not a Linux certification, and synthetic accounts are not connected customer accounts. Step 5 scale certification is not claimed.",
+   "system": "Windows"
+  },
+  "limits": "Synthetic replayed data and in-memory fake venues on one Windows workstation; threads for workers. Not exchange-demo throughput, not a hosted staging run, not a Linux certification.",
+  "measured_at_utc": "2026-10-17T11:19:48Z",
+  "rows": [
+   {
+    "accounts": 1,
+    "maintenance": {
+     "account_stage_p50_ms": 0.066,
+     "account_stage_p95_ms": 0.066,
+     "accounts_maintained": 1,
+     "cpu_ms": 0.0,
+     "max_worker_cycle_ms": 49.2,
+     "owned": 1,
+     "statements": 51,
+     "wall_ms": 50.1,
+     "workers": 4
+    },
+    "order_spreading": {
+     "cap_notional": "500095.00",
+     "cpu_ms": 0.0,
+     "deferred": 0,
+     "depth_requests_per_account": 1.0,
+     "depth_snapshots_used": 1,
+     "granted_total": "250",
+     "reserved": 1,
+     "statements": 13,
+     "wall_ms": 1.8,
+     "within_cap": true
+    },
+    "queue": {
+     "backlog_after": {
+      "SUCCEEDED": 1
+     },
+     "cpu_ms": 0.0,
+     "duplicate_orders": 0,
+     "failed_rate": 0.0,
+     "jobs": 1,
+     "statements": 24,
+     "succeeded": 1,
+     "throughput_jobs_per_s": 33.7,
+     "wall_ms": 29.7
+    },
+    "resources": {
+     "pool_peak_connections": 4,
+     "pool_size": 24,
+     "rss_mb": 49.7,
+     "statements_total": 301,
+     "transactions_total": 60
+    },
+    "signal": {
+     "errors": 0,
+     "per_account_p95_ms": 0.4426,
+     "shared_signal_ms": 30.12,
+     "sizing_ms": 0.51
+    },
+    "takeover": {
+     "accounts_of_stopped_worker": 0,
+     "orphans_left": 0,
+     "takeover_ms": 33,
+     "ttl_ms": 2000
+    }
+   },
+   {
+    "accounts": 10,
+    "maintenance": {
+     "account_stage_p50_ms": 0.043,
+     "account_stage_p95_ms": 0.072,
+     "accounts_maintained": 10,
+     "cpu_ms": 46.9,
+     "max_worker_cycle_ms": 149.3,
+     "owned": 10,
+     "statements": 85,
+     "wall_ms": 149.7,
+     "workers": 4
+    },
+    "order_spreading": {
+     "cap_notional": "500095.00",
+     "cpu_ms": 15.6,
+     "deferred": 0,
+     "depth_requests_per_account": 0.1,
+     "depth_snapshots_used": 1,
+     "granted_total": "2500",
+     "reserved": 10,
+     "statements": 49,
+     "wall_ms": 5.4,
+     "within_cap": true
+    },
+    "queue": {
+     "backlog_after": {
+      "SUCCEEDED": 11
+     },
+     "cpu_ms": 0.0,
+     "duplicate_orders": 0,
+     "failed_rate": 0.0,
+     "jobs": 10,
+     "statements": 150,
+     "succeeded": 10,
+     "throughput_jobs_per_s": 243.9,
+     "wall_ms": 41.0
+    },
+    "resources": {
+     "pool_peak_connections": 7,
+     "pool_size": 24,
+     "rss_mb": 51.5,
+     "statements_total": 1469,
+     "transactions_total": 375
+    },
+    "signal": {
+     "errors": 0,
+     "per_account_p95_ms": 0.2037,
+     "shared_signal_ms": 19.15,
+     "sizing_ms": 1.55
+    },
+    "takeover": {
+     "accounts_of_stopped_worker": 3,
+     "orphans_left": 0,
+     "takeover_ms": 1909,
+     "ttl_ms": 2000
+    }
+   },
+   {
+    "accounts": 100,
+    "maintenance": {
+     "account_stage_p50_ms": 0.028,
+     "account_stage_p95_ms": 0.059,
+     "accounts_maintained": 100,
+     "cpu_ms": 109.4,
+     "max_worker_cycle_ms": 238.6,
+     "owned": 100,
+     "statements": 444,
+     "wall_ms": 239.2,
+     "workers": 4
+    },
+    "order_spreading": {
+     "cap_notional": "500095.00",
+     "cpu_ms": 31.2,
+     "deferred": 0,
+     "depth_requests_per_account": 0.01,
+     "depth_snapshots_used": 1,
+     "granted_total": "25000",
+     "reserved": 100,
+     "statements": 409,
+     "wall_ms": 35.2,
+     "within_cap": true
+    },
+    "queue": {
+     "backlog_after": {
+      "SUCCEEDED": 111
+     },
+     "cpu_ms": 93.8,
+     "duplicate_orders": 0,
+     "failed_rate": 0.0,
+     "jobs": 100,
+     "statements": 1416,
+     "succeeded": 100,
+     "throughput_jobs_per_s": 766.3,
+     "wall_ms": 130.5
+    },
+    "resources": {
+     "pool_peak_connections": 11,
+     "pool_size": 24,
+     "rss_mb": 55.7,
+     "statements_total": 7579,
+     "transactions_total": 2151
+    },
+    "signal": {
+     "errors": 0,
+     "per_account_p95_ms": 0.3585,
+     "shared_signal_ms": 25.93,
+     "sizing_ms": 30.85
+    },
+    "takeover": {
+     "accounts_of_stopped_worker": 25,
+     "orphans_left": 0,
+     "takeover_ms": 2221,
+     "ttl_ms": 2000
+    }
+   },
+   {
+    "accounts": 1000,
+    "maintenance": {
+     "account_stage_p50_ms": 0.026,
+     "account_stage_p95_ms": 0.046,
+     "accounts_maintained": 1000,
+     "cpu_ms": 203.1,
+     "max_worker_cycle_ms": 495.6,
+     "owned": 1000,
+     "statements": 4044,
+     "wall_ms": 496.7,
+     "workers": 4
+    },
+    "order_spreading": {
+     "cap_notional": "500095.00",
+     "cpu_ms": 234.4,
+     "deferred": 0,
+     "depth_requests_per_account": 0.001,
+     "depth_snapshots_used": 1,
+     "granted_total": "250000",
+     "reserved": 1000,
+     "statements": 4009,
+     "wall_ms": 296.9,
+     "within_cap": true
+    },
+    "queue": {
+     "backlog_after": {
+      "SUCCEEDED": 1111
+     },
+     "cpu_ms": 671.9,
+     "duplicate_orders": 0,
+     "failed_rate": 0.0,
+     "jobs": 1000,
+     "statements": 14088,
+     "succeeded": 1000,
+     "throughput_jobs_per_s": 947.5,
+     "wall_ms": 1055.4
+    },
+    "resources": {
+     "pool_peak_connections": 11,
+     "pool_size": 24,
+     "rss_mb": 80.2,
+     "statements_total": 51593,
+     "transactions_total": 14087
+    },
+    "signal": {
+     "errors": 0,
+     "per_account_p95_ms": 0.2151,
+     "shared_signal_ms": 16.7,
+     "sizing_ms": 176.1
+    },
+    "takeover": {
+     "accounts_of_stopped_worker": 0,
+     "orphans_left": 0,
+     "takeover_ms": 586,
+     "ttl_ms": 2000
+    }
+   }
+  ]
+ }
+}
