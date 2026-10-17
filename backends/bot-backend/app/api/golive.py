@@ -20,7 +20,7 @@ Operator routes (``require_admin_emergency`` -- the short-lived service token mi
 Customer routes (the customer's own access token; ownership of the account is checked):
 
     POST /api/v1/golive/consent | /consent/revoke
-    POST /api/v1/golive/beta/{account_id}/accept | /withdraw
+    POST /api/v1/golive/beta/{account_id}/accept | /leave
     GET  /api/v1/golive/beta/{account_id}
 
 None of these routes enables live trading: the gate decides, and in this build it refuses (BUILD_PERMITS_LIVE).
@@ -360,7 +360,7 @@ def beta_accept(account_id: str, body: Accept, user_id: str = Depends(get_curren
     return _do(lambda: beta.accept(account_id=account_id, user_id=str(user_id), **body.model_dump()))
 
 
-@customer_router.post("/beta/{account_id}/withdraw")
+@customer_router.post("/beta/{account_id}/leave")   # leaving the beta (a path word "withdraw" is reserved for funds)
 def beta_withdraw(account_id: str, user_id: str = Depends(get_current_user_id), db: DB = Depends(get_db)):
     _own_account(db, account_id, user_id)
     _, _, beta, _ = _parts()

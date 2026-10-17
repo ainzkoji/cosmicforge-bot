@@ -211,6 +211,11 @@ def block_live_order_submission(monkeypatch, request):
 #: switch: this is a monkeypatch that exists only inside the test process.
 #: ``tests/trading_intelligence/test_step3_family_gate.py`` and ``test_step3_no_uncertified_orders.py`` prove
 #: the unpatched gate refuses the same plans.
+#: The Step 6.1 go-live gate (``CATIExecutionBoundary._go_live_reason``, LIVE plans only) is the same kind of
+#: authorization layer and is answered "authorized" in these modules, and only here, so their LIVE plans still
+#: reach the tail checks they were written for (submission flag, adapter certification, replay, reconciliation).
+#: ``tests/platform_workers/test_golive_gate.py`` proves the real gate refuses every live entry, at the boundary
+#: too (``test_execution_boundary_refuses_live_entries_through_the_gate``).
 LEGACY_EXECUTION_TAIL_MODULES = frozenset({
     "test_cati_execution_policy_production",
     "test_natural_signal_replay",
@@ -241,6 +246,9 @@ def _legacy_execution_tail_family_authorization(request, monkeypatch):
 
     monkeypatch.setattr(provenance.FamilyExecutionGate, "family_authorization", defined_family_only)
     monkeypatch.setattr(provenance.FamilyExecutionGate, "venue_certification", lambda self, plan, now_ms: None)
+    from app.trading_intelligence.execution.boundary import CATIExecutionBoundary
+
+    monkeypatch.setattr(CATIExecutionBoundary, "_go_live_reason", lambda self, plan, now: None)
 
 
 def pytest_configure(config):

@@ -149,6 +149,11 @@ def ledgers(db, count):
 
 
 # ----------------------------------------------------------------------------------------------------- schema
+def table_columns(db, tables):
+    with db.connect() as conn:
+        return {t: [tuple(r)[1:3] for r in conn.execute(f'PRAGMA table_info("{t}")').fetchall()] for t in tables}
+
+
 def master(db):
     with db.connect() as conn:
         return {(r[0], r[1]): r[2] for r in conn.execute("SELECT type, name, sql FROM sqlite_master").fetchall()}
@@ -238,13 +243,21 @@ def test_the_schema_upgrades_a_database_that_already_holds_legacy_reservations_a
     with pytest.raises(R.LedgerSchemaMissing):
         R.ReservationLedger(db)                                       # the old schema has no ledger: fail closed
 
+    columns_before = table_columns(db, [name for kind, name in objects_before if kind == "table"])
     ensure_cati_platform_schema(db)
+    migrate(db)                                                       # the whole migration, as every start does
     first = master(db)
     ensure_cati_platform_schema(db)
-    migrate(db)                                                       # the whole migration again, as every start does
+    migrate(db)
     migrate(db)
     assert master(db) == first                                        # running it again changes nothing
-    assert {k: v for k, v in first.items() if k in objects_before} == objects_before      # no existing object was touched
+    # No existing object was touched destructively. Later steps add tables and append columns to existing tables
+    # (admin MFA, billing state); an original column is never dropped, renamed or retyped, and every original
+    # index and trigger is unchanged.
+    after = table_columns(db, list(columns_before))
+    for table, cols in columns_before.items():
+        assert after[table][:len(cols)] == cols, table
+    assert {k: v for k, v in first.items() if k in objects_before and k[0] != "table"} ==         {k: v for k, v in objects_before.items() if k[0] != "table"}
     assert {table: dump(db, table) for table in before} == before     # no legacy row was touched
     assert all(("table", table) in first for table in MY_TABLES)
     assert store.pending_resolutions(ACCOUNT)[0]["reservation_id"] == pending_id         # legacy recovery list intact
