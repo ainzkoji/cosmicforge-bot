@@ -10,13 +10,15 @@
  */
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Activity, AlertTriangle, Check, Info, Loader2, Play, RefreshCw, Shield, TrendingUp } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
+import { Activity, AlertTriangle, Check, Info, Loader2, Lock, Play, RefreshCw, Shield, TrendingUp } from "lucide-react";
 import { api } from "@/api/client";
 import {
     DeploymentRefusedError, ageLabel, buildDeploymentRequest, formFingerprint, formatPct, formatUsdt, isStale, newRequestId,
     typicalPositionView, validateForm,
 } from "@/lib/deployment";
 import type { Blocker, BudgetType, DeploymentForm, DeploymentPreview, RiskLevel } from "@/lib/deployment";
+import { effectiveMarketScope, marketScopeLabel, marketScopeOptions } from "@/lib/markets";
 
 interface BrokerAccount {
     id: string;
@@ -84,7 +86,12 @@ export function CatiDeployment({ accounts, initial }: Props) {
         maxPositionUsdt: "",
         dailyLossLimitPct: "",
         riskAcknowledged: false,
+        marketScope: "CRYPTO_ONLY",
     });
+    // Step 7.3: what the backend says about each market. Traditional markets are shown, never enabled.
+    const availability = useQuery({ queryKey: ["marketAvailability"], queryFn: api.getMarketAvailability, retry: false,
+        staleTime: 60_000 });
+    const scopeOptions = marketScopeOptions(availability.data ?? null);
     const [showAdvanced, setShowAdvanced] = useState(false);
     const [preview, setPreview] = useState<DeploymentPreview | null>(null);
     const [previewFor, setPreviewFor] = useState<string | null>(null);
@@ -342,6 +349,49 @@ export function CatiDeployment({ accounts, initial }: Props) {
                         </div>
                     )}
                 </section>
+
+                {/* Markets (Step 7.3) */}
+                <section className="bg-[#0B0E14] border border-white/5 rounded-2xl p-6 space-y-4" aria-labelledby="deploy-markets-heading">
+                    <h2 id="deploy-markets-heading" className="text-lg font-semibold text-white">4. Markets</h2>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        {scopeOptions.map((option) => {
+                            const active = effectiveMarketScope(form.marketScope, availability.data ?? null) === option.scope;
+                            return (
+                                <button
+                                    type="button"
+                                    key={option.scope}
+                                    disabled={!option.selectable}
+                                    aria-pressed={active}
+                                    aria-disabled={!option.selectable}
+                                    onClick={() => option.selectable && set("marketScope", option.scope)}
+                                    className={`text-left rounded-xl border p-4 transition-all ${active
+                                        ? "bg-primary/10 border-primary" : "bg-[#0F1218] border-white/5"} ${option.selectable ? "hover:border-white/10" : "opacity-60 cursor-not-allowed"}`}
+                                >
+                                    <div className="flex justify-between items-start">
+                                        <div className="font-bold text-white">{option.title}</div>
+                                        {active && <Check className="w-4 h-4 text-primary" />}
+                                        {!option.selectable && <Lock className="w-4 h-4 text-gray-500" aria-label="Not available" />}
+                                    </div>
+                                    <p className="text-xs text-gray-400 mt-1">{option.description}</p>
+                                    {!option.selectable && (
+                                        <div className="mt-2">
+                                            <div className="text-xs font-semibold text-amber-300">Not available</div>
+                                            <ul className="mt-1 space-y-0.5">
+                                                {option.reasons.map((reason) => (
+                                                    <li key={reason} className="text-xs text-gray-500">{reason}</li>
+                                                ))}
+                                            </ul>
+                                        </div>
+                                    )}
+                                </button>
+                            );
+                        })}
+                    </div>
+                    <p className="text-xs text-gray-500">
+                        CATI deploys on crypto markets only. Traditional markets need their own research certification, verified
+                        market calendars and an execution connection, none of which exist yet.
+                    </p>
+                </section>
             </div>
 
             {/* What this means */}
@@ -377,6 +427,7 @@ export function CatiDeployment({ accounts, initial }: Props) {
                     {previewCurrent && (
                         <div className={previewLoading ? "opacity-60" : ""}>
                             <Row label="Engine" value="CATI" />
+                            <Row label="Markets" value={marketScopeLabel(preview.market_scope ?? form.marketScope)} />
                             <Row label="Exchange" value={`${preview.exchange ?? selected?.broker_id?.toUpperCase() ?? "—"}`} />
                             <div className="flex justify-between items-center py-2 border-b border-white/5">
                                 <span className="text-gray-500 text-sm">Environment</span>

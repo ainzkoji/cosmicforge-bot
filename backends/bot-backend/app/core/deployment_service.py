@@ -202,7 +202,15 @@ def evaluate(db, user_id: str, request: C.DeploymentRequest, *, now_ms: Optional
     blockers: List[Dict[str, Any]] = []
     requirements: List[str] = []
     out: Dict[str, Any] = {"schema_version": C.DEPLOYMENT_SCHEMA_VERSION, "request_id": request.request_id,
-                           "broker_account_id": request.broker_account_id, "evaluated_at": now}
+                           "broker_account_id": request.broker_account_id, "evaluated_at": now,
+                           "market_scope": request.market_scope}
+    if request.market_scope != C.CRYPTO_ONLY:
+        # Step 7.3: traditional markets are never enabled by this path. The blocker carries the reasons the
+        # market-availability service gives right now; it is added whatever they say (no execution path exists).
+        from app.markets.availability import tradfi_blocker_detail
+        detail = tradfi_blocker_detail(db, user_id)
+        blockers.append(C.blocker(C.TRADFI_NOT_AVAILABLE, market_scope=request.market_scope,
+                                  reasons=detail["reasons"]))
     try:
         request.budget.validated()
     except ValueError as exc:
@@ -466,6 +474,7 @@ def bot_payload(db, instance) -> Dict[str, Any]:
         budget = {"type": instance.capital_allocation_type, "value": str(instance.capital_allocation),
                   "legacy_allocation": {"type": instance.allocation_type, "value": str(instance.allocation_value)}}
     state = bot_status(db, instance)
+    market_type = str(getattr(instance, "market_type", None) or "CRYPTO").upper()
     return {
         "id": instance.id,
         "name": f"CATI {str(instance.risk_level).capitalize()} on {str(broker).capitalize()}" + (f" ({account['label']})" if account and account["label"] else ""),
@@ -478,6 +487,10 @@ def bot_payload(db, instance) -> Dict[str, Any]:
         "budget": budget,
         "money": money,
         "max_position_usdt": getattr(instance, "max_position_usdt", None),
+        # Step 7.3: the markets this bot trades. Every bot of this path is crypto-only (a traditional-market scope
+        # is refused at deployment); a legacy non-crypto bot is reported as what it is, never as tradfi-enabled.
+        "market_type": market_type,
+        "market_scope": C.CRYPTO_ONLY if market_type == "CRYPTO" else f"LEGACY_{market_type}",
         "status": state["status"],
         "engine_status": instance.status,
         "stopped_reason": state["stopped_reason"],

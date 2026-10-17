@@ -10,6 +10,7 @@ import { CopyableId } from '../UI/CopyableId';
 import { isPaperMode, tradingModeLabel } from '@/utils/tradingMode';
 import { botStatusView, formatUsdt } from '@/lib/deployment';
 import type { CatiBot } from '@/lib/deployment';
+import { marketScopeLabel } from '@/lib/markets';
 
 interface BotInstanceRowProps {
     bot: BotInstance;
@@ -71,7 +72,7 @@ export const BotInstanceRow = ({ bot, onStart, onPause, onStop, onDelete, onView
                         </Link>
                         {cati && (
                             <div className="text-xs text-gray-400 mt-1">
-                                {cati.environment ?? "environment unknown"} · {cati.risk_level}
+                                {cati.environment ?? "environment unknown"} · {cati.risk_level} · {marketScopeLabel(cati.market_scope)}
                                 {cati.budget?.type === "fixed_amount" ? ` · budget ${formatUsdt(cati.budget.value)}` : ""}
                                 {cati.budget?.type === "percent_balance" ? ` · budget ${cati.budget.value} % of balance` : ""}
                                 {cati.stopped_reason ? ` · ${cati.stopped_reason}` : ""}

@@ -122,15 +122,22 @@ PROTECTED_CLASSES: Tuple[str, ...] = tuple(c for c, r in CLASS_RULES.items() if 
 # ── the policy: every table, one class ───────────────────────────────────────────────────────────────────
 _BY_CLASS: Tuple[Tuple[str, Tuple[str, ...]], ...] = (
     (IMMUTABLE_GOVERNANCE, (
+        # Section H Steps 5-8 (platform layer, go-live, launch operations)
+        "beta_reviews", "golive_events", "incident_records", "ops_oncall_history",
+        "ops_status_incident_updates", "ops_status_incidents", "platform_schema_migrations",
         "cati_adapter_cert_actions", "cati_adapter_cert_checks", "cati_adapter_cert_events", "cati_certification_runs",
         "cati_certification_stage_results", "cati_demo_certifications", "cati_emergency_events", "cati_family_events",
         "cati_governance_controls", "cati_ml_model_events", "cati_ml_models", "cati_promotion_phase_history",
-        "cati_promotion_scopes", "cati_retention_runs", "dataset_manifests", "demo_transport_smoke", "universe_manifests")),
+        "cati_promotion_scopes", "cati_retention_runs", "dataset_manifests", "demo_transport_smoke",
+        "market_activation_events", "universe_manifests")),
     (RESEARCH_GOVERNANCE, (
         "cati_experiment_registry", "cati_holdout_registry", "cati_ml_shadow_predictions", "cati_residual_decisions",
         "cati_residual_inputs", "cati_shadow_comparisons", "cati_shadow_days", "cati_shadow_fills", "cati_sim_account",
         "cati_sim_decisions", "cati_sim_fills", "cati_sim_orders", "cati_sim_positions")),
     (EXECUTION_AUDIT, (
+        # Section H Steps 5-8 (platform layer, go-live, launch operations)
+        "platform_assignment_history", "platform_job_attempts", "platform_jobs", "platform_order_intents",
+        "platform_order_slots", "platform_symbol_budgets",
         "adaptive_daily_risk_decisions", "broker_audit_log", "canonical_trade_decisions", "cati_brake_events",
         "cati_brake_restarts", "cati_capital_plan_evidence", "cati_component_errors", "cati_decision_evidence",
         "cati_execution_attempts", "cati_execution_blocks", "cati_execution_evaluations", "cati_execution_events",
@@ -141,11 +148,15 @@ _BY_CLASS: Tuple[Tuple[str, Tuple[str, ...]], ...] = (
         "events", "execution_attempts", "invariant_violations", "order_failures", "position_events", "positions",
         "reconciliation_events", "risk_events", "slippage_monitoring", "trade_fills", "trades")),
     (FINANCIAL_RECORD, (
+        # Section H Steps 5-8 (platform layer, go-live, launch operations)
+        "billing_audit_log", "billing_payment_reviews", "track_record_daily", "track_record_publications",
         "account_equity_daily", "billing_customers", "billing_events", "billing_operator_grants", "broker_transfer_events",
         "broker_transfer_reconciliations", "broker_transfer_requests", "broker_transfer_settings", "cati_account_income",
         "commission_ledger", "commission_tiers", "equity_snapshots", "invoices", "monthly_snapshots", "pricing_intents",
         "revenue_snapshots", "subscriptions", "weekly_snapshots")),
     (RECONCILIATION_STATE, (
+        # Section H Steps 5-8 (platform layer, go-live, launch operations)
+        "platform_account_assignments", "platform_accounts", "platform_workers",
         "bot_daily_close_marks", "bot_daily_state", "cati_account_income_cursor", "cati_account_leases",
         "cati_account_period_risk", "cati_brake_state", "cati_emergency_requests", "cati_execution_backoff",
         "cati_feed_state", "cati_feed_symbols", "cati_instrument_rule_refreshes", "cati_portfolio_reservations",
@@ -158,6 +169,10 @@ _BY_CLASS: Tuple[Tuple[str, Tuple[str, ...]], ...] = (
         "cati_platform_cycle_accounts", "cati_platform_cycles", "cati_production_decisions", "cati_retention_summaries",
         "cycle_decision_summaries")),
     (CUSTOMER_AND_COMPLIANCE, (
+        # Section H Steps 5-8 (platform layer, go-live, launch operations)
+        "admin_mfa_recovery_codes", "legal_acceptances", "legal_audit_log", "legal_country_eligibility",
+        "legal_documents", "ops_oncall_members", "ops_oncall_rotations", "support_ticket_events",
+        "support_ticket_messages", "support_tickets",
         "admin_roles", "admin_sessions", "admins", "affiliate_settings", "aml_alerts", "auth_audit_log", "auth_sessions",
         "bot_instances", "broker_accounts", "broker_auto_trading", "broker_credentials", "broker_credentials_v2",
         "commission_config", "database_registry", "deployment_confirmations", "deployment_consents", "email_verifications",
@@ -196,6 +211,8 @@ _BY_CLASS: Tuple[Tuple[str, Tuple[str, ...]], ...] = (
         "tradingview_alerts", "tradingview_processor_heartbeat", "tradingview_safety_lockouts",
         "tradingview_signal_decisions", "tradingview_webhooks")),
     (RAW_OPERATIONAL_DETAIL, (
+        # Section H Steps 5-8 (platform layer, go-live, launch operations)
+        "drill_venue_orders", "ops_alert_deliveries", "ops_alert_events", "ops_alerts",
         "account_equity_snapshots",     # PruneRule below: rolled up into account_equity_daily, then removed
         "cati_platform_cycle_metrics",  # PruneRule below
         "cati_feed_updates",            # one row per feed update run; no rule here: kept until its owner defines one

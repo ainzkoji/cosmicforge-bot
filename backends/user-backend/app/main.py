@@ -180,6 +180,8 @@ app.include_router(onboarding_router, prefix="/api/onboarding", tags=["Onboardin
 # Auto Pilot Proxy (forwards to bot-backend /api/v1/auto-pilot)
 from app.api.auto_pilot_proxy import router as auto_pilot_proxy_router
 app.include_router(auto_pilot_proxy_router, prefix="/api/v1/auto-pilot", tags=["Auto Pilot Proxy"])
+from app.api.markets_proxy import router as markets_proxy_router  # Step 7.3: market availability (read-only)
+app.include_router(markets_proxy_router)
 
 
 # Events Proxy (SSE streaming for real-time updates)

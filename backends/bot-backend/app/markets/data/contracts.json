@@ -1,0 +1,45 @@
+{
+  "schema_version": "1",
+  "data_version": "2026-10-17.1",
+  "note": "Every contract below is a synthetic illustration with made-up symbols and values. None is a real instrument and none may be used for research or trading. Decimals are strings. Instants are epoch milliseconds (UTC).",
+  "contracts": [
+    {
+      "symbol": "EXIDX-2026Z", "series": "EXIDX", "venue": "example_futures_venue", "asset_class": "FUTURES",
+      "contract_type": "FUTURE", "settlement_currency": "USD", "multiplier": "10", "tick_size": "0.5",
+      "quantity_step": "1", "min_quantity": "1",
+      "margin": {"kind": "FIXED_PER_CONTRACT", "initial": "1000", "maintenance": "800"},
+      "calendar_id": "TRADFI_EXAMPLE_OVERNIGHT_FUTURES", "listing_ms": 1750000000000, "last_trade_ms": 1797609600000,
+      "carry": {"kind": "FUTURES_BASIS"},
+      "verification_status": "UNVERIFIED", "source": "Synthetic illustration (Step 7.2); not a real contract."
+    },
+    {
+      "symbol": "EXIDX-2027H", "series": "EXIDX", "venue": "example_futures_venue", "asset_class": "FUTURES",
+      "contract_type": "FUTURE", "settlement_currency": "USD", "multiplier": "10", "tick_size": "0.5",
+      "quantity_step": "1", "min_quantity": "1",
+      "margin": {"kind": "FIXED_PER_CONTRACT", "initial": "1000", "maintenance": "800"},
+      "calendar_id": "TRADFI_EXAMPLE_OVERNIGHT_FUTURES", "listing_ms": 1758000000000, "last_trade_ms": 1805385600000,
+      "carry": {"kind": "FUTURES_BASIS"},
+      "verification_status": "UNVERIFIED", "source": "Synthetic illustration (Step 7.2); not a real contract."
+    },
+    {
+      "symbol": "EXA/EXB", "venue": "example_fx_broker", "asset_class": "FX", "contract_type": "SPOT",
+      "settlement_currency": "USD", "multiplier": "1", "tick_size": "0.00001", "quantity_step": "1000",
+      "min_quantity": "1000",
+      "margin": {"kind": "PERCENT_OF_NOTIONAL", "initial": "0.05", "maintenance": "0.025"},
+      "calendar_id": "TRADFI_EXAMPLE_FX_WEEK",
+      "carry": {"kind": "OVERNIGHT_FINANCING", "long_rate": "0.01", "short_rate": "0.01", "day_count": 365,
+                "triple_weekday": 2},
+      "verification_status": "UNVERIFIED",
+      "source": "Synthetic illustration (Step 7.2); not a real currency pair or broker financing rate."
+    }
+  ],
+  "series": [
+    {
+      "root": "EXIDX", "venue": "example_futures_venue",
+      "roll_rule": {"kind": "SESSIONS_BEFORE_LAST_TRADE", "sessions": 5},
+      "contracts": ["EXIDX-2026Z", "EXIDX-2027H"],
+      "verification_status": "UNVERIFIED",
+      "source": "Synthetic illustration; the roll rule is an open research decision (research/trend_v2_tradfi/SPEC.md D6)."
+    }
+  ]
+}

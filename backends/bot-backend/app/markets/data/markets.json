@@ -1,0 +1,55 @@
+{
+  "schema_version": "1",
+  "data_version": "2026-10-17.1",
+  "note": "A market is one venue's product line on one calendar. Crypto contract rules (tick, step, minimum notional) are not stored here: they come from the venue's own instrument rules at runtime (app/exchange/platform_adapter/rules_cache.py). The TRADFI_EXAMPLE_* markets are UNVERIFIED illustrations on placeholder venues; no execution adapter exists for any of them.",
+  "markets": [
+    {
+      "market_id": "CRYPTO_BINANCE_USDT_PERPETUAL", "asset_class": "CRYPTO", "market_type": "CRYPTO_USDT_PERPETUAL",
+      "venue": "binance", "product": "USDT_PERPETUAL", "calendar_id": "CRYPTO_24_7", "settlement_currency": "USDT",
+      "contract_source": "VENUE_RULES_CACHE",
+      "freshness": {"timeframe": "1d", "max_missing_bars": 1, "source": "Platform policy proposal (Step 7.2); owner may change"},
+      "verification_status": "PLATFORM_CONVENTION",
+      "source": "Existing platform scope: Binance USD-M USDT perpetuals (shared_lib/broker/venue_contract.py VENUES)."
+    },
+    {
+      "market_id": "CRYPTO_BYBIT_USDT_PERPETUAL", "asset_class": "CRYPTO", "market_type": "CRYPTO_USDT_PERPETUAL",
+      "venue": "bybit", "product": "USDT_PERPETUAL", "calendar_id": "CRYPTO_24_7", "settlement_currency": "USDT",
+      "contract_source": "VENUE_RULES_CACHE",
+      "freshness": {"timeframe": "1d", "max_missing_bars": 1, "source": "Platform policy proposal (Step 7.2); owner may change"},
+      "verification_status": "PLATFORM_CONVENTION",
+      "source": "Existing platform scope: Bybit linear USDT perpetuals (shared_lib/broker/venue_contract.py VENUES)."
+    },
+    {
+      "market_id": "CRYPTO_BINGX_USDT_PERPETUAL", "asset_class": "CRYPTO", "market_type": "CRYPTO_USDT_PERPETUAL",
+      "venue": "bingx", "product": "USDT_PERPETUAL", "calendar_id": "CRYPTO_24_7", "settlement_currency": "USDT",
+      "contract_source": "VENUE_RULES_CACHE",
+      "freshness": {"timeframe": "1d", "max_missing_bars": 1, "source": "Platform policy proposal (Step 7.2); owner may change"},
+      "verification_status": "PLATFORM_CONVENTION",
+      "source": "Existing platform scope: BingX USDT perpetual swaps (shared_lib/broker/venue_contract.py VENUES)."
+    },
+    {
+      "market_id": "TRADFI_EXAMPLE_INDEX_FUTURES", "asset_class": "FUTURES", "market_type": "TRADFI_DATED_FUTURES",
+      "venue": "example_futures_venue", "product": "DATED_FUTURE", "calendar_id": "TRADFI_EXAMPLE_OVERNIGHT_FUTURES",
+      "settlement_currency": "USD", "contract_source": "DATA_FILE",
+      "freshness": {"timeframe": "1d", "max_missing_bars": 1, "source": "Illustrative; not an approved policy"},
+      "verification_status": "UNVERIFIED",
+      "source": "Illustrative example (Step 7.2). Placeholder venue; not a real exchange."
+    },
+    {
+      "market_id": "TRADFI_EXAMPLE_FX_SPOT", "asset_class": "FX", "market_type": "TRADFI_FX_SPOT",
+      "venue": "example_fx_broker", "product": "FX_SPOT", "calendar_id": "TRADFI_EXAMPLE_FX_WEEK",
+      "settlement_currency": "USD", "contract_source": "DATA_FILE",
+      "freshness": {"timeframe": "1d", "max_missing_bars": 1, "source": "Illustrative; not an approved policy"},
+      "verification_status": "UNVERIFIED",
+      "source": "Illustrative example (Step 7.2). Placeholder broker; not a real venue."
+    },
+    {
+      "market_id": "TRADFI_EXAMPLE_CASH_EQUITY", "asset_class": "EQUITY", "market_type": "TRADFI_CASH_EQUITY",
+      "venue": "example_equity_broker", "product": "CASH_EQUITY", "calendar_id": "TRADFI_EXAMPLE_CASH_EQUITY",
+      "settlement_currency": "USD", "contract_source": "DATA_FILE",
+      "freshness": {"timeframe": "1d", "max_missing_bars": 1, "source": "Illustrative; not an approved policy"},
+      "verification_status": "UNVERIFIED",
+      "source": "Illustrative example (Step 7.2). Placeholder broker; not a real venue."
+    }
+  ]
+}

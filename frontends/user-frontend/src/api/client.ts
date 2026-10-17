@@ -5,6 +5,7 @@
 import axios from "axios";
 import { DeploymentRefusedError, parseRefusal } from "../lib/deployment";
 import type { CatiBot, DeploymentPreview, DeploymentRequestBody } from "../lib/deployment";
+import type { MarketAvailability } from "../lib/markets";
 import { AUTH_UNAUTHORIZED_EVENT, apiFetch, clearSession, getAccessToken, isRefreshableUrl, refreshAccessToken } from "./http";
 
 const API_BASE = import.meta.env.VITE_API_BASE || "http://localhost:8000";
@@ -1968,6 +1969,8 @@ export const api = {
     getCatiBotEquity: async (botId: string): Promise<any> => catiGet(`${API_BASE}/api/v1/cati/bots/${botId}/equity`),
     getCatiBotEvents: async (botId: string, limit = 30): Promise<{ bot_id: string; events: any[] }> =>
         catiGet(`${API_BASE}/api/v1/cati/bots/${botId}/events?limit=${limit}`),
+    // Step 7.3: which markets are available to this user and why not (read-only; enables nothing).
+    getMarketAvailability: async (): Promise<MarketAvailability> => catiGet(`${API_BASE}/api/v1/markets/availability`),
 
     getBotEngineStatus: async (instanceId: string): Promise<{
         engine: string; cati_runtime_active: boolean; cati_entry_authority: string;

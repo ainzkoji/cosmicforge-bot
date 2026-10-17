@@ -274,9 +274,15 @@ export default function AutoPilot() {
                         className={`cursor-pointer p-4 rounded-xl border transition-all text-center ${marketType === "forex" ? "bg-blue-500/10 border-blue-500 text-white" : "bg-[#0F1218] border-white/5 text-gray-400 hover:border-white/10"}`}
                     >
                         <div className="font-bold">Forex & CFDs</div>
-                        <div className="text-xs mt-1 opacity-70">OANDA, IBKR, etc.</div>
+                        <div className="text-xs mt-1 opacity-70">OANDA, IBKR, etc. · legacy, not CATI</div>
                     </div>
                 </div>
+                {marketType === "forex" && (
+                    <p role="note" className="text-xs text-amber-300/80">
+                        This is the legacy forex deployment form. It is not the CATI engine: CATI trades crypto markets only, and
+                        traditional markets are not available on the CATI path.
+                    </p>
+                )}
             </section>
 
             {marketType === "crypto" ? (

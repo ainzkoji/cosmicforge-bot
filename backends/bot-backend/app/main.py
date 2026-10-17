@@ -379,6 +379,9 @@ from app.api.auto_pilot import router as auto_pilot_router
 
 app.include_router(auto_pilot_router, prefix="/api/v1/auto-pilot")
 
+from app.api.markets import router as markets_router  # Step 7.3: market availability (read-only)
+app.include_router(markets_router)
+
 from app.api.readiness_admin import router as readiness_admin_router
 app.include_router(readiness_admin_router)
 

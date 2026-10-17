@@ -2836,3 +2836,8 @@ def migrate(db_path: str | DB = None):
     # Keep this after the main migration connection closes so the helper can
     # self-heal temporary test databases through the normal DB context manager.
     ensure_event_news_mode_schema(db)
+
+    # 49) Section H Step 7.4: staged market activation ledger (append-only, hash-chained).
+    # Additive: one new table and its triggers; nothing existing is touched.
+    from shared_lib.persistence.markets_schema import ensure_markets_schema
+    ensure_markets_schema(db)

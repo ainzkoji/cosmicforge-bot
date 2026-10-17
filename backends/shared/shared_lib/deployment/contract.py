@@ -39,6 +39,13 @@ BROKER_CAPABILITY_INCOMPLETE = "BROKER_CAPABILITY_INCOMPLETE"
 REQUEST_ID_REUSED = "REQUEST_ID_REUSED"
 ACCOUNT_STATE_CHANGED = "ACCOUNT_STATE_CHANGED"
 INVALID_ADVANCED_SETTINGS = "INVALID_ADVANCED_SETTINGS"
+TRADFI_NOT_AVAILABLE = "TRADFI_NOT_AVAILABLE"
+
+# Step 7.3: which markets a deployment may trade. Optional and additive: a body without it is CRYPTO_ONLY,
+# exactly as before, so the schema version is unchanged and every earlier payload stays valid.
+CRYPTO_ONLY, CRYPTO_AND_TRADFI = "CRYPTO_ONLY", "CRYPTO_AND_TRADFI"
+MARKET_SCOPES = (CRYPTO_ONLY, CRYPTO_AND_TRADFI)
+DEFAULT_MARKET_SCOPE = CRYPTO_ONLY
 
 BLOCKER_MESSAGES: Dict[str, Dict[str, str]] = {
     BUDGET_TOO_SMALL_FOR_LEVEL: {
@@ -80,6 +87,10 @@ BLOCKER_MESSAGES: Dict[str, Dict[str, str]] = {
     INVALID_ADVANCED_SETTINGS: {
         "message": "An advanced setting is outside the permitted range.",
         "action": "Correct the highlighted advanced setting."},
+    TRADFI_NOT_AVAILABLE: {
+        "message": "Traditional markets (futures, FX, equities) are not available: no strategy is certified for them, "
+                   "their calendars are not verified and there is no execution adapter for any traditional venue.",
+        "action": "Deploy with crypto markets only."},
 }
 
 
@@ -165,6 +176,8 @@ class DeploymentRequest(BaseModel):
     advanced: AdvancedSpec = Field(default_factory=AdvancedSpec)
     risk_acknowledged: bool = False
     request_id: str = Field(min_length=8, max_length=128, description="Idempotency key chosen by the client")
+    market_scope: Literal["CRYPTO_ONLY", "CRYPTO_AND_TRADFI"] = Field(
+        default=DEFAULT_MARKET_SCOPE, description="Markets the deployment may trade; CRYPTO_ONLY when omitted")
 
     @field_validator("schema_version")
     @classmethod
@@ -186,6 +199,10 @@ class DeploymentRequest(BaseModel):
         import json
         data = self.model_dump(mode="json")
         data.pop("risk_acknowledged", None)
+        # The default scope is left out so a request recorded before Step 7.3 (without the field) keeps the
+        # fingerprint it was stored with, and its idempotent replay still matches.
+        if data.get("market_scope") == DEFAULT_MARKET_SCOPE:
+            data.pop("market_scope", None)
         return hashlib.sha256(json.dumps(data, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
 
 
@@ -205,4 +222,5 @@ __all__ = ["DEPLOYMENT_SCHEMA_VERSION", "CONSENT_VERSION", "CONSENT_TEXT", "BLOC
            "BUDGET_TOO_SMALL_FOR_LEVEL", "BUDGET_EXCEEDS_BALANCE", "ACCOUNT_ALREADY_HAS_BOT", "ACCOUNT_NOT_CONNECTED",
            "RISK_NOT_ACKNOWLEDGED", "LIVE_NOT_AVAILABLE", "RISK_SIZE_BELOW_EXCHANGE_MINIMUM", "BROKER_NOT_SUPPORTED",
            "ACCOUNT_BALANCE_UNAVAILABLE", "BROKER_CAPABILITY_INCOMPLETE", "REQUEST_ID_REUSED", "ACCOUNT_STATE_CHANGED",
-           "INVALID_ADVANCED_SETTINGS"]
+           "INVALID_ADVANCED_SETTINGS", "TRADFI_NOT_AVAILABLE", "CRYPTO_ONLY", "CRYPTO_AND_TRADFI", "MARKET_SCOPES",
+           "DEFAULT_MARKET_SCOPE"]

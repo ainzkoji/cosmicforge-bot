@@ -9,6 +9,9 @@
 
 export const DEPLOYMENT_SCHEMA_VERSION = "2026-10-08.v1";
 
+/** Step 7.3: markets a deployment may trade. Optional and additive; omitted means crypto only. */
+export type DeploymentMarketScope = "CRYPTO_ONLY" | "CRYPTO_AND_TRADFI";
+
 export type RiskLevel = "conservative" | "balanced" | "aggressive";
 export type BudgetType = "fixed_amount" | "percent_balance";
 
@@ -20,6 +23,8 @@ export interface DeploymentForm {
     maxPositionUsdt: string;
     dailyLossLimitPct: string;
     riskAcknowledged: boolean;
+    /** Omitted or CRYPTO_ONLY: the body is exactly the pre-Step-7.3 body. */
+    marketScope?: DeploymentMarketScope;
 }
 
 export interface DeploymentRequestBody {
@@ -30,6 +35,7 @@ export interface DeploymentRequestBody {
     advanced: { max_position_usdt: string | null; daily_loss_limit_pct: string | null; symbols: string[] };
     risk_acknowledged: boolean;
     request_id: string;
+    market_scope?: DeploymentMarketScope;
 }
 
 export interface Blocker {
@@ -64,6 +70,7 @@ export interface DeploymentPreview {
     request_id: string;
     broker_account_id: string;
     evaluated_at: number;
+    market_scope?: string;
     exchange?: string;
     environment?: string;
     account_label?: string | null;
@@ -103,6 +110,9 @@ export interface CatiBot {
     engine_status: string;
     stopped_reason: string | null;
     created_at: string;
+    /** Step 7.3: CRYPTO_ONLY for every CATI bot; absent on payloads older than Step 7.3. */
+    market_scope?: string;
+    market_type?: string;
 }
 
 /** A refused preview/deploy: the backend's blockers, never a guessed message. */
@@ -149,6 +159,7 @@ export function validateForm(form: DeploymentForm): string | null {
 export function buildDeploymentRequest(form: DeploymentForm, requestId: string): DeploymentRequestBody {
     const problem = validateForm(form);
     if (problem) throw new Error(problem);
+    const scope = form.marketScope && form.marketScope !== "CRYPTO_ONLY" ? { market_scope: form.marketScope } : {};
     return {
         schema_version: DEPLOYMENT_SCHEMA_VERSION,
         broker_account_id: form.brokerAccountId,
@@ -161,6 +172,7 @@ export function buildDeploymentRequest(form: DeploymentForm, requestId: string):
         },
         risk_acknowledged: form.riskAcknowledged,
         request_id: requestId,
+        ...scope,
     };
 }
 
@@ -177,8 +189,10 @@ function defaultRandom(): string {
 
 /** The part of the form that changes the deploy intent (acknowledging does not). */
 export function formFingerprint(form: DeploymentForm): string {
-    return JSON.stringify([form.brokerAccountId, form.riskLevel, form.budgetType, form.budgetValue.trim(),
-        form.maxPositionUsdt.trim(), form.dailyLossLimitPct.trim()]);
+    const parts: string[] = [form.brokerAccountId, form.riskLevel, form.budgetType, form.budgetValue.trim(),
+        form.maxPositionUsdt.trim(), form.dailyLossLimitPct.trim()];
+    if (form.marketScope && form.marketScope !== "CRYPTO_ONLY") parts.push(form.marketScope);
+    return JSON.stringify(parts);
 }
 
 /** Blockers and the full preview out of a refusal body, whatever FastAPI wrapped it in. */

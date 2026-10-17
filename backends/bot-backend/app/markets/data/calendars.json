@@ -1,0 +1,76 @@
+{
+  "schema_version": "1",
+  "data_version": "2026-10-17.1",
+  "note": "Weekdays are 0 (Monday) to 6 (Sunday). Times are venue-local wall-clock times in the calendar's time zone. A session's trading date is the local date on which it closes. The TRADFI_EXAMPLE_* calendars are illustrative structures only: their times were NOT verified against any exchange or broker publication, they carry no holiday or early-close data, and they are UNVERIFIED, so the market availability guard refuses them for order submission.",
+  "calendars": [
+    {
+      "calendar_id": "CRYPTO_24_7",
+      "version": "1",
+      "kind": "CONTINUOUS",
+      "timezone": "UTC",
+      "verification_status": "PLATFORM_CONVENTION",
+      "source": "Platform convention, not an exchange publication: the platform has always treated crypto perpetual markets as continuously open (app/symbols/market_hours.py returns open for CRYPTO_PERP / CRYPTO_SPOT) and builds daily bars on the UTC day. Venue maintenance and outages are handled by the exchange adapters, not by this calendar.",
+      "description": "Crypto perpetuals: always open; the daily bar is the UTC day."
+    },
+    {
+      "calendar_id": "TRADFI_EXAMPLE_OVERNIGHT_FUTURES",
+      "version": "1",
+      "kind": "SESSIONS",
+      "timezone": "America/Chicago",
+      "verification_status": "UNVERIFIED",
+      "source": "Illustrative example written for Step 7.2; modelled on the general shape of an electronic futures week (overnight sessions with a daily break). NOT verified against any exchange publication. No holidays or early closes populated.",
+      "description": "Example: Sunday to Thursday 17:00 open, next day 16:00 close, one-hour daily break between sessions.",
+      "weekly_sessions": [
+        {"open_weekday": 6, "open": "17:00", "close_weekday": 0, "close": "16:00"},
+        {"open_weekday": 0, "open": "17:00", "close_weekday": 1, "close": "16:00"},
+        {"open_weekday": 1, "open": "17:00", "close_weekday": 2, "close": "16:00"},
+        {"open_weekday": 2, "open": "17:00", "close_weekday": 3, "close": "16:00"},
+        {"open_weekday": 3, "open": "17:00", "close_weekday": 4, "close": "16:00"}
+      ],
+      "holidays": [],
+      "early_closes": {},
+      "maintenance_windows": [],
+      "coverage": null
+    },
+    {
+      "calendar_id": "TRADFI_EXAMPLE_FX_WEEK",
+      "version": "1",
+      "kind": "SESSIONS",
+      "timezone": "America/New_York",
+      "verification_status": "UNVERIFIED",
+      "source": "Illustrative example written for Step 7.2; modelled on the general OTC FX convention of a week from Sunday 17:00 to Friday 17:00 New York time with a daily rollover at 17:00. NOT verified against any broker publication. No holidays populated.",
+      "description": "Example: five contiguous sessions, Sunday 17:00 to Friday 17:00 New York time, each closing at the 17:00 rollover.",
+      "weekly_sessions": [
+        {"open_weekday": 6, "open": "17:00", "close_weekday": 0, "close": "17:00"},
+        {"open_weekday": 0, "open": "17:00", "close_weekday": 1, "close": "17:00"},
+        {"open_weekday": 1, "open": "17:00", "close_weekday": 2, "close": "17:00"},
+        {"open_weekday": 2, "open": "17:00", "close_weekday": 3, "close": "17:00"},
+        {"open_weekday": 3, "open": "17:00", "close_weekday": 4, "close": "17:00"}
+      ],
+      "holidays": [],
+      "early_closes": {},
+      "maintenance_windows": [],
+      "coverage": null
+    },
+    {
+      "calendar_id": "TRADFI_EXAMPLE_CASH_EQUITY",
+      "version": "1",
+      "kind": "SESSIONS",
+      "timezone": "America/New_York",
+      "verification_status": "UNVERIFIED",
+      "source": "Illustrative example written for Step 7.2; a weekday day session. NOT verified against any exchange publication. No holidays or early closes populated.",
+      "description": "Example: Monday to Friday 09:30 to 16:00 New York time.",
+      "weekly_sessions": [
+        {"open_weekday": 0, "open": "09:30", "close_weekday": 0, "close": "16:00"},
+        {"open_weekday": 1, "open": "09:30", "close_weekday": 1, "close": "16:00"},
+        {"open_weekday": 2, "open": "09:30", "close_weekday": 2, "close": "16:00"},
+        {"open_weekday": 3, "open": "09:30", "close_weekday": 3, "close": "16:00"},
+        {"open_weekday": 4, "open": "09:30", "close_weekday": 4, "close": "16:00"}
+      ],
+      "holidays": [],
+      "early_closes": {},
+      "maintenance_windows": [],
+      "coverage": null
+    }
+  ]
+}
