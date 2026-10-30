@@ -32,7 +32,9 @@ def test_sanitizer_strips_credentials():
     assert len(sanitize_message("x" * 5000)) <= 303
 
 
-def test_component_error_record_is_structured(caplog):
+def test_component_error_record_is_structured(caplog, monkeypatch):
+    # app.main stops the CATI logger propagating (its own handler, served process); caplog listens at the root.
+    monkeypatch.setattr(logging.getLogger("app.trading_intelligence"), "propagate", True)
     clear_component_errors()
     with caplog.at_level(logging.ERROR):
         rec = record_component_error("portfolio.select", RuntimeError("token=SECRET123 boom"), cycle_id="epoch_1",

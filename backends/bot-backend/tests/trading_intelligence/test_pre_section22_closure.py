@@ -278,6 +278,8 @@ def test_reference_diagnostic_economics_cannot_become_a_plan(tmp_path):
 def test_per_symbol_hook_is_labelled_diagnostic_only(monkeypatch, caplog):
     import logging
 
+    # app.main stops the CATI logger propagating (its own handler, served process); caplog listens at the root.
+    monkeypatch.setattr(logging.getLogger("app.trading_intelligence"), "propagate", True)
     monkeypatch.setenv(shadow_hook.FULL_PIPELINE_ENV_FLAG, "1")
     shadow_hook._controller = None
     with caplog.at_level(logging.INFO):

@@ -9,6 +9,7 @@ Tests verify:
 import pytest
 from unittest.mock import Mock, MagicMock
 from app.execution.executor import BinanceExecutor, ExecResult, ExchangeError
+from _boundary_permit import permitted_entry
 
 class TestExecutorExceptionHandling:
     """Test that executor propagates exceptions with proper types"""
@@ -23,7 +24,7 @@ class TestExecutorExceptionHandling:
         
         # Act & Assert
         with pytest.raises(ExchangeError) as exc_info:
-            executor.execute_signal("BTCUSDT", "BUY", 100.0)
+            permitted_entry(executor, "BTCUSDT", "BUY", 100.0)
             
         assert "Failed to fetch position info" in str(exc_info.value)
         assert "Network error" in str(exc_info.value)
@@ -43,7 +44,7 @@ class TestExecutorExceptionHandling:
         executor = BinanceExecutor(client=mock_client, execution_mode="live")
         executor._size_qty = Mock(return_value=(0.002, {}))
         
-        result = executor.execute_signal("ETHUSDT", "SELL", 50.0)
+        result = permitted_entry(executor, "ETHUSDT", "SELL", 50.0)
 
         assert isinstance(result, ExecResult)
         assert result.success is False
@@ -63,7 +64,7 @@ class TestExecutorExceptionHandling:
         executor = BinanceExecutor(client=mock_client, execution_mode="live")
         executor._size_qty = Mock(return_value=(0.002, {}))
         
-        result = executor.execute_signal("BTCUSDT", "BUY", 100.0)
+        result = permitted_entry(executor, "BTCUSDT", "BUY", 100.0)
         
         assert isinstance(result, ExecResult)
         assert result.success == False
@@ -87,7 +88,7 @@ class TestCircuitBreakerBehavior:
         
         # Executor wraps it as ExchangeError and propagates
         with pytest.raises(ExchangeError) as exc_info:
-            executor.execute_signal("BTCUSDT", "BUY", 100.0)
+            permitted_entry(executor, "BTCUSDT", "BUY", 100.0)
         
         assert "Failed to fetch position info" in str(exc_info.value)
         

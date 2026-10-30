@@ -6,7 +6,9 @@ from app.trading_intelligence.integration import cycle_shadow as cs
 from app.trading_intelligence.observability.metrics import METRICS
 
 
-def test_epoch_perf_line_reports_counts_and_stage_deltas_since_the_epoch_opened(caplog):
+def test_epoch_perf_line_reports_counts_and_stage_deltas_since_the_epoch_opened(caplog, monkeypatch):
+    # app.main stops the CATI logger propagating (its own handler, served process); caplog listens at the root.
+    monkeypatch.setattr(logging.getLogger("app.trading_intelligence"), "propagate", True)
     METRICS.observe("cati_stage_latency_ms", 5.0, stage="FORECAST")  # before the epoch: excluded
     info = {"epoch": 1790712900000, "perf0": cs._perf_baseline()}
     METRICS.observe("cati_stage_latency_ms", 7.0, stage="FORECAST")

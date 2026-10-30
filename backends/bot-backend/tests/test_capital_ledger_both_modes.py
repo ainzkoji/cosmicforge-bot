@@ -19,6 +19,7 @@ from app.decision.reasons import RiskReason
 from app.evidence.fill_bridge import project_fill
 from app.evidence.writers import open_bot_run, open_runtime_session
 from app.execution.executor import BinanceExecutor, ExchangeError
+from _boundary_permit import permitted_entry
 from shared_lib.persistence.db import DB
 from shared_lib.persistence.evidence_schema import PAPER_FORWARD
 from shared_lib.persistence.migrations import migrate
@@ -123,7 +124,7 @@ def committed(db) -> float:
 
 def test_paper_permits_the_first_120_commitment(db):
     ex = executor(db, mode="paper")
-    result = ex.execute_signal("BTCUSDT", "BUY", 120.0, leverage_override=1)
+    result = permitted_entry(ex, "BTCUSDT", "BUY", 120.0, leverage_override=1)
     assert result.success, result.error
     assert result.details["capital"]["approved"] is True
     assert result.details["capital"]["approved_margin"] == pytest.approx(120.0)
@@ -135,7 +136,7 @@ def test_paper_permits_a_second_120_commitment_when_independent_gates_allow(db):
     assert committed(db) == pytest.approx(120.0)
     ex = executor(db, mode="paper")
 
-    result = ex.execute_signal("ETHUSDT", "BUY", 120.0, leverage_override=1)
+    result = permitted_entry(ex, "ETHUSDT", "BUY", 120.0, leverage_override=1)
 
     assert result.success, result.error
     assert result.details["capital"]["approved_margin"] == pytest.approx(120.0)
@@ -145,7 +146,7 @@ def test_paper_permits_a_second_120_commitment_when_independent_gates_allow(db):
 def test_paper_does_not_shrink_second_trade_to_remaining_aggregate_budget(db):
     commit(db, qty=1.0)  # 100 committed; the next trade still has its own 120
     ex = executor(db, mode="paper")
-    result = ex.execute_signal("ETHUSDT", "BUY", 120.0, leverage_override=1)
+    result = permitted_entry(ex, "ETHUSDT", "BUY", 120.0, leverage_override=1)
     assert result.success
     assert result.details["capital"]["approved_margin"] == pytest.approx(120.0)
 
@@ -157,7 +158,7 @@ def test_live_does_not_reject_a_second_120_commitment_before_broker_affordabilit
     commit(db)
     ex = executor(db, mode="live", client=NoBrokerCalls())
     with pytest.raises(ExchangeError, match="get_position_info"):
-        ex.execute_signal("ETHUSDT", "BUY", 120.0, leverage_override=1)
+        permitted_entry(ex, "ETHUSDT", "BUY", 120.0, leverage_override=1)
 
 
 @pytest.mark.parametrize("mode", ["paper", "live"])
@@ -172,7 +173,7 @@ def test_both_modes_authorise_exactly_once_through_the_same_gate(db, mode, monke
 
     monkeypatch.setattr(ex, "_authorize_capital", spy)
     try:
-        ex.execute_signal("BTCUSDT", "BUY", 60.0, leverage_override=1)
+        permitted_entry(ex, "BTCUSDT", "BUY", 60.0, leverage_override=1)
     except (ExchangeError, BrokerTouched):
         pass  # live continues to the broker after an approval; that is not under test
     assert len(calls) == 1
@@ -190,7 +191,7 @@ class UnreadableDB:
 def test_an_unreadable_ledger_rejects_the_entry(db, mode):
     ex = executor(db, mode=mode, client=NoBrokerCalls() if mode == "live" else None)
     ex._db = UnreadableDB()
-    result = ex.execute_signal("BTCUSDT", "BUY", 60.0, leverage_override=1)
+    result = permitted_entry(ex, "BTCUSDT", "BUY", 60.0, leverage_override=1)
     assert not result.success
     assert result.status == "CAPITAL_LEDGER_UNAVAILABLE"
     assert result.details["reason_code"] == RiskReason.CAPITAL_LEDGER_UNAVAILABLE
@@ -204,14 +205,14 @@ def test_a_ledger_exception_is_a_rejection_not_an_authorisation(db, monkeypatch)
 
     monkeypatch.setattr(capital_ledger.CapitalLedger, "authorize", explode)
     ex = executor(db, mode="paper")
-    result = ex.execute_signal("BTCUSDT", "BUY", 60.0, leverage_override=1)
+    result = permitted_entry(ex, "BTCUSDT", "BUY", 60.0, leverage_override=1)
     assert result.status == "CAPITAL_LEDGER_UNAVAILABLE"
     assert ex.paper_executor.get_position("BTCUSDT") is None
 
 
 def test_a_managed_bot_without_a_budget_is_rejected(db):
     ex = executor(db, mode="paper", budget=0.0)
-    result = ex.execute_signal("BTCUSDT", "BUY", 60.0, leverage_override=1)
+    result = permitted_entry(ex, "BTCUSDT", "BUY", 60.0, leverage_override=1)
     assert not result.success
     assert result.details["reason_code"] == RiskReason.CAPITAL_BUDGET_REQUIRED
 

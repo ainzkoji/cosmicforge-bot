@@ -12,6 +12,7 @@ from __future__ import annotations
 import pytest
 
 from app.execution.executor import BinanceExecutor
+from _boundary_permit import permitted_entry
 from app.execution.paper_executor import (
     PAPER_CLOSE_QUANTITY_MISMATCH,
     PAPER_CLOSE_QUANTITY_UNKNOWN,
@@ -436,7 +437,7 @@ def test_l_full_lifecycle_never_calls_a_live_order_api(client):
 def test_l_executor_in_paper_mode_never_reaches_the_exchange(client):
     executor = BinanceExecutor(client=client, execution_mode="paper")
 
-    opened = executor.execute_signal("BTCUSDT", "BUY", 100.0)
+    opened = permitted_entry(executor, "BTCUSDT", "BUY", 100.0)
     closed = executor.execute_signal(
         "BTCUSDT", "CLOSE", 0.0, position_side="BUY", remaining_quantity=opened.details["filled_qty"]
     )

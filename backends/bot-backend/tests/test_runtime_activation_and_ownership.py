@@ -201,7 +201,8 @@ def test_the_refusal_tells_the_operator_what_is_running(db, occupied_port):
     assert str(os.getpid()) in text
     assert "No second scheduler was started." in text
     assert "No runtime evidence was written." in text
-    assert "trading_runtime.ps1 stop" in text
+    # The stop command the operator is shown is the one of this platform (render_refusal: os.name).
+    assert ("trading_runtime.ps1 stop" if os.name == "nt" else "sudo systemctl stop cosmicforge-trading") in text
 
 
 def test_errno_10048_is_not_how_the_operator_finds_out(db, occupied_port):

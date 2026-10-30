@@ -9,11 +9,13 @@ from __future__ import annotations
 import contextlib
 import dataclasses
 import json
+import os
 import re
 import sqlite3
 import subprocess
 import sys
 import threading
+from collections import Counter
 from pathlib import Path
 
 import pytest
@@ -149,9 +151,84 @@ def ledgers(db, count):
 
 
 # ----------------------------------------------------------------------------------------------------- schema
-def table_columns(db, tables):
+def rows_of(conn, columns):
+    """Every row of each table on the given columns only (a column appended later holds new data), in a stable
+    order. A table or column that no longer exists reads as None."""
+    out = {}
+    for table, cols in columns.items():
+        try:
+            out[table] = sorted((tuple(r) for r in conn.execute(
+                "SELECT " + ", ".join(f'"{c[0]}"' for c in cols) + f' FROM "{table}"')), key=repr)
+        except sqlite3.OperationalError:
+            out[table] = None
+    return out
+
+
+def schema_state(db):
+    """What an upgrade must not destroy: every schema object (table definitions with their CHECK, FOREIGN KEY,
+    UNIQUE and PRIMARY KEY clauses, indexes, triggers), each table's columns (name, type, NOT NULL, DEFAULT,
+    primary-key position), its foreign keys, every row of every table, and the version mark."""
     with db.connect() as conn:
-        return {t: [tuple(r)[1:3] for r in conn.execute(f'PRAGMA table_info("{t}")').fetchall()] for t in tables}
+        objects = {(r[0], r[1]): r[2] for r in conn.execute("SELECT type, name, sql FROM sqlite_master").fetchall()}
+        tables = sorted(name for kind, name in objects if kind == "table")
+        columns = {t: [tuple(r)[1:6] for r in conn.execute(f'PRAGMA table_info("{t}")').fetchall()] for t in tables}
+        keys = {t: sorted(tuple(r)[2:] for r in conn.execute(f'PRAGMA foreign_key_list("{t}")').fetchall())
+                for t in tables}
+        return {"objects": objects, "columns": columns, "keys": keys, "rows": rows_of(conn, columns),
+                "user_version": conn.execute("PRAGMA user_version").fetchone()[0]}
+
+
+def spliced_once(before, after):
+    """``after`` is ``before`` with at most one contiguous insertion: what ALTER TABLE ... ADD COLUMN does to a
+    stored CREATE TABLE text. Every original column definition and table constraint survives verbatim, in place."""
+    cut = len(os.path.commonprefix([before, after]))
+    return len(after) >= len(before) and after.endswith(before[cut:])
+
+
+#: Columns of existing rows that ``migrate()`` maintains on purpose: the universe-mode data migration (audited row by
+#: row in ``universe_mode_migrations``) and the news-source seed refresh. Every other column of every existing row --
+#: allocations, reservations, positions, amounts -- must come through an upgrade unchanged.
+MIGRATION_MAINTAINED = {"bot_instances": ("universe_mode",), "news_sources": ("updated_at",)}
+#: Existing tables an upgrade may only append to (that migration's audit trail).
+MIGRATION_APPENDED = ("universe_mode_migrations",)
+
+
+def upgrade_problems(old, db, *, appended=MIGRATION_APPENDED):
+    """Every way the database departs from an additive upgrade of ``old`` (a ``schema_state``); empty when new
+    tables, indexes, triggers and appended columns are all that changed. ``appended=()`` for a repeated run, which
+    may not even append."""
+    new, problems = schema_state(db), []
+    for (kind, name), sql in old["objects"].items():
+        now = new["objects"].get((kind, name), "<missing>")
+        if now == "<missing>":
+            problems.append(f"DROPPED {kind} {name}")
+        elif kind != "table":
+            if now != sql:
+                problems.append(f"REDEFINED {kind} {name}")
+        else:
+            if sql is not None and not spliced_once(sql, now):
+                problems.append(f"DEFINITION {name}")
+            if new["columns"][name][:len(old["columns"][name])] != old["columns"][name]:
+                problems.append(f"COLUMNS {name}")
+            if new["keys"][name] != old["keys"][name]:
+                problems.append(f"FOREIGN_KEYS {name}")
+    with db.connect() as conn:
+        rows = rows_of(conn, old["columns"])
+    for table, now in rows.items():
+        was = old["rows"][table]
+        if table == "sqlite_sequence" or now == was:                  # SQLite's own AUTOINCREMENT counters
+            continue
+        if now is None:
+            problems.append(f"ROWS {table}")
+            continue
+        names = [c[0] for c in old["columns"][table]]
+        keep = [i for i, n in enumerate(names) if n not in MIGRATION_MAINTAINED.get(table, ())]
+        was, now = ([tuple(r[i] for i in keep) for r in rs] for rs in (was, now))
+        if Counter(was) - Counter(now) or (table not in appended and Counter(now) - Counter(was)):
+            problems.append(f"ROWS {table}")
+    if new["user_version"] != old["user_version"]:
+        problems.append("USER_VERSION")
+    return problems
 
 
 def master(db):
@@ -174,6 +251,16 @@ def add_pending(db, symbol, *, bot="bot-1", side="LONG", state="PENDING_OPEN", s
         conn.execute("INSERT INTO pending_entries (id, bot_id, symbol, side, client_order_id, state, submit_state,"
                      " intended_notional) VALUES (?,?,?,?,?,?,?,?)",
                      (row_id or f"pe-{bot}-{symbol}", bot, symbol, side, f"cid-{bot}-{symbol}", state, submit, notional))
+
+
+def add_position(db, symbol="ETHUSDT", *, bot="bot-1"):
+    """An open legacy position with non-trivial amounts (quantities, price, PnL, fees, margin)."""
+    with db.connect() as conn:
+        conn.execute("INSERT INTO positions (position_id, bot_instance_id, user_id, broker_account_id, symbol, side,"
+                     " original_qty, remaining_qty, realized_qty, entry_price, realized_pnl, fees, leverage,"
+                     " committed_margin, opened_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                     (f"pos-{bot}-{symbol}", bot, USER, ACCOUNT, symbol, "LONG", 1.25, 0.75, 0.5, 2412.5, 31.4, 1.9,
+                      3.0, 1005.21, "2026-01-01T00:00:00+00:00"))
 
 
 def legacy_production_reservation(db, symbol="SOLUSDT", cycle="cycle-1", bot="bot-1"):
@@ -236,29 +323,29 @@ def test_the_schema_upgrades_a_database_that_already_holds_legacy_reservations_a
     store.mark_resolution_pending(pending_id, NOW + 5, trade_plan_id="tp-1", execution_attempt_id="ea-1",
                                   resolution_deadline=NOW + 60_000, note="timeout after send")
     add_pending(db, "XRPUSDT", submit="SUBMIT_UNKNOWN")
+    add_position(db)
     before = {table: dump(db, table) for table in LEGACY_TABLES if (("table", table) in master(db))}
-    objects_before = master(db)
-    assert before["cati_portfolio_reservations"] and before["pending_entries"]
+    assert before["cati_portfolio_reservations"] and before["pending_entries"] and before["positions"]
+    old = schema_state(db)
 
     with pytest.raises(R.LedgerSchemaMissing):
         R.ReservationLedger(db)                                       # the old schema has no ledger: fail closed
 
-    columns_before = table_columns(db, [name for kind, name in objects_before if kind == "table"])
     ensure_cati_platform_schema(db)
     migrate(db)                                                       # the whole migration, as every start does
     first = master(db)
+    # Additive only. Later steps add tables and append columns to existing tables (admin MFA, billing state); no
+    # original table, column, constraint (NOT NULL, DEFAULT, PRIMARY KEY, UNIQUE, CHECK, FOREIGN KEY), index or
+    # trigger is dropped or redefined, no row of any existing table is changed, added or removed, and the
+    # unversioned legacy schema is not stamped with a version (test_the_upgrade_check_sees_every_destructive_change).
+    assert upgrade_problems(old, db) == []
+    upgraded = schema_state(db)
     ensure_cati_platform_schema(db)
     migrate(db)
     migrate(db)
-    assert master(db) == first                                        # running it again changes nothing
-    # No existing object was touched destructively. Later steps add tables and append columns to existing tables
-    # (admin MFA, billing state); an original column is never dropped, renamed or retyped, and every original
-    # index and trigger is unchanged.
-    after = table_columns(db, list(columns_before))
-    for table, cols in columns_before.items():
-        assert after[table][:len(cols)] == cols, table
-    assert {k: v for k, v in first.items() if k in objects_before and k[0] != "table"} ==         {k: v for k, v in objects_before.items() if k[0] != "table"}
-    assert {table: dump(db, table) for table in before} == before     # no legacy row was touched
+    assert master(db) == first and upgrade_problems(upgraded, db, appended=()) == []    # running it again changes
+    #                                                         nothing: no object, no row (but the seed refresh above)
+    assert {table: dump(db, table) for table in before} == before     # no legacy row was touched, amounts included
     assert all(("table", table) in first for table in MY_TABLES)
     assert store.pending_resolutions(ACCOUNT)[0]["reservation_id"] == pending_id         # legacy recovery list intact
     ledger = R.ReservationLedger(db)
@@ -267,6 +354,86 @@ def test_the_schema_upgrades_a_database_that_already_holds_legacy_reservations_a
     rows_then = {table: dump(db, table) for table in MY_TABLES}
     migrate(db)
     assert {table: dump(db, table) for table in MY_TABLES} == rows_then and master(db) == first
+
+
+def rebuilt(table, old, new):
+    """A destructive migration: the table recreated from an edited definition and its rows copied across (its
+    indexes and triggers go with the old table)."""
+    def change(conn):
+        sql = conn.execute("SELECT sql FROM sqlite_master WHERE type='table' AND name=?", (table,)).fetchone()[0]
+        assert old in sql, (table, old)
+        conn.execute(re.sub(rf'^CREATE TABLE "?{table}"?', f"CREATE TABLE {table}__rebuilt", sql.replace(old, new, 1)))
+        conn.execute(f"INSERT INTO {table}__rebuilt SELECT * FROM {table}")
+        conn.execute(f"DROP TABLE {table}")
+        conn.execute(f"ALTER TABLE {table}__rebuilt RENAME TO {table}")
+    return change
+
+
+DESTRUCTIVE_CHANGES = {   # change applied to an upgraded copy -> the problem it must be reported as
+    "table dropped": (lambda c: c.execute("DROP TABLE strategy_parameters"), "DROPPED table strategy_parameters"),
+    "column dropped": (lambda c: c.execute("ALTER TABLE positions DROP COLUMN close_reason"), "COLUMNS positions"),
+    "column renamed": (lambda c: c.execute("ALTER TABLE positions RENAME COLUMN fees TO fee_total"), "COLUMNS positions"),
+    "NOT NULL lost": (rebuilt("bot_daily_state", "bot_instance_id TEXT NOT NULL", "bot_instance_id TEXT"),
+                      "COLUMNS bot_daily_state"),
+    "DEFAULT changed": (rebuilt("daily_state", "realized_pnl REAL DEFAULT 0.0", "realized_pnl REAL"),
+                        "COLUMNS daily_state"),
+    "PRIMARY KEY lost": (rebuilt("daily_state", "day TEXT PRIMARY KEY", "day TEXT"), "COLUMNS daily_state"),
+    "UNIQUE lost": (rebuilt("users", "email TEXT UNIQUE NOT NULL", "email TEXT NOT NULL"),
+                    "DROPPED index sqlite_autoindex_users_2"),
+    "CHECK lost": (rebuilt("cati_portfolio_reservations", " CHECK (status IN ('RESERVED', 'RESOLUTION_PENDING',"
+                           " 'CONSUMED', 'RELEASED', 'EXPIRED'))", ""), "DEFINITION cati_portfolio_reservations"),
+    "FOREIGN KEY lost": (rebuilt("risk_parameters", ",\n                    FOREIGN KEY(config_id) REFERENCES"
+                                 " user_strategy_configs(id)", ""), "FOREIGN_KEYS risk_parameters"),
+    "trigger dropped": (lambda c: c.execute("DROP TRIGGER trg_preserve_lifecycle_protection_ids"),
+                        "DROPPED trigger trg_preserve_lifecycle_protection_ids"),
+    "index dropped": (lambda c: c.execute("DROP INDEX idx_pos_bot_symbol"), "DROPPED index idx_pos_bot_symbol"),
+    "position amount changed": (lambda c: c.execute("UPDATE positions SET remaining_qty = remaining_qty * 2"),
+                                "ROWS positions"),
+    "reserved notional changed": (lambda c: c.execute("UPDATE pending_entries SET intended_notional = 30"),
+                                  "ROWS pending_entries"),
+    "reservation removed": (lambda c: c.execute("DELETE FROM cati_portfolio_reservations"),
+                            "ROWS cati_portfolio_reservations"),
+    "row added": (lambda c: c.execute("INSERT INTO pending_entries (id, bot_id, symbol, side, client_order_id)"
+                                      " VALUES ('pe-x', 'bot-1', 'BNBUSDT', 'LONG', 'cid-x')"), "ROWS pending_entries"),
+    "bot allocation changed": (lambda c: c.execute("UPDATE bot_instances SET allocation_value = 1"),
+                               "ROWS bot_instances"),
+    "version stamped": (lambda c: c.execute("PRAGMA user_version = 7"), "USER_VERSION"),
+}
+#: Only a repeated run must not do these: the first run writes the audit row.
+REPEAT_CHANGES = {
+    "audit trail removed": (lambda c: c.execute("DELETE FROM universe_mode_migrations"),
+                            "ROWS universe_mode_migrations"),
+    "data migration re-applied": (lambda c: c.execute("UPDATE universe_mode_migrations SET migrated_at = '2099-01-01'"),
+                                  "ROWS universe_mode_migrations"),
+}
+
+
+def test_the_upgrade_check_sees_every_destructive_change(before_step3, tmp_path):
+    """The checks of the test above, against an upgrade (and a repeated run) that did each forbidden thing. A check
+    that misses one would let a destructive or non-idempotent migration through."""
+    db = before_step3("negative.db")
+    add_bot(db)
+    store, pending_id = legacy_production_reservation(db)
+    store.mark_resolution_pending(pending_id, NOW + 5, trade_plan_id="tp-1", execution_attempt_id="ea-1",
+                                  resolution_deadline=NOW + 60_000, note="timeout after send")
+    add_pending(db, "XRPUSDT", submit="SUBMIT_UNKNOWN")
+    add_position(db)
+    old = schema_state(db)
+    ensure_cati_platform_schema(db)
+    migrate(db)
+    assert upgrade_problems(old, db) == []                            # the real upgrade passes
+    upgraded = schema_state(db)
+    assert upgrade_problems(upgraded, db, appended=()) == []
+    missed = {}
+    for index, (name, (change, problem)) in enumerate({**DESTRUCTIVE_CHANGES, **REPEAT_CHANGES}.items()):
+        copy = copy_of(db.path, str(tmp_path / f"changed_{index}.db"))
+        with copy.connect() as conn:
+            change(conn)
+        first_run = upgrade_problems(old, copy) if name in DESTRUCTIVE_CHANGES else [problem]
+        repeated_run = upgrade_problems(upgraded, copy, appended=())
+        if problem not in first_run or problem not in repeated_run:
+            missed[name] = (first_run, repeated_run)
+    assert missed == {}
 
 
 def test_an_interrupted_schema_run_is_completed_by_the_next_one(before_step3, migrated):

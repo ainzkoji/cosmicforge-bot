@@ -108,6 +108,8 @@ def test_the_backfill_script_declares_itself_legacy():
     """§13.11 — its output must never look like the live bot's."""
     from pathlib import Path
 
-    source = Path("scripts/ml/historical_backfill.py").read_text(encoding="utf-8")
+    # Resolved from this file, not the working directory (CI runs pytest from the repository root).
+    source = (Path(__file__).resolve().parents[1] / "scripts" / "ml" / "historical_backfill.py").read_text(
+        encoding="utf-8")
     assert "LEGACY_BACKFILL" in source
     assert "NOT the production trading brain" in source

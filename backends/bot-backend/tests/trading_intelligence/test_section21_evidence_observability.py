@@ -238,7 +238,9 @@ def test_sanitizer_redacts_injected_secrets_but_keeps_hashes():
     assert clean["nested"]["trade_plan_hash"] == digest and clean["nested"]["trade_plan_id"].startswith("tplan_")
 
 
-def test_structured_stage_logs_are_sanitized(caplog):
+def test_structured_stage_logs_are_sanitized(caplog, monkeypatch):
+    # app.main stops the CATI logger propagating (its own handler, served process); caplog listens at the root.
+    monkeypatch.setattr(logging.getLogger("app.trading_intelligence"), "propagate", True)
     with caplog.at_level(logging.INFO, logger="app.trading_intelligence.stage"):
         log_stage(component="boundary.risk", status="REJECTED", duration_ms=1.5, reason_codes=("DAILY_LOSS_LIMIT",),
                   runtime_session_id="rts_1", bot_run_id="run_1", cycle_id="c1", user_id="u1",

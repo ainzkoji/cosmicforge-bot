@@ -7,6 +7,7 @@ from app.exchange.bybit.client import BybitClient
 from app.exchange.bybit.signing import sign_v5
 from app.execution.executor import BinanceExecutor
 from app.execution.executor import ExecResult
+from _boundary_permit import permitted_entry
 from shared_lib.persistence.db import DB
 
 class TestBybitIntegration:
@@ -178,7 +179,7 @@ class TestBybitIntegration:
         
         # Execute Signal
         # Using a budget of 100 USDT
-        res = executor.execute_signal("BTCUSDT", "BUY", 100.0)
+        res = permitted_entry(executor, "BTCUSDT", "BUY", 100.0)
         
         assert res.success
         assert res.status == "ORDER_PLACED"

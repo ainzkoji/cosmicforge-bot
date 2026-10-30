@@ -6,6 +6,7 @@ from unittest.mock import Mock, patch, MagicMock
 from decimal import Decimal
 
 from app.execution.executor import BinanceExecutor, ExecResult, ExchangeError, ProtectionRequest
+from _boundary_permit import permitted_entry
 from app.policy.policy_engine import PolicyEngine, PolicyContext, ReasonCode
 from app.risk.circuit import ExchangeCircuitBreaker, CircuitBreakerRegistry
 
@@ -47,7 +48,7 @@ class TestSystemHardening:
         executor._size_qty = Mock(return_value=(0.01, {"price": 50000.0}))
         
         # Execute trade
-        result = executor.execute_signal("BTCUSDT", "BUY", 500.0)
+        result = permitted_entry(executor, "BTCUSDT", "BUY", 500.0)
         
         # Assertions
         assert result.success is False

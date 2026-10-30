@@ -16,6 +16,7 @@ from dataclasses import replace
 from app.risk.safety_engine import SafetyEngine, SafetyConfig
 from decimal import Decimal
 from app.execution.executor import BinanceExecutor, _round_to_tick, _apply_sl_tp_rounding_with_buffer
+from _boundary_permit import permitted_entry
 from app.symbols.sizing import size_from_budget
 
 class TestPaperLiveParity:
@@ -238,12 +239,7 @@ class TestPaperLiveParity:
         import time
         client.get_klines.return_value = [[1, "50000", "50100", "49900", "50000", "10", int(time.time() * 1000)]]
         
-        res = executor.execute_signal(
-            symbol="BTCUSDT",
-            signal="BUY",
-            usdt=100.0,
-            current_equity=1000.0
-        )
+        res = permitted_entry(executor, "BTCUSDT", "BUY", 100.0, current_equity=1000.0)
         
         assert res.success is True
         
@@ -257,12 +253,7 @@ class TestPaperLiveParity:
         call_qty = float(req.qty)
         
         # Run 2: "Live" (conceptually same inputs, ensure determinism)
-        res2 = executor.execute_signal(
-            symbol="BTCUSDT",
-            signal="BUY",
-            usdt=100.0,
-            current_equity=1000.0
-        )
+        res2 = permitted_entry(executor, "BTCUSDT", "BUY", 100.0, current_equity=1000.0)
         # Capture the qty sent
         args2, kwargs2 = client.place_order.call_args
         req2 = kwargs2.get("req") or args2[0]
@@ -328,11 +319,11 @@ class TestPaperLiveParity:
         monkeypatch.setattr(settings, "EXECUTION_MODE", "live")
         monkeypatch.setattr(settings, "LIVE_SYMBOLS", "BTCUSDT")
         
-        paper_res = executor.execute_signal("BTCUSDT", "BUY", 100.0, current_equity=1000.0)
+        paper_res = permitted_entry(executor, "BTCUSDT", "BUY", 100.0, current_equity=1000.0)
         
         # Execute "Live" run
         client.place_order.reset_mock()
-        live_res = executor.execute_signal("BTCUSDT", "BUY", 100.0, current_equity=1000.0)
+        live_res = permitted_entry(executor, "BTCUSDT", "BUY", 100.0, current_equity=1000.0)
         
         # Assert Result Parity
         assert paper_res.status == live_res.status

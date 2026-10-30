@@ -25,6 +25,7 @@ from app.evidence.fill_bridge import execution_attempt, project_fill
 from app.evidence.writers import open_bot_run, open_runtime_session
 from app.execution.entry_protection import get_entry_protection
 from app.execution.executor import BinanceExecutor
+from _boundary_permit import permitted_entry
 from app.execution.fill_resolution import (
     BROKER_STATE_UNKNOWN,
     CANCELED,
@@ -444,7 +445,7 @@ def _live(database, *, entry, orders=(), trades=(), order_error=None, trades_err
 
 def _run(ex):
     with patch("app.execution.executor.time.time", return_value=1_700_000_000.0):
-        return ex.execute_signal(SYMBOL, "BUY", 120.0 * LEV, sl_price=95.0, tp_price=110.0,
+        return permitted_entry(ex, SYMBOL, "BUY", 120.0 * LEV, sl_price=95.0, tp_price=110.0,
                                  current_equity=5_000.0, leverage_override=LEV)
 
 

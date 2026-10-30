@@ -145,6 +145,8 @@ def test_the_port_probe_sees_a_live_listener_but_not_a_departed_one():
     import socket
 
     listener = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    if os.name != "nt":  # as the server binds on POSIX (uvicorn Config.bind_socket sets SO_REUSEADDR)
+        listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     listener.bind(("0.0.0.0", 0))
     listener.listen(1)
     port = listener.getsockname()[1]

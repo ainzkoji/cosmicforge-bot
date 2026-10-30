@@ -27,7 +27,9 @@ def _stage_events(caplog):
 
 
 # ---------------------------------------------------------------- 26.1 / 26.2 / 26.5 events + lineage + reasons
-def test_transfer_plan_and_unknown_emit_structured_events_with_lineage(db, caplog):
+def test_transfer_plan_and_unknown_emit_structured_events_with_lineage(db, caplog, monkeypatch):
+    # app.main stops the CATI logger propagating (its own handler, served process); caplog listens at the root.
+    monkeypatch.setattr(logging.getLogger("app.trading_intelligence"), "propagate", True)
     caplog.set_level(logging.INFO)
     _account(db, "acc_a", "alice", perms=SAFE_EVIDENCE)
 

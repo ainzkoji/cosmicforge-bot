@@ -34,15 +34,16 @@ class TestAnalyticsService:
         cursor_trades = MagicMock()
         # Return 2 trades
         cursor_trades.fetchall.return_value = [
-            {"exit_time": "2023-01-01", "realized_pnl": 100.0},
-            {"exit_time": "2023-01-02", "realized_pnl": -50.0}
+            {"timestamp_utc": "2023-01-01", "realized_pnl": 100.0},
+            {"timestamp_utc": "2023-01-02", "realized_pnl": -50.0}
         ]
         
         # Side effect for conn.execute
         def execute_side_effect(query, params=()):
             if "equity_snapshots" in str(query):
                 return cursor_snapshots
-            if "trades" in str(query):
+            # The fallback reads realized PnL of CLOSE fills from trade_fills (the old trades table is gone).
+            if "trade_fills" in str(query):
                 return cursor_trades
             return MagicMock()
             

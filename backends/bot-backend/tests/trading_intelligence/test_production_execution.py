@@ -74,6 +74,72 @@ def live(tmp_path, monkeypatch):
     return h
 
 
+@pytest.fixture
+def demo_tail(live, monkeypatch):
+    """The same harness on a DEMO plan under the production profile with DEMO submission on (as
+    ``test_production_demo_execution.demo``). Tail behaviour that does not depend on the environment is proved
+    here, where no go-live authorization exists or is needed: the go-live gate guards LIVE entries only."""
+    from app.trading_intelligence.execution.binance_adapter import executor_adapter_for
+    from shared_lib.broker.environment import normalize_environment
+    state = Settings(_env_file=None, APP_ENV="PRODUCTION", DATABASE_ROLE="production", ENVIRONMENT_NAME="production",
+                     EXECUTION_MODE="live", DEMO_ORDER_SUBMISSION_ENABLED=True, LIVE_ORDER_SUBMISSION_ENABLED=False)
+    monkeypatch.setattr(config, "settings", state)
+    monkeypatch.setattr(production, "settings", state)
+    live.client.broker_environment = normalize_environment("testnet")
+    with live.db.connect() as c:
+        row = dict(c.execute("SELECT * FROM cati_residual_decisions WHERE decision_id=?",
+                             (live.plan.source_candidate_id,)).fetchone())
+    account = {"id": live.plan.broker_account_id, "user_id": live.plan.user_id, "broker_id": "binance",
+               "environment": "testnet"}
+    live.plan = production.build_plan(row, account, live.plan.bot_instance_id, live.instrument("ADAUSDT"),
+                                      live.plan.portfolio_reservation_id)
+    TradePlanEvidenceStore(live.db).append(live.plan)
+    live.adapter = executor_adapter_for("binance", live.executor)
+    live.demo_boundary = lambda **kw: live.boundary(config=CATIExecutionConfig(True, False, ("DEMO",)),
+                                                    preflight=live.preflight(seed=False), **kw)
+    assert live.plan.environment == "DEMO"
+    return live
+
+
+@pytest.mark.parametrize("platform", ["absent", "configured"])
+def test_the_real_go_live_gate_refuses_the_live_plan_at_the_boundary(live, monkeypatch, tmp_path, platform):
+    """No ``live_tail_past_go_live_gate`` here: the LIVE plan of the tests below, in the configuration in which
+    ``test_gate_true_creates_exactly_once_and_replay_is_suppressed`` executes (LIVE submission on, adapter
+    LIVE-certified), stops at the real go-live gate inside ``process_trade_plan`` -- before hard risk, before
+    the broker -- whether or not a platform database is configured. This build never permits LIVE."""
+    from app.golive import gate as G
+    from app.trading_intelligence.pipeline import contracts as PC
+    assert G.BUILD_PERMITS_LIVE is False
+    monkeypatch.setattr(config, "settings", profile(True))
+    monkeypatch.delenv("PLATFORM_DATABASE_URL", raising=False)
+    if platform == "configured":
+        from shared_lib.persistence.sql import Database, migrate
+        from shared_lib.persistence.sql.platform_schema import all_migrations
+        url = f"sqlite:///{(tmp_path / 'golive_platform.db').as_posix()}"
+        platform_db = Database(url, pool_size=2)
+        migrate(platform_db, all_migrations())
+        platform_db.close()
+        monkeypatch.setenv("PLATFORM_DATABASE_URL", url)
+        monkeypatch.setenv("GOLIVE_REVOCATION_ANCHOR", str(tmp_path / "anchor" / "revocations.jsonl"))
+    b = live.live_boundary()
+    out = live.run(b, atr=1.)
+    assert out.status == BoundaryStatus.GOVERNANCE_NOT_AUTHORIZED, out
+    assert out.risk_decision is None and out.attempt is None
+    if platform == "absent":
+        assert out.reason_codes == ("GO_LIVE_GATE_UNAVAILABLE:RuntimeError",)
+    else:
+        assert out.reason_codes[0].startswith("GO_LIVE_GATE:"), out.reason_codes
+        p = PC.provenance_of(live.plan)
+        decision = G.production_gate(live.db).evaluate(G.Request(
+            account_id=live.plan.broker_account_id, user_id=live.plan.user_id, family_id=str(p.get("family_id")),
+            family_version=str(p.get("family_version") or ""), venue=str(p.get("venue") or ""), environment="LIVE"),
+            now_ms=live.now)
+        assert not decision.authorized and "BUILD_PERMITS_LIVE" in {c.id for c in decision.blocking}
+    live.client.place_order.assert_not_called()
+    assert not b.risk_store.for_plan(live.plan.broker_account_id, live.plan.trade_plan_id)
+
+
+@pytest.mark.usefixtures("live_tail_past_go_live_gate")   # asserts the LIVE submission flag, behind the gate
 def test_gate_false_runs_risk_and_never_mutates(live):
     out = live.run(live.live_boundary(), atr=1.)
     assert out.status == "LIVE_ORDER_SUBMISSION_DISABLED"
@@ -82,6 +148,7 @@ def test_gate_false_runs_risk_and_never_mutates(live):
     assert live.live_boundary().risk_store.for_plan(live.plan.broker_account_id, live.plan.trade_plan_id)
 
 
+@pytest.mark.usefixtures("live_tail_past_go_live_gate")   # the LIVE create path the flag and certification guard
 def test_gate_true_creates_exactly_once_and_replay_is_suppressed(live, monkeypatch):
     monkeypatch.setattr(config, "settings", profile(True))
     b = live.live_boundary()
@@ -115,9 +182,9 @@ def test_production_rejections_never_mutate(live, monkeypatch, case):
     live.client.place_order.assert_not_called()
 
 
-def test_restart_after_persisted_intent_reads_before_any_create(live, monkeypatch):
-    monkeypatch.setattr(config, "settings", profile(True))
-    b = live.live_boundary()
+def test_restart_after_persisted_intent_reads_before_any_create(demo_tail):
+    live = demo_tail  # restart recovery does not depend on the environment: proved on a DEMO plan
+    b = live.demo_boundary()
     original = b.adapter.submit_entry
     def crash(request):
         raise KeyboardInterrupt("simulated process interruption")
@@ -125,7 +192,7 @@ def test_restart_after_persisted_intent_reads_before_any_create(live, monkeypatc
     with pytest.raises(KeyboardInterrupt):
         live.run(b, atr=1.)
     b.adapter.submit_entry = original
-    fresh = live.live_boundary()
+    fresh = live.demo_boundary()
     seen = []
     fresh.adapter.query_order = lambda *a, **kw: (seen.append("READ_BACK") or OrderState(None, kw["client_order_id"], None, 0., 0., False))
     fresh.adapter.reconcile_position = lambda *a: BrokerPositionState("ADAUSDT", "FLAT", 0., None, True)
@@ -135,10 +202,10 @@ def test_restart_after_persisted_intent_reads_before_any_create(live, monkeypatc
     live.client.place_order.assert_not_called()
 
 
-def test_ambiguous_create_reconciles_and_does_not_retry(live, monkeypatch):
-    monkeypatch.setattr(config, "settings", profile(True))
+def test_ambiguous_create_reconciles_and_does_not_retry(demo_tail):
+    live = demo_tail  # unknown-outcome reconciliation does not depend on the environment: proved on a DEMO plan
     live.client.place_order.side_effect = TimeoutError("timeout")
-    b = live.live_boundary()
+    b = live.demo_boundary()
     out = live.run(b, atr=1.)
     assert out.status == BoundaryStatus.SUBMIT_UNKNOWN
     assert out.attempt.client_order_id
@@ -149,12 +216,12 @@ def test_ambiguous_create_reconciles_and_does_not_retry(live, monkeypatch):
     assert live.client.place_order.call_count == 1
 
 
-def test_partial_fill_uses_broker_quantity(live, monkeypatch):
-    monkeypatch.setattr(config, "settings", profile(True))
+def test_partial_fill_uses_broker_quantity(demo_tail):
+    live = demo_tail  # fill accounting does not depend on the environment: proved on a DEMO plan
     live.client.place_order.side_effect = _entry("0.3", "100", "PARTIALLY_FILLED")
     live.client.get_order.return_value = _order("PARTIALLY_FILLED", "0.3", "100")
     live.client.get_order.side_effect = None
-    out = live.run(live.live_boundary(), atr=1.)
+    out = live.run(live.demo_boundary(), atr=1.)
     assert out.attempt.status == X.PARTIALLY_FILLED.value
     assert out.attempt.filled_quantity == pytest.approx(.3)
     assert float(live.seen["protection"][0].qty) == pytest.approx(.3)
@@ -189,6 +256,7 @@ def test_daily_hard_cap_latches_across_restart(live):
     assert production.account_risk(live.db, {"id":"loss"}, client, [], [], [{"id":"a"}], live.now)["loss_latched"]
 
 
+@pytest.mark.usefixtures("live_tail_past_go_live_gate")   # asserts LIVE adapter certification, behind the gate
 def test_live_certification_cannot_be_assumed(live, monkeypatch):
     monkeypatch.setattr(config, "settings", profile(True))
     live.adapter.execution_support_status = "CONTRACT_VALIDATED"
@@ -214,6 +282,7 @@ def test_native_protection_unknown_reads_back_before_recreate(live, monkeypatch)
     assert client.get_algo_orders.call_count == 2 and client._signed_post.call_count == 1
 
 
+@pytest.mark.usefixtures("live_tail_past_go_live_gate")   # the runtime persists the LIVE submission-flag reason
 def test_runtime_persists_disabled_reason_without_mutation(live, monkeypatch):
     # process_account owns reservation acquisition. Start with a free execution
     # portfolio rather than the Harness's pre-reserved boundary-only plan.

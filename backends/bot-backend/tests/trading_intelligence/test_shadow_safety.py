@@ -27,6 +27,8 @@ def test_full_pipeline_shadow_disabled_by_default(monkeypatch):
 
 
 def test_full_pipeline_shadow_never_raises_even_on_internal_failure(monkeypatch, caplog):
+    # app.main stops the CATI logger propagating (its own handler, served process); caplog listens at the root.
+    monkeypatch.setattr(logging.getLogger("app.trading_intelligence"), "propagate", True)
     monkeypatch.setenv(shadow_hook.FULL_PIPELINE_ENV_FLAG, "true")
 
     class BrokenSnapshot:
@@ -92,6 +94,8 @@ def test_disabled_shadow_evaluation_is_a_pure_noop(monkeypatch, trending_series)
 
 
 def test_shadow_evaluation_never_raises_even_on_internal_failure(monkeypatch, caplog):
+    # app.main stops the CATI logger propagating (its own handler, served process); caplog listens at the root.
+    monkeypatch.setattr(logging.getLogger("app.trading_intelligence"), "propagate", True)
     monkeypatch.setenv(shadow_hook.ENV_FLAG, "true")
 
     class BrokenSnapshot:

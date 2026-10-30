@@ -25,6 +25,7 @@ from app.decision.reasons import ExecutionReason, RiskReason
 from app.evidence.fill_bridge import project_fill
 from app.evidence.writers import open_bot_run, open_runtime_session
 from app.execution.executor import BinanceExecutor
+from _boundary_permit import permitted_entry
 from app.risk.capital_ledger import (
     ACCOUNT_RESERVATIONS,
     AccountMarginReservations,
@@ -345,7 +346,7 @@ def test_paper_executor_sizes_bch_at_its_own_120_with_atusdt_open(db, runner):
     ex._allocation_type = "fixed_amount"
     ex._allocation_value = PER_TRADE
 
-    result = ex.execute_signal("BCHUSDT", "SELL", 840.0, leverage_override=int(LEV))
+    result = permitted_entry(ex, "BCHUSDT", "SELL", 840.0, leverage_override=int(LEV))
 
     assert result.success, result.error
     assert result.details["capital"]["approved_margin"] == pytest.approx(120.0)
@@ -610,7 +611,7 @@ def _live_executor(db, client, account_key):
 
 def _run_live(ex):
     with patch("app.execution.executor.time.time", return_value=1_700_000_000.0):
-        return ex.execute_signal(SYMBOL, "BUY", PER_TRADE * LEV, sl_price=95.0, tp_price=110.0,
+        return permitted_entry(ex, SYMBOL, "BUY", PER_TRADE * LEV, sl_price=95.0, tp_price=110.0,
                                  current_equity=1_000.0, leverage_override=int(LEV))
 
 

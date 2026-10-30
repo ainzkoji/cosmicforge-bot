@@ -211,11 +211,8 @@ def block_live_order_submission(monkeypatch, request):
 #: switch: this is a monkeypatch that exists only inside the test process.
 #: ``tests/trading_intelligence/test_step3_family_gate.py`` and ``test_step3_no_uncertified_orders.py`` prove
 #: the unpatched gate refuses the same plans.
-#: The Step 6.1 go-live gate (``CATIExecutionBoundary._go_live_reason``, LIVE plans only) is the same kind of
-#: authorization layer and is answered "authorized" in these modules, and only here, so their LIVE plans still
-#: reach the tail checks they were written for (submission flag, adapter certification, replay, reconciliation).
-#: ``tests/platform_workers/test_golive_gate.py`` proves the real gate refuses every live entry, at the boundary
-#: too (``test_execution_boundary_refuses_live_entries_through_the_gate``).
+#: The Step 6.1 go-live gate (``CATIExecutionBoundary._go_live_reason``, LIVE plans only) is NOT patched here.
+#: It is answered "authorized" only for a test that requests ``live_tail_past_go_live_gate`` explicitly (below).
 LEGACY_EXECUTION_TAIL_MODULES = frozenset({
     "test_cati_execution_policy_production",
     "test_natural_signal_replay",
@@ -246,8 +243,27 @@ def _legacy_execution_tail_family_authorization(request, monkeypatch):
 
     monkeypatch.setattr(provenance.FamilyExecutionGate, "family_authorization", defined_family_only)
     monkeypatch.setattr(provenance.FamilyExecutionGate, "venue_certification", lambda self, plan, now_ms: None)
+
+
+@pytest.fixture
+def live_tail_past_go_live_gate(request, monkeypatch):
+    """Opt-in, per test: the go-live gate answers "authorized" so a LIVE plan reaches a LIVE-only check behind it
+    (the LIVE submission flag, LIVE adapter certification, the LIVE create path those two guard).
+
+    Requested only by tests whose assertion is about such a LIVE-only check; tail behaviour that does not depend
+    on the environment runs on DEMO plans without it. Usable only inside ``LEGACY_EXECUTION_TAIL_MODULES``.
+    ``BUILD_PERMITS_LIVE`` is False in this build, so the real gate can never authorize a LIVE entry:
+    ``test_production_execution.test_the_real_go_live_gate_refuses_the_live_plan_at_the_boundary`` proves it
+    refuses this same LIVE plan inside ``process_trade_plan``, and ``tests/platform_workers/test_golive_gate.py``
+    proves every condition of the gate. If a build ever permits LIVE, this stand-in must go: the tests then have
+    to authorize through a real go-live ledger instead."""
+    module = getattr(request, "module", None)
+    if module is None or module.__name__.rsplit(".", 1)[-1] not in LEGACY_EXECUTION_TAIL_MODULES:
+        pytest.fail("live_tail_past_go_live_gate is reserved for LEGACY_EXECUTION_TAIL_MODULES")
+    from app.golive import gate
     from app.trading_intelligence.execution.boundary import CATIExecutionBoundary
 
+    assert gate.BUILD_PERMITS_LIVE is False, "a build that permits LIVE must authorize through the real gate"
     monkeypatch.setattr(CATIExecutionBoundary, "_go_live_reason", lambda self, plan, now: None)
 
 

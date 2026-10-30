@@ -7,8 +7,7 @@ from unittest.mock import Mock
 import pytest
 
 from _exec import cati_bot
-from test_production_execution import live, profile
-from app.core import config
+from test_production_execution import demo_tail, live  # noqa: F401  (fixtures)
 from app.trading_intelligence.contracts.trade_plan import TradePlan, TargetZone
 from app.trading_intelligence.execution.boundary import BoundaryStatus
 from app.trading_intelligence.integration import production_execution as production
@@ -66,15 +65,17 @@ def test_live_drift_that_keeps_economics_passes_and_a_chase_is_blocked(live):
     ({"bids": [["99.9", "1"]], "asks": [["100.01", "0.5"], ["100.8", "100"]]}, "CATI_EXECUTION_ECONOMICS_DEPTH"),
     ({"unavailable": True}, "CATI_ORDER_BOOK_UNAVAILABLE"),
 ])
-def test_order_book_economics_block_before_any_create(live, monkeypatch, book, code):
-    monkeypatch.setattr(config, "settings", profile(True))
-    out = live.run(live.live_boundary(), atr=1., order_book=book)
+def test_order_book_economics_block_before_any_create(demo_tail, book, code):
+    # Hard risk reads the book the same way for every environment: proved on a DEMO plan with DEMO submission
+    # ON, so only the book can stop it.
+    out = demo_tail.run(demo_tail.demo_boundary(), atr=1., order_book=book)
     assert out.status == BoundaryStatus.RISK_REJECTED and code in out.reason_codes
     assert out.reservation_status == "RELEASED"
-    live.client.place_order.assert_not_called()
+    demo_tail.client.place_order.assert_not_called()
 
 
 # 22 -- LIVE gate false: an approved plan never mutates a LIVE broker.
+@pytest.mark.usefixtures("live_tail_past_go_live_gate")   # asserts the LIVE submission flag, behind the gate
 def test_live_gate_false_never_mutates_an_approved_plan(live):
     out = live.run(live.live_boundary(), atr=1.)
     assert out.status == "LIVE_ORDER_SUBMISSION_DISABLED" and out.risk_decision.approved
