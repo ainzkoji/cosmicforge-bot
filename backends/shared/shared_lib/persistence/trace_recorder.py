@@ -186,18 +186,28 @@ class TraceRecorder:
     Records decision traces to database.
     """
     
-    def __init__(self, db_path: str = "../../data/bot.db"):
+    def __init__(self, db_path: str = "../../data/bot.db", *, pg_url: Optional[str] = None):
         # The recorder opens its own sqlite connections rather than going
         # through DB(), so it enforces test isolation itself.
         from shared_lib.persistence.test_isolation import enforce_test_database
 
         enforce_test_database(db_path)
+        if pg_url is not None:
+            enforce_test_database(pg_url)
         self._db_path = db_path
+        #: PostgreSQL (EXT-DB-01): the process database is a server; connections come from the legacy adapter.
+        self._pg_url = pg_url
         self._traces: Dict[str, DecisionTrace] = {}
         self._lock = threading.Lock()
         self._provenance_columns_ready = False
 
     def _conn(self) -> sqlite3.Connection:
+        if self._pg_url is not None:
+            from shared_lib.persistence import legacy_postgres
+
+            conn = legacy_postgres.connect(self._pg_url)
+            conn.execute("PRAGMA busy_timeout = 1000")  # the same 1 s the SQLite connection waits
+            return conn
         return sqlite3.connect(self._db_path, timeout=1)
 
     def _ensure_provenance_columns(self, conn: sqlite3.Connection) -> None:
@@ -783,10 +793,13 @@ def get_trace_recorder(db_path: str = None) -> TraceRecorder:
     else:
         key = ("url", os.environ.get("DATABASE_URL", ""))
     if _recorder is None or _recorder_key != key:
+        pg_url = None
         if db_path is None:
             from shared_lib.persistence.db import DB
-            db_path = DB().path
-        _recorder = TraceRecorder(db_path)
+            database = DB()
+            db_path = database.path
+            pg_url = getattr(database, "_pg_url", None)
+        _recorder = TraceRecorder(db_path, pg_url=pg_url)
         _recorder_key = key
     return _recorder
 

@@ -19,19 +19,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from shared_lib.persistence.sql import Database, migrate  # noqa: E402
 from shared_lib.persistence.sql.platform_schema import all_migrations  # noqa: E402
 
-PG_URL = os.environ.get("PLATFORM_TEST_POSTGRES_URL", "")
-PG_REQUIRED = os.environ.get("PLATFORM_TEST_POSTGRES_REQUIRED") == "1"
-
-
-def _pg_admin(sql: str) -> None:
-    import psycopg
-    with psycopg.connect(PG_URL, autocommit=True) as conn:
-        conn.execute(sql)
-
-
-def _pg_url(name: str) -> str:
-    base, _, _ = PG_URL.rpartition("/")
-    return f"{base}/{name}"
+from _pg_server import PG_REQUIRED, PG_URL, _pg_admin, _pg_url  # noqa: E402,F401
 
 
 @pytest.fixture(params=["sqlite", "postgresql"])

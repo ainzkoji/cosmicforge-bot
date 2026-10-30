@@ -85,6 +85,10 @@ def synchronous_mode() -> str:
     return mode if mode in ("NORMAL", "FULL", "EXTRA") else "NORMAL"
 
 
+def _is_postgres_url(value) -> bool:
+    return str(value or "").startswith(("postgresql://", "postgres://", "postgresql+psycopg://"))
+
+
 # =========================
 # Database class
 # =========================
@@ -92,9 +96,30 @@ class DB:
     """
     Single source of truth for SQLite access.
     Default path: data/bot.db
+
+    PostgreSQL (EXT-DB-01): ``DB("postgresql://...")``, ``DB(url="postgresql://...")`` or
+    ``DATABASE_URL=postgresql://...`` runs the same legacy code through
+    ``shared_lib.persistence.legacy_postgres`` (an adapter with the ``sqlite3.Connection`` surface). SQLite remains
+    the default and its path is unchanged.
     """
 
-    def __init__(self, path: str = None):
+    #: Test seam: the PostgreSQL test plugin (``tests/legacy_pg_plugin.py``) installs a callable mapping a resolved
+    #: SQLite path to a throwaway PostgreSQL URL. Honoured only under COSMICFORGE_TEST_MODE; never set by the runtime.
+    _test_router = None
+
+    #: PostgreSQL URLs whose legacy ``_init`` already ran in this process (it is idempotent; this only saves time).
+    _pg_initialized: set = set()
+
+    def __init__(self, path: str = None, *, url: str = None):
+        self.dialect = "sqlite"
+        self._pg_url = None
+        if url is None and path is not None and _is_postgres_url(path):
+            url, path = path, None
+        if url is None and path is None and _is_postgres_url(os.environ.get("DATABASE_URL", "")):
+            url = os.environ["DATABASE_URL"]
+        if url is not None:
+            self._init_postgres(url, display_path=None)
+            return
         if path is None:
             # ── CANONICAL PATH RESOLUTION ──────────────────────────────────────
             # Priority 1: DATABASE_URL environment variable (set in .env)
@@ -136,6 +161,16 @@ class DB:
 
         enforce_test_database(path)
 
+        router = type(self)._test_router
+        if router is not None:
+            from shared_lib.persistence.test_isolation import test_mode_active
+
+            # never routes outside test mode (a test that switches test mode off gets plain SQLite)
+            routed = router(path, self) if test_mode_active() else None
+            if routed:
+                self._init_postgres(routed, display_path=path)
+                return
+
         self.path = path
         self._sqlite_target = path
         self._sqlite_uri = False
@@ -157,6 +192,23 @@ class DB:
 
         self._init()
 
+    def _init_postgres(self, url: str, *, display_path) -> None:
+        from shared_lib.persistence import legacy_postgres
+        from shared_lib.persistence.test_isolation import enforce_test_database
+
+        enforce_test_database(url)
+        self.dialect = "postgresql"
+        self._pg_url = url
+        #: ``path`` is the identity callers key on (a redacted URL, or the SQLite path a test asked for).
+        self.path = display_path if display_path is not None else legacy_postgres.redact(url)
+        self.url = legacy_postgres.redact(url)
+        self._sqlite_target = None
+        self._sqlite_uri = False
+        self._memory_anchor = None
+        if url not in DB._pg_initialized:
+            self._init()
+            DB._pg_initialized.add(url)
+
     # -------------------------
     # Connection manager
     # -------------------------
@@ -169,6 +221,15 @@ class DB:
 
     def _open(self) -> sqlite3.Connection:
         """One new connection with the standard pragmas (and instrumentation)."""
+        if getattr(self, "_pg_url", None) is not None:
+            from shared_lib.persistence import legacy_postgres
+
+            conn = legacy_postgres.connect(self._pg_url)
+            conn.row_factory = sqlite3.Row
+            METRICS.connections_opened += 1
+            if METRICS.enabled:
+                conn.set_trace_callback(METRICS.trace)
+            return conn
         # Increased timeout to 10s for Windows/OneDrive stability
         conn = sqlite3.connect(
             self._sqlite_target,
@@ -266,7 +327,12 @@ class DB:
     # -------------------------
     def _init(self) -> None:
         # Increased timeout to 10s for Windows/OneDrive stability
-        conn = sqlite3.connect(self._sqlite_target, uri=self._sqlite_uri, timeout=10)
+        if getattr(self, "_pg_url", None) is not None:
+            from shared_lib.persistence import legacy_postgres
+
+            conn = legacy_postgres.connect(self._pg_url)
+        else:
+            conn = sqlite3.connect(self._sqlite_target, uri=self._sqlite_uri, timeout=10)
         try:
             # ✅ ADD: same hardening for init connection as well
             try:

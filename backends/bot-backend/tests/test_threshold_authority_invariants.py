@@ -43,6 +43,9 @@ _ALLOWED_IDENTIFIERS: dict[str, set[Path]] = {
     "consensus_required": {
         _APP / "evidence" / "decision_recorder.py",
         _SHARED / "persistence" / "evidence_schema.py",
+        # Step 5.1 storage classification only: the column's type on PostgreSQL (DOUBLE PRECISION), so the
+        # historical values survive a migration exactly. Nothing reads or computes it there.
+        _SHARED / "persistence" / "legacy_money.py",
     },
 }
 

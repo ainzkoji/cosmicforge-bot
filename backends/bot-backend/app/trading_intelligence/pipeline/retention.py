@@ -157,6 +157,9 @@ _BY_CLASS: Tuple[Tuple[str, Tuple[str, ...]], ...] = (
     (RECONCILIATION_STATE, (
         # Section H Steps 5-8 (platform layer, go-live, launch operations)
         "platform_account_assignments", "platform_accounts", "platform_workers",
+        # Step 5.1 EXT-DB-01 legacy PostgreSQL adapter (PostgreSQL only): the sqlite_master registry (current DDL
+        # text per object) and schema metadata (bootstrap version, PRAGMA user_version) -- current schema state
+        "cf_legacy_meta", "cf_legacy_schema",
         "bot_daily_close_marks", "bot_daily_state", "cati_account_income_cursor", "cati_account_leases",
         "cati_account_period_risk", "cati_brake_state", "cati_emergency_requests", "cati_execution_backoff",
         "cati_feed_state", "cati_feed_symbols", "cati_instrument_rule_refreshes", "cati_portfolio_reservations",

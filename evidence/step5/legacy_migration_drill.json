@@ -1,0 +1,583 @@
+{
+ "checks": {
+  "01_source_row_counts": true,
+  "02_destination_row_counts": true,
+  "03_table_coverage_both_ways": true,
+  "04_foreign_key_integrity": true,
+  "05_unique_constraints": true,
+  "06_financial_value_preservation": true,
+  "07_trading_intent_identity": true,
+  "08_position_protection_associations": true,
+  "09_research_governance_preservation": true,
+  "10_interrupted_migration_recovery": true,
+  "11_rerun_safety": true,
+  "12_backup_and_restore": true,
+  "13_application_startup_on_target": true
+ },
+ "detail": {
+  "checkpoints": {
+   "fresh": true,
+   "seed_rows_replaced": {
+    "event_news_mode_decisions": 1,
+    "event_news_runtime_mode": 1,
+    "kyc_requirements_config": 5,
+    "legal_audit_log": 1,
+    "legal_documents": 1,
+    "news_sources": 20,
+    "real_time_news_provider_status": 4
+   }
+  },
+  "copy": {
+   "batch_size": 500,
+   "batches": 51,
+   "ms": 4974.2,
+   "resumed": {
+    "trade_fills": {
+     "from_rowid": 2,
+     "rows_already_copied": 2
+    }
+   },
+   "rows_inserted": 253,
+   "tables_copied": 51,
+   "tables_skipped_done": 246
+  },
+  "copy_order_fk_cycles": [],
+  "create_schema_ms": 5263.7,
+  "postgres_float8_cast_comparison": {
+   "changed_by_float8_cast": 4,
+   "examples": [
+    {
+     "float8_cast": "0.3",
+     "stored": "0.30000000000000004",
+     "to_decimal": "0.30000000000000004"
+    },
+    {
+     "float8_cast": "3.33333333333333",
+     "stored": "3.3333333333333335",
+     "to_decimal": "3.3333333333333335"
+    },
+    {
+     "float8_cast": "123456789.123457",
+     "stored": "123456789.12345679",
+     "to_decimal": "123456789.12345679"
+    },
+    {
+     "float8_cast": "1234567890123.46",
+     "stored": "1234567890123.4568",
+     "to_decimal": "1234567890123.4568"
+    }
+   ],
+   "values": 18
+  },
+  "target_money_types": [
+   "numeric"
+  ],
+  "triggers_and_fk_checks_disabled_during_copy": true
+ },
+ "evidence": {
+  "01_source_row_counts": {
+   "rows": 1510,
+   "tables": 297,
+   "tables_with_rows": 295
+  },
+  "02_destination_row_counts": {
+   "mismatches": {},
+   "rowid_differs": [],
+   "rowid_preserved_tables": 297,
+   "rows": 1510,
+   "tables_compared": 297
+  },
+  "03_table_coverage_both_ways": {
+   "compatibility_layer_tables": [
+    "cf_legacy_meta",
+    "cf_legacy_schema"
+   ],
+   "source_columns_missing_in_target": {},
+   "source_tables": 297,
+   "source_tables_missing_in_target": [],
+   "source_triggers": 142,
+   "target_only_required_columns": {},
+   "target_only_tables": [],
+   "target_only_tables_with_rows": {},
+   "target_tables": 297,
+   "target_triggers_informational": 142
+  },
+  "04_foreign_key_integrity": {
+   "declared_but_not_enforced_in_target": 57,
+   "note": "orphans are counted for every FK the source declares, on the migrated rows",
+   "source_declared_foreign_keys": 57,
+   "target_enforced_foreign_keys": 0,
+   "target_orphans": {}
+  },
+  "05_unique_constraints": {
+   "missing_in_target": [],
+   "source_unique_indexes": 296,
+   "target_unique_indexes": 365,
+   "violated": {}
+  },
+  "06_financial_value_preservation": {
+   "mismatch_count": 0,
+   "mismatches": [],
+   "monetary_columns_not_numeric_in_target": [],
+   "monetary_columns_summed": 331,
+   "monetary_values_compared": 1655,
+   "non_monetary_real_values_compared": 1466,
+   "sample_sums": {
+    "account_equity_daily.close": {
+     "equal": true,
+     "source_decimal_sum": "1234691346916.26013334",
+     "target_numeric_sum": "1234691346916.26013334"
+    },
+    "account_equity_daily.high": {
+     "equal": true,
+     "source_decimal_sum": "192005.27345677900000004",
+     "target_numeric_sum": "192005.27345677900000004"
+    },
+    "account_equity_daily.low": {
+     "equal": true,
+     "source_decimal_sum": "-12.67987554",
+     "target_numeric_sum": "-12.67987554"
+    },
+    "account_equity_daily.open": {
+     "equal": true,
+     "source_decimal_sum": "7.0143333333333335",
+     "target_numeric_sum": "7.0143333333333335"
+    },
+    "account_equity_snapshots.available": {
+     "equal": true,
+     "source_decimal_sum": "64992.47000000000000004",
+     "target_numeric_sum": "64992.47000000000000004"
+    },
+    "account_equity_snapshots.equity": {
+     "equal": true,
+     "source_decimal_sum": "1234691346916.26013334",
+     "target_numeric_sum": "1234691346916.26013334"
+    },
+    "account_equity_snapshots.unrealized": {
+     "equal": true,
+     "source_decimal_sum": "1234567890123.45680101",
+     "target_numeric_sum": "1234567890123.45680101"
+    },
+    "account_equity_snapshots.wallet": {
+     "equal": true,
+     "source_decimal_sum": "127003.4577901123333335",
+     "target_numeric_sum": "127003.4577901123333335"
+    },
+    "admin_ml_linked_trade_snapshot.realized_pnl": {
+     "equal": true,
+     "source_decimal_sum": "123456796.1367901233333335",
+     "target_numeric_sum": "123456796.1367901233333335"
+    },
+    "admin_profitability_daily_summary.total_realized_pnl": {
+     "equal": true,
+     "source_decimal_sum": "1234691346916.26013334",
+     "target_numeric_sum": "1234691346916.26013334"
+    },
+    "admin_profitability_sizing_events.base_notional": {
+     "equal": true,
+     "source_decimal_sum": "1234567890123.45680101",
+     "target_numeric_sum": "1234567890123.45680101"
+    },
+    "admin_profitability_sizing_events.configured_margin": {
+     "equal": true,
+     "source_decimal_sum": "127003.4577901123333335",
+     "target_numeric_sum": "127003.4577901123333335"
+    }
+   },
+   "sum_mismatches": []
+  },
+  "07_trading_intent_identity": {
+   "cati_execution_attempts": {
+    "distinct_source_ids": 5,
+    "equal": true,
+    "identity_columns": [
+     "record_id",
+     "execution_attempt_id",
+     "trade_plan_id",
+     "risk_decision_id",
+     "user_id",
+     "broker_account_id",
+     "bot_instance_id",
+     "position_id",
+     "broker_order_id"
+    ],
+    "rows": 5
+   },
+   "cati_execution_intents": {
+    "distinct_source_ids": 5,
+    "equal": true,
+    "identity_columns": [
+     "intent_id",
+     "account_id",
+     "user_id",
+     "family_id",
+     "decision_id",
+     "client_order_id",
+     "venue_order_id",
+     "reservation_id"
+    ],
+    "rows": 5
+   },
+   "cati_portfolio_reservations": {
+    "distinct_source_ids": 5,
+    "equal": true,
+    "identity_columns": [
+     "reservation_id",
+     "broker_account_id",
+     "bot_instance_id",
+     "cycle_id",
+     "trade_plan_id",
+     "execution_attempt_id",
+     "user_id"
+    ],
+    "rows": 5
+   },
+   "cati_reservation_ledger": {
+    "distinct_source_ids": 5,
+    "equal": true,
+    "identity_columns": [
+     "reservation_id",
+     "account_id",
+     "user_id",
+     "family_id",
+     "decision_id",
+     "client_order_id"
+    ],
+    "rows": 5
+   },
+   "cati_reservation_ledger_events": {
+    "distinct_source_ids": 5,
+    "equal": true,
+    "identity_columns": [
+     "reservation_id",
+     "account_id"
+    ],
+    "rows": 10
+   },
+   "cati_user_stream_fills": {
+    "distinct_source_ids": 5,
+    "equal": true,
+    "identity_columns": [
+     "trade_id",
+     "venue_order_id",
+     "client_order_id"
+    ],
+    "rows": 5
+   },
+   "execution_attempts": {
+    "distinct_source_ids": 5,
+    "equal": true,
+    "identity_columns": [
+     "execution_attempt_id",
+     "decision_id",
+     "bot_instance_id",
+     "user_id",
+     "run_id",
+     "cycle_id",
+     "broker_order_id",
+     "client_order_id",
+     "position_id"
+    ],
+    "rows": 5
+   },
+   "pending_entries": {
+    "distinct_source_ids": 5,
+    "equal": true,
+    "identity_columns": [
+     "id",
+     "bot_id",
+     "client_order_id",
+     "broker_order_id",
+     "cycle_id"
+    ],
+    "rows": 5
+   },
+   "position_events": {
+    "distinct_source_ids": 5,
+    "equal": true,
+    "identity_columns": [
+     "event_id",
+     "position_id",
+     "bot_instance_id",
+     "run_id",
+     "cycle_id",
+     "decision_id"
+    ],
+    "rows": 5
+   },
+   "positions": {
+    "distinct_source_ids": 5,
+    "equal": true,
+    "identity_columns": [
+     "position_id",
+     "bot_instance_id",
+     "user_id",
+     "broker_account_id",
+     "run_id",
+     "decision_id",
+     "execution_attempt_id"
+    ],
+    "rows": 5
+   },
+   "trade_fills": {
+    "distinct_source_ids": 5,
+    "equal": true,
+    "identity_columns": [
+     "id",
+     "run_id",
+     "cycle_id",
+     "trace_id",
+     "position_id",
+     "user_id",
+     "bot_instance_id",
+     "broker_account_id",
+     "order_id",
+     "broker_id",
+     "account_id"
+    ],
+    "rows": 5
+   }
+  },
+  "08_position_protection_associations": {
+   "joining_pairs_in_source": 65,
+   "joins": {
+    "cati_execution_attempts.position_id -> positions.position_id": {
+     "source": 5,
+     "target": 5
+    },
+    "cati_execution_intents.reservation_id -> cati_reservation_ledger.reservation_id": {
+     "source": 5,
+     "target": 5
+    },
+    "cati_portfolio_reservations.execution_attempt_id -> cati_execution_attempts.execution_attempt_id": {
+     "source": 5,
+     "target": 5
+    },
+    "cati_production_protection.account_id -> cati_production_state.account_id": {
+     "source": 5,
+     "target": 5
+    },
+    "cati_protection_replacements.old_client_order_id -> cati_protection_state.client_order_id": {
+     "source": 5,
+     "target": 5
+    },
+    "cati_protection_state.client_order_id -> cati_execution_intents.client_order_id": {
+     "source": 5,
+     "target": 5
+    },
+    "cati_reservation_ledger.client_order_id -> cati_execution_intents.client_order_id": {
+     "source": 5,
+     "target": 5
+    },
+    "entry_protection_events.client_order_id -> pending_entries.client_order_id": {
+     "source": 5,
+     "target": 5
+    },
+    "execution_attempts.position_id -> positions.position_id": {
+     "source": 5,
+     "target": 5
+    },
+    "position_events.position_id -> positions.position_id": {
+     "source": 5,
+     "target": 5
+    },
+    "position_lifecycle_state.position_id -> positions.position_id": {
+     "source": 5,
+     "target": 5
+    },
+    "positions.execution_attempt_id -> execution_attempts.execution_attempt_id": {
+     "source": 5,
+     "target": 5
+    },
+    "trade_fills.position_id -> positions.position_id": {
+     "source": 5,
+     "target": 5
+    }
+   }
+  },
+  "09_research_governance_preservation": {
+   "rows": 60,
+   "tables": {
+    "cati_adapter_cert_actions": {
+     "hash_equal": true,
+     "rows": 5
+    },
+    "cati_adapter_cert_checks": {
+     "hash_equal": true,
+     "rows": 5
+    },
+    "cati_adapter_cert_events": {
+     "hash_equal": true,
+     "rows": 5
+    },
+    "cati_certification_runs": {
+     "hash_equal": true,
+     "rows": 5
+    },
+    "cati_certification_stage_results": {
+     "hash_equal": true,
+     "rows": 5
+    },
+    "cati_experiment_registry": {
+     "hash_equal": true,
+     "rows": 5
+    },
+    "cati_family_decisions": {
+     "hash_equal": true,
+     "rows": 5
+    },
+    "cati_family_events": {
+     "hash_equal": true,
+     "rows": 5
+    },
+    "cati_governance_controls": {
+     "hash_equal": true,
+     "rows": 5
+    },
+    "cati_holdout_registry": {
+     "hash_equal": true,
+     "rows": 5
+    },
+    "cati_promotion_phase_history": {
+     "hash_equal": true,
+     "rows": 5
+    },
+    "cati_promotion_scopes": {
+     "hash_equal": true,
+     "rows": 5
+    }
+   }
+  },
+  "10_interrupted_migration_recovery": {
+   "checkpoint_after_crash": {
+    "done": false,
+    "last_rowid": 2,
+    "rows_copied": 2
+   },
+   "crash": "simulated crash in trade_fills during batch 2 (not committed)",
+   "crash_run_batch_size": 2,
+   "final_state_identical_to_source": true,
+   "resumed_from": {
+    "from_rowid": 2,
+    "rows_already_copied": 2
+   },
+   "rows_consistent_with_checkpoint": true,
+   "table": "trade_fills",
+   "target_rows_after_crash": 2
+  },
+  "11_rerun_safety": {
+   "rows_inserted": 0,
+   "state_unchanged": true,
+   "tables_skipped_done": 297
+  },
+  "12_backup_and_restore": {
+   "counts_equal": true,
+   "dump_bytes": 1087950,
+   "dump_ms": 417.9,
+   "hashes_equal": true,
+   "restore_ms": 4759.0,
+   "tables": 297
+  },
+  "13_application_startup_on_target": {
+   "broker_accounts_read": 5,
+   "passed": true,
+   "reservation_round_trip": {
+    "events": 2,
+    "final_state": "RELEASED",
+    "ok": true,
+    "quantity_round_trip_exact": true,
+    "release": "Transition(ok=True, changed=True, state='RELEASED', reason=None)",
+    "reserved_quantity": "1.0",
+    "reserved_state": "RESERVED"
+   },
+   "runtime_ownership": {
+    "acquired": true,
+    "held_after_release": false,
+    "holder_seen": true,
+    "reason": "ACQUIRED"
+   },
+   "schema_ensure_idempotent": {
+    "changed_tables": [
+     "news_sources"
+    ],
+    "counts_equal": true,
+    "unexpected": []
+   },
+   "status": "PASSED"
+  }
+ },
+ "finished_at_utc": "2026-10-30T18:48:22Z",
+ "limits": "A disposable rehearsal on throwaway databases. It is not the migration of the production database, which needs the owner's authorization, a sanitized copy and a maintenance window (EXT-DB-01).",
+ "outcome": "PASSED",
+ "passed": true,
+ "schema": "cosmicforge-legacy-migration-drill-v1",
+ "source": {
+  "build_ms": 4025.8,
+  "copy_sha256": "e26d24bfc78d220976b8f7dd9be4f76e4e8b05885260a1e2372a081ced3cd81c",
+  "fk_cycles": [],
+  "kind": "REPRESENTATIVE_SYNTHETIC",
+  "money_values": [
+   "0.30000000000000004",
+   "0.00012345",
+   "123456789.12345679",
+   "0.001",
+   "65000.5",
+   "1e-08",
+   "2.675",
+   "99999.99999999",
+   "0.07",
+   "1234567890123.4568",
+   "3.3333333333333335",
+   "4.35",
+   "1e-06",
+   "1.005",
+   "27000.123456789",
+   "-12.75",
+   "-0.00012345",
+   "0.0"
+  ],
+  "refused_tables": {
+   "cati_emergency_requests": "CHECK constraint failed: (scope = 'ALL' AND account_id IS NULL) OR (scope = 'ACCOUNT' AND account_id IS NOT NULL)",
+   "legal_country_eligibility": "CHECK constraint failed: length(country_code) = 2 AND country_code = upper(country_code)"
+  },
+  "rows": 1467,
+  "rows_per_table": 5,
+  "schema_steps": [
+   "shared_lib.persistence.db.DB._init",
+   "shared_lib.persistence.migrations.migrate",
+   "app.execution.production_schema.ensure",
+   "app.ops.runtime_ownership.ensure_ownership_schema",
+   "app.risk.adaptive_daily_budget.AdaptiveDailyRiskBudgetEngine._create",
+   "shared_lib.persistence.admin_analytics.ensure_admin_analytics_snapshot_tables",
+   "shared_lib.persistence.global_analytics.GlobalAnalytics(db_path)",
+   "shared_lib.billing.operator_grants.ensure_schema",
+   "shared_lib.broker.auto_trading.ensure",
+   "app.risk.safety_engine.SafetyEngine._init_monitoring_state",
+   "shared_lib.persistence.trade_tracker.TradeTracker(db_path)",
+   "app.trading_intelligence.integration.residual_prospective.Tracker (inline DDL)",
+   "app.trading_intelligence.integration.residual_simulation.Book (inline DDL)",
+   "app.execution.demo_boundary_certification (inline DDL)",
+   "app.execution.demo_transport_smoke (inline DDL)",
+   "shared_lib.persistence.events.EventStore._init_table",
+   "app.ops.run_tracker.RunTracker._ensure_run_summary_schema/_ensure_runs_schema",
+   "app.core.deployment_service.ensure_schema",
+   "shared_lib.billing.webhooks._ensure_schema",
+   "user-backend/migrations/*.sql (run_migration.py)",
+   "user-backend auth._ensure_totp_counter_column + mt_pairing_service._ensure_claim_columns"
+  ],
+  "seeded_tables": 295,
+  "tables": 297
+ },
+ "source_audit": {
+  "issue_counts": {},
+  "issues": [],
+  "issues_truncated": false,
+  "ok": true
+ },
+ "started_at_utc": "2026-10-30T18:47:51Z",
+ "target": {
+  "database": "cftest_legacy_b0dd9af8ec",
+  "restore_database": "cftest_legacy_restore_b0dd9af8ec",
+  "server": "127.0.0.1:55432"
+ }
+}

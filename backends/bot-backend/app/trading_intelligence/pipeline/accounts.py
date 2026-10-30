@@ -55,7 +55,9 @@ class ConnectedAccounts:
         out: List[AccountContext] = []
         with self._db.connect() as conn:
             rows = [dict(r) for r in conn.execute(
-                "SELECT a.id AS account_id, a.user_id, a.broker_id, a.environment, b.risk_level, COUNT(*) AS bots "
+                # MAX(): the one bot's level when bots == 1 (the only rows used); valid on SQLite and PostgreSQL
+                "SELECT a.id AS account_id, a.user_id, a.broker_id, a.environment, MAX(b.risk_level) AS risk_level, "
+                "COUNT(*) AS bots "
                 "FROM broker_accounts a JOIN bot_instances b ON b.broker_account_id=a.id AND b.status='active' "
                 "WHERE LOWER(a.status) IN ('connected','active') GROUP BY a.id ORDER BY a.id")]
             for r in rows:

@@ -1,0 +1,15 @@
+# Tests in legacy_postgres_modules.txt that are deselected on PostgreSQL because they exercise SQLite itself, not the
+# runtime. Each one still runs on SQLite in the regular bot job. Format: <node id>  # <reason>
+# No runtime test may be added here to make the PostgreSQL job green: a runtime failure is fixed in the translator,
+# the adapter or the module.
+tests/trading_intelligence/test_step3_reservations.py::test_the_schema_upgrades_a_database_that_already_holds_legacy_reservations_and_can_run_again  # builds the pre-Step-3 database with sqlite3.executescript on the file
+tests/trading_intelligence/test_step3_reservations.py::test_the_upgrade_check_sees_every_destructive_change  # same fixture; asserts sqlite_master / PRAGMA state of a SQLite file
+tests/trading_intelligence/test_step3_reservations.py::test_separate_processes_cannot_jointly_exceed_the_position_limit  # child interpreters open the database by file path (no plugin there)
+tests/trading_intelligence/test_step3_brakes.py::test_a_different_process_finds_the_account_stopped_and_cannot_trade_it_out_of_the_stop  # child interpreter opens the file path
+tests/trading_intelligence/test_step3_coordination.py::test_the_lease_holds_between_processes  # child interpreters open the file path
+tests/trading_intelligence/test_reservation_race.py::test_processes_contradictory_capacity_exactly_one_wins  # child processes open the file path
+tests/exchange/test_rate_budget.py::test_separate_processes_on_one_host_share_the_budget  # child processes open the file path
+tests/trading_intelligence/test_user_events.py::test_the_event_store_writes_to_either_table_shape  # legacy V2 EventStore opens its own SQLite file by path (not through DB); only the legacy TradeTracker uses it
+tests/test_multitenant_isolation.py::TestInvariantCheckerScoping::test_bot_a_violation_does_not_affect_bot_b  # InvariantChecker opens its own SQLite file by path; no runtime caller (runner.py only imports it)
+tests/test_multitenant_isolation.py::TestInvariantCheckerScoping::test_run_scoped_violation_does_not_affect_other_runs  # same
+tests/test_multitenant_isolation.py::TestInvariantCheckerScoping::test_global_no_scope_still_detects_any_critical_violation  # same

@@ -103,6 +103,8 @@ def protection_reason(path: str | None, *, role: str | None = None) -> str | Non
     if not path:
         return None
     text = str(path)
+    if text.startswith(("postgresql://", "postgres://", "postgresql+psycopg://")):
+        return _postgres_protection_reason(text)
     if text == ":memory:" or text.startswith("file:"):
         return None
     candidate = Path(text)
@@ -116,6 +118,21 @@ def protection_reason(path: str | None, *, role: str | None = None) -> str | Non
     runtime = configured_runtime_database()
     if runtime and runtime != ":memory:" and _norm(candidate) == _norm(runtime):
         return "it is the DATABASE_URL configured in bot-backend/.env"
+    return None
+
+
+#: A test process may open a PostgreSQL database only when its name carries this prefix (the legacy PostgreSQL
+#: test plugin and the adapter's own tests create databases named so, and drop them).
+POSTGRES_TEST_DATABASE_PREFIX = "cftest_"
+
+
+def _postgres_protection_reason(url: str) -> str | None:
+    from urllib.parse import urlsplit
+
+    name = urlsplit(url).path.lstrip("/")
+    if not name.startswith(POSTGRES_TEST_DATABASE_PREFIX):
+        return (f"PostgreSQL database {name!r} is not a throwaway test database (test databases are named "
+                f"{POSTGRES_TEST_DATABASE_PREFIX}*)")
     return None
 
 
@@ -142,6 +159,7 @@ __all__ = [
     "BACKENDS_DIR",
     "BOT_BACKEND_ENV",
     "PERSISTENCE_DIR",
+    "POSTGRES_TEST_DATABASE_PREFIX",
     "PROTECTED_BASENAMES",
     "PROTECTED_ROLES",
     "TEST_MODE_ENV",

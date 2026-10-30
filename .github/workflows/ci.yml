@@ -59,9 +59,10 @@ jobs:
   bot-backend-tests:
     name: Bot backend tests
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 75
     # The platform layer (tests/platform_workers) runs every test on SQLite AND on this PostgreSQL server; the
-    # REQUIRED flag makes a missing server a failure instead of a silent skip.
+    # REQUIRED flag makes a missing server a failure instead of a silent skip. The legacy adapter's own tests
+    # (tests/test_legacy_postgres_adapter.py) use the same server.
     services:
       postgres:
         image: postgres:16
@@ -75,6 +76,8 @@ jobs:
     env:
       PLATFORM_TEST_POSTGRES_URL: postgresql://cfci:cfci@127.0.0.1:5432/postgres
       PLATFORM_TEST_POSTGRES_REQUIRED: "1"
+      LEGACY_TEST_POSTGRES_URL: postgresql://cfci:cfci@127.0.0.1:5432/postgres
+      LEGACY_TEST_POSTGRES_REQUIRED: "1"
     steps:
     - uses: actions/checkout@v4
     - uses: actions/setup-python@v5
@@ -99,6 +102,52 @@ jobs:
         GITHUB_TOKEN: ${{ github.token }}
         PR_NUMBER: ${{ github.event.pull_request.number }}
       run: python3 "$GITHUB_WORKSPACE/.github/scripts/ci_report.py" "Bot backend tests" "$RUNNER_TEMP/bot.xml"
+
+  legacy-runtime-postgres:
+    name: Legacy runtime on PostgreSQL
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    # Step 5.1 (EXT-DB-01): the existing legacy trading-runtime modules (tests/legacy_postgres_modules.txt) run
+    # unchanged with every DB() routed to a throwaway PostgreSQL database by tests/legacy_pg_plugin.py. Tests that
+    # exercise SQLite itself are deselected with their reasons (tests/legacy_postgres_test_side.txt); they still run
+    # on SQLite in the bot job.
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: cfci
+          POSTGRES_PASSWORD: cfci
+          POSTGRES_DB: postgres
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U cfci" --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      LEGACY_TEST_POSTGRES_URL: postgresql://cfci:cfci@127.0.0.1:5432/postgres
+    steps:
+    - uses: actions/checkout@v4
+    - uses: actions/setup-python@v5
+      with:
+        python-version: "3.12"
+        cache: pip
+        cache-dependency-path: |
+          backends/bot-backend/requirements.txt
+          deploy/constraints.txt
+    - name: Install dependencies (same pins as the server)
+      run: |
+        pip install -e backends/shared
+        pip install -r backends/bot-backend/requirements.txt -c deploy/constraints.txt
+        pip install pytest-asyncio pytest-mock -c deploy/constraints.txt
+    - name: Point tests at a throwaway database
+      run: echo "DATABASE_URL=sqlite:///$RUNNER_TEMP/cosmicforge-ci-legacy-pg.db" >> "$GITHUB_ENV"
+    - name: Run the legacy runtime modules on PostgreSQL
+      working-directory: backends/bot-backend
+      run: bash tests/run_legacy_postgres.sh -p ci_quarantine --junitxml="$RUNNER_TEMP/legacy-pg.xml"
+    - name: Post failure summary to the pull request
+      if: failure() && github.event_name == 'pull_request'
+      env:
+        GITHUB_TOKEN: ${{ github.token }}
+        PR_NUMBER: ${{ github.event.pull_request.number }}
+      run: python3 "$GITHUB_WORKSPACE/.github/scripts/ci_report.py" "Legacy runtime on PostgreSQL" "$RUNNER_TEMP/legacy-pg.xml"
 
   user-backend-tests:
     name: User backend tests
