@@ -477,6 +477,16 @@ def legacy_source_refusal(path: Path) -> Optional[str]:
     return None
 
 
+def _run_pg(args):
+    """Run a PostgreSQL client tool; on failure raise with the tool's own stderr (a bare exit status hides why --
+    for example a client newer than the server writing statements the server does not know)."""
+    done = subprocess.run(args, capture_output=True)
+    if done.returncode != 0:
+        tail = done.stderr.decode("utf-8", errors="replace").strip()[-2000:]
+        raise RuntimeError(f"{Path(str(args[0])).name} exited {done.returncode}: {tail}")
+    return done
+
+
 def _pg_tool(name: str) -> str:
     bin_dir = os.environ.get("PG_BIN") or (r"C:\Program Files\PostgreSQL\18\bin" if os.name == "nt" and
                                            Path(r"C:\Program Files\PostgreSQL\18\bin").is_dir() else "")
@@ -1292,8 +1302,10 @@ def _reservation_round_trip(db) -> Dict[str, Any]:
 # ── the drill ──────────────────────────────────────────────────────────────────────────────────────────────
 def _create_db(admin_url: str, name: str) -> str:
     import psycopg
+    # The legacy schema needs the C locale (SQLite compares text bytewise and folds case for ASCII only); the
+    # adapter refuses any other database, so the drill creates its own the same way, whatever the server default.
     with psycopg.connect(admin_url, autocommit=True) as c:
-        c.execute(f"CREATE DATABASE {name}")
+        c.execute(f"CREATE DATABASE {name} TEMPLATE template0 ENCODING 'UTF8' LC_COLLATE 'C' LC_CTYPE 'C'")
     return f"{admin_url.rpartition('/')[0]}/{name}"
 
 
@@ -1449,21 +1461,20 @@ def run_legacy(workdir: Path, *, target_url: str, source: Optional[Path] = None,
         bk: Dict[str, Any] = {}
         try:
             t0 = time.perf_counter()
-            subprocess.run([_pg_tool("pg_dump"), "-Fc", "-f", str(dump), target], check=True, capture_output=True)
+            _run_pg([_pg_tool("pg_dump"), "-Fc", "-f", str(dump), target])
             bk["dump_ms"] = round((time.perf_counter() - t0) * 1000, 1)
             bk["dump_bytes"] = dump.stat().st_size
             restored = _create_db(target_url, rname)
             t0 = time.perf_counter()
-            subprocess.run([_pg_tool("pg_restore"), "--no-owner", "-d", restored, str(dump)], check=True,
-                           capture_output=True)
+            _run_pg([_pg_tool("pg_restore"), "--no-owner", "-d", restored, str(dump)])
             bk["restore_ms"] = round((time.perf_counter() - t0) * 1000, 1)
             restored_snap = target_snapshot(restored, copier)
             bk["counts_equal"] = restored_snap["counts"] == tgt_snap["counts"]
             bk["hashes_equal"] = restored_snap["hashes"] == tgt_snap["hashes"]
             bk["tables"] = len(restored_snap["counts"])
             ok = bk["counts_equal"] and bk["hashes_equal"]
-        except (subprocess.CalledProcessError, FileNotFoundError) as exc:
-            bk["error"] = (getattr(exc, "stderr", b"") or str(exc).encode())[:400].decode("utf-8", "replace")
+        except (RuntimeError, FileNotFoundError) as exc:  # _run_pg raises with the tool's stderr
+            bk["error"] = str(exc)[:400]
             ok = False
         finally:
             dump.unlink(missing_ok=True)

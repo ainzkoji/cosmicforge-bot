@@ -58,7 +58,10 @@ jobs:
 
   bot-backend-tests:
     name: Bot backend tests
-    runs-on: ubuntu-latest
+    # Pinned: the backup/restore drills run the runner's pg_dump/pg_restore against the postgres:16 service (the
+    # staging version). On ubuntu-26.04 (ubuntu-latest since late October 2026, newer PostgreSQL client) the
+    # restore drill's pg_restore failed against the 16 service; on ubuntu-24.04 it passed.
+    runs-on: ubuntu-24.04
     timeout-minutes: 75
     # The platform layer (tests/platform_workers) runs every test on SQLite AND on this PostgreSQL server; the
     # REQUIRED flag makes a missing server a failure instead of a silent skip. The legacy adapter's own tests
@@ -91,7 +94,7 @@ jobs:
       run: |
         pip install -e backends/shared
         pip install -r backends/bot-backend/requirements.txt -c deploy/constraints.txt
-        pip install pytest-asyncio pytest-mock -c deploy/constraints.txt
+        pip install pytest-asyncio pytest-mock pyyaml -c deploy/constraints.txt
     - name: Point tests at a throwaway database
       run: echo "DATABASE_URL=sqlite:///$RUNNER_TEMP/cosmicforge-ci-bot.db" >> "$GITHUB_ENV"
     - name: Run tests

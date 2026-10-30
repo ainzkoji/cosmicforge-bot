@@ -491,6 +491,16 @@ def credentials_usable_with_secret_manager_key(path: Path, broker_key: Optional[
 
 
 # ── PostgreSQL leg ──────────────────────────────────────────────────────────────────────────────────────
+def _run_pg(args):
+    """Run a PostgreSQL client tool; on failure raise with the tool's own stderr (a bare exit status hides why --
+    for example a client newer than the server writing statements the server does not know)."""
+    done = subprocess.run(args, capture_output=True)
+    if done.returncode != 0:
+        tail = done.stderr.decode("utf-8", errors="replace").strip()[-2000:]
+        raise RuntimeError(f"{Path(str(args[0])).name} exited {done.returncode}: {tail}")
+    return done
+
+
 def _pg_tool(name: str) -> str:
     bin_dir = os.environ.get("PG_BIN") or (r"C:\Program Files\PostgreSQL\18\bin" if os.name == "nt" and
                                            Path(r"C:\Program Files\PostgreSQL\18\bin").is_dir() else "")
@@ -533,9 +543,9 @@ def postgres_leg(admin_url: str, workdir: Path, encryptor: Encryptor, remote_dir
         src.close()
         dump = workdir / f"{src_name}.dump"
         t0 = time.perf_counter()
-        subprocess.run([_pg_tool("pg_dump"), "-Fc", "-f", str(dump), f"{base}/{src_name}"], check=True, capture_output=True)
+        _run_pg([_pg_tool("pg_dump"), "-Fc", "-f", str(dump), f"{base}/{src_name}"])
         out["dump_ms"] = round((time.perf_counter() - t0) * 1000, 1)
-        plain = subprocess.run([_pg_tool("pg_restore"), "-f", "-", str(dump)], check=True, capture_output=True).stdout
+        plain = _run_pg([_pg_tool("pg_restore"), "-f", "-", str(dump)]).stdout
         kinds = sorted(set(find_secrets(plain.decode("utf-8", errors="replace"))) & CELL_FINDINGS)
         out["secret_scan"] = {"ok": not kinds, "findings": kinds}
         if kinds:
@@ -547,8 +557,7 @@ def postgres_leg(admin_url: str, workdir: Path, encryptor: Encryptor, remote_dir
         t_restore = time.perf_counter()
         fetched = workdir / "pg-fetched.dump"
         encryptor.decrypt(up["dir"] / enc.name, fetched)
-        subprocess.run([_pg_tool("pg_restore"), "--no-owner", "-d", f"{base}/{dst_name}", str(fetched)], check=True,
-                       capture_output=True)
+        _run_pg([_pg_tool("pg_restore"), "--no-owner", "-d", f"{base}/{dst_name}", str(fetched)])
         dst = Database(f"{base}/{dst_name}")
         ready = dst.health()["ready"]
         after = _pg_snapshot(dst)
