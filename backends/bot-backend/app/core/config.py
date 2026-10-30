@@ -96,6 +96,19 @@ class Settings(ProductionSettings):
     STRIPE_SECRET_KEY: str = ""
     STRIPE_WEBHOOK_SECRET: str = ""
     
+    # ── Broker-cycle account assignment (Section H, Step 5.2 / EXT-WRK-01) ──
+    #: ``owner`` (default): the canonical runtime owner runs the broker cycle; with
+    #: PLATFORM_DATABASE_URL set it holds every free account through the durable
+    #: assignment table. ``assigned``: every trading-role process processes only
+    #: its fair share of accounts (requires PLATFORM_DATABASE_URL; refuses
+    #: without one). See app/platform_workers/broker_assignment.py.
+    BROKER_CYCLE_ASSIGNMENT_MODE: str = "owner"
+    #: How long an account assignment lives unless renewed (database clock). A
+    #: killed worker's accounts are taken over within this plus one cycle.
+    BROKER_ASSIGNMENT_TTL_MS: int = 60_000
+    #: Lease that must remain after every fence check before a venue mutation.
+    BROKER_ASSIGNMENT_FENCE_MARGIN_MS: int = 15_000
+
     # Trading Configuration
     EXECUTION_MODE: str = "live"
     # TRADE_SYMBOLS / MAX_SYMBOLS: development, tests, replay and the legacy

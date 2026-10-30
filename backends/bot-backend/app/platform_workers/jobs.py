@@ -20,7 +20,10 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import threading
+import time
 import uuid
+from contextlib import contextmanager
 from dataclasses import dataclass
 from decimal import Decimal
 from typing import Any, Callable, Dict, List, Mapping, Optional, Protocol, Sequence
@@ -208,6 +211,12 @@ class JobQueue:
         return {**job.__dict__, "completion_evidence": json.loads(row[12]) if row[12] else None,
                 "failure_reason": row[13]}
 
+    def find(self, idempotency_key: str) -> Optional[Dict[str, Any]]:
+        """The job carrying ``idempotency_key`` (as ``get``), or None."""
+        with self.db.transaction(write=False) as conn:
+            job_id = conn.scalar("SELECT job_id FROM platform_jobs WHERE idempotency_key=?", (idempotency_key,))
+        return None if job_id is None else self.get(job_id)
+
     def backlog(self) -> Dict[str, Any]:
         with self.db.transaction(write=False) as conn:
             now = conn.now_ms()
@@ -226,32 +235,91 @@ Handler = Callable[[Job], Optional[Mapping[str, Any]]]
 
 class JobProcessor:
     """Runs handlers. Claims in one transaction, runs the handler with **no transaction open**, records the
-    outcome in another; a crash anywhere leaves the job claimable again after its lease."""
+    outcome in another; a crash anywhere leaves the job claimable again after its lease.
 
-    def __init__(self, queue: JobQueue, owner: str, handlers: Mapping[str, Handler]) -> None:
+    ``should_stop`` (drain): checked before each claimed job is started. A job claimed in this batch but not yet
+    started is handed back at once (``RELEASED``: due immediately, no attempt spent); a job whose handler is
+    already running finishes, and if the process dies instead, that job returns when its lease expires.
+
+    ``max_processing_ms`` (processing timeout): while a handler runs, a keep-alive renews the lease every third
+    of ``lease_ms`` -- but only for ``max_processing_ms``. A handler still running after that stops being renewed,
+    its lease lapses (at most ``lease_ms`` later), another worker may take the job, and the slow handler's own
+    completion is then refused (``STALE``). Without it, the lease is never renewed (the original behaviour)."""
+
+    def __init__(self, queue: JobQueue, owner: str, handlers: Mapping[str, Handler], *,
+                 should_stop: Optional[Callable[[], bool]] = None, max_processing_ms: Optional[int] = None) -> None:
         self.queue = queue
         self.owner = owner
         self.handlers = dict(handlers)
+        self.should_stop = should_stop
+        self.max_processing_ms = max_processing_ms
+
+    @contextmanager
+    def _keepalive(self, job: Job):
+        if not self.max_processing_ms:
+            yield
+            return
+        done = threading.Event()
+        deadline = time.monotonic() + self.max_processing_ms / 1000.0
+        interval = max(self.queue.lease_ms / 3000.0, 0.01)
+
+        def beat() -> None:
+            while not done.wait(interval):
+                if time.monotonic() >= deadline:
+                    return                      # processing timeout: let the lease lapse
+                try:
+                    self.queue.heartbeat(job)
+                except StaleJobLease:
+                    return
+                except Exception as exc:  # noqa: BLE001 -- a failed renewal only shortens the lease
+                    logger.warning("job %s keep-alive failed: %s", job.job_id, exc)
+
+        thread = threading.Thread(target=beat, name=f"job-keepalive-{job.job_id[:8]}", daemon=True)
+        thread.start()
+        try:
+            yield
+        finally:
+            done.set()
+            thread.join(timeout=10)
 
     def run_once(self, *, limit: int = 10) -> List[tuple]:
         results = []
         for job in self.queue.claim(self.owner, categories=list(self.handlers), limit=limit):
+            if self.should_stop is not None and self.should_stop():
+                try:
+                    self.queue.fail(job, "WORKER_DRAINING", delay_ms=0, counts_as_attempt=False)
+                    results.append((job.job_id, "RELEASED"))
+                except StaleJobLease:
+                    results.append((job.job_id, "STALE"))
+                continue
             handler = self.handlers[job.category]
+
+            def settle(record: Callable[[], str]) -> None:
+                # A worker whose lease was taken over while its handler ran must not abort the batch: its
+                # outcome is simply not recorded (the successor's is).
+                try:
+                    results.append((job.job_id, record()))
+                except StaleJobLease:
+                    results.append((job.job_id, "STALE"))
+
             try:
-                evidence = handler(job)
+                with self._keepalive(job):
+                    evidence = handler(job)
             except RetryLater as wait:
-                results.append((job.job_id, self.queue.fail(job, f"RETRY_LATER:{wait}", delay_ms=wait.delay_ms,
-                                                             counts_as_attempt=False)))
+                reason, delay = f"RETRY_LATER:{wait}", wait.delay_ms
+                settle(lambda: self.queue.fail(job, reason, delay_ms=delay, counts_as_attempt=False))
                 continue
             except PermanentJobError as exc:
-                results.append((job.job_id, self.queue.fail(job, f"{type(exc).__name__}: {exc}", permanent=True)))
+                reason = f"{type(exc).__name__}: {exc}"
+                settle(lambda: self.queue.fail(job, reason, permanent=True))
                 continue
             except StaleJobLease:
                 results.append((job.job_id, "STALE"))
                 continue
             except Exception as exc:  # retryable by default
                 logger.warning("job %s (%s) failed: %s", job.job_id, job.category, exc)
-                results.append((job.job_id, self.queue.fail(job, f"{type(exc).__name__}: {exc}")))
+                reason = f"{type(exc).__name__}: {exc}"
+                settle(lambda: self.queue.fail(job, reason))
                 continue
             try:
                 self.queue.complete(job, evidence)

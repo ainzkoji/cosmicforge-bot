@@ -48,7 +48,9 @@ def write_lease(db, *, pid, started_at, heartbeat_at=None, session_id="rts_previ
     heartbeat_at = heartbeat_at or datetime.now(timezone.utc)
     with db.connect() as conn:
         conn.execute("INSERT OR REPLACE INTO runtime_ownership VALUES (?,?,?,?,?,?,?,?,?,NULL,NULL)",
-                     (TRADING_SCHEDULER, os.path.abspath(db.path), "own_previous", session_id, pid, "host",
+                     # written on THIS host (its PID can be inspected); other hosts: test_runtime_ownership_cross_host
+                     (TRADING_SCHEDULER, os.path.abspath(db.path), "own_previous", session_id, pid, __import__(
+                         "socket").gethostname(),
                       started_at.isoformat(), heartbeat_at.isoformat(), "production"))
 
 

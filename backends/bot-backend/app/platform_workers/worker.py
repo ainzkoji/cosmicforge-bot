@@ -8,7 +8,7 @@ One loop iteration (``run_once``):
    anything new may be submitted for the account; then ``maintain`` (position maintenance, protection,
    reconciliation, risk brakes) with a ``fence`` it must check before each durable mutation;
 3. release accounts above the fair share (another worker joined) at this safe point;
-4. run due durable jobs.
+4. run due durable jobs (with a ``runtime_jobs`` runner: first enqueue the work due for the owned accounts).
 
 Accounts are processed with bounded concurrency; one account's exception is isolated from the others.
 ``drain()`` (SIGTERM / deploy) stops claiming, lets running account work finish, then releases every account
@@ -72,17 +72,39 @@ class IterationReport:
 
 
 class TradingWorker:
+    """``job_runner``: the production job registration (``runtime_jobs.RuntimeJobRunner``), or a factory
+    ``(worker_id, assignments) -> runner`` such as ``runtime_jobs.for_worker(legacy_db, platform_db)`` -- the same
+    registration path the production trading loop uses. Each iteration then enqueues the due work for the
+    accounts this worker owns (``runner.schedule``) and runs due jobs. ``job_handlers`` (a plain category ->
+    handler map) is the older, lower-level form; the two are exclusive.
+
+    Drain and jobs: ``drain()`` stops claiming new jobs. A job claimed but not yet started is handed back at once
+    (no attempt spent); a job whose handler is running finishes before the accounts are released. A job that was
+    running when the process died stays CLAIMED until its lease expires and is then taken by any worker --
+    nothing is lost or released early."""
+
     def __init__(self, db: Database, *, maintain: Callback, recover: Callback, worker_id: Optional[str] = None,
                  assignments: Optional[WorkerAssignments] = None, job_handlers: Optional[Mapping[str, Any]] = None,
-                 max_concurrency: int = 8, build_version: str = "unknown") -> None:
+                 max_concurrency: int = 8, build_version: str = "unknown", job_runner: Any = None,
+                 job_batch: int = 10) -> None:
+        if job_runner is not None and job_handlers:
+            raise ValueError("WORKER_JOB_HANDLERS_AND_RUNNER_ARE_EXCLUSIVE")
         self.db = db
         self.assignments = assignments or WorkerAssignments(db)
         self.worker_id = self.assignments.register_worker(worker_id, build_version=build_version)
         self.maintain = maintain
         self.recover = recover
         self.max_concurrency = max(1, int(max_concurrency))
-        self.jobs = JobProcessor(JobQueue(db), self.worker_id, job_handlers) if job_handlers else None
+        self.job_batch = max(1, int(job_batch))
         self._draining = threading.Event()
+        self._jobs_running = threading.Lock()
+        if job_runner is not None and not hasattr(job_runner, "run_once"):
+            job_runner = job_runner(self.worker_id, self.assignments)
+        if job_runner is not None and getattr(job_runner, "worker_id", self.worker_id) != self.worker_id:
+            raise ValueError("JOB_RUNNER_WORKER_MISMATCH")
+        self.jobs = job_runner if job_runner is not None else (
+            JobProcessor(JobQueue(db), self.worker_id, job_handlers, should_stop=self._draining.is_set)
+            if job_handlers else None)
         self._pool = ThreadPoolExecutor(max_workers=self.max_concurrency, thread_name_prefix=f"acct-{self.worker_id[-8:]}")
 
     def _one(self, a: Assignment, report: IterationReport) -> None:
@@ -114,14 +136,31 @@ class TradingWorker:
             self.assignments.release(self.worker_id, surplus, reason="REBALANCE")
             report.released = surplus
         if self.jobs is not None and not self._draining.is_set():
-            report.jobs = self.jobs.run_once()
+            with self._jobs_running:
+                schedule = getattr(self.jobs, "schedule", None)
+                if callable(schedule):
+                    try:
+                        schedule([(a.account_id, a.tenant_id) for a in owned if a.account_id not in surplus])
+                    except Exception:
+                        logger.exception("job scheduling failed")
+                report.jobs = self.jobs.run_once(limit=self.job_batch)
         report.duration_ms = (time.perf_counter() - started) * 1000
         return report
 
-    def drain(self) -> int:
+    def drain(self, *, job_wait_s: float = 60.0) -> int:
         self._draining.set()
+        stop_jobs = getattr(self.jobs, "request_stop", None)
+        if callable(stop_jobs):
+            stop_jobs()
         self.assignments.set_worker_state(self.worker_id, "DRAINING")
         self._pool.shutdown(wait=True)
+        # The accounts are released only after the job in flight (if any) returned, so no job of this worker
+        # acts for an account a successor already owns. A handler hung past ``job_wait_s`` is abandoned: its
+        # job returns on lease expiry and every later step it takes is re-checked against the fence.
+        if self._jobs_running.acquire(timeout=job_wait_s):
+            self._jobs_running.release()
+        else:
+            logger.warning("worker %s drained with a job still running after %.0fs", self.worker_id, job_wait_s)
         released = self.assignments.release(self.worker_id, reason="DRAIN")
         self.assignments.set_worker_state(self.worker_id, "STOPPED")
         return released

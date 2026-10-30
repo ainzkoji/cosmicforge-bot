@@ -138,6 +138,7 @@ _BY_CLASS: Tuple[Tuple[str, Tuple[str, ...]], ...] = (
         # Section H Steps 5-8 (platform layer, go-live, launch operations)
         "platform_assignment_history", "platform_job_attempts", "platform_jobs", "platform_order_intents",
         "platform_order_slots", "platform_symbol_budgets",
+        "platform_spread_decisions", "platform_spread_observations",   # Step 5.5 boundary integration (60-69)
         "adaptive_daily_risk_decisions", "broker_audit_log", "canonical_trade_decisions", "cati_brake_events",
         "cati_brake_restarts", "cati_capital_plan_evidence", "cati_component_errors", "cati_decision_evidence",
         "cati_execution_attempts", "cati_execution_blocks", "cati_execution_evaluations", "cati_execution_events",
@@ -157,6 +158,7 @@ _BY_CLASS: Tuple[Tuple[str, Tuple[str, ...]], ...] = (
     (RECONCILIATION_STATE, (
         # Section H Steps 5-8 (platform layer, go-live, launch operations)
         "platform_account_assignments", "platform_accounts", "platform_workers",
+        "platform_job_watermarks",      # Step 5.3 runtime jobs: per-account reconciliation watermark (rises only)
         # Step 5.1 EXT-DB-01 legacy PostgreSQL adapter (PostgreSQL only): the sqlite_master registry (current DDL
         # text per object) and schema metadata (bootstrap version, PRAGMA user_version) -- current schema state
         "cf_legacy_meta", "cf_legacy_schema",

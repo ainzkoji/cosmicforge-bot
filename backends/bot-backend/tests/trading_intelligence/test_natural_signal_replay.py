@@ -11,6 +11,7 @@ the orchestrator, executor, sizing, preflight and account authority are the
 ones production builds. Only the exchange transport is a mock, loaded with the
 DEMO venue's real instrument filters and a DEMO-shaped (wide-spread) book.
 """
+from datetime import datetime, timezone
 from types import SimpleNamespace
 
 import pytest
@@ -90,6 +91,18 @@ def deployed(demo, monkeypatch):
         c.execute("UPDATE bot_instances SET mode='live' WHERE id=?", (demo.plan.bot_instance_id,))
     demo.reservations.release(demo.plan.portfolio_reservation_id, demo.now)
     demo.account = {**demo.account, "environment": "demo"}
+    # Step 5.5: the production factory's boundary builds the REAL platform order budget itself
+    # (``PlatformSpreadGate()`` on ``PLATFORM_DATABASE_URL``). Give it real inputs: the harness's migrated platform
+    # database, with this account registered, named the way production names it. Its policy is the one every
+    # harness uses (calibrated False; market entries allowed, so the executor's MARKET entry is walked against the
+    # venue book instead of being refused by the production default -- see test_step5_spread_boundary).
+    from _exec import HARNESS_SPREAD_POLICY
+    from app.trading_intelligence.scale import spread_gate as spread_gate_module
+    platform = demo.platform_db()
+    demo.register_platform_account()
+    monkeypatch.setenv("PLATFORM_DATABASE_URL", platform.url)
+    monkeypatch.setitem(spread_gate_module._databases, platform.url, platform)
+    monkeypatch.setitem(spread_gate_module.PlatformSpreadGate.__init__.__kwdefaults__, "policy", HARNESS_SPREAD_POLICY)
 
     def signal(name, *, price=None, spread_ticks=4, minutes_late=2):
         symbol, side, score, close, stop, target, risk, atr, next_open = RECORDED[name]
@@ -118,6 +131,9 @@ def deployed(demo, monkeypatch):
         client.get_algo_orders.return_value = []
         client.get_instrument.return_value = instrument
         client.depth.return_value = book(live_price, tick, spread_ticks)
+        # The same book through the read the platform order budget uses, stamped with the venue's (real) clock.
+        client.get_orderbook.side_effect = lambda symbol, limit=50: {
+            **book(live_price, tick, spread_ticks), "time": int(datetime.now(timezone.utc).timestamp() * 1000)}
         client.exchange_info_cached.return_value = {"symbols": [{
             "symbol": symbol, "baseAsset": symbol[:-4], "quoteAsset": "USDT", "marginAsset": "USDT",
             "contractType": "PERPETUAL", "orderTypes": ["LIMIT", "MARKET", "STOP_MARKET", "TAKE_PROFIT_MARKET"],

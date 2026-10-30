@@ -338,13 +338,13 @@ def observe_runtime(started_monotonic: float) -> dict[str, Any]:
     except Exception as exc:
         obs["errors"].append(f"cycle:{type(exc).__name__}")
     try:
-        from app.ops.runtime_ownership import current_owner, holder_is_alive
+        from app.ops.runtime_ownership import current_owner, holder_is_alive, is_local_host
 
         db = _database()
         owner = current_owner(db, db.path)
         obs["lease"] = {
             "held": owner is not None,
-            "ours": bool(owner and owner["pid"] == os.getpid()
+            "ours": bool(owner and is_local_host(owner.get("hostname")) and owner["pid"] == os.getpid()
                          and holder_is_alive(owner["pid"], owner["started_at"])),
             "heartbeat_age": _iso_age(owner["heartbeat_at"]) if owner else None,
             "runtime_session_id": owner["runtime_session_id"] if owner else None,

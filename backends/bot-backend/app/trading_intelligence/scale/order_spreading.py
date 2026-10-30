@@ -26,6 +26,12 @@ one symbol at once. This module decides **how much** combined notional the platf
    ``market_fallback_permitted`` allows a market order only when walking the *current* book for the remaining
    quantity stays within that worst price.
 7. **Retries** are idempotent: one slot per (budget, account), deterministic client order ids.
+8. **The execution boundary** (``reserve_for``, used through ``scale.spread_gate``) reserves the FULL notional of
+   one account in one transaction or refuses without holding anything: it never grants another account's
+   request and never grants less than asked (the risk-approved quantity is never resized). While the policy or
+   the stored budget is uncalibrated, a second account on the same (venue, symbol, side) is refused
+   ``ORDER_SPREADING_CALIBRATION_REQUIRED`` (EXT-LIQ-01): multi-account spreading is not executable on an
+   uncalibrated cap.
 """
 from __future__ import annotations
 
@@ -34,13 +40,23 @@ import json
 import uuid
 from dataclasses import dataclass, field
 from decimal import ROUND_CEILING, ROUND_FLOOR, Decimal
-from typing import Iterable, List, Optional, Tuple
+from typing import Callable, Iterable, List, Optional, Tuple
 
 from shared_lib.persistence.sql import Connection, Database, decimal_in, decimal_out
 from shared_lib.persistence.sql.platform_schema import ACTIVE_SLOT_STATES
 
 BUY, SELL = "BUY", "SELL"
 BPS = Decimal("0.0001")
+
+#: refusal codes of ``PlatformOrderBudget.reserve_for`` (the execution boundary's reservation)
+CALIBRATION_REQUIRED = "ORDER_SPREADING_CALIBRATION_REQUIRED"     # EXT-LIQ-01
+BUDGET_EXHAUSTED = "PLATFORM_SYMBOL_BUDGET_EXHAUSTED"
+PARTIAL_GRANT = "PLATFORM_SYMBOL_BUDGET_PARTIAL_GRANT"
+SLOT_ALREADY_ACTIVE = "PLATFORM_ORDER_SLOT_ALREADY_ACTIVE"
+SLOT_NOT_DUE = "PLATFORM_ORDER_SLOT_NOT_DUE"
+ACCOUNT_NOT_REGISTERED = "PLATFORM_ACCOUNT_NOT_REGISTERED"
+ACCOUNT_TENANT_MISMATCH = "PLATFORM_ACCOUNT_TENANT_MISMATCH"
+NOTIONAL_INVALID = "REQUESTED_NOTIONAL_INVALID"
 
 
 class DepthRefused(ValueError):
@@ -154,6 +170,22 @@ def market_fallback_permitted(depth: DepthSnapshot, side: str, quantity: Decimal
         if left <= 0:
             return True, "WITHIN_WORST_PRICE"
     return False, "DEPTH_INSUFFICIENT_FOR_QUANTITY"
+
+
+def walk_book(depth: DepthSnapshot, side: str, quantity: Decimal) -> Optional[Decimal]:
+    """The volume-weighted price of taking ``quantity`` from the VISIBLE book, or ``None`` when the visible depth
+    does not hold that much. A mechanical walk, not an impact model: hidden liquidity, queue position and the
+    book's reaction are unknown to it."""
+    left, cost = Decimal(quantity), Decimal(0)
+    if left <= 0:
+        return None
+    for p, q in _book_side(depth, side):
+        take = min(left, q)
+        cost += take * p
+        left -= take
+        if left <= 0:
+            return cost / Decimal(quantity)
+    return None
 
 
 def rank_key(signal_id: str, account_id: str) -> str:
@@ -330,3 +362,113 @@ class PlatformOrderBudget:
                                + ",".join("?" * len(allowed)) + ")", (*params, slot_id, tenant_id, *allowed))
             if cur.rowcount != 1:
                 raise BudgetRefused("SLOT_TRANSITION_REFUSED")
+
+    @classmethod
+    def transition_on(cls, conn: Connection, slot_id: str, status: str, *, tenant_id: str, reason: Optional[str] = None,
+                      filled_notional=None) -> bool:
+        """``mark`` inside the caller's transaction (same transition table, same tenant guard). Returns whether the
+        slot moved; a slot already in another state is left untouched."""
+        allowed = cls._TRANSITIONS.get(status)
+        if allowed is None:
+            raise ValueError(f"SLOT_TRANSITION_UNKNOWN:{status}")
+        sets = "status=?, updated_at=?"
+        params: list = [status, conn.now_ms()]
+        if status == "FILLED" and filled_notional is not None:
+            sets += ", granted_notional=?"
+            params.append(decimal_in(filled_notional))
+        if reason is not None:
+            sets += ", reason=?"
+            params.append(reason)
+        cur = conn.execute(f"UPDATE platform_order_slots SET {sets} WHERE slot_id=? AND tenant_id=? AND status IN ("
+                           + ",".join("?" * len(allowed)) + ")", (*params, slot_id, tenant_id, *allowed))
+        return cur.rowcount == 1
+
+    def reserve_for(self, budget_id: str, *, account_id: str, tenant_id: str, notional: Decimal,
+                    tick: Optional[Decimal] = None,
+                    link: Optional[Callable[[Connection, Slot, int], None]] = None) -> Slot:
+        """Reserve the FULL ``notional`` for ONE account, in one transaction, or raise ``BudgetRefused`` holding
+        nothing. The execution boundary's path: unlike ``allocate`` it never grants another account's request and
+        never grants less than asked (a partial grant is ``PLATFORM_SYMBOL_BUDGET_PARTIAL_GRANT``; the
+        risk-approved quantity is never resized here).
+
+        Serialised like ``allocate``: the budget row is locked (SQLite: the database write lock) and, on
+        PostgreSQL, an advisory lock on (venue, symbol, side) serialises every budget of that symbol, so
+        concurrent workers cannot each spend the same capacity. Capacity counts every active slot of every
+        unexpired budget of the same (venue, symbol, side).
+
+        Calibration boundary (EXT-LIQ-01): unless BOTH this policy and the stored budget are calibrated, a
+        reservation is refused ``ORDER_SPREADING_CALIBRATION_REQUIRED`` when ANY other account holds an active
+        slot for the same (venue, symbol, side) on any unexpired budget, whatever its signal. One account may
+        proceed under the conservative cap.
+
+        ``link(conn, slot, now)`` runs in the same transaction once the slot is reserved (the caller's audit
+        row), so a reserved slot exists if and only if its link does."""
+        if isinstance(notional, float):
+            raise TypeError("MONEY_FLOAT_REJECTED")
+        want = Decimal(str(notional))
+        if not want.is_finite() or want <= 0:
+            raise BudgetRefused(NOTIONAL_INVALID)
+        active = ",".join("?" * len(ACTIVE_SLOT_STATES))
+        with self.db.transaction() as conn:
+            b = conn.one("SELECT venue, symbol, side, cap_notional, worst_price, expires_at, created_at, calibrated "
+                         "FROM platform_symbol_budgets WHERE budget_id=?" + conn.lock_rows_suffix(), (budget_id,))
+            if b is None:
+                raise BudgetRefused("BUDGET_UNKNOWN")
+            venue, symbol, side = b[0], b[1], b[2]
+            cap, worst = decimal_out(b[3]), decimal_out(b[4])
+            now = conn.now_ms()
+            if int(b[5]) <= now:
+                raise BudgetRefused("BUDGET_EXPIRED")
+            if conn.dialect == "postgresql":  # the same lock order as ``allocate``: budget row, then symbol
+                conn.execute("SELECT pg_advisory_xact_lock(hashtext(?))", (f"{venue}|{symbol}|{side}",))
+            owner = conn.one("SELECT tenant_id FROM platform_accounts WHERE account_id=?", (account_id,))
+            if owner is None:
+                raise BudgetRefused(ACCOUNT_NOT_REGISTERED)
+            if owner[0] != tenant_id:
+                raise BudgetRefused(ACCOUNT_TENANT_MISMATCH)
+            rows = conn.all(
+                "SELECT s.account_id, s.granted_notional, s.budget_id FROM platform_order_slots s JOIN "
+                "platform_symbol_budgets x ON x.budget_id=s.budget_id WHERE x.venue=? AND x.symbol=? AND x.side=? "
+                f"AND x.expires_at > ? AND s.status IN ({active})", (venue, symbol, side, now, *ACTIVE_SLOT_STATES))
+            calibrated = bool(self.policy.calibrated) and int(b[7]) == 1
+            if not calibrated and any(r[0] != account_id for r in rows):
+                raise BudgetRefused(CALIBRATION_REQUIRED)
+            mine = conn.one("SELECT slot_id, status FROM platform_order_slots WHERE budget_id=? AND account_id=?",
+                            (budget_id, account_id))
+            if mine is not None and mine[1] in ACTIVE_SLOT_STATES:
+                raise BudgetRefused(SLOT_ALREADY_ACTIVE)
+            remaining = cap - sum((decimal_out(r[1]) for r in rows), Decimal(0))
+            if remaining < want:
+                raise BudgetRefused(PARTIAL_GRANT if remaining > 0 else BUDGET_EXHAUSTED)
+            seq = 1 + sum(1 for r in rows if r[2] == budget_id)
+            scheduled = int(b[6]) + ((seq - 1) // self.policy.max_orders_per_slot) * self.policy.slot_interval_ms
+            if scheduled > now:
+                raise BudgetRefused(SLOT_NOT_DUE)
+            price = limit_price(worst, side, Decimal(str(tick))) if tick else None
+            if mine is None:
+                slot_id = uuid.uuid4().hex
+                conn.execute(
+                    "INSERT INTO platform_order_slots (slot_id, budget_id, account_id, tenant_id, sequence, "
+                    "requested_notional, granted_notional, limit_price, client_order_id, status, scheduled_at, "
+                    "expires_at, created_at, updated_at, rank_key, reason) VALUES (?,?,?,?,?,?,?,?,?,'RESERVED',?,?,?,?,?,NULL)",
+                    (slot_id, budget_id, account_id, tenant_id, seq, decimal_in(want), decimal_in(want),
+                     decimal_in(price), slot_client_order_id(budget_id, account_id), scheduled, int(b[5]), now, now,
+                     rank_key(self._signal(conn, budget_id), account_id)))
+            else:
+                slot_id = mine[0]
+                cur = conn.execute(
+                    "UPDATE platform_order_slots SET status='RESERVED', sequence=?, requested_notional=?, "
+                    "granted_notional=?, limit_price=?, scheduled_at=?, reason=NULL, updated_at=? WHERE slot_id=? AND "
+                    "tenant_id=? AND status IN ('REQUESTED','DEFERRED','RELEASED','EXPIRED')",
+                    (seq, decimal_in(want), decimal_in(want), decimal_in(price), scheduled, now, slot_id, tenant_id))
+                if cur.rowcount != 1:
+                    raise BudgetRefused("SLOT_TRANSITION_REFUSED")
+            slot = Slot(slot_id, account_id, tenant_id, "RESERVED", seq, want, want, price,
+                        slot_client_order_id(budget_id, account_id), scheduled)
+            if link is not None:
+                link(conn, slot, now)
+            return slot
+
+    @staticmethod
+    def _signal(conn: Connection, budget_id: str) -> str:
+        return conn.scalar("SELECT signal_id FROM platform_symbol_budgets WHERE budget_id=?", (budget_id,))

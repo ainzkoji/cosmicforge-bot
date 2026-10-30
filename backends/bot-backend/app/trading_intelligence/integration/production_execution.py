@@ -18,8 +18,17 @@ from app.core.config import settings
 from shared_lib.broker.environment import normalize_environment
 from shared_lib.core.production import order_submission_gate
 from .residual_prospective import FAMILY, REGISTRY_HASH, SOURCE, Q, owner_current, frozen_definition
+from app.platform_workers.assignments import AssignmentLost
 
 logger = logging.getLogger(__name__)
+
+
+def _authority(db, account_id):
+    """May this process act on the account now (Step 5.2)? Under the broker cycle's account fence: the fence
+    (raises ``AssignmentLost`` when lost); otherwise the canonical runtime lease, as before
+    (``app.platform_workers.account_fence.runtime_authority``)."""
+    from app.platform_workers.account_fence import runtime_authority
+    return runtime_authority(db, account_id, lease=owner_current)
 
 _boundaries = {}
 _TRADING_INCOME = {"REALIZED_PNL", "COMMISSION", "FUNDING_FEE", "INSURANCE_CLEAR", "COMMISSION_REBATE",
@@ -517,10 +526,14 @@ def process_account(db, account, client, snapshot, *, now_ms=None, boundary_fact
         result.update(reason=code or type(exc).__name__, execution_permission='BLOCKED_ACCOUNT', stage='EVALUATION_FAILED')
     finally:
         now = int(time.time()*1000) if now_ms is None else now_ms
-        if result.get('reservation_id') and result.get('bot_instance_id'):
+        from app.platform_workers.account_fence import permits
+        # Step 5.2: a worker that lost the account releases none of its reservations.
+        if result.get('reservation_id') and result.get('bot_instance_id') and permits(account['id']):
             from app.trading_intelligence.portfolio.reservation_store import CATIReservationStore
             CATIReservationStore(db).release_unsubmitted(result['reservation_id'],now,
                 account_scope=(account['user_id'],account['id']),bot_instance_id=result['bot_instance_id'])
+    if isinstance(failure, AssignmentLost):
+        raise failure  # nothing is recorded for an account this worker no longer owns
     from .production_evidence import record
     record(db, account, result, now)
     if failure is not None:
@@ -604,6 +617,8 @@ def maintain_account(db, account, client, bots, now, boundary_factory=boundary_f
     lineage = open_lineage(db, account['id'])
     if not lineage['bots'] and not lineage['pending_close']:
         return None
+    from app.platform_workers.account_fence import require
+    require(account['id'])  # Step 5.2: a worker that lost the account does not go on managing it
     # The boundary only carries this account's adapter and scope: any bot of the
     # account builds it. Prefer the single active bot, then the lineage's own
     # bot (it may be paused or stopped -- its position is still ours to manage).
@@ -626,10 +641,14 @@ def maintain_account(db, account, client, bots, now, boundary_factory=boundary_f
     failure = None
     try:
         done['recovery'] = [asdict(r) for r in boundary.recover_pending(now_ms=now)]
+    except AssignmentLost:
+        raise
     except Exception as exc:
         failure = exc  # positions are still reconciled below
     try:
         done['execution_history'] = reconcile_executions(db, boundary, client, now)
+    except AssignmentLost:
+        raise
     except Exception as exc:
         done['execution_history'] = getattr(exc, 'execution_history', [])
         failure = failure or exc
@@ -645,13 +664,82 @@ def maintain_only(db, account, client, *, now_ms=None, boundary_factory=boundary
     initialize(db)
     if not settings.production:
         raise ValueError("CATI_PRODUCTION_PROFILE_REQUIRED")
-    if not owner_current(db):
+    if not _authority(db, account["id"]):
         raise ValueError("CANONICAL_RUNTIME_LEASE_REQUIRED")
     if account["broker_id"].lower() not in {"binance", "bybit", "bingx"}:
         return None
     with db.connect() as c:
         bots = [dict(b) for b in c.execute("SELECT * FROM bot_instances WHERE broker_account_id=? AND status='active'", (account["id"],))]
     return maintain_account(db, account, client, bots, int(time.time()*1000) if now_ms is None else now_ms, boundary_factory)
+
+
+def _portfolio_recovery(db, account, client, now):
+    """The family portfolio tail's own recovery (``portfolio_runtime.boundary_for(...).recover``: sent orders resolved from
+    venue truth, protection completed, reservations settled; it never sends an order that increases risk) for an
+    account that has portfolio intents. None when it has none."""
+    with db.connect() as c:
+        if not c.execute("SELECT 1 FROM sqlite_master WHERE name='cati_execution_intents'").fetchone():
+            return None
+        if not c.execute("SELECT 1 FROM cati_execution_intents WHERE account_id=? LIMIT 1", (account["id"],)).fetchone():
+            return None
+        bots = [dict(r) for r in c.execute(
+            "SELECT id,risk_level,status FROM bot_instances WHERE broker_account_id=? AND user_id=? "
+            "ORDER BY status='active' DESC,created_at DESC", (account["id"], account["user_id"]))]
+    if not bots:
+        raise ValueError("ACCOUNT_PORTFOLIO_RISK_PROFILE_REQUIRED")
+    from .portfolio_runtime import boundary_for as portfolio_boundary_for
+    report = portfolio_boundary_for(db, account, client, bots[0], lambda: int(time.time() * 1000)).recover(now_ms=now)
+    return asdict(report)
+
+
+def recover_account(db, account, client, *, now_ms=None, boundary_factory=boundary_for):
+    """The first step of an account a worker was just assigned (Step 5.2, NEW / TAKEOVER assignment): exchange
+    truth and durable work are reconstructed BEFORE anything new may happen -- unknown submissions resolved from
+    venue truth (``recover_pending``), protection verified and repaired, fail-safe / horizon / pending closes
+    (``reconcile_executions``), the portfolio tail's sent orders and protection (``_portfolio_recovery``). No
+    entry is evaluated or sent. ``assignment_recovery`` is COMPLETE only when every part succeeded; otherwise the
+    first failure is raised (after the rest had its turn) and the assignment stays unrecovered -- the next cycle
+    recovers again, and no entry happens until it is complete."""
+    initialize(db)
+    if not settings.production:
+        raise ValueError("CATI_PRODUCTION_PROFILE_REQUIRED")
+    if not _authority(db, account["id"]):
+        raise ValueError("CANONICAL_RUNTIME_LEASE_REQUIRED")
+    now = int(time.time()*1000) if now_ms is None else now_ms
+    result = {"stage": "ASSIGNMENT_RECOVERY", "execution_permission": "BLOCKED_ACCOUNT",
+              "reason": "ASSIGNMENT_RECOVERY_ONLY", "orders_submitted": False, "broker_account_id": account["id"],
+              "recovery": [], "execution_history": []}
+    failure = None
+    if account["broker_id"].lower() in {"binance", "bybit", "bingx"}:
+        try:
+            done = maintain_only(db, account, client, now_ms=now, boundary_factory=boundary_factory)
+            if done:
+                result.update(recovery=done["recovery"], execution_history=done["execution_history"])
+        except AssignmentLost:
+            raise
+        except Exception as exc:
+            done = getattr(exc, "maintenance", None) or {}
+            result.update(recovery=done.get("recovery", []), execution_history=done.get("execution_history", []))
+            failure = exc
+        try:
+            portfolio = _portfolio_recovery(db, account, client, now)
+            if portfolio is not None:
+                result["portfolio_recovery"] = portfolio
+                if portfolio.get("status") != "PROCESSED":
+                    failure = failure or ValueError("PORTFOLIO_RECOVERY_REQUIRED")
+        except AssignmentLost:
+            raise
+        except Exception as exc:
+            failure = failure or exc
+        if any(r.get("status") == "STILL_UNKNOWN" for r in result["recovery"]):
+            failure = failure or ValueError("ACCOUNT_SUBMIT_OUTCOME_UNRESOLVED")
+    if failure is not None:
+        code = getattr(failure, "reason_code", None) or _reason(failure)
+        result.update(reason=code, assignment_recovery="INCOMPLETE")
+        failure.production_evaluation = result
+        raise failure
+    result["assignment_recovery"] = "COMPLETE"
+    return result
 
 
 #: ``symbol`` of a flatten result row that describes a whole account, not one
@@ -710,7 +798,7 @@ def flatten_account(db, account, client, *, request_id, now_ms=None, boundary_fa
     initialize(db)
     if not settings.production:
         raise ValueError("CATI_PRODUCTION_PROFILE_REQUIRED")
-    if not owner_current(db):
+    if not _authority(db, account["id"]):
         raise ValueError("CANONICAL_RUNTIME_LEASE_REQUIRED")
     environment = normalize_environment(account["environment"]).value.upper()
     if normalize_environment(client.broker_environment).value.upper() != environment:
@@ -827,7 +915,7 @@ def _process_account(db, account, client, snapshot, *, now_ms=None, boundary_fac
     initialize(db)
     if not settings.production:
         raise ValueError("CATI_PRODUCTION_PROFILE_REQUIRED")
-    if not owner_current(db):
+    if not _authority(db, account["id"]):
         raise ValueError("CANONICAL_RUNTIME_LEASE_REQUIRED")
     environment = normalize_environment(account["environment"]).value.upper()
     gate = order_submission_gate(environment)
@@ -873,6 +961,8 @@ def _process_account(db, account, client, snapshot, *, now_ms=None, boundary_fac
                 snapshot_error = exc  # raised below, after maintenance had its turn
         try:
             maintenance = maintain_account(db, account, client, bots, now, boundary_factory)
+        except AssignmentLost:
+            raise
         except Exception as exc:
             done = getattr(exc, 'maintenance', None) or {}
             result.update(recovery=done.get('recovery', []), execution_history=done.get('execution_history', []))
@@ -984,7 +1074,7 @@ def _process_account(db, account, client, snapshot, *, now_ms=None, boundary_fac
                         prepared = prepare_submission(db, account, bots[0], client, boundary, plan, ins,
                                                       result["risk"], now_ms=now_ms)
                         result["risk_controls"] = prepared.pop("controls_evidence")
-                        if not owner_current(db):
+                        if not _authority(db, account["id"]):
                             raise ValueError("CANONICAL_RUNTIME_LEASE_REQUIRED")
                         from app.ops.runtime_shutdown import stop_requested
                         if stop_requested():
@@ -1187,6 +1277,8 @@ def reconcile_executions(db, boundary, client, now):
                     raise ValueError('CLOSE_ACCOUNT_OWNERSHIP_UNCONFIRMED')
             client._production_intent_identity = pending['identity']
             close_position(client,pending['symbol'])
+        except AssignmentLost:
+            raise  # Step 5.2: the account is another worker's now; it reconciles from here
         except Exception as exc:
             failures.append(exc)
     latest = {}
@@ -1212,6 +1304,8 @@ def reconcile_executions(db, boundary, client, now):
             continue
         try:
             _reconcile_attempt(db, boundary, client, now, plans, attempts, account, attempt, plan, payload, history)
+        except AssignmentLost:
+            raise
         except Exception as exc:
             failures.append(exc)
     if failures:
@@ -1302,6 +1396,8 @@ def _reconcile_attempt(db, boundary, client, now, plans, attempts, account, atte
                     if isinstance(item["protection"], dict):
                         item["protection"]["state"] = protection_state.CONFIRMED
                     protection_state.clear(db, account, symbol)
+                except AssignmentLost:
+                    raise  # refused before the protection call: never read as a protection outcome
                 except Exception as exc:
                     item["protection"] = protection_state.describe(exc)
                     if item["protection"]["state"] == protection_state.ABSENT:

@@ -264,7 +264,8 @@ class ConnectedPortfolioRuntime:
             return None  # Existing rejected-family diagnostics remain visible.
         if settings.production:
             from .production_runtime import owner_current
-            if not owner_current(self.db):
+            from app.platform_workers.account_fence import runtime_authority  # Step 5.2: the account fence, when active
+            if not runtime_authority(self.db, account["id"], lease=owner_current):
                 raise ValueError("CANONICAL_RUNTIME_LEASE_REQUIRED")
         if legacy_maintenance is not None:
             legacy_maintenance()  # Compatibility recovery cannot produce a new family decision.

@@ -116,7 +116,8 @@ def place_native_protection(client, request):
     if db is None or not account:
         raise ValueError("PRODUCTION_PROTECTION_ACCOUNT_SCOPE_REQUIRED")
     from app.trading_intelligence.integration.residual_prospective import owner_current
-    if not owner_current(db):
+    from app.platform_workers.account_fence import runtime_authority  # Step 5.2: the account fence, when one is active
+    if not runtime_authority(db, account, lease=owner_current):
         raise ValueError("CANONICAL_RUNTIME_LEASE_REQUIRED")
     instrument = client.get_instrument(request.symbol)
     if instrument is None or not instrument.tick_size:
@@ -177,6 +178,10 @@ def place_native_protection(client, request):
         params["clientAlgoId"] = cid
         expected.append((leg, cid, kind, normalized))
         if found is None:
+            # Step 5.2: checked BEFORE the durable intent row -- a worker that lost the account leaves no
+            # unanswered leg behind (that would hold the new owner's repair back as "outcome unknown").
+            from app.platform_workers.account_fence import require as fence_check
+            fence_check(account)
             with db.connect() as c:
                 inserted = c.execute("INSERT OR IGNORE INTO cati_production_protection VALUES(?,?,?,NULL)",
                     (account, cid, json.dumps({**params, "_requested_at": now}, sort_keys=True))).rowcount
@@ -260,6 +265,8 @@ def cancel_flat_protection(client, identity):
         if found:
             if response and response.get('_cancel_requested'):
                 raise ValueError('PROTECTION_CANCEL_OUTCOME_UNKNOWN')
+            from app.platform_workers.account_fence import require as fence_check
+            fence_check(account)  # Step 5.2: a worker that lost the account cancels nothing of it
             response = {**found,'_cancel_requested':True}
             with db.connect() as c:
                 c.execute('UPDATE cati_production_protection SET response=? WHERE account_id=? AND client_id=?',

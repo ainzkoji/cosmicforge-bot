@@ -265,37 +265,95 @@ def deliver_pending(db, *, now_ms: Optional[int] = None, limit: int = 50, sender
         logger.exception("[USER_EVENTS] outbox could not be read")
         return out
     for row in rows:
-        event = {"event_id": row["event_id"], "event_type": row["event_type"], "environment": row["environment"],
-                 "payload": json.loads(row["payload_json"] or "{}")}
         with db.connect() as c:
-            recipient = row.get("recipient") or _recipient(c, row["user_id"], row["channel"])
-        attempts = int(row["attempts"]) + 1
-        if not recipient:
-            with db.connect() as c:
-                c.execute(f"UPDATE {OUTBOX_TABLE} SET status='failed', attempts=?, last_error='NO_RECIPIENT' WHERE outbox_id=?",
-                          (attempts, row["outbox_id"]))
-            out["failed"] += 1
-            continue
-        try:
-            ok = sender(row["channel"], recipient, _render(event), event)
-            error = None if ok else "CHANNEL_NOT_CONFIGURED_OR_REFUSED"
-        except Exception as exc:
-            ok, error = False, f"{type(exc).__name__}: {str(exc)[:160]}"
-        with db.connect() as c:
-            if ok:
-                c.execute(f"UPDATE {OUTBOX_TABLE} SET status='sent', attempts=?, delivered_at=?, recipient=?, last_error=NULL WHERE outbox_id=?",
-                          (attempts, now, recipient, row["outbox_id"]))
-                out["sent"] += 1
-            elif attempts >= MAX_ATTEMPTS:
-                c.execute(f"UPDATE {OUTBOX_TABLE} SET status='failed', attempts=?, last_error=?, recipient=? WHERE outbox_id=?",
-                          (attempts, error, recipient, row["outbox_id"]))
-                out["failed"] += 1
-            else:
-                delay = BACKOFF_SECONDS[min(attempts - 1, len(BACKOFF_SECONDS) - 1)] * 1000
-                c.execute(f"UPDATE {OUTBOX_TABLE} SET attempts=?, next_attempt_at=?, last_error=?, recipient=? WHERE outbox_id=?",
-                          (attempts, now + delay, error, recipient, row["outbox_id"]))
-                out["retried"] += 1
+            if not _claim(c, row["outbox_id"], now):
+                out["skipped"] += 1         # another deliverer (a NOTIFICATION job) holds this row
+                continue
+        _deliver_claimed(db, row, now, sender, out)
     return out
+
+
+#: Before a row is sent its ``next_attempt_at`` is moved this far ahead, in one conditional update, so the
+#: notification worker (``deliver_pending``) and a platform NOTIFICATION job (``deliver_one``) never both send
+#: it. A deliverer that dies mid-send leaves the row pending: it is sent again once the claim lapses (delivery
+#: stays at least once; the outbox row's status is the delivery record).
+DELIVERY_CLAIM_MS = 120_000
+
+
+def _claim(conn, outbox_id: str, now: int) -> bool:
+    return conn.execute(f"UPDATE {OUTBOX_TABLE} SET next_attempt_at=? WHERE outbox_id=? AND status='pending' "
+                        "AND next_attempt_at<=?", (now + DELIVERY_CLAIM_MS, outbox_id, now)).rowcount == 1
+
+
+def _deliver_claimed(db, row: Dict[str, Any], now: int, sender, out: Dict[str, int]) -> None:
+    event = {"event_id": row["event_id"], "event_type": row["event_type"], "environment": row["environment"],
+             "payload": json.loads(row["payload_json"] or "{}")}
+    with db.connect() as c:
+        recipient = row.get("recipient") or _recipient(c, row["user_id"], row["channel"])
+    attempts = int(row["attempts"]) + 1
+    if not recipient:
+        with db.connect() as c:
+            c.execute(f"UPDATE {OUTBOX_TABLE} SET status='failed', attempts=?, last_error='NO_RECIPIENT' WHERE outbox_id=?",
+                      (attempts, row["outbox_id"]))
+        out["failed"] += 1
+        return
+    try:
+        ok = sender(row["channel"], recipient, _render(event), event)
+        error = None if ok else "CHANNEL_NOT_CONFIGURED_OR_REFUSED"
+    except Exception as exc:
+        ok, error = False, f"{type(exc).__name__}: {str(exc)[:160]}"
+    with db.connect() as c:
+        if ok:
+            c.execute(f"UPDATE {OUTBOX_TABLE} SET status='sent', attempts=?, delivered_at=?, recipient=?, last_error=NULL WHERE outbox_id=?",
+                      (attempts, now, recipient, row["outbox_id"]))
+            out["sent"] += 1
+        elif attempts >= MAX_ATTEMPTS:
+            c.execute(f"UPDATE {OUTBOX_TABLE} SET status='failed', attempts=?, last_error=?, recipient=? WHERE outbox_id=?",
+                      (attempts, error, recipient, row["outbox_id"]))
+            out["failed"] += 1
+        else:
+            delay = BACKOFF_SECONDS[min(attempts - 1, len(BACKOFF_SECONDS) - 1)] * 1000
+            c.execute(f"UPDATE {OUTBOX_TABLE} SET attempts=?, next_attempt_at=?, last_error=?, recipient=? WHERE outbox_id=?",
+                      (attempts, now + delay, error, recipient, row["outbox_id"]))
+            out["retried"] += 1
+
+
+def deliver_one(db, outbox_id: str, *, now_ms: Optional[int] = None, sender=_send) -> Dict[str, Any]:
+    """Deliver ONE outbox row -- the bridge used by the platform NOTIFICATION job handler. Same claim, channel
+    senders, attempt counting, backoff and terminal states as ``deliver_pending``; nothing is duplicated into a
+    second outbox. ``outcome``: SENT, RETRY (the row's own backoff; ``next_attempt_at`` says when), FAILED (the
+    outbox gave up: ``last_error``), ALREADY_SENT, SUPPRESSED, NOT_DUE (backoff pending, or another deliverer
+    holds the claim), NOT_EXTERNAL (in-app rows are written as sent at emit time) or NOT_FOUND."""
+    now = int(time.time() * 1000) if now_ms is None else int(now_ms)
+
+    def load(c):
+        r = c.execute(f"SELECT o.*, e.event_type, e.payload_json, e.environment FROM {OUTBOX_TABLE} o JOIN {EVENTS_TABLE} e "
+                      "ON e.event_id=o.event_id WHERE o.outbox_id=?", (outbox_id,)).fetchone()
+        return dict(r) if r is not None else None
+
+    row = _retry_on_missing_table(db, load)
+    if row is None:
+        return {"outcome": "NOT_FOUND", "outbox_id": outbox_id}
+    terminal = {"sent": "ALREADY_SENT", "failed": "FAILED", "suppressed": "SUPPRESSED"}
+    if row["status"] != "pending" or row["channel"] not in EXTERNAL_CHANNELS:
+        outcome = terminal.get(row["status"], "NOT_EXTERNAL" if row["channel"] not in EXTERNAL_CHANNELS else row["status"])
+        return {"outcome": outcome, "outbox_id": outbox_id, "status": row["status"], "attempts": int(row["attempts"]),
+                "last_error": row.get("last_error")}
+    with db.connect() as c:
+        claimed = _claim(c, outbox_id, now)
+    if not claimed:
+        with db.connect() as c:
+            due = c.execute(f"SELECT next_attempt_at, status FROM {OUTBOX_TABLE} WHERE outbox_id=?", (outbox_id,)).fetchone()
+        return {"outcome": "NOT_DUE" if due and due[1] == "pending" else terminal.get(due[1] if due else "", "NOT_FOUND"),
+                "outbox_id": outbox_id, "next_attempt_at": int(due[0]) if due else None}
+    counts = {"sent": 0, "retried": 0, "failed": 0, "skipped": 0}
+    _deliver_claimed(db, row, now, sender, counts)
+    with db.connect() as c:
+        after = dict(c.execute(f"SELECT status, attempts, next_attempt_at, last_error FROM {OUTBOX_TABLE} WHERE outbox_id=?",
+                               (outbox_id,)).fetchone())
+    outcome = "SENT" if counts["sent"] else "FAILED" if counts["failed"] else "RETRY"
+    return {"outcome": outcome, "outbox_id": outbox_id, "status": after["status"], "attempts": int(after["attempts"]),
+            "next_attempt_at": int(after["next_attempt_at"]), "last_error": after["last_error"]}
 
 
 # ── reads ───────────────────────────────────────────────────────────────────
@@ -334,4 +392,4 @@ def outbox(db, *, event_ids: Optional[Iterable[str]] = None, status: Optional[st
 
 __all__ = ["EVENT_TYPES", "ENTRY_FILLED", "EXIT_FILLED", "POSITION_UNPROTECTED", "BOT_PAUSED", "BOT_RESUMED", "BOT_STOPPED",
            "DAILY_LOSS_PAUSE", "ENTRY_BLOCKED", "ENTRY_BLOCKED_WINDOW_MS", "MAX_ATTEMPTS", "EVENTS_TABLE", "OUTBOX_TABLE",
-           "initialize", "event_id_for", "emit", "deliver_pending", "recent", "outbox"]
+           "initialize", "event_id_for", "emit", "deliver_pending", "deliver_one", "DELIVERY_CLAIM_MS", "recent", "outbox"]

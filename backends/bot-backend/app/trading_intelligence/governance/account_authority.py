@@ -36,7 +36,12 @@ class AccountExecutionAuthority(GovernanceAuthority):
         if not gate['enabled']:
             return False, gate['reason']
         from app.trading_intelligence.integration.residual_prospective import owner_current
-        if not owner_current(self.db):
+        from app.platform_workers.account_fence import AssignmentLost, runtime_authority  # Step 5.2: account fence
+        try:
+            current = runtime_authority(self.db, plan.broker_account_id, lease=owner_current)
+        except AssignmentLost:
+            return False, "ACCOUNT_ASSIGNMENT_LOST"
+        if not current:
             return False, "CANONICAL_RUNTIME_LEASE_REQUIRED"
         if plan.environment == 'DEMO':
             # Only the connected DEMO account bypasses real-capital commissioning.

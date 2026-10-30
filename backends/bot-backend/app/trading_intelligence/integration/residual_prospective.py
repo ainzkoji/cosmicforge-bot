@@ -334,12 +334,13 @@ def refresh_inputs(tracker, symbol, decision, fetch):
 
 
 def owner_current(db):
-    from app.ops.runtime_ownership import current_owner, holder_is_alive, lease_is_stale
+    from app.ops.runtime_ownership import current_owner, holder_is_alive, is_local_host, lease_is_stale
     owner = current_owner(db, db.path)
     # Written by THIS process: a lease left by an earlier process that happened
-    # to have the same PID (a reboot) is not ours.
-    return bool(owner and owner["pid"] == os.getpid() and not lease_is_stale(owner["heartbeat_at"])
-                and holder_is_alive(owner["pid"], owner["started_at"]))
+    # to have the same PID (a reboot) is not ours -- nor one written on another
+    # host or container, where the same PID number is another process.
+    return bool(owner and is_local_host(owner.get("hostname")) and owner["pid"] == os.getpid()
+                and not lease_is_stale(owner["heartbeat_at"]) and holder_is_alive(owner["pid"], owner["started_at"]))
 
 
 def settle_pending(tracker, fetch, now_ms):

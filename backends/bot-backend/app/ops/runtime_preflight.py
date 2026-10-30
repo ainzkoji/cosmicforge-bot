@@ -246,7 +246,7 @@ def preflight(
         stale = lease_is_stale(heartbeat)
         # The process that wrote the lease, not merely whatever holds its PID
         # now: after a reboot that can be an unrelated process, or this one.
-        alive = holder_is_alive(lease_pid, owner.get("started_at")) if lease_pid else False
+        alive = holder_is_alive(lease_pid, owner.get("started_at"), hostname=owner.get("hostname")) if lease_pid else False
         age = _age_seconds(heartbeat)
         revision = _session_revision(database, owner.get("runtime_session_id"))
 

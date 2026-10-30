@@ -14,6 +14,7 @@ from shared_lib.broker.resolver import resolve_broker_auth
 from shared_lib.broker.client_factory import build_client_from_auth
 from shared_lib.core.production import order_submission_gate
 from app.trading_intelligence.pipeline.coordination import PreemptionGate
+from app.platform_workers.assignments import AssignmentLost
 from .residual_prospective import FAMILY, REGISTRY_HASH, owner_current, schedule as residual_schedule
 from .forward_observe import schedule as forward_schedule
 
@@ -79,11 +80,14 @@ LOCAL_GATE_CODES = frozenset({
     "BROKER_EXECUTION_CAPABILITY_INCOMPLETE", "BROKER_ACCOUNT_NOT_FOUND", "BROKER_ACCOUNT_ACCESS_DENIED",
     "BROKER_ENVIRONMENT_MISMATCH", "BROKER_ACCOUNT_OWNERSHIP_MISMATCH", "EMERGENCY_FLATTEN_UNSUPPORTED_BROKER",
     "PROTECTION_STATE_UNKNOWN",  # the read failure underneath was already classified; the state is durable
+    "EMERGENCY_ASSIGNMENT_PREEMPTION_FAILED",  # the platform database, not the broker connection
 })
 
 
 def client_doubt(exc) -> bool:
     """True when ``exc`` is a reason to rebuild the account's broker client."""
+    if isinstance(exc, AssignmentLost):
+        return False  # about this worker's ownership of the account, never about the connection
     code = getattr(exc, "reason_code", None)
     if not code and isinstance(exc, ValueError):
         text = str(exc)
@@ -126,8 +130,35 @@ _progress = {"loop_started": None, "cycle_started": None, "cycle_completed": Non
 
 
 def wait_idle(timeout):
-    """True once no broker cycle is in flight (immediately when none is)."""
-    return _idle.wait(timeout)
+    """True once no broker cycle is in flight (immediately when none is).
+
+    Called by the graceful stop (``runtime_shutdown.quiesce``) after it forbade new work: once the account in
+    flight has finished -- or the wait gave up on it -- this worker's account assignments are released (DRAIN)
+    so a successor takes them over at once. A step still running finds its fence released at its next check."""
+    idle = _idle.wait(timeout)
+    from app.ops.runtime_shutdown import stop_requested
+    if stop_requested():
+        _drain_assignments()
+    return idle
+
+
+#: Sentinel: "the process's assignment layer" (``broker_assignment.installed()``).
+_PROCESS_LAYER = object()
+
+
+def _layer(layer=_PROCESS_LAYER):
+    """The broker cycle's account-assignment layer (``app.platform_workers.broker_assignment``), or None: no
+    platform database in ``owner`` mode -- the compatibility path, exactly as before the layer existed."""
+    if layer is not _PROCESS_LAYER:
+        return layer
+    from app.platform_workers import broker_assignment
+    return broker_assignment.installed()
+
+
+def _drain_assignments():
+    layer = _layer()
+    if layer is not None:
+        _isolated("assignment_drain", layer.drain)
 
 
 def _age(stamp, now):
@@ -142,7 +173,17 @@ def progress():
             "last_cycle_completed_age_seconds": _age(_progress["cycle_completed"], now),
             "cycles_completed": _progress["cycles"],
             "cycles_without_lease": _progress["cycles_without_lease"],
-            "cycle_in_flight": not _idle.is_set(), "last_error": _progress["last_error"]}
+            "cycle_in_flight": not _idle.is_set(), "last_error": _progress["last_error"],
+            "account_assignment": _assignment_view()}
+
+
+def _assignment_view():
+    """The broker cycle's account-assignment layer as the supervisor reports it (None: the compatibility path)."""
+    try:
+        layer = _layer()
+        return None if layer is None else layer.describe()
+    except Exception as exc:  # noqa: BLE001 -- a report, never a failure
+        return {"error": type(exc).__name__}
 
 
 def execution_accounts(db):
@@ -195,8 +236,12 @@ def _balance_view(raw):
             "available": Decimal(str(raw.get("availableBalance", 0)))}
 
 
-def sync_account(db, account, *, factory=build_client_from_auth, execute=False):
-    """Read account-scoped broker truth; optionally dispatch the canonical boundary."""
+def sync_account(db, account, *, factory=build_client_from_auth, execute=False, recovery_only=False):
+    """Read account-scoped broker truth; optionally dispatch the canonical boundary.
+
+    ``recovery_only`` (Step 5.2): the first step of an account this worker was just assigned (NEW / TAKEOVER).
+    The same reads and reconciliation run, then ``production_execution.recover_account`` instead of the
+    entry-capable ``process_account``: nothing that increases risk is sent."""
     auth = resolve_broker_auth(account["id"], account["user_id"], db)
     env = normalize_environment(auth.environment)
     if account.get("environment") and normalize_environment(account["environment"]) != env:
@@ -211,7 +256,7 @@ def sync_account(db, account, *, factory=build_client_from_auth, execute=False):
         # One database connection for the whole account cycle (every atomic
         # unit inside keeps its own commit / rollback, see DB.scope).
         with (scope() if callable(scope) else nullcontext()):
-            return _sync_with_client(db, account, auth, env, gate, client, factory, execute)
+            return _sync_with_client(db, account, auth, env, gate, client, factory, execute, recovery_only)
     except Exception as exc:
         # Safe invalidation: whatever went wrong at the broker, the next cycle
         # starts from a freshly built client (new time sync, new session,
@@ -223,7 +268,7 @@ def sync_account(db, account, *, factory=build_client_from_auth, execute=False):
         raise
 
 
-def _sync_with_client(db, account, auth, env, gate, client, factory, execute):
+def _sync_with_client(db, account, auth, env, gate, client, factory, execute, recovery_only=False):
     client._production_credential_version = getattr(auth, "credential_version", None)
     account_document = _account_document(client)
     balance = _balance_view(account_document) if account_document is not None else client.get_balance()
@@ -242,6 +287,8 @@ def _sync_with_client(db, account, auth, env, gate, client, factory, execute):
     orders = [] if idle else client.open_orders()
     if not isinstance(orders, list):
         raise ValueError("BROKER_READ_SHAPE_INVALID")
+    from app.platform_workers.account_fence import require as fence_check
+    fence_check(account["id"])  # Step 5.2: projections are written only by the account's current owner
     try:
         # Reuse canonical position reconciliation; it changes local projections,
         # never the exchange. Each projection keeps its resolved account provenance.
@@ -269,6 +316,8 @@ def _sync_with_client(db, account, auth, env, gate, client, factory, execute):
             try:
                 from .production_execution import maintain_only
                 maintain_only(db, account, client)
+            except AssignmentLost:
+                raise  # this worker no longer owns the account: nothing more is done or written for it
             except Exception as exc:
                 logger.warning("[CATI_PRODUCTION] position maintenance failed: %s", type(exc).__name__)
         raise
@@ -292,10 +341,16 @@ def _sync_with_client(db, account, auth, env, gate, client, factory, execute):
         result["execution"] = {"execution_permission": "BLOCKED_ACCOUNT", "reason": "CATI_NEW_ENTRY_KILL_SWITCH",
                                "emergency_preempted": True}
     elif execute:
-        from .production_execution import process_account
+        from .production_execution import process_account, recover_account
         try:
-            result["execution"] = process_account(db, account, client, result)
+            if recovery_only:
+                # Takeover / new assignment: reconstruct exchange truth and durable work first; no entry.
+                result["execution"] = recover_account(db, account, client)
+            else:
+                result["execution"] = process_account(db, account, client, result)
             result["risk"] = result["execution"].get("risk", result["risk"])
+        except AssignmentLost:
+            raise  # nothing is written for an account this worker no longer owns
         except Exception as exc:
             # Same safe invalidation as a failed read: rebuild the client next cycle.
             if client_doubt(exc):
@@ -311,6 +366,8 @@ def _sync_with_client(db, account, auth, env, gate, client, factory, execute):
                     block_reason_before_order_gate=result["execution"]["reason"], reason=gate["reason"])
     result["execution_permission"] = result.get("execution", {}).get("execution_permission", "BLOCKED_ACCOUNT")
     result["credential_version"] = getattr(auth, "credential_version", None)
+    from app.platform_workers.account_fence import require as fence_check
+    fence_check(account["id"])  # Step 5.2: a worker that lost the account does not publish its state
     save(db, account["id"], account["user_id"], now, result)
     if execute:
         # Step 1.6: the customer's equity history. Never on the order path; a
@@ -348,19 +405,48 @@ def save(db, account_id, user_id, now, result):
                 (health, reason, "CATI account-scoped production state", account_id, user_id))
 
 
-def sync(db):
+def sync(db, *, layer=_PROCESS_LAYER):
     """One round over every execution account. Returns None when the round is
     over, or the accounts it had not started when it yielded to an emergency
-    flatten (``broker_cycle`` resumes those once the flatten has run)."""
-    if not owner_current(db):
+    flatten (``broker_cycle`` resumes those once the flatten has run).
+
+    With an account-assignment layer (a platform database is configured, Step
+    5.2) the round covers only the accounts this worker holds after the
+    registry sync and its claim: in ``owner`` mode the runtime owner claims
+    every account no other live worker holds; in ``assigned`` mode its fair
+    share. A layer that refuses (``assigned`` without a platform database) does
+    no account work at all."""
+    layer = _layer(layer)
+    if layer is None:
+        if not owner_current(db):
+            return
+        initialize(db)
+        return _sync_accounts(db, execution_accounts(db), layer=None)
+    if layer.refused:
+        _progress["assignment_refused"] = layer.refused
+        return
+    if not _round_authority(db, layer):
         return
     initialize(db)
-    return _sync_accounts(db, execution_accounts(db))
+    return _sync_accounts(db, layer.begin_round(execution_accounts(db)), layer=layer)
 
 
-def _sync_accounts(db, accounts):
+def _round_authority(db, layer):
+    """May this process go on with account work in this round? The canonical
+    runtime lease without a layer and in ``owner`` mode; an undrained layer in
+    ``assigned`` mode (there each account step is authorized by its own fence)."""
+    if layer is None:
+        return owner_current(db)
+    if layer.refused or layer.draining:
+        return False
+    from app.platform_workers.broker_assignment import ASSIGNED
+    return True if layer.mode == ASSIGNED else owner_current(db)
+
+
+def _sync_accounts(db, accounts, *, layer=_PROCESS_LAYER):
+    layer = _layer(layer)
     for index, account in enumerate(accounts):
-        if not owner_current(db):
+        if not _round_authority(db, layer):
             return
         from app.ops.runtime_shutdown import stop_requested
         if stop_requested():
@@ -379,7 +465,20 @@ def _sync_accounts(db, accounts):
                   "balance": None, "positions": None, "orders": None})
             continue
         try:
-            sync_account(db, account, execute=True)
+            if layer is None:
+                sync_account(db, account, execute=True)
+            else:
+                # Step 5.2: the account step runs under its durable assignment's
+                # fence; a NEW / TAKEOVER assignment's first step is recovery only.
+                layer.keepalive()
+                layer.run_account(account, lambda recovery_only, _account=account: sync_account(
+                    db, _account, execute=True, recovery_only=recovery_only))
+        except AssignmentLost as lost:
+            # Another worker owns the account now (takeover, emergency
+            # preemption, removal, drain): it is not touched and nothing is
+            # written for it -- its owner reports its state.
+            _progress["assignments_lost"] = _progress.get("assignments_lost", 0) + 1
+            logger.warning("[CATI_PRODUCTION] account assignment lost (%s); account skipped", lost.reason)
         except Exception as exc:
             # Never publish credentials or signed exception URLs.
             save(db, account["id"], account["user_id"], int(time.time()*1000),
@@ -507,6 +606,15 @@ def broker_cycle(db):
             _preemption.wait_clear(PREEMPTION_RESUME_WAIT_SECONDS)
             with _cycle_lock:
                 remaining = _sync_accounts(db, remaining)
+        layer = _layer()
+        if layer is not None:
+            from app.ops.runtime_shutdown import stop_requested
+            if stop_requested():
+                # The account in flight has finished: hand every account over now (DRAIN).
+                _isolated("assignment_drain", layer.drain)
+            else:
+                # A safe point between rounds: accounts above the fair share go back (assigned mode).
+                _isolated("assignment_rebalance", layer.end_round)
     finally:
         _idle.set()
 
@@ -590,14 +698,27 @@ def flatten(db, *, account_id=None, request_id, factory=build_client_from_auth, 
             outcome = "ENGINE_UNAVAILABLE:BROKER_CYCLE_BUSY"
             raise EngineUnavailable("BROKER_CYCLE_BUSY")
         try:
+            from contextlib import nullcontext
+            from app.platform_workers.account_fence import active as fenced
             from .production_execution import ACCOUNT_LEVEL, flatten_account
+            layer = _layer()
             results = []
             for account in accounts:
                 held = _emergency_lease(db, account["id"], request_id)
+                preempted = None
                 try:
                     if account["broker_id"].lower() not in {"binance", "bybit", "bingx"}:
                         # No account-scoped read exists here for these venues.
                         raise ValueError("EMERGENCY_FLATTEN_UNSUPPORTED_BROKER")
+                    if layer is not None and layer.enforced:
+                        # Step 5.2: the account is taken from whichever worker holds it
+                        # (higher fencing token); that worker stops at its next check.
+                        try:
+                            preempted = layer.preempt(account, request_id)
+                        except Exception as exc:
+                            logger.error("[EMERGENCY_FLATTEN] request=%s account=%s assignment not preempted (%s)",
+                                         request_id, account["id"], type(exc).__name__)
+                            raise ValueError("EMERGENCY_ASSIGNMENT_PREEMPTION_FAILED") from None
                     auth = resolve_broker_auth(account["id"], account["user_id"], db)
                     env = normalize_environment(auth.environment)
                     if normalize_environment(account["environment"]) != env:
@@ -605,7 +726,8 @@ def flatten(db, *, account_id=None, request_id, factory=build_client_from_auth, 
                     scoped = {**account, "environment": env.value.upper()}
                     client = account_client(db, account["id"], auth, factory)
                     client._production_credential_version = getattr(auth, "credential_version", None)
-                    results.extend(flatten_account(db, scoped, client, request_id=request_id))
+                    with (fenced(layer.emergency_fence(preempted)) if preempted is not None else nullcontext()):
+                        results.extend(flatten_account(db, scoped, client, request_id=request_id))
                 except Exception as exc:
                     if client_doubt(exc):
                         invalidate_client(account["id"])
@@ -623,6 +745,14 @@ def flatten(db, *, account_id=None, request_id, factory=build_client_from_auth, 
                         except Exception as exc:
                             logger.warning("[EMERGENCY_FLATTEN] request=%s account=%s lease release failed (%s)",
                                            request_id, account["id"], type(exc).__name__)
+                    if preempted is not None:
+                        # The next owner claims the account as NEW and recovers it first; the
+                        # kill switch the request raised keeps every entry refused (no reopen).
+                        try:
+                            layer.release_emergency(preempted)
+                        except Exception as exc:
+                            logger.warning("[EMERGENCY_FLATTEN] request=%s account=%s assignment release failed (%s); "
+                                           "it expires on its own", request_id, account["id"], type(exc).__name__)
                     _emergency_step(db, "heartbeat", request_id)
             outcome = "COMPLETED" if results and all(
                 r.get("status") in ("closed", "submitted", "no_position") for r in results) else "INCOMPLETE"
@@ -670,10 +800,19 @@ def operations_summary(db):
 async def run(db):
     if not settings.production:
         raise ValueError("CATI_PRODUCTION_PROFILE_REQUIRED")
+    from app.ops import process_role
+    if not process_role.runs_trading():
+        # An api-role process never runs the broker cycle and never claims an account.
+        raise ValueError("PROCESS_ROLE_API_RUNS_NO_BROKER_CYCLE")
+    import os
+    from app.platform_workers import broker_assignment
+    # Step 5.2: the broker cycle's account-assignment layer (None without a
+    # platform database in owner mode: the compatibility path). The singletons
+    # below stay with the canonical runtime-owner lease only.
+    layer = broker_assignment.configure(build_version=os.environ.get("BUILD_VERSION", "unknown"))
     from .platform_runtime import ShadowScheduler
     from .venue_runtime import VenueRuntime
     from app.exchange.platform_adapter.http_budget import build_budgeted_client
-    import os
 
     scheduler = ShadowScheduler(db, owns_runtime=owner_current)
     services = [scheduler]
@@ -692,6 +831,45 @@ async def run(db):
         for worker in workers:
             worker.cancel()
         await asyncio.gather(*workers, return_exceptions=True)
+        if layer is not None:
+            # Whatever stopped the loop, the accounts are handed over now rather than after one TTL.
+            _isolated("assignment_drain", layer.drain)
+
+
+def _assigned_worker(layer):
+    """This process runs the broker cycle without the runtime lease: an undrained ``assigned``-mode layer."""
+    if layer is None or not layer.enforced or layer.draining:
+        return False
+    from app.platform_workers.broker_assignment import ASSIGNED
+    return layer.mode == ASSIGNED
+
+
+def cycle_lock():
+    """The lock every broker-mutating actor of this process takes (the broker cycle, the emergency flatten, the
+    durable job handlers' broker sections)."""
+    return _cycle_lock
+
+
+def preemption_gate():
+    """This process's emergency-flatten preemption gate (``PreemptionGate``)."""
+    return _preemption
+
+
+def _run_jobs(db, layer):
+    """Due durable jobs of this worker (``app.platform_workers.runtime_jobs``, when installed), after the broker
+    cycle has returned and OUTSIDE the cycle lock: each handler takes it itself around its broker section
+    (``RuntimeServices.broker_section``). Work is scheduled for the accounts this worker holds; a job acts on an
+    account only through the fence of an assignment this worker holds and has recovered (``layer.job_fence``)."""
+    from app.ops.runtime_shutdown import stop_requested
+    if stop_requested() or _preemption.pending() or layer.draining:
+        return None
+    runner = layer.job_runner(db)
+    if runner is None:
+        return None
+    runner.schedule(layer.owned_accounts())
+    if stop_requested() or _preemption.pending():
+        return None
+    return runner.run_once(limit=10)
 
 
 async def _broker_loop(db):
@@ -702,15 +880,23 @@ async def _broker_loop(db):
         cycle_started = _progress["cycle_started"] = time.monotonic()
         _progress["last_error"] = None  # what is reported is the latest cycle's, not history
         try:
-            if owner_current(db):
+            owner = owner_current(db)
+            if owner:
+                # Singletons: only ever the canonical runtime owner, in every mode.
                 _isolated("residual_collection_schedule", residual_schedule, runner)
                 _isolated("forward_observation_schedule", forward_schedule, runner)
                 if time.monotonic() - fx_check > 60:
                     from .residual_simulation import ensure_fx_watcher
                     fx_check = time.monotonic()
                     await asyncio.to_thread(_isolated, "fx_watcher", ensure_fx_watcher)
+            layer = _layer()
+            if owner or _assigned_worker(layer):
+                # assigned mode: every trading-role process runs the cycle over
+                # the accounts it holds, lease or not (its fences authorize it).
                 await asyncio.to_thread(broker_cycle, db)
                 _progress["cycles"] += 1
+                if layer is not None and layer.enforced:
+                    await asyncio.to_thread(_isolated, "runtime_jobs", _run_jobs, db, layer)
             else:
                 _progress["cycles_without_lease"] += 1
             _progress["cycle_completed"] = time.monotonic()

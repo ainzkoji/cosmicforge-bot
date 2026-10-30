@@ -84,6 +84,7 @@ class BoundaryStatus:
     NO_BROKER_ACTION = "NO_BROKER_ACTION"
     EXIT_ROUTED = "EXIT_ROUTED"
     EXIT_REFUSED = "EXIT_REFUSED"
+    ORDER_SPREADING_REFUSED = "ORDER_SPREADING_REFUSED"
 
 
 @dataclass(frozen=True)
@@ -129,13 +130,18 @@ class CATIExecutionBoundary:
                  position_manager: Any = None, clock=None,
                  resolution_escalation_ms: int = DEFAULT_RESOLUTION_ESCALATION_MS, authority: Any = None,
                  account_scope: Optional[Tuple[Optional[str], str]] = None, preflight: Any = None,
-                 family_gate: Any = None) -> None:
+                 family_gate: Any = None, spread_gate: Any = None) -> None:
         """``account_scope``: (user_id, broker_account_id) whose credentials ``adapter`` uses -- a plan of any
         other tenant/account is refused. ``preflight``: ``execution.preflight.SubmissionPreflight``. Both are
         REQUIRED to reach the broker; absent, the boundary fails closed with an explicit reason.
         ``family_gate``: the registry-backed source verification (``pipeline.provenance``). Absent, the real
-        gate is used; a substitute is honoured outside production only."""
+        gate is used; a substitute is honoured outside production only.
+        ``spread_gate``: the platform order budget for ENTRY orders (``scale.spread_gate.PlatformSpreadGate``,
+        Step 5.5 / EXT-LIQ-01). In production it always applies -- absent, the real gate on this process's
+        platform database; a substitute of another type is refused. Outside production it applies only when
+        one is injected."""
         self.orchestrator = orchestrator
+        self.spread_gate = spread_gate
         self.account_scope = tuple(account_scope) if account_scope is not None else None
         self.preflight = preflight
         if family_gate is None:
@@ -170,13 +176,14 @@ class CATIExecutionBoundary:
         try:
             result = self._process_trade_plan(plan, **kwargs)
         except BaseException:
-            self.reservations.release_unsubmitted(plan.portfolio_reservation_id, now,
-                account_scope=self.account_scope, bot_instance_id=plan.bot_instance_id, trade_plan_id=plan.trade_plan_id)
+            from app.platform_workers.account_fence import permits
+            if permits(plan.broker_account_id):  # Step 5.2: never for an account this worker lost
+                self.reservations.release_unsubmitted(plan.portfolio_reservation_id, now,
+                    account_scope=self.account_scope, bot_instance_id=plan.bot_instance_id, trade_plan_id=plan.trade_plan_id)
             raise
         pending_capital = result.status == BoundaryStatus.CAPITAL_NOT_READY and getattr(kwargs.get('capital'), 'pending', False)
         if result.status not in {BoundaryStatus.EXECUTED, BoundaryStatus.SUBMIT_UNKNOWN, BoundaryStatus.DUPLICATE_PLAN} and not pending_capital:
-            self.reservations.release_unsubmitted(plan.portfolio_reservation_id, now,
-                account_scope=self.account_scope, bot_instance_id=plan.bot_instance_id, trade_plan_id=plan.trade_plan_id)
+            self._release_unsubmitted(plan, now)
         return replace(result, reservation_status=self._res_status(plan))
 
     def _process_trade_plan(self, plan: TradePlan, *, market_reference: Any, broker_health: Any,
@@ -328,10 +335,13 @@ class CATIExecutionBoundary:
                                           "DEMO_ADAPTER_UNVALIDATED" if plan.environment == "DEMO" else
                                           "PRODUCTION_EXECUTION_ADAPTER_CERTIFICATION_REQUIRED")
         if settings.production:
-            from app.trading_intelligence.integration.residual_prospective import owner_current
-            if not owner_current(self._db):
-                return self._fail_before_risk(plan, now, BoundaryStatus.GOVERNANCE_NOT_AUTHORIZED,
-                                              "CANONICAL_RUNTIME_LEASE_REQUIRED")
+            # Step 5.2 -- under the broker cycle's account fence: the fence itself, strictly and with its safety
+            # margin (AssignmentLost is raised, before any mutation, when this worker lost the account); outside
+            # a fence: the canonical runtime lease, and no other worker holding the account (account_fence).
+            from app.platform_workers.account_fence import entry_refusal
+            why = entry_refusal(self._db, plan.broker_account_id)
+            if why:
+                return self._fail_before_risk(plan, now, BoundaryStatus.GOVERNANCE_NOT_AUTHORIZED, why)
             authorized, why = self.authority.authorize_entry(plan)
             if not authorized:
                 return self._fail_before_risk(plan, now, BoundaryStatus.GOVERNANCE_NOT_AUTHORIZED, why)
@@ -358,7 +368,18 @@ class CATIExecutionBoundary:
             _, cid = executor._build_entry_idempotency(symbol=req.venue_symbol, side=req.side, usdt=req.notional,
                 sl_price=req.stop_price, tp_price=req.target_price, intent_identity=req.intent_identity)
             base = replace(base, client_order_id=cid)
-        if not self.attempts.append(base, 0):  # atomic claim: only the inserting process may CREATE
+        # Step 5.5 -- the platform order budget (EXT-LIQ-01), for this ENTRY only, before the claim: fresh depth,
+        # a RESERVED slot for the full risk-approved notional, or an explicit refusal. Never resizes the quantity.
+        spread, refused = self._reserve_spread(plan, req, tp, attempt_id, base.client_order_id, submit_now)
+        if refused is not None:
+            return refused
+        try:
+            inserted = self.attempts.append(base, 0)  # atomic claim: only the inserting process may CREATE
+        except BaseException:
+            self._release_spread(spread, "ATTEMPT_CLAIM_FAILED")
+            raise
+        if not inserted:
+            self._release_spread(spread, "DUPLICATE_TRADE_PLAN_EXECUTION")
             return BoundaryResult(BoundaryStatus.DUPLICATE_PLAN, plan.trade_plan_id,
                                   ("DUPLICATE_TRADE_PLAN_EXECUTION",))
         claimed = self.reservations.mark_resolution_pending(plan.portfolio_reservation_id, now,
@@ -368,8 +389,22 @@ class CATIExecutionBoundary:
             failed = replace(base, status=X.ERROR_PRE_SUBMIT.value, resolved_at=now,
                              reason_codes=("PORTFOLIO_RESERVATION_LOST_BEFORE_CREATE",))
             self.attempts.append(failed, 1)
+            self._release_spread(spread, "PORTFOLIO_RESERVATION_LOST_BEFORE_CREATE")
             return BoundaryResult(BoundaryStatus.EXECUTION_REJECTED, plan.trade_plan_id,
                                   failed.reason_codes, attempt=failed)
+        if spread is not None:
+            try:  # RESERVED -> SUBMITTED, tied to the durable claim; no order leaves without it
+                self.spread_gate.mark_submitted(spread)
+            except Exception as exc:
+                record_stage_error("boundary.order_spreading", "EXECUTION", exc, db=self._db, **ids)
+                from app.trading_intelligence.scale.spread_gate import SLOT_TRANSITION_FAILED
+                failed = replace(base, status=X.ERROR_PRE_SUBMIT.value, resolved_at=now,
+                                 reason_codes=(SLOT_TRANSITION_FAILED,))
+                self.attempts.append(failed, 1)
+                self._resolve(plan, "RELEASED", now, "ORDER_SPREADING_SLOT_NOT_SUBMITTED")
+                self._release_spread(spread, SLOT_TRANSITION_FAILED)
+                return BoundaryResult(BoundaryStatus.EXECUTION_REJECTED, plan.trade_plan_id,
+                                      failed.reason_codes, attempt=failed)
 
         t1 = time.perf_counter()
         try:
@@ -393,11 +428,11 @@ class CATIExecutionBoundary:
             # is "sent no later than this moment" -- later than the send, never earlier.
             # Only the single claimant gets here, so this row needs no determinism.
             base = replace(base, submitted_at=now + int((time.monotonic() - started) * 1000))
-        return self._settle(plan, base, req, entry, now, runtime_session_id)
+        return self._settle(plan, base, req, entry, now, runtime_session_id, spread=spread)
 
     # ---------------------------------------------------------------------------------------
     def _settle(self, plan, base: ExecutionAttempt, req: EntryRequest, entry: EntryResult, now: int,
-                runtime_session_id) -> BoundaryResult:
+                runtime_session_id, spread: Any = None) -> BoundaryResult:
         status = entry.status
         if entry.raw_status == "ENTRY_INTENT_REUSED":
             # the executor holds an identical in-flight intent: CATI cannot know if it filled
@@ -409,6 +444,8 @@ class CATIExecutionBoundary:
         attempt = self._resolved(base, entry, status, position_id, now)
         self.attempts.append(attempt, 1)
         self._observe_execution(plan, req, entry)
+        if spread is not None:
+            self._settle_spread(plan, spread, attempt, entry)
 
         risk = None
         if status == X.REJECTED.value and entry.rejection_family in (F.SLOT.value, F.MARGIN.value, F.SIZING.value,
@@ -472,6 +509,9 @@ class CATIExecutionBoundary:
                                                broker_account_id=plan.broker_account_id)
         rows = self.attempts.history(plan.broker_account_id, attempt_id)
         if not rows or rows[-1]["status"] not in (X.SUBMIT_UNKNOWN.value, X.PENDING_SUBMIT.value):
+            if rows and self._repair_terminal_attempt(plan, attempt_id, rows[-1], now):
+                return BoundaryResult(BoundaryStatus.RECONCILED, plan.trade_plan_id, ("TERMINAL_ATTEMPT_RECOVERED",),
+                                      reservation_status=self._res_status(plan))
             return BoundaryResult(BoundaryStatus.STILL_UNKNOWN if not rows else BoundaryStatus.RECONCILED,
                                   plan.trade_plan_id, ("NOTHING_TO_RECONCILE",))
         last = rows[-1]["payload"]
@@ -524,6 +564,8 @@ class CATIExecutionBoundary:
                     raise
             self.attempts.append(resolved, len(rows))
             self._resolve(plan, "CONSUMED", now, "BROKER_CONFIRMED_ENTRY")
+            self._settle_spread_attempt(plan, attempt_id, "FILLED", resolved.filled_quantity, resolved.filled_price,
+                                        "RECONCILED_POSITION_EXISTS")
             METRICS.inc("cati_execution_reconciliation_total", outcome="POSITION_EXISTS")
             return BoundaryResult(BoundaryStatus.RECONCILED, plan.trade_plan_id, ("RECONCILED_POSITION_EXISTS",),
                                   attempt=resolved, reservation_status=self._res_status(plan))
@@ -533,6 +575,7 @@ class CATIExecutionBoundary:
                                reason_codes=base.reason_codes + ("RECONCILED_FROM_BROKER",))
             self.attempts.append(resolved, len(rows))
             self._resolve(plan, "RELEASED", now, "BROKER_CONFIRMED_NO_ENTRY")
+            self._settle_spread_attempt(plan, attempt_id, "RELEASED", None, None, "RECONCILED_NO_POSITION")
             # The broker answered: this order ended without a fill. The executor's lock for
             # that same order id would otherwise keep the account blocked for good.
             if last.get("client_order_id"):
@@ -562,6 +605,7 @@ class CATIExecutionBoundary:
                                    reason_codes=base.reason_codes + ("RECONCILED_FROM_BROKER", "BROKER_ORDER_ABSENT"))
                 self.attempts.append(resolved, len(rows))
                 self._resolve(plan, "RELEASED", now, "BROKER_CONFIRMED_NO_ENTRY")
+                self._settle_spread_attempt(plan, attempt_id, "RELEASED", None, None, "BROKER_ORDER_ABSENT")
                 self._release_executor_intent(plan, cid, "broker_confirmed_order_absent")
                 METRICS.inc("cati_execution_reconciliation_total", outcome="NO_POSITION")
                 return BoundaryResult(BoundaryStatus.RECONCILED, plan.trade_plan_id, ("RECONCILED_NO_POSITION",),
@@ -569,6 +613,36 @@ class CATIExecutionBoundary:
         METRICS.inc("cati_execution_reconciliation_total", outcome="STILL_UNKNOWN")
         return BoundaryResult(BoundaryStatus.STILL_UNKNOWN, plan.trade_plan_id, ("BROKER_STATE_STILL_UNKNOWN",),
                               reservation_status=self._res_status(plan))
+
+    def _repair_terminal_attempt(self, plan: TradePlan, attempt_id: str, row: Mapping[str, Any], now: int) -> bool:
+        """Crash recovery between ``attempts.append(terminal)`` and the reservation update in ``_settle``: the
+        durable attempt already holds the broker-authoritative outcome, so the reservation still pending for THIS
+        attempt is resolved from it (CONSUMED when a position exists / existed, RELEASED when no entry was
+        created) and the linked platform slot follows. Compare-and-set, so a repeat is a no-op. Nothing is sent
+        to the venue and nothing is re-submitted; any other terminal state is left untouched."""
+        from app.trading_intelligence.contracts.execution import NO_POSITION
+        status = row["status"]
+        if status in POSITION_EXISTS or status == X.POSITION_CLOSED.value:
+            to_status = "CONSUMED"
+        elif status in NO_POSITION:
+            to_status = "RELEASED"
+        else:
+            return False
+        rid = plan.portfolio_reservation_id
+        pending = [r for r in self.reservations.pending_resolutions(plan.broker_account_id)
+                   if r["reservation_id"] == rid and str(r.get("execution_attempt_id") or "") == str(attempt_id)]
+        if not pending:
+            return False
+        repaired = self.reservations.resolve_pending(rid, to_status, now, note=f"TERMINAL_ATTEMPT_RECOVERED:{status}")
+        payload = row.get("payload") or {}
+        if to_status == "CONSUMED":
+            self._settle_spread_attempt(plan, attempt_id, "FILLED", payload.get("filled_quantity"),
+                                        payload.get("filled_price"), f"TERMINAL_ATTEMPT_RECOVERED:{status}")
+        else:
+            self._settle_spread_attempt(plan, attempt_id, "RELEASED", None, None, f"TERMINAL_ATTEMPT_RECOVERED:{status}")
+        if repaired:
+            METRICS.inc("cati_execution_reconciliation_total", outcome="TERMINAL_ATTEMPT_RECOVERED")
+        return repaired
 
     def _executor_intent_matches(self, plan: TradePlan, client_order_id: str) -> bool:
         """False when the executor holds an entry lock for this plan's symbol/side under a
@@ -653,6 +727,7 @@ class CATIExecutionBoundary:
                 self._escalate_unresolved(row, now)
                 result = replace(result, reason_codes=tuple(result.reason_codes) + (SUBMIT_OUTCOME_UNRESOLVED,))
             out.append(result)
+        self.sweep_spread_slots()
         return out
 
     def _escalate_unresolved(self, row: Mapping[str, Any], now: int) -> None:
@@ -740,12 +815,139 @@ class CATIExecutionBoundary:
         return f"GO_LIVE_GATE:{first.id}:{first.reason}"
 
     def _release_unsubmitted(self, plan, now):
+        from app.platform_workers.account_fence import require
+        require(plan.broker_account_id)  # Step 5.2: AssignmentLost before releasing anything of a lost account
         return self.reservations.release_unsubmitted(plan.portfolio_reservation_id, now,
             account_scope=self.account_scope, bot_instance_id=plan.bot_instance_id, trade_plan_id=plan.trade_plan_id)
 
     def _res_status(self, plan) -> Optional[str]:
         r = self.reservations.get(plan.portfolio_reservation_id)
         return r.status if r is not None else None
+
+    # -- Step 5.5: the platform order budget (scale.spread_gate, EXT-LIQ-01) -----------------------------
+    def _active_spread_gate(self):
+        """The order budget that applies to entries here: in production always (the real gate on this process's
+        platform database unless one was given); outside production only an injected one."""
+        from app.core.config import settings
+        if self.spread_gate is None and settings.production:
+            from app.trading_intelligence.scale.spread_gate import PlatformSpreadGate
+            self.spread_gate = PlatformSpreadGate()
+        return self.spread_gate
+
+    def _reserve_spread(self, plan, req: EntryRequest, tp: Mapping[str, Any], attempt_id: str,
+                        client_order_id: Optional[str], now: int):
+        """(grant, None) when a RESERVED slot covers the full risk-approved notional, (None, None) when no budget
+        applies (outside production, none injected), (None, refusal) otherwise. Never resizes the quantity."""
+        gate = self._active_spread_gate()
+        if gate is None:
+            return None, None
+        from app.core.config import settings
+        from app.trading_intelligence.scale.spread_gate import (BUDGET_UNAVAILABLE, GATE_NOT_AUTHORITATIVE,
+                                                                PlatformSpreadGate, SpreadRefused)
+        status = BoundaryStatus.ORDER_SPREADING_REFUSED
+        if settings.production and type(gate) is not PlatformSpreadGate:
+            return None, self._fail_before_risk(plan, now, status, GATE_NOT_AUTHORITATIVE)
+        try:
+            grant = gate.reserve(plan, client=getattr(getattr(self.adapter, "executor", None), "client", None),
+                                 adapter=self.adapter, quantity=tp["quantity"], notional=req.notional,
+                                 attempt_id=attempt_id, client_order_id=client_order_id, tick=self._tick_size(plan))
+        except SpreadRefused as exc:
+            log_stage(component="boundary.order_spreading", status="REFUSED", reason_codes=(exc.code,),
+                      cycle_id=plan.cycle_id, user_id=plan.user_id, broker_account_id=plan.broker_account_id,
+                      bot_instance_id=plan.bot_instance_id, extra={"trade_plan_id": plan.trade_plan_id,
+                                                                    "detail": exc.detail[:200]})
+            return None, self._fail_before_risk(plan, now, status, exc.code)
+        except Exception as exc:  # an undecidable budget is a refusal
+            record_stage_error("boundary.order_spreading", "EXECUTION", exc, db=self._db, cycle_id=plan.cycle_id,
+                               broker_account_id=plan.broker_account_id, bot_instance_id=plan.bot_instance_id)
+            return None, self._fail_before_risk(plan, now, status, BUDGET_UNAVAILABLE)
+        return grant, None
+
+    def _tick_size(self, plan) -> Optional[float]:
+        record = getattr(self.preflight, "_record", None)
+        try:
+            rec = record(plan.instrument_key.venue_symbol.upper()) if callable(record) else None
+            ins = (rec or {}).get("instrument") if isinstance(rec, dict) else None
+            return getattr(ins, "tick_size", None)
+        except Exception:
+            return None
+
+    def _release_spread(self, grant, reason: str) -> None:
+        """A reserved slot whose order is not sent. A failure leaves it RESERVED; the sweep releases it after the
+        claim grace (no claimed attempt) and the budget TTL stops it counting in any case."""
+        if grant is None:
+            return
+        try:
+            self.spread_gate.release(grant, reason)
+        except Exception as exc:
+            record_stage_error("boundary.order_spreading_release", "EXECUTION", exc, db=self._db,
+                               broker_account_id=grant.account_id)
+
+    def _settle_spread(self, plan, grant, attempt: ExecutionAttempt, entry: EntryResult) -> None:
+        """The slot follows the settled attempt: FILLED with the ACTUAL filled notional, kept SUBMITTED while the
+        outcome is unknown, RELEASED otherwise; then the calibration observation. Neither can change the order
+        path: failures are recorded and the sweep repairs the slot from the durable attempt."""
+        status = attempt.status
+        try:
+            if status in POSITION_EXISTS:
+                notional = self._filled_notional(attempt.filled_quantity, attempt.filled_price or attempt.requested_price)
+                self.spread_gate.settle_attempt(account_id=grant.account_id, tenant_id=grant.tenant_id,
+                                                attempt_id=attempt.execution_attempt_id, outcome="FILLED",
+                                                filled_notional=notional, reason=f"ATTEMPT_{status}")
+            elif status == X.SUBMIT_UNKNOWN.value:
+                self.spread_gate.settle_attempt(account_id=grant.account_id, tenant_id=grant.tenant_id,
+                                                attempt_id=attempt.execution_attempt_id, outcome="KEEP")
+            else:
+                self.spread_gate.settle_attempt(account_id=grant.account_id, tenant_id=grant.tenant_id,
+                                                attempt_id=attempt.execution_attempt_id, outcome="RELEASED",
+                                                reason=f"ATTEMPT_{status}")
+        except Exception as exc:
+            record_stage_error("boundary.order_spreading_settle", "EXECUTION", exc, db=self._db,
+                               broker_account_id=plan.broker_account_id, bot_instance_id=plan.bot_instance_id)
+        self.spread_gate.record_entry_observation(grant, attempt_id=attempt.execution_attempt_id, entry=entry)
+
+    @staticmethod
+    def _filled_notional(quantity, price):
+        from decimal import Decimal
+        if quantity is None or price is None:
+            return None
+        return Decimal(str(quantity)) * Decimal(str(price))
+
+    def _settle_spread_attempt(self, plan, attempt_id: str, outcome: str, quantity, price, reason: str) -> None:
+        """``reconcile_submit_unknown`` resolved an unknown entry from broker truth: its slot follows."""
+        gate = self._active_spread_gate()
+        if gate is None or not plan.user_id:
+            return
+        from app.trading_intelligence.scale.spread_gate import SpreadRefused
+        try:
+            gate.settle_attempt(account_id=plan.broker_account_id, tenant_id=str(plan.user_id), attempt_id=attempt_id,
+                                outcome=outcome, filled_notional=self._filled_notional(quantity, price), reason=reason)
+        except SpreadRefused:  # no migrated platform database: no slot can have been reserved there
+            return
+        except Exception as exc:
+            record_stage_error("boundary.order_spreading_settle", "EXECUTION", exc, db=self._db,
+                               broker_account_id=plan.broker_account_id, bot_instance_id=plan.bot_instance_id)
+
+    def sweep_spread_slots(self) -> Optional[Dict[str, int]]:
+        """Crash recovery of this account's platform slots from the DURABLE attempts (``recover_pending`` calls
+        it): no slot stays active for a resolved attempt; unused ones on expired budgets become EXPIRED."""
+        gate = self._active_spread_gate()
+        if gate is None or self.account_scope is None or not self.account_scope[0]:
+            return None
+        account = self.account_scope[1]
+
+        def attempt_state(attempt_id):
+            row = self.attempts.latest(account, attempt_id)
+            return None if row is None else (row["status"], row.get("payload") or {})
+
+        from app.trading_intelligence.scale.spread_gate import SpreadRefused
+        try:
+            return gate.sweep(account_id=account, tenant_id=str(self.account_scope[0]), attempt_state=attempt_state)
+        except SpreadRefused:  # no migrated platform database: no slot can have been reserved there
+            return None
+        except Exception as exc:
+            record_stage_error("boundary.order_spreading_sweep", "EXECUTION", exc, db=self._db, broker_account_id=account)
+            return None
 
     def _append_risk(self, risk) -> None:
         try:

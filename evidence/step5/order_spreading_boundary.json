@@ -1,0 +1,179 @@
+{
+ "calibration_status": {
+  "allow_market_fallback": false,
+  "calibrated": false,
+  "consequence": "every production entry is a MARKET order; under the default policy the boundary refuses it MARKET_FALLBACK_DISABLED_BY_POLICY",
+  "default_policy": "conservative-uncalibrated-1"
+ },
+ "gate": "EXT-LIQ-01",
+ "host": {
+  "machine": "AMD64",
+  "platform": "Windows-11-10.0.26200-SP0",
+  "python": "3.12.2"
+ },
+ "measured_at_utc": "2026-10-29T21:56:45Z",
+ "rows": [
+  {
+   "absolute_cap_notional": null,
+   "accounts_racing": 12,
+   "dialect": "sqlite",
+   "granted_total_per_trial": [
+    "100",
+    "100",
+    "100",
+    "100",
+    "100",
+    "100",
+    "100",
+    "100",
+    "100",
+    "100"
+   ],
+   "invariant_held": true,
+   "max_elapsed_ms": 1196.2,
+   "notional_each": "100",
+   "policy_calibrated": false,
+   "refusal_codes": [
+    "ORDER_SPREADING_CALIBRATION_REQUIRED"
+   ],
+   "reserved_per_trial": [
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1
+   ],
+   "scenario": "uncalibrated_two_signals_one_symbol",
+   "server": null,
+   "trials": 10
+  },
+  {
+   "absolute_cap_notional": "1000",
+   "accounts_racing": 16,
+   "dialect": "sqlite",
+   "granted_total_per_trial": [
+    "900",
+    "900",
+    "900",
+    "900",
+    "900",
+    "900",
+    "900",
+    "900",
+    "900",
+    "900"
+   ],
+   "invariant_held": true,
+   "max_elapsed_ms": 743.0,
+   "notional_each": "150",
+   "policy_calibrated": true,
+   "refusal_codes": [
+    "PLATFORM_SYMBOL_BUDGET_PARTIAL_GRANT"
+   ],
+   "reserved_per_trial": [
+    6,
+    6,
+    6,
+    6,
+    6,
+    6,
+    6,
+    6,
+    6,
+    6
+   ],
+   "scenario": "test_only_calibrated_mechanism_cap_1000",
+   "server": null,
+   "trials": 10
+  },
+  {
+   "absolute_cap_notional": null,
+   "accounts_racing": 12,
+   "dialect": "postgresql",
+   "granted_total_per_trial": [
+    "100.000000000000000000",
+    "100.000000000000000000",
+    "100.000000000000000000",
+    "100.000000000000000000",
+    "100.000000000000000000",
+    "100.000000000000000000",
+    "100.000000000000000000",
+    "100.000000000000000000",
+    "100.000000000000000000",
+    "100.000000000000000000"
+   ],
+   "invariant_held": true,
+   "max_elapsed_ms": 852.5,
+   "notional_each": "100",
+   "policy_calibrated": false,
+   "refusal_codes": [
+    "ORDER_SPREADING_CALIBRATION_REQUIRED"
+   ],
+   "reserved_per_trial": [
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1
+   ],
+   "scenario": "uncalibrated_two_signals_one_symbol",
+   "server": "PostgreSQL 18.4 on x86_64-windows, compiled by msvc-19.44.35226, 64-bit",
+   "trials": 10
+  },
+  {
+   "absolute_cap_notional": "1000",
+   "accounts_racing": 16,
+   "dialect": "postgresql",
+   "granted_total_per_trial": [
+    "900.000000000000000000",
+    "900.000000000000000000",
+    "900.000000000000000000",
+    "900.000000000000000000",
+    "900.000000000000000000",
+    "900.000000000000000000",
+    "900.000000000000000000",
+    "900.000000000000000000",
+    "900.000000000000000000",
+    "900.000000000000000000"
+   ],
+   "invariant_held": true,
+   "max_elapsed_ms": 1160.2,
+   "notional_each": "150",
+   "policy_calibrated": true,
+   "refusal_codes": [
+    "PLATFORM_SYMBOL_BUDGET_PARTIAL_GRANT"
+   ],
+   "reserved_per_trial": [
+    6,
+    6,
+    6,
+    6,
+    6,
+    6,
+    6,
+    6,
+    6,
+    6
+   ],
+   "scenario": "test_only_calibrated_mechanism_cap_1000",
+   "server": "PostgreSQL 18.4 on x86_64-windows, compiled by msvc-19.44.35226, 64-bit",
+   "trials": 10
+  }
+ ],
+ "statement": "Threads on one Windows workstation against throwaway SQLite files and a local PostgreSQL cluster; fake order books, no venue call. This proves the serialization of the platform order budget (no cap overrun; one account per venue/symbol/side while uncalibrated); it is NOT liquidity evidence and NOT a calibration. The calibrated scenario uses a TEST-ONLY approval reference in a throwaway database to exercise the multi-account cap; no product code builds a calibrated policy and EXT-LIQ-01 stays open.",
+ "step": "5.5 order spreading -- boundary integration",
+ "tests": [
+  "tests/platform_workers/test_spread_gate.py (both dialects)",
+  "tests/trading_intelligence/test_step5_spread_boundary.py (both dialects)"
+ ]
+}

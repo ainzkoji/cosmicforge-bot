@@ -105,6 +105,13 @@ _add("EXECUTION_ACCOUNT_NOT_FOUND", BLOCKED, "The exchange account is not an exe
 _add("CANONICAL_RUNTIME_LEASE_REQUIRED", ATTENTION, "This engine process does not hold the trading lease right now.", "The operator checks the runtime; trading resumes when the lease is held.")
 _add("CATI_PRODUCTION_PROFILE_REQUIRED", CRITICAL, "The server is not running the production profile.", "Operator configuration required.")
 _add("RUNTIME_SHUTDOWN_IN_PROGRESS", ATTENTION, "The engine is shutting down and opens no new position.", "Trading resumes when the engine restarts.")
+# Step 5.2: the broker cycle under durable worker assignments.
+_add("ASSIGNMENT_RECOVERY_ONLY", WAITING, "A trading worker has just taken this account over and is first re-checking orders and protection at the exchange; no new position is opened in this step.", "No action needed; normal trading resumes on the next cycle.")
+_add("ACCOUNT_ASSIGNMENT_LOST", ATTENTION, "Another trading worker took this account over; the previous one stopped before acting.", "No action needed; the new worker manages the account.")
+_add("ACCOUNT_ASSIGNED_TO_ANOTHER_WORKER", ATTENTION, "Another trading worker manages this account right now.", "No action needed.")
+_add("ACCOUNT_ASSIGNMENT_UNREADABLE", CRITICAL, "The engine could not confirm which worker manages this account, so it opens no position.", "Operator review of the platform database required.")
+_add("EMERGENCY_ASSIGNMENT_PREEMPTION_FAILED", CRITICAL, "The emergency close could not take this account over from its trading worker, so nothing was closed.", "Operator review of the platform database required; close at the exchange if urgent.")
+_add("PROCESS_ROLE_API_RUNS_NO_BROKER_CYCLE", CRITICAL, "This server process serves the website only and cannot trade.", "Operator configuration required.")
 _add("MAINTENANCE_BOUNDARY_UNAVAILABLE", CRITICAL, "The engine could not build its execution boundary for an open position.", "Operator review required.")
 
 # ── risk gates ───────────────────────────────────────────────────────────────

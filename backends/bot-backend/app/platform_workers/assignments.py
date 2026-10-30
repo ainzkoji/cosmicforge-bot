@@ -25,6 +25,13 @@ Rules:
   check and the mutation.
 * A new owner must ``mark_recovered`` -- reconstruct exchange state and durable work -- before it may submit
   anything for an account (``needs_recovery``).
+* A takeover is decided on the row it replaces, under that row's lock: a claim that saw an expired row never
+  overwrites one its holder renewed in the meantime (``claim``'s conditional upsert).
+* ``verify_fresh`` is the fence of the production broker cycle (``broker_assignment`` / ``account_fence``): the
+  ``verify_on`` checks, a live claim extended in the same transaction, and more than a safety margin of lease left
+  afterwards -- so the lease cannot run out between the check and the venue call that follows it.
+* ``preempt`` is the emergency path: an operator flatten takes the account with a new, higher fencing token whoever
+  holds it (expired or not); the previous holder's next check fails.
 """
 from __future__ import annotations
 
@@ -42,7 +49,12 @@ DEFAULT_ASSIGNMENT_TTL_MS = 30_000
 WORKER_LIVENESS_MS = 30_000
 _ASSIGN_LOCK_KEY = 0x0C05_A551
 
-TAKEOVER, NEW, RENEWED = "TAKEOVER", "NEW", "RENEWED"
+TAKEOVER, NEW, RENEWED, PREEMPTED = "TAKEOVER", "NEW", "RENEWED", "PREEMPTED"
+#: Release / history reasons used by the production broker cycle.
+DRAIN, REBALANCE, ACCOUNT_REMOVED, EMERGENCY_DONE = "DRAIN", "REBALANCE", "ACCOUNT_REMOVED", "EMERGENCY_DONE"
+#: Role of the worker row an emergency flatten holds an account under. It is registered STOPPED: it never counts
+#: as live capacity when fair shares are computed and never claims anything.
+EMERGENCY_ROLE = "emergency"
 
 
 class AssignmentLost(RuntimeError):
@@ -125,9 +137,12 @@ class WorkerAssignments:
         return len(rows)
 
     # ── claiming ───────────────────────────────────────────────────────────────────────────────────────
-    def claim(self, worker_id: str, *, max_new: Optional[int] = None) -> List[Assignment]:
+    def claim(self, worker_id: str, *, max_new: Optional[int] = None, take_all_free: bool = False) -> List[Assignment]:
         """Renew this worker's live claims and take free accounts up to its fair share. Returns every account
-        the worker owns after the call."""
+        the worker owns after the call.
+
+        ``take_all_free``: take EVERY free account instead of a fair share (the canonical runtime owner of the
+        production broker cycle in ``owner`` mode). A live assignment of another worker is never taken."""
         with self.db.transaction() as conn:
             _lock(conn)
             now = conn.now_ms()
@@ -143,31 +158,39 @@ class WorkerAssignments:
             result = [Assignment(a, t, worker_id, tok, exp, RENEWED, rec != tok) for a, t, tok, exp, rec in owned]
             if state != "ACTIVE":
                 return result
-            live_workers = int(conn.scalar(
-                "SELECT COUNT(*) FROM platform_workers WHERE state='ACTIVE' AND heartbeat_at > ?",
-                (now - self.worker_liveness_ms,)) or 1)
-            active_accounts = int(conn.scalar("SELECT COUNT(*) FROM platform_accounts WHERE state='ACTIVE'") or 0)
-            share = math.ceil(active_accounts / max(live_workers, 1))
-            room = share - len(owned)
-            if max_new is not None:
-                room = min(room, max_new)
-            if room <= 0:
+            if take_all_free:
+                room: Optional[int] = None if max_new is None else int(max_new)
+            else:
+                live_workers = int(conn.scalar(
+                    "SELECT COUNT(*) FROM platform_workers WHERE state='ACTIVE' AND heartbeat_at > ?",
+                    (now - self.worker_liveness_ms,)) or 1)
+                active_accounts = int(conn.scalar("SELECT COUNT(*) FROM platform_accounts WHERE state='ACTIVE'") or 0)
+                share = math.ceil(active_accounts / max(live_workers, 1))
+                room = share - len(owned)
+                if max_new is not None:
+                    room = min(room, max_new)
+            if room is not None and room <= 0:
                 return result
             free = conn.all(
                 "SELECT a.account_id, a.tenant_id, s.fencing_token, s.worker_id, s.released_at, s.expires_at "
                 "FROM platform_accounts a LEFT JOIN platform_account_assignments s ON s.account_id = a.account_id "
                 "WHERE a.state='ACTIVE' AND (s.account_id IS NULL OR s.released_at IS NOT NULL OR s.expires_at <= ?) "
-                "ORDER BY a.account_id LIMIT ?", (now, room))
+                "ORDER BY a.account_id" + ("" if room is None else " LIMIT ?"), (now,) if room is None else (now, room))
             for account_id, tenant_id, token, previous, released_at, prev_expiry in free:
                 new_token = int(token or 0) + 1
                 kind = TAKEOVER if (previous is not None and released_at is None) else NEW
-                conn.execute(
+                # The row is replaced only if it is STILL free when its lock is held: a holder that renewed it
+                # (or a preemption that took it) after the read above keeps it, and nothing is recorded here.
+                taken = conn.execute(
                     "INSERT INTO platform_account_assignments (account_id, worker_id, fencing_token, acquired_at, "
                     "renewed_at, expires_at, released_at, release_reason, recovered_token) VALUES (?,?,?,?,?,?,NULL,NULL,NULL) "
                     "ON CONFLICT (account_id) DO UPDATE SET worker_id=excluded.worker_id, fencing_token=excluded.fencing_token, "
                     "acquired_at=excluded.acquired_at, renewed_at=excluded.renewed_at, expires_at=excluded.expires_at, "
-                    "released_at=NULL, release_reason=NULL",
-                    (account_id, worker_id, new_token, now, now, expires))
+                    "released_at=NULL, release_reason=NULL WHERE platform_account_assignments.fencing_token=? AND "
+                    "(platform_account_assignments.released_at IS NOT NULL OR platform_account_assignments.expires_at <= ?)",
+                    (account_id, worker_id, new_token, now, now, expires, int(token or 0), now)).rowcount
+                if taken != 1:
+                    continue
                 conn.execute(
                     "INSERT INTO platform_assignment_history (account_id, from_worker, to_worker, fencing_token, reason, at) "
                     "VALUES (?,?,?,?,?,?)",
@@ -214,6 +237,129 @@ class WorkerAssignments:
     def verify(self, a: Assignment) -> None:
         with self.db.transaction() as conn:
             self.verify_on(conn, a.account_id, a.worker_id, a.fencing_token)
+
+    def verify_fresh(self, account_id: str, worker_id: str, fencing_token: int, *, margin_ms: int,
+                     extend: bool = True) -> int:
+        """The fence check made immediately before a venue mutation. ``verify_on`` (row locked: no takeover can
+        commit in between), then -- ``extend`` -- the live claim is renewed to a full TTL in the same transaction
+        (an expired claim is never revived: ``verify_on`` has already refused it), and finally more than
+        ``margin_ms`` must remain. Returns the expiry (database clock)."""
+        if not 0 <= int(margin_ms) < self.ttl_ms:
+            raise ValueError("FENCE_MARGIN_MUST_BE_BELOW_TTL")
+        with self.db.transaction() as conn:
+            self.verify_on(conn, account_id, worker_id, fencing_token)
+            now = conn.now_ms()
+            expires = int(conn.scalar("SELECT expires_at FROM platform_account_assignments WHERE account_id=?",
+                                      (account_id,)))
+            if extend and expires < now + self.ttl_ms:
+                expires = now + self.ttl_ms
+                conn.execute("UPDATE platform_account_assignments SET expires_at=?, renewed_at=? WHERE account_id=? "
+                             "AND worker_id=? AND fencing_token=? AND released_at IS NULL",
+                             (expires, now, account_id, worker_id, int(fencing_token)))
+            if expires - now <= int(margin_ms):
+                raise AssignmentLost(account_id, "ASSIGNMENT_EXPIRING")
+            return expires
+
+    def renew(self, worker_id: str, account_ids: Optional[Sequence[str]] = None) -> List[str]:
+        """Extend this worker's LIVE claims (all, or ``account_ids``) to a full TTL and heartbeat the worker.
+        Returns the accounts still owned. Never revives an expired or released claim."""
+        with self.db.transaction() as conn:
+            now = conn.now_ms()
+            conn.execute("UPDATE platform_workers SET heartbeat_at=? WHERE worker_id=?", (now, worker_id))
+            owned = [r[0] for r in self._owned_on(conn, worker_id, now)]
+            targets = [a for a in owned if account_ids is None or a in set(account_ids)]
+            for account_id in targets:
+                conn.execute("UPDATE platform_account_assignments SET expires_at=?, renewed_at=? WHERE account_id=? "
+                             "AND worker_id=? AND released_at IS NULL AND expires_at > ?",
+                             (now + self.ttl_ms, now, account_id, worker_id, now))
+            return targets
+
+    def preempt(self, account_id: str, emergency_worker_id: str, reason: str, *, ttl_ms: Optional[int] = None,
+                tenant_id: Optional[str] = None, venue: str = "unknown", environment: str = "unknown") -> Assignment:
+        """An emergency (operator flatten) takes ``account_id`` NOW, from whoever holds it, live or expired: a new,
+        higher fencing token, recorded in the history. The previous holder's next ``verify_on`` fails, so it stops
+        before its next mutation. The emergency holder needs no recovery (it reads the actual positions itself);
+        when it releases, the next owner's claim is NEW and recovers first."""
+        ttl = int(ttl_ms or self.ttl_ms)
+        with self.db.transaction() as conn:
+            _lock(conn)
+            now = conn.now_ms()
+            conn.execute(
+                "INSERT INTO platform_workers (worker_id, role, host, pid, build_version, started_at, heartbeat_at, state) "
+                "VALUES (?,?,?,?,?,?,?,'STOPPED') ON CONFLICT (worker_id) DO UPDATE SET heartbeat_at=excluded.heartbeat_at",
+                (emergency_worker_id, EMERGENCY_ROLE, socket.gethostname(), os.getpid(), EMERGENCY_ROLE, now, now))
+            registered = conn.one("SELECT tenant_id FROM platform_accounts WHERE account_id=?", (account_id,))
+            if registered is None:
+                if tenant_id is None:
+                    raise ValueError(f"ACCOUNT_NOT_REGISTERED:{account_id}")
+                conn.execute("INSERT INTO platform_accounts (account_id, tenant_id, venue, environment, state, created_at) "
+                             "VALUES (?,?,?,?,'ACTIVE',?)", (account_id, tenant_id, venue, environment, now))
+                registered = (tenant_id,)
+            elif tenant_id is not None and registered[0] != tenant_id:
+                raise ValueError(f"ACCOUNT_TENANT_IMMUTABLE:{account_id}")
+            row = conn.one("SELECT worker_id, fencing_token, expires_at, released_at FROM platform_account_assignments "
+                           "WHERE account_id=?" + conn.lock_rows_suffix(), (account_id,))
+            token = (int(row[1]) if row else 0) + 1
+            previous = row[0] if row is not None and row[3] is None and int(row[2]) > now else None
+            conn.execute(
+                "INSERT INTO platform_account_assignments (account_id, worker_id, fencing_token, acquired_at, renewed_at, "
+                "expires_at, released_at, release_reason, recovered_token) VALUES (?,?,?,?,?,?,NULL,NULL,?) "
+                "ON CONFLICT (account_id) DO UPDATE SET worker_id=excluded.worker_id, fencing_token=excluded.fencing_token, "
+                "acquired_at=excluded.acquired_at, renewed_at=excluded.renewed_at, expires_at=excluded.expires_at, "
+                "released_at=NULL, release_reason=NULL, recovered_token=excluded.recovered_token",
+                (account_id, emergency_worker_id, token, now, now, now + ttl, token))
+            conn.execute("INSERT INTO platform_assignment_history (account_id, from_worker, to_worker, fencing_token, "
+                         "reason, at) VALUES (?,?,?,?,?,?)",
+                         (account_id, previous, emergency_worker_id, token, f"EMERGENCY_PREEMPT:{reason}"[:200], now))
+            return Assignment(account_id, registered[0], emergency_worker_id, token, now + ttl, PREEMPTED, False, previous)
+
+    def sync_registry(self, accounts: Iterable[Tuple[str, str, str, str]]) -> dict:
+        """Make ``platform_accounts`` match the execution accounts of the broker cycle: every row of ``accounts``
+        (account_id, tenant_id, venue, environment) ACTIVE; every other ACTIVE account REMOVED and its assignment
+        released (``ACCOUNT_REMOVED``), whoever holds it -- the holder's next check fails. A row whose tenant
+        differs from the registered one is refused (and therefore not ACTIVE: nobody processes it)."""
+        rows = list(accounts)
+        with self.db.transaction() as conn:
+            now = conn.now_ms()
+            present, refused = set(), []
+            for account_id, tenant_id, venue, environment in rows:
+                existing = conn.one("SELECT tenant_id, state, venue, environment FROM platform_accounts WHERE account_id=?",
+                                    (account_id,))
+                if existing is not None and existing[0] != tenant_id:
+                    refused.append(account_id)
+                    continue
+                present.add(account_id)
+                if existing is None:
+                    conn.execute("INSERT INTO platform_accounts (account_id, tenant_id, venue, environment, state, created_at) "
+                                 "VALUES (?,?,?,?,'ACTIVE',?)", (account_id, tenant_id, venue, environment, now))
+                elif tuple(existing[1:]) != ("ACTIVE", venue, environment):
+                    conn.execute("UPDATE platform_accounts SET state='ACTIVE', venue=?, environment=? WHERE account_id=?",
+                                 (venue, environment, account_id))
+            removed = [r[0] for r in conn.all("SELECT account_id FROM platform_accounts WHERE state='ACTIVE' "
+                                              "ORDER BY account_id") if r[0] not in present]
+            for account_id in removed:
+                conn.execute("UPDATE platform_accounts SET state='REMOVED' WHERE account_id=?", (account_id,))
+                live = conn.one("SELECT worker_id, fencing_token FROM platform_account_assignments WHERE account_id=? "
+                                "AND released_at IS NULL" + conn.lock_rows_suffix(), (account_id,))
+                if live is not None:
+                    conn.execute("UPDATE platform_account_assignments SET released_at=?, release_reason=? "
+                                 "WHERE account_id=? AND fencing_token=?", (now, ACCOUNT_REMOVED, account_id, int(live[1])))
+                    conn.execute("INSERT INTO platform_assignment_history (account_id, from_worker, to_worker, "
+                                 "fencing_token, reason, at) VALUES (?,?,NULL,?,?,?)",
+                                 (account_id, live[0], int(live[1]), ACCOUNT_REMOVED, now))
+        return {"active": sorted(present), "removed": removed, "refused": refused}
+
+    def release_assignment(self, a: Assignment, *, reason: str) -> bool:
+        """Release exactly this assignment (same worker, same token), live or not. False when it is no longer it."""
+        with self.db.transaction() as conn:
+            now = conn.now_ms()
+            done = conn.execute("UPDATE platform_account_assignments SET released_at=?, release_reason=? WHERE "
+                                "account_id=? AND worker_id=? AND fencing_token=? AND released_at IS NULL",
+                                (now, reason, a.account_id, a.worker_id, int(a.fencing_token))).rowcount == 1
+            if done:
+                conn.execute("INSERT INTO platform_assignment_history (account_id, from_worker, to_worker, fencing_token, "
+                             "reason, at) VALUES (?,?,NULL,?,?,?)", (a.account_id, a.worker_id, a.fencing_token, reason, now))
+            return done
 
     def mark_recovered(self, a: Assignment) -> None:
         with self.db.transaction() as conn:

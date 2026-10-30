@@ -155,7 +155,8 @@ def close_position(client, symbol, trace=None):
     db = client._production_db
     account = client._production_account_id
     identity = getattr(client,'_production_intent_identity',None)
-    if not identity or not owner_current(db):
+    from app.platform_workers.account_fence import runtime_authority  # Step 5.2: the account fence, when one is active
+    if not identity or not runtime_authority(db, account, lease=owner_current):
         raise ValueError('PRODUCTION_CLOSE_AUTHORITY_REQUIRED')
     if not order_submission_gate(client.broker_environment)['enabled']:
         raise ValueError(order_submission_gate(client.broker_environment)['reason'])

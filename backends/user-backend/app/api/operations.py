@@ -41,6 +41,7 @@ from app.core.deps import require_admin
 from shared_lib.operations import platform as ops_platform
 from shared_lib.operations.alerting import AlertEngine, AlertError
 from shared_lib.operations.oncall import CONTACT_CHANNELS, OPERATIONS_OWNER_REQUIRED, ROTATIONS, OncallDirectory, OncallError
+from shared_lib.operations.spreading_status import spreading_status  # Step 5.5 / EXT-LIQ-01, read-only
 from shared_lib.operations.status_page import (COMPONENTS, INCIDENT_IMPACTS, INCIDENT_STATUSES, StatusIncidents,
                                                StatusPageError, public_status)
 
@@ -318,4 +319,4 @@ def overview(admin: dict = Depends(require_admin)) -> Dict[str, Any]:
     return {"alerting": alerting_health(db), "oncall": OncallDirectory(db).overview(),
             "open_alerts": engine.open_alerts()[:50], "backup_drill": drill_summary(),
             "status_incidents": StatusIncidents(db).list(include_resolved=False),
-            "rotations": ROTATIONS}
+            "rotations": ROTATIONS, "order_spreading": spreading_status(db)}

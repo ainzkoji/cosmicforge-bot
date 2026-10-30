@@ -83,7 +83,9 @@ def hold_lease(db, *, pid: int, heartbeat: datetime | None = None,
                  runtime_session_id=excluded.runtime_session_id,
                  released_at=NULL, release_reason=NULL""",
             (TRADING_SCHEDULER, os.path.abspath(db.path), "own_test", session_id,
-             pid, "test-host", heartbeat.isoformat(), heartbeat.isoformat(),
+             # a lease written on THIS host (its PID can be inspected); other hosts:
+             # tests/test_runtime_ownership_cross_host.py
+             pid, socket.gethostname(), heartbeat.isoformat(), heartbeat.isoformat(),
              "development"),
         )
 

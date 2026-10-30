@@ -22,7 +22,8 @@ def place_protection(client, request, *, broker):
     require_execution_account(client.broker_environment, broker, client.base_url)
     if not order_submission_gate(client.broker_environment)["enabled"]:
         raise ValueError(order_submission_gate(client.broker_environment)["reason"])
-    if not owner_current(db):
+    from app.platform_workers.account_fence import runtime_authority  # Step 5.2: the account fence, when one is active
+    if not runtime_authority(db, account, lease=owner_current):
         raise ValueError("CANONICAL_RUNTIME_LEASE_REQUIRED")
     side = "LONG" if request.position_side == Side.BUY else "SHORT"
     exit_side = "SELL" if side == "LONG" else "BUY"

@@ -138,6 +138,15 @@ def require_broker_mutation_permission(method: str, path: str = "", *, environme
                                        broker: str = "", base_url: str = "", client=None, payload=None) -> None:
     if method.upper() in {"GET", "HEAD", "OPTIONS"}:
         return
+    # Step 5.2 (bot backend): while the broker cycle processes an account under its durable assignment, every
+    # mutation must be made with that account's client and the assignment must still verify (AssignmentLost
+    # before the request leaves). Outside an account fence this adds nothing. It only ever refuses.
+    try:
+        from app.platform_workers.account_fence import require_transport
+    except ImportError:
+        require_transport = None
+    if require_transport is not None:
+        require_transport(client)
     from app.core.config import settings
     if settings.production:
         # Unbound legacy transports retain the conservative real-money gate.

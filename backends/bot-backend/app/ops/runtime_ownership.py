@@ -46,6 +46,25 @@ def _now() -> datetime:
     return datetime.now(timezone.utc)
 
 
+def _is_shared_server(db: Any) -> bool:
+    """A database server shared by several hosts (PostgreSQL). On SQLite the database is one local file, so the
+    local clock and local process table are the database's own."""
+    return getattr(db, "dialect", "sqlite") == "postgresql"
+
+
+def _db_now(conn: Any) -> datetime:
+    """The DATABASE SERVER's clock (UTC, milliseconds): every host compares leases against one clock."""
+    text = conn.execute("SELECT datetime('now', 'subsec')").fetchone()[0]
+    return datetime.fromisoformat(str(text)).replace(tzinfo=timezone.utc)
+
+
+def lease_database_path(database_path: Any) -> str:
+    """The lease key of a database: an absolute file path, or a database URL unchanged (``abspath`` of a URL would
+    depend on the working directory, so two processes could compute two keys for one database)."""
+    text = str(database_path)
+    return text if "://" in text else os.path.abspath(text)
+
+
 def ensure_ownership_schema(db: Any) -> None:
     """Create the lease table. Safe to run repeatedly."""
     with db.connect() as conn:
@@ -98,7 +117,7 @@ class RuntimeOwnership:
         stale_seconds: int = LEASE_STALE_SECONDS,
     ) -> None:
         self.db = db
-        self.database_path = os.path.abspath(str(database_path))
+        self.database_path = lease_database_path(database_path)
         self.database_role = database_role
         self.runtime_session_id = runtime_session_id
         self.lease_name = lease_name
@@ -120,6 +139,10 @@ class RuntimeOwnership:
                 # Read-then-write under one write lock: two processes starting
                 # together cannot both find the lease free and both take it.
                 conn.execute("BEGIN IMMEDIATE")
+                shared = _is_shared_server(self.db)
+                if shared:
+                    # A shared server: lease times come from the database clock, never a host's own.
+                    now = _db_now(conn)
                 row = conn.execute(
                     """SELECT * FROM runtime_ownership
                        WHERE lease_name=? AND database_path=?""",
@@ -129,7 +152,10 @@ class RuntimeOwnership:
                 if row is not None and row["released_at"] is None:
                     holder_pid = int(row["pid"])
                     heartbeat = row["heartbeat_at"]
-                    if not self._is_stale(heartbeat, now) and holder_is_alive(holder_pid, row["started_at"]):
+                    # Another host's (or container's) PID means nothing in this process table: such a holder
+                    # is alive until its heartbeat goes stale (holder_is_alive with its hostname).
+                    holder_alive = holder_is_alive(holder_pid, row["started_at"], hostname=row["hostname"])
+                    if not self._is_stale(heartbeat, now) and holder_alive:
                         # A live holder exists. This process must not schedule.
                         return OwnershipResult(
                             acquired=False,
@@ -188,11 +214,12 @@ class RuntimeOwnership:
             return False
         try:
             with self.db.connect() as conn:
+                stamp = _db_now(conn) if _is_shared_server(self.db) else _now()
                 cursor = conn.execute(
                     """UPDATE runtime_ownership SET heartbeat_at=?
                        WHERE lease_name=? AND database_path=? AND runtime_owner_id=?
                          AND released_at IS NULL""",
-                    (_now().isoformat(), self.lease_name, self.database_path,
+                    (stamp.isoformat(), self.lease_name, self.database_path,
                      self.runtime_owner_id),
                 )
                 if (cursor.rowcount or 0) == 0:
@@ -219,10 +246,11 @@ class RuntimeOwnership:
             return
         try:
             with self.db.connect() as conn:
+                stamp = _db_now(conn) if _is_shared_server(self.db) else _now()
                 conn.execute(
                     """UPDATE runtime_ownership SET released_at=?, release_reason=?
                        WHERE lease_name=? AND database_path=? AND runtime_owner_id=?""",
-                    (_now().isoformat(), reason, self.lease_name,
+                    (stamp.isoformat(), reason, self.lease_name,
                      self.database_path, self.runtime_owner_id),
                 )
             print(f"[RUNTIME_OWNERSHIP] released pid={os.getpid()} reason={reason} "
@@ -302,8 +330,19 @@ def _process_created_at(pid: int) -> float | None:
         return None
 
 
-def holder_is_alive(pid: int | None, started_at: str | None) -> bool:
+def is_local_host(hostname: str | None) -> bool:
+    """True when ``hostname`` names THIS host -- the only one whose process table can be inspected. Containers
+    have their own hostnames and their own PID namespaces, so another container counts as another host."""
+    return hostname is None or str(hostname) == socket.gethostname()
+
+
+def holder_is_alive(pid: int | None, started_at: str | None, *, hostname: str | None = None) -> bool:
     """Is the process that WROTE this lease still running?
+
+    ``hostname`` (the lease's): a holder on ANOTHER host -- another machine or another container, whose PIDs live
+    in a separate namespace -- cannot be inspected from here, so it is alive; only its heartbeat going stale
+    (``lease_is_stale``) frees the lease. Two trading containers on one database therefore never judge each
+    other's live lease dead by PID. On this host a dead PID is still taken over at once.
 
     A PID alone cannot answer that. After a reboot the service returns with a
     low and frequently identical PID, so an unreleased lease from before the
@@ -317,6 +356,8 @@ def holder_is_alive(pid: int | None, started_at: str | None) -> bool:
     """
     if not pid:
         return False
+    if not is_local_host(hostname):
+        return True
     pid = int(pid)
     if not RuntimeOwnership._pid_alive(pid):
         return False
@@ -357,7 +398,7 @@ def current_owner(db: Any, database_path: str, lease_name: str = TRADING_SCHEDUL
             row = conn.execute(
                 """SELECT * FROM runtime_ownership
                    WHERE lease_name=? AND database_path=? AND released_at IS NULL""",
-                (lease_name, os.path.abspath(str(database_path))),
+                (lease_name, lease_database_path(database_path)),
             ).fetchone()
         return dict(row) if row else None
     except Exception:

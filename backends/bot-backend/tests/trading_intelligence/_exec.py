@@ -4,9 +4,10 @@ order), and a REAL Section 18 TradePlan with its portfolio reservation."""
 from __future__ import annotations
 
 import time
-from datetime import date
+from datetime import date, datetime, timezone
 import uuid
 from decimal import Decimal
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
@@ -25,6 +26,25 @@ from app.trading_intelligence.portfolio.reservation_store import CATIReservation
 from app.trading_intelligence.trade_plan.validation import MarketReference
 
 ON = CATIExecutionConfig(active_execution_enabled=True)
+
+
+def _harness_spread_policy():
+    from app.trading_intelligence.scale.order_spreading import SpreadPolicy
+
+    return SpreadPolicy(policy_version="test-harness-market-entry-uncalibrated", allow_market_fallback=True)
+
+
+HARNESS_SPREAD_POLICY = _harness_spread_policy()
+
+
+def order_book(mid=100.0, *, levels=10, step=0.01, qty="1000", age_ms=0, observed_at=None):
+    """A venue ``get_orderbook`` answer (bids/asks best first, venue time ``time``): fresh by default. The venue
+    clock is the real one (the gate compares it with the DATABASE clock), read without ``time.time`` so a test
+    that freezes ``time.time`` for its own module still gets a venue that tells the time."""
+    real_now = int(datetime.now(timezone.utc).timestamp() * 1000)
+    stamp = real_now - int(age_ms) if observed_at is None else int(observed_at)
+    return {"bids": [[round(mid - step * (i + 1), 8), float(qty)] for i in range(levels)],
+            "asks": [[round(mid + step * i, 8), float(qty)] for i in range(levels)], "time": stamp}
 
 
 class NeverAnalyze(BaseStrategy):
@@ -101,6 +121,10 @@ class Harness:
 
         client.place_order.side_effect = place_order
         client.get_order.side_effect = get_order
+        # Step 5.5: the venue order book the platform order budget reads before a production entry -- fresh
+        # (venue time = now), ten levels a side around ``book_mid``. A test may replace it to go stale/thin/away.
+        self.book_mid = 100.0
+        client.get_orderbook.side_effect = lambda symbol, limit=50: order_book(self.book_mid)
         client.user_trades.side_effect = (lambda *a, **k: (_ for _ in ()).throw(order_error)) if order_error else (
             lambda *a, **k: [])
         client.place_protection.side_effect = protect
@@ -172,8 +196,46 @@ class Harness:
         kw.setdefault("account_scope", (self.plan.user_id, self.plan.broker_account_id))
         if "preflight" not in kw:
             kw["preflight"] = self.preflight()
+        # Step 5.5: production entries pass the REAL platform order budget -- here on this test's own migrated
+        # platform database, with the plan's account registered and the fake venue's fresh order book.
+        if _settings.production:
+            kw.setdefault("spread_gate", self.spread_gate())
         return CATIExecutionBoundary(orchestrator=self.orch, adapter=adapter or self.adapter, db=self.db, config=config,
                                      **kw)
+
+    def spread_gate(self, policy=None):
+        """The real ``PlatformSpreadGate`` over a per-harness temporary platform database (all platform migrations)
+        with this harness's account registered. Its policy keeps ``calibrated=False`` and differs from the
+        production default in ONE input only, ``allow_market_fallback=True``: the executor's entry is a MARKET
+        order, which the default policy refuses (proved in ``test_step5_spread_boundary``); the market walk, depth
+        freshness, cap and calibration checks all still run."""
+        from app.trading_intelligence.scale.spread_gate import PlatformSpreadGate
+
+        if getattr(self, "_spread", None) is None:
+            self._spread = PlatformSpreadGate(self.platform_db(), policy=policy or HARNESS_SPREAD_POLICY)
+        self.register_platform_account()
+        return self._spread
+
+    def platform_db(self):
+        from shared_lib.persistence.sql import Database, migrate
+        from shared_lib.persistence.sql.platform_schema import all_migrations
+
+        if getattr(self, "_platform_db", None) is None:
+            path = Path(self.db.path).with_name(f"platform_{uuid.uuid4().hex[:8]}.db")
+            self._platform_db = Database(f"sqlite:///{path.as_posix()}", pool_size=4)
+            migrate(self._platform_db, all_migrations())
+        return self._platform_db
+
+    def register_platform_account(self, user_id=None, account_id=None, venue=None, environment=None):
+        from app.platform_workers.assignments import WorkerAssignments
+
+        plan = self.plan
+        try:
+            WorkerAssignments(self.platform_db()).upsert_accounts([(
+                account_id or plan.broker_account_id, user_id or plan.user_id, venue or plan.venue,
+                environment or plan.environment)])
+        except ValueError:  # already registered to another tenant: the gate refuses that plan itself
+            pass
 
     def run(self, boundary=None, plan=None, *, price=None, ref_age=100, health="HEALTHY", now=None, atr=2.0, **kw):
         from app.trading_intelligence.capital.planner import CapitalReadiness

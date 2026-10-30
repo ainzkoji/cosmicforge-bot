@@ -136,7 +136,9 @@ def _portfolio_transport_permitted(client, symbol, side, payload):
     except (TypeError, ValueError):
         return False
     from app.trading_intelligence.integration.residual_prospective import owner_current
-    return bool(owner_current(db) and size_ok and cid == row["client_order_id"] == request.client_order_id
+    from app.platform_workers.account_fence import runtime_authority  # Step 5.2: the account fence, when active
+    return bool(runtime_authority(db, account, lease=owner_current) and size_ok
+                and cid == row["client_order_id"] == request.client_order_id
                 and row["symbol"] == request.symbol == str(symbol or "").upper().replace("-", "")
                 and row["side"] == request.side == str(side or "").upper())
 
@@ -181,6 +183,8 @@ def transport_entry_permitted(client, symbol, side, *, payload=None):
             or intent["user_id"] != getattr(client, "_broker_user_id", None):
         return False
     from app.trading_intelligence.integration.residual_prospective import owner_current
-    return bool(owner_current(db) and request.intent_identity == getattr(client, "_production_intent_identity", None)
+    from app.platform_workers.account_fence import runtime_authority  # Step 5.2: the account fence, when active
+    return bool(runtime_authority(db, account, lease=owner_current)
+                and request.intent_identity == getattr(client, "_production_intent_identity", None)
                 and request.venue_symbol == str(symbol or "").upper().replace("-", "")
                 and ("BUY" if request.side == "LONG" else "SELL") == str(side or "").upper())

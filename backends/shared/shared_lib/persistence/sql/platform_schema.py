@@ -117,6 +117,8 @@ MIGRATION_MODULES = (
     ("launch_schema", 10, 19),          # Step 6: go-live authorization, beta stages, incidents
     ("track_record_schema", 20, 29),    # Steps 6.4 / 8.6: performance recorder and publication
     ("operations_schema", 30, 39),      # Step 8.5: alerting, on-call, status page, support desk
+    ("jobs_runtime_schema", 50, 59),    # Step 5.3: runtime job handlers (reconciliation watermarks)
+    ("spreading_schema", 60, 69),       # Step 5.5: order-spreading boundary links + calibration observations
 )
 
 
