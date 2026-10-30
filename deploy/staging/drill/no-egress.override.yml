@@ -1,0 +1,9 @@
+# CI failure drill only: layered on docker-compose.staging.yml through DEPLOY_COMPOSE_OVERRIDE.
+#
+# The trading role starts its background workers (news, calendar, market data) whatever the profile. On an internal
+# network nothing in the drill stack has a route off the runner, so any such call fails locally instead of
+# reaching an exchange or a data provider. The drill runs as its own compose project (COMPOSE_PROJECT_NAME), so this
+# network is created fresh and the stack of the earlier CI step is untouched.
+networks:
+  default:
+    internal: true

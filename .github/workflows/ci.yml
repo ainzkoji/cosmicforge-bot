@@ -321,7 +321,70 @@ jobs:
         done
         python3 -c "import json;d=json.load(open('health.json'));assert d['process_role']=='api',d.get('process_role');print('bot-api ready, role api')"
         test "$(docker compose -f docker-compose.staging.yml exec -T bot-api curl -s -o /dev/null -w '%{http_code}' -X POST http://127.0.0.1:8000/api/v1/emergency/flatten)" = 409
+    - name: API replica refuses the mounted emergency router (refused before auth; nothing is executed)
+      working-directory: deploy/staging
+      run: |
+        test "$(docker compose -f docker-compose.staging.yml exec -T bot-api curl -s -o /dev/null -w '%{http_code}' -X POST http://127.0.0.1:8000/api/v1/admin/emergency/flatten)" = 409
     - name: Stack logs on failure
       if: failure()
       working-directory: deploy/staging
       run: docker compose -f docker-compose.staging.yml logs --no-color --tail 200 || true
+    # Failure drill with the REAL deploy.sh / rollback.sh on this runner's Docker: a release of this commit is
+    # deployed, then a release that never becomes ready (503) is deployed on top of it; deploy.sh must reject it
+    # through its release gate and roll back on its own, and the previous release must be the one serving. It also
+    # checks how the replaced trading process stopped (SIGTERM drain, never SIGKILL). The drill is its own compose
+    # project on a network with no route off the runner. It is a disposable CI check of the scripts and the images,
+    # NOT evidence of sustained staging or production operation (EXT-STG-01 still needs an authorized host).
+    - name: Failure drill -- unready release rolled back automatically by deploy.sh
+      working-directory: deploy/staging
+      timeout-minutes: 15
+      env:
+        COMPOSE_PROJECT_NAME: cfdrill
+        DEPLOY_COMPOSE_OVERRIDE: ${{ github.workspace }}/deploy/staging/drill/no-egress.override.yml
+        DEPLOY_API_SERVICES: bot-api
+        DEPLOY_POLL_INTERVAL_S: "3"
+      run: |
+        set -euo pipefail
+        C="docker compose -f docker-compose.staging.yml -f $DEPLOY_COMPOSE_OVERRIDE"
+        IMAGE_TAG=ci-good $C config --services > services-default.txt
+        if grep -qx bot-trading-assigned services-default.txt; then echo "optional worker enabled by default"; exit 1; fi
+        COMPOSE_PROFILES=multi-worker IMAGE_TAG=ci-good $C config --services | grep -qx bot-trading-assigned
+        docker tag cosmicforge/bot-backend:$IMAGE_TAG cosmicforge/bot-backend:ci-good
+        docker build -f drill/unready-release.Dockerfile --build-arg BASE_IMAGE=cosmicforge/bot-backend:$IMAGE_TAG \
+          -t cosmicforge/bot-backend:ci-bad drill
+        DEPLOY_READY_TIMEOUT_S=300 bash deploy.sh ci-good
+        test "$(cat .deploy-state/current_tag)" = ci-good
+        rc=0
+        DEPLOY_READY_TIMEOUT_S=60 DEPLOY_ROLLBACK_READY_TIMEOUT_S=300 bash deploy.sh ci-bad || rc=$?
+        test "$rc" = 11
+        test "$(cat .deploy-state/current_tag)" = ci-good
+        cid="$(IMAGE_TAG=ci-good $C ps -q bot-trading)"
+        test "$(docker inspect -f '{{.Config.Image}}' "$cid")" = cosmicforge/bot-backend:ci-good
+        IMAGE_TAG=ci-good $C exec -T bot-trading curl -fsS 'http://127.0.0.1:8000/health?ready=1' > drill-health.json
+        python3 - <<'EOF'
+        import glob, json
+        result = json.load(open(".deploy-state/last_result.json"))
+        assert (result["operation"], result["status"], result["serving_tag"]) == ("deploy", "ROLLED_BACK", "ci-good"), result
+        assert '"reason": "HTTP_503"' in result["detail"], result["detail"]
+        statuses = [json.loads(line)["status"] for line in open(".deploy-state/history.jsonl")]
+        assert statuses == ["DEPLOYED", "ROLLED_BACK", "ROLLED_BACK"], statuses
+        assert json.load(open("drill-health.json"))["process_role"] == "trading"
+        drains = [json.loads(line) for p in sorted(glob.glob(".deploy-state/drain-*.jsonl")) for line in open(p)]
+        print(json.dumps(drains, indent=1))
+        replaced = [d for d in drains if d["outgoing_tag"] == "ci-good"]
+        assert len(replaced) == 1 and replaced[0]["outcome"] in ("DRAINED", "EXITED_ON_SIGTERM"), drains
+        assert replaced[0]["quiesce"] != "not_logged", "the replaced trading process never ran its shutdown path"
+        if replaced[0]["quiesce"] != "clean":
+            print("WARNING: the replaced trading process reported an unclean quiesce; see .deploy-state/logs")
+        print("drill passed: unready release rejected, previous release serving, trading drained on SIGTERM")
+        EOF
+    - name: Failure drill state and logs on failure
+      if: failure()
+      working-directory: deploy/staging
+      env:
+        COMPOSE_PROJECT_NAME: cfdrill
+      run: |
+        for f in .deploy-state/*.log .deploy-state/*.json .deploy-state/*.jsonl .deploy-state/logs/*; do
+          [ -f "$f" ] && { echo "== $f"; tail -n 60 "$f"; }
+        done || true
+        IMAGE_TAG=ci-good docker compose -f docker-compose.staging.yml -f drill/no-egress.override.yml logs --no-color --tail 200 || true

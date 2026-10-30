@@ -23,8 +23,12 @@ ALL, API, TRADING = "all", "api", "trading"
 ROLES = (ALL, API, TRADING)
 
 #: State-changing routes that act through the trading process (its PreemptionGate, cycle lock, runner).
+#: ``/api/v1/admin/emergency`` is where the emergency router (kill switch, flatten) is actually mounted; the
+#: user-backend operator proxy calls it there. ``/binance``, ``/risk`` and ``/debug`` are the legacy admin routes
+#: that mutate the broker or the in-process runner state directly (leverage, cancel-all, daily kill, crash-next).
 TRADING_PROCESS_ROUTES: Tuple[str, ...] = (
-    "/api/v1/emergency", "/runner", "/trade", "/debug/run", "/api/v1/admin/trading",
+    "/api/v1/emergency", "/api/v1/admin/emergency", "/runner", "/trade", "/debug", "/binance", "/risk",
+    "/api/v1/admin/trading",
 )
 _MUTATING = ("POST", "PUT", "PATCH", "DELETE")
 

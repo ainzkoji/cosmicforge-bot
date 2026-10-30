@@ -10,6 +10,14 @@
 #   admin-backend     admin read models
 #   user-frontend / admin-frontend   static portals
 #   healthcheck       readiness probe of the trading process every 2 minutes (scripts/vps_health_check.py)
+#   bot-trading-assigned  OPTIONAL second trading worker, profile "multi-worker", OFF by default (see its entry)
+#
+# Volumes: pg-data (platform database), runtime-state (runtime SQLite database and its online backups), and
+# golive-anchor: the go-live revocation anchor (GOLIVE_REVOCATION_ANCHOR), deliberately NOT in either database
+# volume and never touched by restore.sh, so a restored database cannot resurrect a revoked authorization. On the
+# staging host point GOLIVE_ANCHOR_SOURCE at a directory on separate storage (a bind mount owned by uid 10001);
+# the named volume is the single-disk default. Container logs rotate (json-file, 5 x 50 MB); deploy.sh archives
+# the outgoing containers' logs into .deploy-state/logs before it replaces them.
 #
 # Secrets are never in this file or in an image: they come from STAGING_ENV_FILE (default ./staging.env,
 # created from staging.env.example and kept outside version control). Staging trades nothing: the env file
@@ -25,6 +33,9 @@ x-backend: &backend
   tmpfs: [/tmp]
   security_opt: ["no-new-privileges:true"]
   cap_drop: [ALL]
+  logging:
+    driver: json-file
+    options: {max-size: "50m", max-file: "5"}
   depends_on:
     migrate: {condition: service_completed_successfully}
   volumes:
@@ -43,6 +54,8 @@ services:
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U cosmicforge -d cosmicforge"]
       interval: 5s
+      timeout: 5s
+      start_period: 30s
       retries: 20
 
   migrate:
@@ -61,12 +74,21 @@ services:
     environment:
       PROCESS_ROLE: trading
       DATABASE_URL: sqlite:////var/lib/cosmicforge/cosmicforge.db
+      GOLIVE_REVOCATION_ANCHOR: /var/lib/cosmicforge-anchor/golive-revocations.jsonl
+    volumes:
+      - runtime-state:/var/lib/cosmicforge
+      - ${GOLIVE_ANCHOR_SOURCE:-golive-anchor}:/var/lib/cosmicforge-anchor
     stop_signal: SIGTERM
-    stop_grace_period: 120s       # long enough for the runtime to finish its cycle and quiesce
+    # Drain budget: HTTP graceful shutdown 20 s (image CMD) + cycle 15 s + production broker cycle 30 s, then the
+    # lease release (worst case ~65 s). 120 s leaves room; deploy.sh refuses a grace below 75 s and records how each
+    # stop ended (.deploy-state/drain-*.jsonl).
+    stop_grace_period: 120s
     deploy: {replicas: 1}
     healthcheck:
       test: ["CMD-SHELL", "curl -fsS 'http://127.0.0.1:8000/health?ready=1' || exit 1"]
       interval: 15s
+      timeout: 10s
+      retries: 4
       start_period: 120s
 
   bot-api:
@@ -75,7 +97,43 @@ services:
     environment:
       PROCESS_ROLE: api
       DATABASE_URL: sqlite:////var/lib/cosmicforge/cosmicforge.db
+      GOLIVE_REVOCATION_ANCHOR: /var/lib/cosmicforge-anchor/golive-revocations.jsonl
+    volumes:
+      - runtime-state:/var/lib/cosmicforge
+      - ${GOLIVE_ANCHOR_SOURCE:-golive-anchor}:/var/lib/cosmicforge-anchor
     deploy: {replicas: 2}
+
+  # OPTIONAL -- OFF BY DEFAULT (profile "multi-worker": COMPOSE_PROFILES=multi-worker enables it, and deploy.sh then
+  # drains and replaces it after bot-trading, through the same release gate). A second trading-role process that
+  # works only the accounts it holds through durable worker assignments in the platform PostgreSQL
+  # (BROKER_CYCLE_ASSIGNMENT_MODE=assigned, app/platform_workers/broker_assignment.py). Do NOT enable it before:
+  #   1. the owner's rollout decision on the assignment mode is recorded; then every trading process runs
+  #      BROKER_CYCLE_ASSIGNMENT_MODE=assigned (set it in staging.env, which bot-trading reads);
+  #   2. the runtime-owner lease can judge a holder in ANOTHER container: today it decides liveness by PID, and
+  #      containers have separate PID namespaces, so this process could take over bot-trading's live lease
+  #      (staging runbook, "Multi-worker topology");
+  #   3. a production-profile readiness contract exists for a trading process that does not hold that lease.
+  bot-trading-assigned:
+    <<: *backend
+    profiles: ["multi-worker"]
+    image: cosmicforge/bot-backend:${IMAGE_TAG:?set IMAGE_TAG}
+    environment:
+      PROCESS_ROLE: trading
+      BROKER_CYCLE_ASSIGNMENT_MODE: assigned
+      DATABASE_URL: sqlite:////var/lib/cosmicforge/cosmicforge.db
+      GOLIVE_REVOCATION_ANCHOR: /var/lib/cosmicforge-anchor/golive-revocations.jsonl
+    volumes:
+      - runtime-state:/var/lib/cosmicforge
+      - ${GOLIVE_ANCHOR_SOURCE:-golive-anchor}:/var/lib/cosmicforge-anchor
+    stop_signal: SIGTERM
+    stop_grace_period: 120s
+    deploy: {replicas: 1}
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS 'http://127.0.0.1:8000/health?ready=1' || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 4
+      start_period: 120s
 
   user-backend:
     <<: *backend
@@ -118,3 +176,4 @@ secrets:
 volumes:
   pg-data: {}
   runtime-state: {}
+  golive-anchor: {}

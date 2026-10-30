@@ -26,8 +26,11 @@ COPY scripts scripts
 # The family registry verifies the frozen mandate against these files at run time; they ship byte-identical.
 COPY research research
 COPY docs/research docs/research
+# /var/lib/cosmicforge-anchor is the mount point of the go-live revocation anchor (its own volume); created here so a
+# fresh named volume inherits the service user's ownership.
 RUN useradd --system --uid 10001 --home /var/lib/cosmicforge cosmicforge \
- && mkdir -p /var/lib/cosmicforge && chown cosmicforge /var/lib/cosmicforge \
+ && mkdir -p /var/lib/cosmicforge /var/lib/cosmicforge-anchor \
+ && chown cosmicforge /var/lib/cosmicforge /var/lib/cosmicforge-anchor \
  && find backends -name ".env" -delete && find backends -name "*.db*" -delete \
  && find backends -name "*firebase-adminsdk*.json" -delete
 USER cosmicforge
@@ -36,4 +39,8 @@ ENV PYTHONPATH=/srv/cosmicforge/backends/shared:/srv/cosmicforge/backends/${SERV
 EXPOSE 8000
 # The health check is the liveness probe; readiness (/health?ready=1) is asked by the deploy script.
 HEALTHCHECK --interval=15s --timeout=5s --start-period=60s --retries=4 CMD curl -fsS http://127.0.0.1:8000/health || exit 1
-CMD ["python", "-u", "-X", "utf8", "-m", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1"]
+# --timeout-graceful-shutdown bounds how long open connections may hold SIGTERM before the application shutdown runs
+# (the bot's SSE event stream never ends by itself). Without it the runtime's quiesce -- stop entries, drain the
+# cycle, release the lease -- waited behind an open browser tab until the container's grace expired and SIGKILL
+# came. Same value as deploy/systemd/cosmicforge-trading.service.
+CMD ["python", "-u", "-X", "utf8", "-m", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1", "--timeout-graceful-shutdown", "20"]

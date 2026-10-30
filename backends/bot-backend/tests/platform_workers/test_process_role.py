@@ -21,6 +21,24 @@ def test_api_role_runs_no_trading_and_refuses_runtime_mutations(monkeypatch):
     assert not process_role.refused_in_api_role("POST", "/api/v1/emergencyx")   # prefix match is per segment
 
 
+def test_api_role_refuses_the_mounted_emergency_router_and_legacy_broker_mutations(monkeypatch):
+    """The emergency router is mounted at /api/v1/admin/emergency (the user-backend proxy's upstream). An API
+    replica must refuse it, and the legacy routes that mutate the broker or the in-process runner, while reads
+    stay served."""
+    from app.api.emergency import router as emergency_router
+
+    monkeypatch.setenv("PROCESS_ROLE", "api")
+    assert emergency_router.prefix == "/api/v1/admin/emergency"
+    for path in ("/api/v1/admin/emergency/flatten", "/api/v1/admin/emergency/kill-switch",
+                 "/binance/cancel-all", "/binance/leverage", "/risk/kill", "/risk/unkill",
+                 "/debug/crash-next-cycle", "/debug/run/cycle"):
+        assert process_role.refused_in_api_role("POST", path), path
+    assert not process_role.refused_in_api_role("GET", "/api/v1/admin/emergency/status")
+    assert not process_role.refused_in_api_role("GET", "/risk/status")
+    monkeypatch.setenv("PROCESS_ROLE", "trading")
+    assert not process_role.refused_in_api_role("POST", "/api/v1/admin/emergency/flatten")
+
+
 def test_trading_role_runs_trading(monkeypatch):
     monkeypatch.setenv("PROCESS_ROLE", "trading")
     assert process_role.runs_trading()
@@ -40,5 +58,7 @@ def test_api_process_answers_409_for_emergency_routes_and_reports_its_role(monke
     client = TestClient(app)  # no context manager: startup hooks do not run
     refused = client.post("/api/v1/emergency/flatten", json={})
     assert refused.status_code == 409 and refused.json()["detail"] == "ROUTE_SERVED_BY_TRADING_PROCESS"
+    mounted = client.post("/api/v1/admin/emergency/flatten", json={})      # the route that actually exists
+    assert mounted.status_code == 409 and mounted.json()["detail"] == "ROUTE_SERVED_BY_TRADING_PROCESS"
     health = client.get("/health", params={"ready": 1})
     assert health.status_code == 200 and health.json()["process_role"] == "api"

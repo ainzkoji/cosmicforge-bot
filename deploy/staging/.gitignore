@@ -1,0 +1,9 @@
+# Operator-held staging material: secrets, database dumps and deploy state never enter version control.
+staging.env
+secrets/
+backups/
+.deploy-state/
+# scratch output of the CI container job
+second.json
+health.json
+services*.txt
