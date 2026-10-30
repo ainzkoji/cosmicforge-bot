@@ -20,8 +20,9 @@ General rules for every incident:
 
 ## EXCHANGE_EXECUTION_UNCERTAINTY (CRITICAL, trading-operations)
 
-* **Detection**: an order's outcome is unknown -- a timeout or lost acknowledgement after the request was sent
-  (`OrderIntents` left `SUBMITTING`, CATI intent `UNKNOWN`).
+* **Detection**: `evaluate_execution_uncertainty`, one alert per account -- reservations RESOLUTION_PENDING,
+  attempts SUBMIT_UNKNOWN, CATI intents UNKNOWN / SUBMITTING too long, reservation ledger UNKNOWN, legacy pending
+  entries SUBMIT_UNKNOWN, platform `OrderIntents` left `SUBMITTING`.
 * **Containment**: do NOT resubmit by hand. Engage the account kill switch if more than one intent is affected.
 * **Recovery**: let recovery read the venue by client order id (`OrderIntents._recover`); confirm on the venue
   UI. Only after the venue says the order does not exist and the settle window has passed is a resubmission
@@ -30,7 +31,8 @@ General rules for every incident:
 
 ## UNPROTECTED_POSITION (CRITICAL, trading-operations)
 
-* **Detection**: a position without a confirmed protective order.
+* **Detection**: `evaluate_protection` -- protection UNKNOWN in `cati_production_protection_uncertainty`, or
+  `cati_protection_state` UNCERTAIN / UNDER_PROTECTED / ABSENT (PENDING > 2 min), per account.
 * **Containment**: place the protection (or flatten via emergency controls) within minutes; engage the account
   kill switch.
 * **Recovery**: find why protection failed (instrument rules, rejected stop, venue error); fix; resume.
@@ -38,7 +40,8 @@ General rules for every incident:
 
 ## RECONCILIATION_MISMATCH (HIGH, trading-operations)
 
-* **Detection**: venue balances/positions/orders disagree with the ledger.
+* **Detection**: `evaluate_reconciliation` -- the latest user-stream reconciliation failed or found differences,
+  a transfer reconciliation left transfers unresolved, position corrections / quantity mismatches in the last hour.
 * **Containment**: kill switch for the affected account; no new entries.
 * **Recovery**: re-run reconciliation; the venue is the source of truth for exposure; record any correction as
   an explicit ledger entry, never by editing history.
@@ -47,8 +50,12 @@ General rules for every incident:
 
 ## KILL_SWITCH_ACTIVATED (HIGH, trading-operations)
 
-* **Detection**: global / family / account kill switch engaged.
-* **Containment**: confirm it was intended (emergency request log names the operator).
+* **Detection**: `evaluate_kill_switches` -- global / account (`cati_governance_controls`) or family
+  (`cati_family_events`) kill switch engaged, one alert per activation, resolved on release;
+  `evaluate_emergency_flattens` -- every emergency flatten request (`cati_emergency_requests`), raised once;
+  a stalled or incomplete flatten is CRITICAL (positions may still be open).
+* **Containment**: confirm it was intended (emergency request log names the operator). An incomplete flatten:
+  check every affected account's positions at the venue now.
 * **Recovery**: release only after the cause is fixed and recorded; release is a separate audited action.
 * **Escalation**: an unexplained activation -> security rotation as well.
 
@@ -95,28 +102,33 @@ General rules for every incident:
 
 ## STALE_INSTRUMENT_RULES (HIGH, market-data)
 
-* **Detection**: instrument rules not refreshed within their bound.
+* **Detection**: `evaluate_instrument_rules` -- no successful rules refresh within the rules cache max age (24 h),
+  or 3+ refresh failures in a row (MEDIUM); a stale instrument catalog of a connected venue (MEDIUM).
 * **Containment**: entries on affected symbols must be refused (the engine fails closed on stale rules).
 * **Recovery**: run the rules refresh; check venue API availability and rate limits.
 * **Escalation**: > 1 h -> escalation owner.
 
 ## STALE_MARKET_DATA (HIGH, market-data)
 
-* **Detection**: market data older than its freshness bound.
+* **Detection**: `evaluate_market_data` -- the hourly collector silent > 360 s; the daily-bar feed's last update
+  failed / stuck, or no successful update for 36 h.
 * **Containment**: no new decisions on stale data (fail closed); status page "Market data DEGRADED" if broad.
 * **Recovery**: feed service journal; venue status; backfill only through the governed feed.
 * **Escalation**: > 30 min -> escalation owner.
 
 ## AUTHENTICATION_ANOMALY (HIGH, security)
 
-* **Detection**: failure bursts, lockouts, token misuse.
+* **Detection**: `evaluate_authentication` (15 min window, counts only) -- refresh-token reuse (admin: CRITICAL),
+  admin MFA failures, admin lockout threshold reached, several user lockouts, failed-login bursts.
 * **Containment**: block the source at nginx if it is an attack; force sign-out of affected sessions.
 * **Recovery**: review `auth_audit_log`; notify affected users through the normal channel.
 * **Escalation**: suspected account takeover or admin-account involvement -> escalation owner immediately.
 
 ## BILLING_WEBHOOK_FAILURE (HIGH, billing)
 
-* **Detection**: provider webhooks failing signature checks or processing.
+* **Detection**: `evaluate_billing` -- provider events that could not be matched, events stored but never
+  processed, open refund/dispute reviews (MEDIUM), a burst of failed payments (MEDIUM). Signature rejections are
+  only logged by the API today (not an alert).
 * **Containment**: entitlements fail closed; do not grant plans by hand without an audit record.
 * **Recovery**: check the webhook secret configuration (never paste it anywhere); replay events from the
   provider dashboard after the fix.
@@ -124,7 +136,9 @@ General rules for every incident:
 
 ## BACKUP_FAILURE (HIGH, platform-infrastructure)
 
-* **Detection**: `evaluate_backup_age` -- no verified backup, or newest > 36 h; failed backup units.
+* **Detection**: `evaluate_backup_age` -- no verified backup, or newest > 36 h; `evaluate_backup_status` -- the
+  last local or off-site run failed (`backup-status.json` / `offsite-status.json` in the backup directory), or no
+  verified off-site copy for 36 h; failed backup units (`OnFailure=`).
 * **Containment**: none needed immediately; the risk is data loss on the next failure.
 * **Recovery**: `systemctl status cosmicforge-db-backup cosmicforge-offsite-backup`; disk space; rerun; run
   `scripts/restore_drill.py` once fixed.
@@ -141,16 +155,46 @@ General rules for every incident:
 
 ## EXCESSIVE_LATENCY (MEDIUM, platform-infrastructure)
 
-* **Detection**: request or cycle latency above bound.
+* **Detection**: `evaluate_execution_latency` -- venue round trips (venue journal) or entry confirmations with
+  p95 > 5 s (3+ samples) or any call > 30 s in 15 min.
 * **Containment**: if trading cycles are late, entries are stale -- consider the kill switch.
 * **Recovery**: database pool stats (`Database.health()`), slow queries, host load.
 * **Escalation**: persistent > 1 h -> secondary.
 
 ## EXPIRED_EXCHANGE_CERTIFICATION (HIGH, research-governance)
 
-* **Detection**: an adapter certification has expired.
+* **Detection**: `evaluate_venue_certification` -- an adapter certification EXPIRED (90 days, version change),
+  expires within 14 days (MEDIUM), or its evidence no longer verifies.
 * **Containment**: the venue loses execution authority under governance; confirm no orders are sent.
 * **Recovery**: re-run the certification for the adapter; only governance can restore authority.
+* **Escalation**: research-governance owner.
+
+## EXCHANGE_CONNECTIVITY_LOSS (HIGH, trading-operations)
+
+* **Detection**: `evaluate_exchange_connectivity` -- account reads READ_FAILED for 2 min, a user stream that was
+  connected is down for 2 min, the venue banned this deployment or closed requests for more than 2 min.
+* **Containment**: an account that cannot be read cannot be protected or reconciled: account kill switch if it
+  holds positions; a venue ban affects every account on that venue -- stop non-essential request load.
+* **Recovery**: venue status page, credentials validity (admin console connection test), network/DNS; wait out a
+  ban (never retry earlier); confirm READ_FAILED clears and the next reconciliation is clean.
+* **Escalation**: 3+ accounts or a venue ban -> platform incident, status page "Exchange connectivity DEGRADED".
+
+## RISK_BRAKE_ACTIVATED (MEDIUM; stop / equity exhausted HIGH, trading-operations)
+
+* **Detection**: `evaluate_risk_brakes` -- `cati_brake_state` shows an active brake (daily-loss pause, drawdown
+  halving, drawdown stop, equity exhausted); one alert per activation, resolved when the brake clears.
+* **Containment**: none: the brake IS the containment. Do not clear it by hand.
+* **Recovery**: a latched stop clears only through an authorized restart record (user or operator), which the
+  database enforces; review the drawdown with the customer first.
+* **Escalation**: several accounts at once -> look for a strategy or market-data fault (escalation owner).
+
+## EXPIRED_FAMILY_CERTIFICATION (HIGH, research-governance)
+
+* **Detection**: `evaluate_family_certification` -- a family at governance stage M6 or above whose research
+  certification (re-read from the register) is no longer CERTIFIED. Today every family is at M0: silent.
+* **Containment**: the registry already withholds DEMO/LIVE modes from an uncertified family; confirm no orders.
+* **Recovery**: only research governance can restore it (new evidence, a new certification); never edit the
+  register by hand.
 * **Escalation**: research-governance owner.
 
 ## GOVERNANCE_VIOLATION_ATTEMPT (HIGH, security)

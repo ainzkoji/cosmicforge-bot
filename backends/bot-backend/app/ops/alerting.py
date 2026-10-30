@@ -12,7 +12,14 @@ the same alerts. This module adds what only the trading platform has:
   (webhook / Telegram / e-mail from ``/etc/cosmicforge/alerts.env``); ``JobQueueSink`` enqueues a NOTIFICATION job
   on the platform ``JobQueue`` (idempotent per delivery) so a worker delivers it with the queue's own retries and
   dead-lettering; ``notification_job_handler`` is that worker-side handler;
-* ``run_cycle`` -- evaluate, escalate, deliver -- for a periodic operations job.
+* ``run_cycle`` -- evaluate, escalate, deliver -- for a periodic operations job;
+* ``run_tick`` / ``main`` -- that job, owned by exactly one process at a time through ``TickLease`` (platform
+  database lease with fencing), either one tick per call (systemd timer: ``cosmicforge-ops-tick.timer``) or as a
+  long-running loop (``--loop --interval 60``, the container topology).
+
+The producers over the legacy runtime database (unknown order outcomes, unprotected positions, reconciliation,
+kill switches, emergency flattens, risk brakes, connectivity, market data, instrument rules, certifications,
+billing, authentication, latency) are in ``app.ops.alert_producers``.
 
 Every evaluator is pure with respect to time when ``now_ms`` is given, so tests inject the clock; otherwise
 time is the database server's.
@@ -24,15 +31,20 @@ import json
 import logging
 import os
 import shutil
+import signal
+import socket
+import threading
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Mapping, Optional, Sequence
 
 from shared_lib.operations.alerting import (  # noqa: F401  (re-exported API)
-    ACKNOWLEDGED, CATEGORIES, CRITICAL, ESCALATION_MINUTES, HIGH, LOW, MEDIUM, OPEN, RESOLVED, SEVERITIES,
-    AlertEngine, AlertError, AlertMessage, AlertSink, CallableSink, CategoryPolicy, RaiseResult, fingerprint)
+    ACKNOWLEDGED, CATEGORIES, CRITICAL, DEFAULT_DEDUP_WINDOW_MS, ESCALATION_MINUTES, HIGH, LOW, MEDIUM, OPEN, RESOLVED,
+    SEVERITIES, AlertEngine, AlertError, AlertMessage, AlertSink, CallableSink, CategoryPolicy, RaiseResult,
+    fingerprint, pseudonym)
 from shared_lib.operations.oncall import OPERATIONS_OWNER_REQUIRED, ROTATIONS, OncallDirectory  # noqa: F401
+from shared_lib.operations.tick_lease import TICK_ERROR, TICK_OK, TickLease
 from shared_lib.persistence.sql import Database
 
 from app.platform_workers.jobs import NOTIFICATION, Job, JobQueue, PermanentJobError
@@ -192,7 +204,8 @@ def evaluate_lease_takeovers(engine: AlertEngine, db: Database, *, grace_ms: int
     orphans = [r[0] for r in rows]
     ev = Evaluation("LEASE_TAKEOVER_FAILURE", "assignments:orphaned", bool(orphans),
                     f"{len(orphans)} active account(s) have no owning worker beyond the {grace_ms // 1000}s grace",
-                    {"orphaned_accounts": len(orphans), "account_ids": orphans[:50], "grace_ms": grace_ms})
+                    {"orphaned_accounts": len(orphans), "accounts": [pseudonym(a) for a in orphans[:50]],
+                     "grace_ms": grace_ms})
     return _apply(engine, ev, "lease_takeovers", now_ms)
 
 
@@ -306,52 +319,237 @@ def evaluate_backup_age(engine: AlertEngine, backup_dir: Path, *, max_age_hours:
     return _apply(engine, ev, "backup_age", now_ms)
 
 
+#: Written by ``scripts/backup_trading_db.py`` / ``scripts/offsite_backup.py`` after every run (outcome, exit code,
+#: time, the last OK run carried forward). A failed run therefore leaves a durable marker even when it wrote no
+#: backup and no manifest.
+BACKUP_STATUS_FILE, OFFSITE_STATUS_FILE = "backup-status.json", "offsite-status.json"
+
+
+def _status_marker(path: Path) -> Optional[Dict[str, Any]]:
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        return None
+    except (OSError, ValueError) as exc:
+        return {"outcome": "UNREADABLE", "message": f"{type(exc).__name__}"}
+    return data if isinstance(data, dict) else {"outcome": "UNREADABLE"}
+
+
+def _iso_to_ms(value: Any) -> Optional[int]:
+    from datetime import datetime, timezone
+    try:
+        dt = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except (TypeError, ValueError):
+        return None
+    return int((dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)).timestamp() * 1000)
+
+
+def evaluate_backup_status(engine: AlertEngine, backup_dir: Path, *, offsite_max_age_hours: float = 36.0,
+                           now_ms: Optional[int] = None) -> List[Evaluation]:
+    """Backup FAILURES (not only age): the last local backup run failed; the last off-site run failed; the off-site
+    copy has not succeeded for ``offsite_max_age_hours`` (only once an off-site run was ever recorded)."""
+    now = int(now_ms if now_ms is not None else time.time() * 1000)
+    local = _status_marker(Path(backup_dir) / BACKUP_STATUS_FILE)
+    offsite = _status_marker(Path(backup_dir) / OFFSITE_STATUS_FILE)
+    out: List[Evaluation] = []
+
+    def failed(marker: Optional[Dict[str, Any]]) -> bool:
+        return marker is not None and marker.get("outcome") != "OK"
+
+    def detail(marker: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+        m = marker or {}
+        return {k: m.get(k) for k in ("outcome", "exit_code", "finished_at", "message", "last_ok_at")}
+
+    out.append(_apply(engine, Evaluation("BACKUP_FAILURE", "backup:local_run", failed(local),
+                                         f"The last database backup run failed (exit {(local or {}).get('exit_code')})",
+                                         detail(local)), "backup_status", now_ms))
+    out.append(_apply(engine, Evaluation("BACKUP_FAILURE", "backup:offsite_run", failed(offsite),
+                                         f"The last off-site backup run failed (exit {(offsite or {}).get('exit_code')})",
+                                         detail(offsite)), "backup_status", now_ms))
+    last_ok = _iso_to_ms((offsite or {}).get("last_ok_at"))
+    stale = offsite is not None and (last_ok is None or (now - last_ok) / 3_600_000 > offsite_max_age_hours)
+    age_h = None if last_ok is None else round((now - last_ok) / 3_600_000, 2)
+    out.append(_apply(engine, Evaluation("BACKUP_FAILURE", "backup:offsite_age", stale,
+                                         "No verified off-site copy " + ("was ever made" if last_ok is None else
+                                                                         f"for {age_h} h"),
+                                         {"last_ok_at": (offsite or {}).get("last_ok_at"), "age_hours": age_h,
+                                          "bound_hours": offsite_max_age_hours}), "backup_status", now_ms))
+    return out
+
+
 def run_cycle(engine: AlertEngine, evaluators: Sequence[Callable[[], Any]] = (), *,
               now_ms: Optional[int] = None) -> Dict[str, Any]:
-    """One operations tick: run evaluators (each isolated), escalate overdue alerts, deliver what is due."""
-    errors = []
+    """One operations tick: run evaluators (each isolated), escalate overdue alerts, deliver what is due. A failing
+    evaluator, an unreachable channel or a hanging sink never stops the rest (sinks run with a timeout)."""
+    errors, evaluated = [], 0
     for ev in evaluators:
         try:
             ev()
+            evaluated += 1
         except Exception as exc:  # noqa: BLE001 -- one broken signal must not stop the others
-            errors.append(f"{getattr(ev, '__name__', 'evaluator')}: {type(exc).__name__}: {exc}"[:300])
+            from shared_lib.core.security.redaction import redact_text
+            errors.append(redact_text(f"{getattr(ev, '__name__', 'evaluator')}: {type(exc).__name__}: {exc}")[:300])
     escalated = engine.escalate_due(now_ms=now_ms)
     delivered = engine.deliver_pending(now_ms=now_ms)
-    return {"evaluator_errors": errors, "escalated": escalated, "delivery": delivered, "health": engine.health(now_ms=now_ms)}
+    return {"evaluators": evaluated, "evaluator_errors": errors, "escalated": escalated, "delivery": delivered,
+            "health": engine.health(now_ms=now_ms)}
 
 
 def default_evaluators(engine: AlertEngine, db: Database, *, backup_dir: Optional[Path] = None,
-                       disk_paths: Sequence[Path] = (), disk_state: Optional[Dict[str, DiskSample]] = None):
-    """The evaluators a periodic operations job runs against the platform database."""
+                       disk_paths: Sequence[Path] = (), disk_state: Optional[Dict[str, DiskSample]] = None,
+                       runtime_db: Any = None, runtime_db_path: Optional[str] = None,
+                       producer_state: Optional[Dict[str, Any]] = None):
+    """The evaluators a periodic operations job runs: the platform database ones, the backup and disk ones, and
+    -- when the legacy runtime database is given -- every producer of ``app.ops.alert_producers``."""
+    from app.ops import alert_producers as P
     queue = JobQueue(db)
     state = disk_state if disk_state is not None else {}
+
+    def named(fn: Callable[[], Any], name: str) -> Callable[[], Any]:
+        fn.__name__ = name
+        return fn
     evaluators: List[Callable[[], Any]] = [
-        lambda: evaluate_database(engine, db),
-        lambda: evaluate_queue_backlog(engine, queue),
-        lambda: evaluate_worker_heartbeats(engine, db),
-        lambda: evaluate_lease_takeovers(engine, db),
+        named(lambda: evaluate_database(engine, db), "evaluate_database"),
+        named(lambda: evaluate_queue_backlog(engine, queue), "evaluate_queue_backlog"),
+        named(lambda: evaluate_worker_heartbeats(engine, db), "evaluate_worker_heartbeats"),
+        named(lambda: evaluate_lease_takeovers(engine, db), "evaluate_lease_takeovers"),
     ]
+    if runtime_db_path is not None:
+        evaluators.append(named(lambda: evaluate_database(engine, P.RuntimeDatabaseProbe(runtime_db_path),
+                                                          name="runtime"), "evaluate_runtime_database"))
     if backup_dir is not None:
-        evaluators.append(lambda: evaluate_backup_age(engine, Path(backup_dir)))
+        evaluators.append(named(lambda: evaluate_backup_age(engine, Path(backup_dir)), "evaluate_backup_age"))
+        evaluators.append(named(lambda: evaluate_backup_status(engine, Path(backup_dir)), "evaluate_backup_status"))
     for p in disk_paths:
-        evaluators.append(lambda p=p: evaluate_disk_growth(engine, Path(p), state=state))
+        evaluators.append(named(lambda p=p: evaluate_disk_growth(engine, Path(p), state=state), "evaluate_disk_growth"))
+    if runtime_db is not None:
+        ctx = P.ProducerContext(engine, runtime_db=runtime_db, platform_db=db,
+                                state=producer_state if producer_state is not None else {})
+        evaluators.extend(P.runtime_producers(ctx))
     return evaluators
 
 
-def main(argv: Optional[Sequence[str]] = None) -> int:
-    """One operations tick: ``python -m app.ops.alerting [--backup-dir DIR] [--disk-path PATH ...]``.
+# ── the operations tick: one owner, persisted between ticks ─────────────────────────────────────────────────
+def _summary(out: Mapping[str, Any]) -> Dict[str, Any]:
+    health = out.get("health") or {}
+    return {"evaluators": out.get("evaluators"), "evaluator_errors": out.get("evaluator_errors"),
+            "escalated": len(out.get("escalated") or ()), "delivery": out.get("delivery"),
+            "health_status": health.get("status"), "owner_required": health.get("owner_required"),
+            "error": out.get("error")}
 
-    Reads ``PLATFORM_DATABASE_URL`` (then ``DATABASE_URL``); the platform migrations must already be applied.
-    Prints one JSON object (no secrets: details are redacted at storage). Exit 0 when the alerting system itself
-    is healthy, 2 when it reports a CRITICAL finding (e.g. OPERATIONS_OWNER_REQUIRED), 1 when it cannot run."""
+
+def run_tick(engine: AlertEngine, lease: TickLease,
+             build_evaluators: Callable[[Dict[str, Any], Dict[str, DiskSample]], Sequence[Callable[[], Any]]], *,
+             min_interval_ms: int = 0, release: bool = False, now_ms: Optional[int] = None) -> Dict[str, Any]:
+    """Take the tick lease, run one cycle, record its time/result/state under the fencing token. Never raises for
+    a failing evaluator, sink or recording: the result says what happened (``ran``, ``lease``, ``recorded``)."""
+    grant = lease.acquire(min_interval_ms=min_interval_ms)
+    if not grant.acquired:
+        return {"ran": False, "reason": grant.reason, "holder": grant.holder, "lease_expires_at": grant.expires_at}
+    state = dict(grant.state or {})
+    disk = {k: DiskSample(int(v[0]), int(v[1])) for k, v in (state.get("disk") or {}).items()
+            if isinstance(v, (list, tuple)) and len(v) == 2}
+    state.setdefault("pending", {})
+    try:
+        out: Dict[str, Any] = run_cycle(engine, build_evaluators(state, disk), now_ms=now_ms)
+        outcome = TICK_OK if not out["evaluator_errors"] else "DEGRADED"
+    except Exception as exc:  # noqa: BLE001 -- the loop must survive anything a tick meets
+        from shared_lib.core.security.redaction import redact_text
+        out = {"error": redact_text(f"{type(exc).__name__}: {exc}")[:300], "evaluator_errors": []}
+        outcome = TICK_ERROR
+    state["disk"] = {k: [s.at_ms, s.bytes_used] for k, s in disk.items()}
+    recorded = False
+    try:
+        recorded = lease.record(grant.token, started_at_ms=int(grant.now_ms or 0), outcome=outcome,
+                                result=_summary(out), state=state)
+        if release:
+            lease.release(grant.token)
+    except Exception as exc:  # noqa: BLE001
+        logger.error("operations tick result not recorded: %s", type(exc).__name__)
+    out.update({"ran": True, "outcome": outcome,
+                "lease": {"owner": lease.owner, "token": grant.token, "grant": grant.reason,
+                          "takeover": grant.takeover, "recorded": recorded}})
+    if not recorded:
+        out["lease"]["fenced"] = True   # another owner took over while this tick ran; its result was not kept
+    return out
+
+
+def escalation_policy_from_env(environ: Optional[Mapping[str, str]] = None) -> Dict[str, Any]:
+    """Engine policy overrides for the operations owner: ``OPS_ESCALATION_MINUTES`` (JSON, e.g.
+    ``{"CRITICAL": [5, 15], "HIGH": [15, 60]}``, merged over the defaults) and ``OPS_DEDUP_WINDOW_MINUTES``.
+    The defaults are engineering defaults pending the operations owner's decision, not a commitment."""
+    env = os.environ if environ is None else environ
+    out: Dict[str, Any] = {}
+    raw = (env.get("OPS_ESCALATION_MINUTES") or "").strip()
+    if raw:
+        given = json.loads(raw)
+        merged = dict(ESCALATION_MINUTES)
+        merged.update({str(k).upper(): tuple(int(x) for x in v) for k, v in given.items()})
+        out["escalation_minutes"] = merged
+    window = (env.get("OPS_DEDUP_WINDOW_MINUTES") or "").strip()
+    if window:
+        out["dedup_window_ms"] = int(float(window) * 60_000)
+    return out
+
+
+def runtime_database_path(environ: Optional[Mapping[str, str]] = None) -> Optional[str]:
+    """The legacy runtime database file named by ``DATABASE_URL`` (``sqlite:///...``; a relative path is resolved
+    against ``backends/bot-backend``, as ``shared_lib.persistence.db.DB`` does). None when it names no SQLite file."""
+    env = os.environ if environ is None else environ
+    url = env.get("DATABASE_URL") or ""
+    if not url.startswith("sqlite:///"):
+        return None
+    path = url[len("sqlite:///"):]
+    if not os.path.isabs(path):
+        path = os.path.abspath(os.path.join(Path(__file__).resolve().parents[2], path))
+    return path
+
+
+def open_runtime_db(path: Optional[str]) -> Any:
+    """The legacy ``DB`` for an EXISTING file (never creates one); None otherwise."""
+    if not path or not Path(path).is_file():
+        return None
+    from shared_lib.persistence.db import DB
+    return DB(path)
+
+
+def main(argv: Optional[Sequence[str]] = None) -> int:
+    """The operations tick: ``python -m app.ops.alerting [--loop --interval 60] [--backup-dir DIR] [--disk-path P]``.
+
+    Reads ``PLATFORM_DATABASE_URL`` (then ``DATABASE_URL``) for the platform database -- the migrations must already
+    be applied -- and the legacy runtime database from ``--runtime-db`` (default: the SQLite file of
+    ``DATABASE_URL``). One process at a time owns the tick (``TickLease``); others wait (``--loop``) or exit 0
+    (one-shot: ``LEASE_HELD`` / ``TICK_NOT_DUE``). Prints JSON (no secrets: details are redacted at storage).
+    One-shot exit status: 0 the tick ran (or was not this process's turn) and the alerting system is healthy;
+    2 it ran and the alerting system reports a CRITICAL finding (e.g. OPERATIONS_OWNER_REQUIRED); 1 it cannot run.
+    ``--loop`` returns 0 after SIGTERM/SIGINT (the lease is released for an immediate successor)."""
     import argparse
     ap = argparse.ArgumentParser(prog="python -m app.ops.alerting")
     ap.add_argument("--backup-dir")
     ap.add_argument("--disk-path", action="append", default=[])
     ap.add_argument("--alerts-env", default=DEFAULT_ALERTS_ENV)
+    ap.add_argument("--runtime-db", help="legacy runtime SQLite file (default: DATABASE_URL)")
+    ap.add_argument("--no-runtime-db", action="store_true", help="platform-database evaluators only")
+    ap.add_argument("--dotenv", help="load this .env first (variables already set win)")
+    ap.add_argument("--loop", action="store_true", help="run ticks until SIGTERM (container topology)")
+    ap.add_argument("--interval", type=float, default=60.0, help="seconds between ticks (default 60)")
+    ap.add_argument("--owner", help="lease owner name (default host:pid)")
+    ap.add_argument("--lease-ttl", type=float, help="seconds a silent owner keeps the lease (default 3 x interval, "
+                                                     "at least 180)")
+    ap.add_argument("--max-ticks", type=int, help=argparse.SUPPRESS)       # tests: stop the loop after N ticks
     a = ap.parse_args(argv)
+    if a.interval < 5:
+        print(json.dumps({"ok": False, "error": "--interval must be at least 5 seconds"}))
+        return 1
+    if a.dotenv:
+        try:
+            import dotenv
+            dotenv.load_dotenv(a.dotenv, override=False)
+        except Exception as exc:  # noqa: BLE001
+            print(json.dumps({"ok": False, "error": f"dotenv: {type(exc).__name__}"}))
+            return 1
     try:
-        db = Database.from_env(pool_size=4)
+        db = Database.from_env(pool_size=6)       # sinks that time out may still hold a connection for a while
     except Exception as exc:  # noqa: BLE001
         print(json.dumps({"ok": False, "error": f"{type(exc).__name__}: {exc}"[:300]}))
         return 1
@@ -360,13 +558,77 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         direct = NotifyChannelsSink(env_file=a.alerts_env)
         if direct.configured():
             sinks.append(direct)
-        engine = AlertEngine(db, sinks=sinks)
-        out = run_cycle(engine, default_evaluators(engine, db, backup_dir=Path(a.backup_dir) if a.backup_dir else None,
-                                                   disk_paths=[Path(p) for p in a.disk_path]))
+        engine = AlertEngine(db, sinks=sinks, **escalation_policy_from_env())
+        runtime_path = None if a.no_runtime_db else (a.runtime_db or runtime_database_path())
+        runtime_db = open_runtime_db(runtime_path)
+        owner = a.owner or f"{socket.gethostname()}:{os.getpid()}"
+        ttl_ms = int(1000 * (a.lease_ttl if a.lease_ttl else max(180.0, 3 * a.interval)))
+        lease = TickLease(db, owner=owner, ttl_ms=ttl_ms)
+
+        def build(state: Dict[str, Any], disk: Dict[str, DiskSample]):
+            return default_evaluators(engine, db, backup_dir=Path(a.backup_dir) if a.backup_dir else None,
+                                      disk_paths=[Path(p) for p in a.disk_path], disk_state=disk,
+                                      runtime_db=runtime_db, runtime_db_path=runtime_path, producer_state=state)
+        if a.loop:
+            return run_loop(engine, lease, build, interval_s=a.interval, max_ticks=a.max_ticks)
+        try:
+            out = run_tick(engine, lease, build, min_interval_ms=int(a.interval * 500), release=True)
+        except Exception as exc:  # noqa: BLE001 -- e.g. the platform database is unreachable: exit 1, alert via OnFailure
+            print(json.dumps({"ok": False, "ran": False, "error": f"{type(exc).__name__}"}))
+            return 1
         print(json.dumps(out, default=str))
-        return 2 if out["health"]["status"] == "CRITICAL" else 0
+        if not out.get("ran"):
+            return 0
+        return 2 if (out.get("health") or {}).get("status") == "CRITICAL" else (1 if out.get("error") else 0)
     finally:
         db.close()
+
+
+def run_loop(engine: AlertEngine, lease: TickLease, build, *, interval_s: float = 60.0,
+             stop: Optional[threading.Event] = None, max_ticks: Optional[int] = None) -> int:
+    """Long-running ticker (container ``ops-tick`` service). The lease is kept between ticks and renewed by each;
+    a second ticker waits (``LEASE_HELD``) and takes over once the first is gone and its lease expired. Nothing a
+    tick meets ends the loop; SIGTERM/SIGINT end it after the current tick and release the lease."""
+    stop = stop or threading.Event()
+    previous: Dict[int, Any] = {}
+    if threading.current_thread() is threading.main_thread():
+        for sig in (signal.SIGTERM, signal.SIGINT):
+            try:
+                previous[sig] = signal.signal(sig, lambda *_: stop.set())
+            except (ValueError, OSError):  # pragma: no cover - platform without the signal
+                pass
+    try:
+        return _loop(engine, lease, build, interval_s=interval_s, stop=stop, max_ticks=max_ticks)
+    finally:
+        for sig, handler in previous.items():
+            signal.signal(sig, handler)
+
+
+def _loop(engine: AlertEngine, lease: TickLease, build, *, interval_s: float, stop: threading.Event,
+          max_ticks: Optional[int]) -> int:
+    ticks = 0
+    while not stop.is_set():
+        started = time.monotonic()
+        try:
+            out = run_tick(engine, lease, build)
+            line = _summary(out) if out.get("ran") else {"ran": False, "reason": out.get("reason"),
+                                                          "holder": out.get("holder")}
+            line["lease"] = out.get("lease")
+            print(json.dumps(line, default=str), flush=True)
+        except Exception as exc:  # noqa: BLE001 -- e.g. the platform database is down: try again next interval
+            logger.error("operations tick failed: %s", type(exc).__name__)
+            print(json.dumps({"ran": False, "error": type(exc).__name__}), flush=True)
+        ticks += 1
+        if max_ticks is not None and ticks >= max_ticks:
+            break
+        stop.wait(max(1.0, interval_s - (time.monotonic() - started)))
+    try:
+        status = lease.status()
+        if status.get("held") and status.get("owner") == lease.owner:
+            lease.release(int(status["fencing_token"]))
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("tick lease not released: %s", type(exc).__name__)
+    return 0
 
 
 if __name__ == "__main__":

@@ -31,7 +31,10 @@ Steps (each recorded in the evidence JSON):
     table equal to the backup snapshot and to the source at backup time, with the research-governance,
     account-configuration and trading-intent tables reported by name; credential columns still ciphertext after
     restore and decryptable only with the key restored from the secret manager (simulated by the drill key --
-    secrets are never restored from the database backup);
+    secrets are never restored from the database backup); account ownership and every FINANCIAL_RECORD table
+    (retention policy) equal by name; and, in a scratch platform database, a live consent revoked AFTER the backup
+    is not brought back by restoring it: the revocation is anchored outside the database, the restored ledger no
+    longer verifies and the go-live gate refuses LIVE (``AUTHORIZATION_LEDGER_INTACT``);
     PostgreSQL leg with ``--postgres-url``: platform schema on a throwaway database, platform rows written by the
     platform code, ``pg_dump -Fc`` -> scan -> encrypt -> remote -> ``pg_restore`` into a second throwaway
     database -> per-table counts and content hashes equal (``PG_BIN`` names the PostgreSQL bin directory);
@@ -89,6 +92,9 @@ GOVERNANCE_TABLE = re.compile(r"^cati_(family_|governance_|promotion_|holdout_|e
                               r"adapter_cert_)")
 ACCOUNT_CONFIG_TABLES = ("bot_instances", "broker_accounts", "broker_credentials", "broker_credentials_v2")
 INTENT_TABLES = ("cati_execution_intents", "platform_order_intents")
+#: Who owns which account (customer -> broker account -> bot; platform account -> tenant). The financial tables are
+#: every table the retention policy classifies FINANCIAL_RECORD (``ownership_and_financial_tables``).
+OWNERSHIP_TABLES = ("users", "broker_accounts", "bot_instances", "platform_accounts", "platform_account_assignments")
 PLATFORM_SNAPSHOT_TABLES = ("platform_workers", "platform_accounts", "platform_account_assignments",
                             "platform_assignment_history", "platform_jobs", "platform_job_attempts",
                             "platform_order_intents", "ops_alerts", "ops_alert_events", "ops_alert_deliveries",
@@ -560,6 +566,110 @@ def postgres_leg(admin_url: str, workdir: Path, encryptor: Encryptor, remote_dir
     return out
 
 
+def ownership_and_financial_tables(tables: Sequence[str]) -> List[str]:
+    """Account ownership tables plus every FINANCIAL_RECORD table of the retention policy, among ``tables``."""
+    from app.trading_intelligence.pipeline.retention import FINANCIAL_RECORD, POLICY
+    present = set(tables)
+    return sorted({t for t in OWNERSHIP_TABLES if t in present}
+                  | {t for t in present if POLICY.get(t) == FINANCIAL_RECORD})
+
+
+# ── go-live revocations survive a restore ───────────────────────────────────────────────────────────────
+def revocation_leg(workdir: Path) -> Dict[str, Any]:
+    """A restore brings back account ownership but never a live permission revoked after the backup.
+
+    Scratch platform database (SQLite) with the real migrations: an account and its tenant, a live consent recorded
+    through ``GoLiveAuthority``; the nightly backup (online backup API); the customer then REVOKES the consent --
+    anchored outside the database (``GOLIVE_REVOCATION_ANCHOR``, here a file beside the scratch database, in
+    production on another volume); the database is lost and restored from the backup. Expected: the account and
+    its owner are back; the restored ledger alone still says "consent active", but the ledger no longer verifies
+    against the anchor (``LEDGER_BEHIND_REVOCATION_ANCHOR``) and the go-live gate refuses LIVE for exactly that
+    reason (``AUTHORIZATION_LEDGER_INTACT``). Nothing here touches ``BUILD_PERMITS_LIVE`` or any real database."""
+    from shared_lib.persistence.sql import Database, migrate
+    from shared_lib.persistence.sql.platform_schema import all_migrations
+    from app.golive import gate as G
+    from app.golive.authorization import GoLiveAuthority
+    from app.golive.ledger import GoLiveLedger, Operator, fold_consent
+    from app.platform_workers.assignments import WorkerAssignments
+
+    leg = Path(workdir) / "golive-revocation"
+    leg.mkdir(parents=True)
+    path, backup, anchor = leg / "platform.db", leg / "platform-backup.db", leg / "anchor" / "revocations.jsonl"
+    account, user, tenant = "drill-live-acct", "drill-live-user", "drill-live-tenant"
+    url = f"sqlite:///{path.as_posix()}"
+
+    def owner_rows(db) -> List[tuple]:
+        with db.transaction(write=False) as conn:
+            return conn.all("SELECT account_id, tenant_id, venue, environment FROM platform_accounts ORDER BY account_id")
+
+    db = Database(url)
+    try:
+        migrate(db, all_migrations())
+        WorkerAssignments(db).upsert_accounts([(account, tenant, "binance", "LIVE")])
+        ledger = GoLiveLedger(db, anchor_path=str(anchor))
+        auth = GoLiveAuthority(ledger)
+        auth.set_policy("LIVE_CONSENT_VERSION", "live-v1", Operator("drill-owner", "restore_drill"),
+                        reason="restore drill (scratch database)")
+        auth.give_consent(account_id=account, user_id=user, consent_version="live-v1", text_sha256="ab" * 32)
+        consent_at_backup = fold_consent(ledger.events(), account).active
+        ownership_at_backup = owner_rows(db)
+    finally:
+        db.close()
+    src, dst = sqlite3.connect(str(path)), sqlite3.connect(str(backup))
+    try:
+        src.backup(dst)                          # the nightly backup, taken while live consent was active
+    finally:
+        src.close()
+        dst.close()
+    db = Database(url)
+    try:
+        ledger = GoLiveLedger(db, anchor_path=str(anchor))
+        GoLiveAuthority(ledger).revoke_consent(account_id=account, user_id=user, reason="CUSTOMER_REVOKED")
+        consent_after_revocation = fold_consent(ledger.events(), account).active
+    finally:
+        db.close()
+    for suffix in ("", "-wal", "-shm"):          # the database is lost ...
+        Path(str(path) + suffix).unlink(missing_ok=True)
+    shutil.copy2(backup, path)                   # ... and restored from the backup
+    db = Database(url)
+    try:
+        ledger = GoLiveLedger(db, anchor_path=str(anchor))
+        restored_consent_in_db = fold_consent(ledger.events(), account).active
+        verified, reason = ledger.verify()
+        green = G.Sources(adapter_certified=lambda venue, env, now: (True, ""),
+                          family_entry=lambda fid: {"family_version": "1.0.0", "certification_status": "CERTIFIED",
+                                                    "allowed_modes": ["LIVE"], "governance_stage": "M7",
+                                                    "kill_switch_state": "OFF", "disabled": False},
+                          identity_permits=lambda u, action: (True, ""),
+                          account=lambda aid: {"id": aid, "user_id": user, "broker_id": "binance",
+                                               "status": "connected", "environment": "LIVE"},
+                          bot_for_account=lambda aid: {"id": "drill-bot", "user_id": user},
+                          live_submission_enabled=lambda: True, kill_switch=lambda scope: False,
+                          open_uncertainty=lambda aid: [])
+        decision = G.GoLiveGate(ledger, green).evaluate(G.Request(account_id=account, user_id=user, family_id="FAM",
+                                                                  family_version="1.0.0", venue="binance"))
+        blocking = {c.id: c.reason for c in decision.blocking}
+        ownership_restored = owner_rows(db)
+    finally:
+        db.close()
+    anchored = ([json.loads(line) for line in anchor.read_text(encoding="utf-8").splitlines() if line.strip()]
+                if anchor.exists() else [])
+    out = {"consent_active_at_backup": consent_at_backup, "consent_active_after_revocation": consent_after_revocation,
+           "restored_database_alone_says_consent_active": restored_consent_in_db,
+           "anchored_revocations": [a.get("event_type") for a in anchored],
+           "ledger_verified_after_restore": verified, "ledger_reason": reason,
+           "gate_authorized": decision.authorized,
+           "gate_ledger_condition": blocking.get("AUTHORIZATION_LEDGER_INTACT"),
+           "account_ownership_restored": ownership_restored == ownership_at_backup and bool(ownership_restored)}
+    out["status"] = "PASSED" if (consent_at_backup and not consent_after_revocation and restored_consent_in_db
+                                 and not verified and reason.startswith("LEDGER_BEHIND_REVOCATION_ANCHOR")
+                                 and not decision.authorized
+                                 and str(blocking.get("AUTHORIZATION_LEDGER_INTACT", "")).startswith(
+                                     "LEDGER_BEHIND_REVOCATION_ANCHOR")
+                                 and out["account_ownership_restored"]) else "FAILED"
+    return out
+
+
 # ── the drill ───────────────────────────────────────────────────────────────────────────────────────────
 class DrillRefused(Exception):
     pass
@@ -689,6 +799,14 @@ def run(workdir: Path, *, source: Optional[Path] = None, rows: int = 5, remote_d
                                                          for v in present.values())
     checks["governance_tables_have_rows"] = any(v.get("rows_source", 0) > 0
                                                 for v in result["verification"]["research_governance"].values())
+    owned = compare(source_snapshot, restored_snapshot, ownership_and_financial_tables(tables))
+    result["verification"]["ownership_and_financial_state"] = owned
+    present = {t: v for t, v in owned.items() if v.get("present_in_source", True)}
+    checks["account_ownership_and_financial_state_equal"] = (
+        bool(present) and any(v.get("rows_source", 0) > 0 for v in present.values())
+        and all(v["hash_equal"] and v["rows_source"] == v["rows_restored"] for v in present.values()))
+    result["golive_revocation"] = revocation_leg(workdir)
+    checks["revoked_live_permission_not_restored"] = result["golive_revocation"]["status"] == "PASSED"
     rescan = scan_database(restored)
     checks["restored_credentials_still_ciphertext"] = rescan["ok"]
     usable = credentials_usable_with_secret_manager_key(restored, broker_key)

@@ -25,16 +25,35 @@ Lifecycle of an alert::
   the platform JobQueue, ...). Each (alert, reason, level, sink) is one ``ops_alert_deliveries`` row with an
   idempotency key; a failing send is retried with backoff and, after ``max_attempts``, ABANDONED -- which itself
   raises ``ALERT_DELIVERY_FAILURE``.
-* **Event log**: every transition, dedup, delivery outcome and escalation is appended to ``ops_alert_events``
-  (append-only in the database). Actors are recorded for acknowledge/resolve.
+* **Event log**: every transition, delivery outcome and escalation is appended to ``ops_alert_events``
+  (append-only in the database). Actors are recorded for acknowledge/resolve. A repeat signal is counted in
+  ``occurrences`` every time; the log records the first repeat after each notification (``DEDUPLICATED``), so an
+  evaluator that re-confirms a condition every minute does not write a row per minute.
+* **Recovery**: when an evaluator sees its condition clear (``resolve_condition`` / ``resolve_absent``), the alert
+  is resolved and a ``RECOVERED`` notification goes to the same rotation and level -- if anybody was notified of
+  it in the first place. A human resolution through the admin API notifies nobody (the human knows).
+* **Events raised once** (``once=True``): an instantaneous event (a kill switch engaged, an emergency flatten) is
+  keyed by its durable record. Once an alert for that key was resolved -- by its evaluator or by a human -- the same
+  record never raises it again.
+* **Maintenance-window suppression** (``add_suppression``): inside an operator-declared window an alert of a
+  suppressed category is still raised, stored and logged (``SUPPRESSED``) but not delivered, and it does not
+  escalate. After the window the next signal of a still-open alert is delivered as a ``REMINDER``. Categories in
+  ``UNSUPPRESSIBLE`` (a position at risk, the alerting system's own failures) can never be silenced; a window is
+  at most ``MAX_SUPPRESSION_MS`` long.
 
-Alert details pass through secret redaction before they are stored; an alert never carries a credential.
+Alert details pass through secret redaction before they are stored and again before they are handed to a sink:
+an alert never carries a credential or an e-mail address, and a sink that hangs is abandoned after
+``send_timeout_s`` (the attempt counts as failed and is retried) so one dead provider cannot stall the tick.
+Customer-scoped identifiers belong in ``account_ref`` / ``tenant_ref`` (stored, shown in the admin console, never
+sent to a channel); titles and details use ``pseudonym()``.
 """
 from __future__ import annotations
 
 import hashlib
 import json
 import logging
+import re
+import threading
 import uuid
 from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, Iterable, List, Mapping, Optional, Protocol, Sequence, Tuple
@@ -77,7 +96,11 @@ CATEGORIES: Dict[str, CategoryPolicy] = dict([
     _p("RECONCILIATION_MISMATCH", HIGH, "trading-operations", TRADING_ENGINE,
        "Venue state and the ledger disagree."),
     _p("KILL_SWITCH_ACTIVATED", HIGH, "trading-operations", TRADING_ENGINE,
-       "A global, family or account kill switch was engaged."),
+       "A global, family or account kill switch was engaged, or an emergency flatten was requested."),
+    _p("EXCHANGE_CONNECTIVITY_LOSS", HIGH, "trading-operations", EXCHANGE_CONNECTIVITY,
+       "An account or venue lost its exchange connection (account reads failing, user stream down, venue ban)."),
+    _p("RISK_BRAKE_ACTIVATED", MEDIUM, "trading-operations", None,
+       "An account risk brake engaged (daily-loss pause, drawdown halve; drawdown stop / equity exhausted: HIGH)."),
     _p("WORKER_OUTAGE", CRITICAL, "platform-infrastructure", TRADING_ENGINE,
        "A platform worker stopped heartbeating."),
     _p("LEASE_TAKEOVER_FAILURE", CRITICAL, "platform-infrastructure", TRADING_ENGINE,
@@ -100,7 +123,9 @@ CATEGORIES: Dict[str, CategoryPolicy] = dict([
     _p("EXCESSIVE_LATENCY", MEDIUM, "platform-infrastructure", PORTAL,
        "Request or cycle latency exceeds its bound."),
     _p("EXPIRED_EXCHANGE_CERTIFICATION", HIGH, "research-governance", None,
-       "An exchange adapter certification has expired."),
+       "An exchange adapter certification has expired (or expires soon: MEDIUM)."),
+    _p("EXPIRED_FAMILY_CERTIFICATION", HIGH, "research-governance", None,
+       "A strategy family holding order authority no longer has a valid research certification."),
     _p("GOVERNANCE_VIOLATION_ATTEMPT", HIGH, "security", None,
        "An action was refused because it would bypass research or execution governance."),
     _p(OPERATIONS_OWNER_REQUIRED, CRITICAL, "operations-owner", None,
@@ -115,7 +140,23 @@ DEFAULT_DEDUP_WINDOW_MS = 10 * 60_000
 DEFAULT_DELIVERY_ATTEMPTS = 6
 DELIVERY_BACKOFF_MS = (30_000, 60_000, 300_000, 900_000, 1_800_000)
 DELIVERY_CLAIM_MS = 120_000
+#: A sink that has not returned after this long is treated as failed (and retried); the tick goes on.
+DEFAULT_SEND_TIMEOUT_S = 30.0
 _MAX_DETAIL_CHARS = 8_000
+RECOVERED = "RECOVERED"
+
+#: Never silenced by a maintenance window: a position at risk, or the alerting system's own failure.
+UNSUPPRESSIBLE = frozenset({"UNPROTECTED_POSITION", "EXCHANGE_EXECUTION_UNCERTAINTY", OPERATIONS_OWNER_REQUIRED,
+                            "ALERT_DELIVERY_FAILURE"})
+MAX_SUPPRESSION_MS = 24 * 3_600_000
+
+_EMAIL = re.compile(r"\b[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}\b")
+
+
+def pseudonym(value: Any, kind: str = "acct") -> str:
+    """A stable reference to a customer-scoped identifier for alert titles and details. It cannot be read back
+    into the identifier; the identifier itself is kept in ``account_ref`` and shown only in the admin console."""
+    return f"{kind}-{hashlib.sha256(f'cosmicforge-alert:{kind}:{value}'.encode()).hexdigest()[:12]}"
 
 
 class AlertError(ValueError):
@@ -142,7 +183,8 @@ class AlertMessage:
 
     def subject(self) -> str:
         owner = " [OPERATIONS OWNER REQUIRED]" if self.owner_required else ""
-        return f"[{self.severity}] {self.category}: {self.title}{owner}"[:300]
+        state = "[RECOVERED] " if self.reason == RECOVERED else ""
+        return f"{state}[{self.severity}] {self.category}: {self.title}{owner}"[:300]
 
     def text(self) -> str:
         who = ", ".join(t.get("person_name", "?") for t in self.targets) or OPERATIONS_OWNER_REQUIRED
@@ -192,21 +234,21 @@ def _scrub(value: Any) -> Any:
         return [_scrub(v) for v in value]
     if isinstance(value, str):
         kinds = find_secrets(value, include_env_lines=True)
-        return f"***REDACTED:{','.join(kinds)}***" if kinds else value
+        return f"***REDACTED:{','.join(kinds)}***" if kinds else _EMAIL.sub("***EMAIL***", value)
     return value
 
 
 def _clean_text(text: str) -> str:
     text = redact_text(text)
     kinds = find_secrets(text)
-    return f"***REDACTED:{','.join(kinds)}***" if kinds else text
+    return f"***REDACTED:{','.join(kinds)}***" if kinds else _EMAIL.sub("***EMAIL***", text)
 
 
 def _clean_detail(detail: Optional[Mapping[str, Any]]) -> Dict[str, Any]:
     cleaned = _scrub(redact_mapping(dict(detail or {})))
     text = json.dumps(cleaned, sort_keys=True, default=str)
     if len(text) > _MAX_DETAIL_CHARS:
-        return {"truncated": True, "excerpt": redact_text(text[:_MAX_DETAIL_CHARS])}
+        return {"truncated": True, "excerpt": _clean_text(text[:_MAX_DETAIL_CHARS])}
     return json.loads(text)
 
 
@@ -226,13 +268,18 @@ def _alert_row(row) -> Dict[str, Any]:
 class AlertEngine:
     def __init__(self, db: Database, *, sinks: Sequence[AlertSink] = (), oncall: Optional[OncallDirectory] = None,
                  dedup_window_ms: int = DEFAULT_DEDUP_WINDOW_MS, max_delivery_attempts: int = DEFAULT_DELIVERY_ATTEMPTS,
-                 escalation_minutes: Optional[Mapping[str, Tuple[int, ...]]] = None) -> None:
+                 escalation_minutes: Optional[Mapping[str, Tuple[int, ...]]] = None,
+                 send_timeout_s: Optional[float] = DEFAULT_SEND_TIMEOUT_S) -> None:
         self.db = db
         self.sinks = list(sinks)
         self.oncall = oncall or OncallDirectory(db)
         self.dedup_window_ms = int(dedup_window_ms)
         self.max_delivery_attempts = int(max_delivery_attempts)
         self.escalation_minutes = dict(escalation_minutes or ESCALATION_MINUTES)
+        for severity, steps in self.escalation_minutes.items():
+            if severity not in SEVERITIES or list(steps) != sorted(int(s) for s in steps) or any(int(s) <= 0 for s in steps):
+                raise AlertError("INVALID_ESCALATION_POLICY", f"{severity}: {steps}")
+        self.send_timeout_s = send_timeout_s
 
     # ── helpers ───────────────────────────────────────────────────────────────────────────────────────
     @staticmethod
@@ -258,8 +305,21 @@ class AlertEngine:
                 return Resolution(rotation_key, level, owner.targets, 2, False, "ESCALATED_TO_OPERATIONS_OWNER")
         return res
 
-    def _queue(self, conn: Connection, alert_id: str, reason: str, level: int, seq: int, res: Resolution,
-               now: int) -> List[str]:
+    @staticmethod
+    def _active_suppression(conn: Connection, category: str, now: int) -> Optional[str]:
+        if category in UNSUPPRESSIBLE:
+            return None
+        return conn.scalar("SELECT suppression_id FROM ops_alert_suppressions WHERE cancelled_at IS NULL "
+                           "AND starts_at <= ? AND ends_at > ? AND (category IS NULL OR category = ?) "
+                           "ORDER BY ends_at DESC, suppression_id LIMIT 1", (now, now, category))
+
+    def _queue(self, conn: Connection, alert_id: str, category: str, reason: str, level: int, seq: int,
+               res: Resolution, now: int) -> List[str]:
+        suppression = self._active_suppression(conn, category, now)
+        if suppression is not None:      # recorded, not delivered; last_notified_at stays as it was
+            self._event(conn, alert_id, "SUPPRESSED", "system", now, level=level,
+                        detail={"reason": reason, "suppression_id": suppression})
+            return []
         targets = [{**t.public(), "contact_address": t.contact_address} for t in res.targets]
         ids = []
         for sink in self.sinks:
@@ -284,7 +344,9 @@ class AlertEngine:
     def raise_alert(self, category: str, *, key: Any, title: str, source: str,
                     detail: Optional[Mapping[str, Any]] = None, severity: Optional[str] = None,
                     account_ref: Optional[str] = None, tenant_ref: Optional[str] = None,
-                    now_ms: Optional[int] = None) -> RaiseResult:
+                    now_ms: Optional[int] = None, once: bool = False) -> RaiseResult:
+        """Raise (or re-confirm) the alert for ``(category, key)``. ``once``: the key names one durable event;
+        after an alert for it was resolved, the same key never raises again."""
         policy = CATEGORIES.get(category)
         if policy is None:
             raise AlertError("UNKNOWN_ALERT_CATEGORY", category)
@@ -315,12 +377,21 @@ class AlertEngine:
                     lvl = alert["escalation_level"]
                     self._event(conn, alert["alert_id"], "REMINDED", "system", now, level=lvl,
                                 detail={"occurrences": occurrences})
-                    deliveries = self._queue(conn, alert["alert_id"], "REMINDER", lvl, occurrences,
+                    deliveries = self._queue(conn, alert["alert_id"], category, "REMINDER", lvl, occurrences,
                                              self._route(alert["rotation_key"], lvl), now)
                 else:
-                    self._event(conn, alert["alert_id"], "DEDUPLICATED", "system", now,
-                                detail={"occurrences": occurrences})
+                    # ``occurrences`` counts every repeat; the log keeps the first one after each notification.
+                    logged = conn.scalar("SELECT MAX(at) FROM ops_alert_events WHERE alert_id=? AND event='DEDUPLICATED'",
+                                         (alert["alert_id"],))
+                    if logged is None or int(logged) < int(last):
+                        self._event(conn, alert["alert_id"], "DEDUPLICATED", "system", now,
+                                    detail={"occurrences": occurrences})
                 return RaiseResult(alert["alert_id"], False, True, remind, alert["owner_required"], deliveries)
+            if once:
+                prior = conn.scalar("SELECT alert_id FROM ops_alerts WHERE fingerprint=? AND status='RESOLVED' "
+                                    "ORDER BY resolved_at DESC LIMIT 1", (fp,))
+                if prior is not None:        # this event was already raised and dealt with
+                    return RaiseResult(prior, False, True, False, False, [])
             alert_id = uuid.uuid4().hex
             scope = "ACCOUNT" if account_ref else "PLATFORM"
             conn.execute(
@@ -336,7 +407,7 @@ class AlertEngine:
             if res.owner_required:
                 self._event(conn, alert_id, OPERATIONS_OWNER_REQUIRED, "system", now, level=0,
                             detail={"rotation_key": policy.rotation_key})
-            deliveries = self._queue(conn, alert_id, "RAISED", 0, 1, res, now)
+            deliveries = self._queue(conn, alert_id, category, "RAISED", 0, 1, res, now)
         result = RaiseResult(alert_id, True, False, False, res.owner_required, deliveries)
         if res.owner_required and category != OPERATIONS_OWNER_REQUIRED:
             self.raise_alert(OPERATIONS_OWNER_REQUIRED, key={"rotation_key": policy.rotation_key},
@@ -363,14 +434,18 @@ class AlertEngine:
             self._event(conn, alert_id, "ACKNOWLEDGED", actor, now, detail={"note": _clean_text(note or "")[:1000]})
         return self.get(alert_id)
 
-    def resolve(self, alert_id: str, *, actor: str, note: str, now_ms: Optional[int] = None) -> Dict[str, Any]:
+    def resolve(self, alert_id: str, *, actor: str, note: str, now_ms: Optional[int] = None,
+                notify: bool = False) -> Dict[str, Any]:
+        """Resolve an alert. ``notify``: also send a RECOVERED notification to the rotation and level the alert
+        reached -- used when an evaluator sees its condition clear, and only if someone was notified of it."""
         if not (actor or "").strip():
             raise AlertError("ACTOR_REQUIRED")
         if not (note or "").strip():
             raise AlertError("RESOLUTION_NOTE_REQUIRED")
         with self.db.transaction() as conn:
             now = self._now(conn, now_ms)
-            row = conn.one("SELECT status FROM ops_alerts WHERE alert_id=?" + conn.lock_rows_suffix(), (alert_id,))
+            row = conn.one("SELECT status, category, rotation_key, escalation_level, last_notified_at FROM ops_alerts "
+                           "WHERE alert_id=?" + conn.lock_rows_suffix(), (alert_id,))
             if row is None:
                 raise AlertError("ALERT_NOT_FOUND")
             if row[0] == RESOLVED:
@@ -378,18 +453,110 @@ class AlertEngine:
             conn.execute("UPDATE ops_alerts SET status='RESOLVED', resolved_at=?, resolved_by=?, resolution_note=?, "
                          "next_escalation_at=NULL WHERE alert_id=?", (now, actor, _clean_text(note)[:2000], alert_id))
             self._event(conn, alert_id, "RESOLVED", actor, now, detail={"note": _clean_text(note)[:1000]})
+            if notify and row[4] is not None:
+                level = int(row[3])
+                self._queue(conn, alert_id, row[1], RECOVERED, level, 0, self._route(row[2], level), now)
         return self.get(alert_id)
 
     def resolve_condition(self, category: str, *, key: Any, actor: str = "system", note: str = "condition cleared",
                           now_ms: Optional[int] = None) -> bool:
-        """Resolve the open alert for a fingerprint when an evaluator sees the condition cleared."""
+        """Resolve the open alert for a fingerprint when an evaluator sees the condition cleared (with a
+        RECOVERED notification)."""
         fp = fingerprint(category, key)
         with self.db.transaction(write=False) as conn:
             alert_id = conn.scalar("SELECT alert_id FROM ops_alerts WHERE fingerprint=? AND status<>'RESOLVED'", (fp,))
         if alert_id is None:
             return False
-        self.resolve(alert_id, actor=actor, note=note, now_ms=now_ms)
+        try:
+            self.resolve(alert_id, actor=actor, note=note, now_ms=now_ms, notify=True)
+        except AlertError as exc:       # a human resolved it in between
+            if exc.code != "ALERT_ALREADY_RESOLVED":
+                raise
+            return False
         return True
+
+    def resolve_absent(self, categories: Iterable[str], *, source: str, keep: Iterable[str], actor: str,
+                       note: str = "condition cleared", now_ms: Optional[int] = None) -> List[str]:
+        """For an evaluator that watches a SET of things (accounts, venues, events): resolve every unresolved
+        alert it raised (same ``source``, one of ``categories``) whose fingerprint is not in ``keep`` -- the
+        condition is gone, or the thing itself is. Returns the alert ids resolved (each with a RECOVERED
+        notification)."""
+        cats = tuple(categories)
+        if not cats:
+            return []
+        keep = set(keep)
+        with self.db.transaction(write=False) as conn:
+            rows = conn.all("SELECT alert_id, fingerprint FROM ops_alerts WHERE status<>'RESOLVED' AND source=? "
+                            f"AND category IN ({','.join('?' * len(cats))}) ORDER BY first_seen_at", (source, *cats))
+        done: List[str] = []
+        for alert_id, fp in rows:
+            if fp in keep:
+                continue
+            try:
+                self.resolve(alert_id, actor=actor, note=note, now_ms=now_ms, notify=True)
+                done.append(alert_id)
+            except AlertError as exc:
+                if exc.code != "ALERT_ALREADY_RESOLVED":
+                    raise
+        return done
+
+    # ── maintenance windows ──────────────────────────────────────────────────────────────────────────
+    def add_suppression(self, *, category: Optional[str], ends_at_ms: int, reason: str, actor: str,
+                        starts_at_ms: Optional[int] = None, now_ms: Optional[int] = None) -> Dict[str, Any]:
+        """Declare a maintenance window: alerts of ``category`` (None: every suppressible category) raised inside
+        it are stored and logged as SUPPRESSED, not delivered, and do not escalate."""
+        if not (actor or "").strip():
+            raise AlertError("ACTOR_REQUIRED")
+        if not (reason or "").strip():
+            raise AlertError("REASON_REQUIRED")
+        if category is not None and category not in CATEGORIES:
+            raise AlertError("UNKNOWN_ALERT_CATEGORY", category)
+        if category in UNSUPPRESSIBLE:
+            raise AlertError("CATEGORY_NOT_SUPPRESSIBLE", category)
+        suppression_id = uuid.uuid4().hex
+        with self.db.transaction() as conn:
+            now = self._now(conn, now_ms)
+            start = now if starts_at_ms is None else int(starts_at_ms)
+            end = int(ends_at_ms)
+            if end <= start or end <= now:
+                raise AlertError("INVALID_WINDOW", "the window must end after it starts and after now")
+            if end - start > MAX_SUPPRESSION_MS:
+                raise AlertError("SUPPRESSION_TOO_LONG", f"at most {MAX_SUPPRESSION_MS // 3_600_000} h")
+            conn.execute("INSERT INTO ops_alert_suppressions (suppression_id, category, reason, starts_at, ends_at, "
+                         "created_by, created_at) VALUES (?,?,?,?,?,?,?)",
+                         (suppression_id, category, _clean_text(reason)[:1000], start, end, actor, now))
+        return self.suppression(suppression_id)
+
+    def cancel_suppression(self, suppression_id: str, *, actor: str, now_ms: Optional[int] = None) -> Dict[str, Any]:
+        if not (actor or "").strip():
+            raise AlertError("ACTOR_REQUIRED")
+        with self.db.transaction() as conn:
+            now = self._now(conn, now_ms)
+            cur = conn.execute("UPDATE ops_alert_suppressions SET cancelled_at=?, cancelled_by=? "
+                               "WHERE suppression_id=? AND cancelled_at IS NULL", (now, actor, suppression_id))
+            if cur.rowcount != 1:
+                raise AlertError("SUPPRESSION_NOT_FOUND")
+        return self.suppression(suppression_id)
+
+    _SUPPRESSION_COLS = ("suppression_id", "category", "reason", "starts_at", "ends_at", "created_by", "created_at",
+                         "cancelled_at", "cancelled_by")
+
+    def suppression(self, suppression_id: str) -> Dict[str, Any]:
+        with self.db.transaction(write=False) as conn:
+            row = conn.one(f"SELECT {', '.join(self._SUPPRESSION_COLS)} FROM ops_alert_suppressions "
+                           "WHERE suppression_id=?", (suppression_id,))
+        if row is None:
+            raise AlertError("SUPPRESSION_NOT_FOUND")
+        return dict(zip(self._SUPPRESSION_COLS, row))
+
+    def suppressions(self, *, active_only: bool = False, now_ms: Optional[int] = None,
+                     limit: int = 200) -> List[Dict[str, Any]]:
+        with self.db.transaction(write=False) as conn:
+            now = self._now(conn, now_ms)
+            where = " WHERE cancelled_at IS NULL AND starts_at <= ? AND ends_at > ?" if active_only else ""
+            rows = conn.all(f"SELECT {', '.join(self._SUPPRESSION_COLS)} FROM ops_alert_suppressions{where} "
+                            "ORDER BY starts_at DESC LIMIT ?", ((now, now) if active_only else ()) + (int(limit),))
+        return [dict(zip(self._SUPPRESSION_COLS, r)) for r in rows]
 
     # ── escalation ────────────────────────────────────────────────────────────────────────────────────
     def escalate_due(self, *, now_ms: Optional[int] = None) -> List[Tuple[str, int]]:
@@ -401,9 +568,12 @@ class AlertEngine:
         for (alert_id,) in due:
             with self.db.transaction() as conn:
                 row = conn.one("SELECT status, severity, escalation_level, first_seen_at, rotation_key, occurrences, "
-                               "next_escalation_at FROM ops_alerts WHERE alert_id=?" + conn.lock_rows_suffix(), (alert_id,))
+                               "next_escalation_at, category FROM ops_alerts WHERE alert_id=?" + conn.lock_rows_suffix(),
+                               (alert_id,))
                 if row is None or row[0] != OPEN or row[6] is None or int(row[6]) > now:
                     continue          # acknowledged or escalated by someone else meanwhile
+                if self._active_suppression(conn, row[7], now) is not None:
+                    continue          # no escalation inside a maintenance window; a due one proceeds after it
                 severity, level, first_seen, rotation = row[1], int(row[2]) + 1, int(row[3]), row[4]
                 res = self._route(rotation, level)
                 conn.execute("UPDATE ops_alerts SET escalation_level=?, next_escalation_at=?, owner_required=? "
@@ -412,11 +582,33 @@ class AlertEngine:
                 self._event(conn, alert_id, "ESCALATED", "system", now, level=level,
                             detail={"targets": [t.person_name for t in res.targets], "gap": res.gap,
                                     "unacknowledged_for_ms": now - first_seen})
-                self._queue(conn, alert_id, "ESCALATED", level, level, res, now)
+                self._queue(conn, alert_id, row[7], "ESCALATED", level, level, res, now)
             escalated.append((alert_id, level))
         return escalated
 
     # ── delivery ──────────────────────────────────────────────────────────────────────────────────────
+    def _send(self, sink: AlertSink, message: AlertMessage) -> None:
+        """Call the sink; give up waiting after ``send_timeout_s`` (the call is left to finish on its own daemon
+        thread and the attempt counts as failed -- delivery is at-least-once, never stalled)."""
+        if not self.send_timeout_s or self.send_timeout_s <= 0:
+            sink.send(message)
+            return
+        box: Dict[str, BaseException] = {}
+
+        def call() -> None:
+            try:
+                sink.send(message)
+            except BaseException as exc:  # noqa: BLE001 -- handed to the caller
+                box["error"] = exc
+
+        worker = threading.Thread(target=call, name=f"alert-sink-{sink.name}", daemon=True)
+        worker.start()
+        worker.join(self.send_timeout_s)
+        if worker.is_alive():
+            raise TimeoutError(f"SINK_TIMEOUT:{sink.name} did not answer within {self.send_timeout_s:g}s")
+        if "error" in box:
+            raise box["error"]
+
     def deliver_pending(self, *, now_ms: Optional[int] = None, limit: int = 50) -> Dict[str, int]:
         by_name = {s.name: s for s in self.sinks}
         stats = {"sent": 0, "retry": 0, "abandoned": 0, "skipped": 0}
@@ -438,17 +630,18 @@ class AlertEngine:
                              "a.owner_required, a.occurrences FROM ops_alert_deliveries d JOIN ops_alerts a "
                              "ON a.alert_id = d.alert_id WHERE d.delivery_id=?", (delivery_id,))
             sink = by_name.get(d[3])
-            message = AlertMessage(alert_id=d[0], category=d[7], severity=d[8], title=d[9],
-                                   detail=json.loads(d[10]) if d[10] else {}, reason=d[1], escalation_level=int(d[2]),
-                                   rotation_key=d[11], owner_required=bool(d[12]), targets=json.loads(d[4]),
-                                   delivery_id=delivery_id, occurrences=int(d[13]))
             error: Optional[str] = None
             try:
+                # cleaned again on the way out: whatever wrote the row, a channel never receives a credential
+                message = AlertMessage(alert_id=d[0], category=d[7], severity=d[8], title=_clean_text(d[9])[:300],
+                                       detail=_clean_detail(json.loads(d[10]) if d[10] else {}), reason=d[1],
+                                       escalation_level=int(d[2]), rotation_key=d[11], owner_required=bool(d[12]),
+                                       targets=json.loads(d[4]), delivery_id=delivery_id, occurrences=int(d[13]))
                 if sink is None:
                     raise RuntimeError(f"SINK_NOT_CONFIGURED:{d[3]}")
-                sink.send(message)       # no transaction open while a channel is called
+                self._send(sink, message)       # no transaction open while a channel is called
             except Exception as exc:  # noqa: BLE001 -- every failure is retried or abandoned, never lost
-                error = redact_text(f"{type(exc).__name__}: {exc}")[:500]
+                error = _clean_text(f"{type(exc).__name__}: {exc}")[:500]
             attempts = int(d[5]) + 1
             with self.db.transaction() as conn:
                 if error is None:
@@ -512,6 +705,23 @@ class AlertEngine:
     def open_alerts(self) -> List[Dict[str, Any]]:
         return self.list_alerts(status=(OPEN, ACKNOWLEDGED), limit=1000)
 
+    def raised_before(self, fingerprints: Iterable[str]) -> set:
+        """Which of these fingerprints ever had an alert (any status): an event seen once is not raised again."""
+        fps = sorted(set(fingerprints))
+        found: set = set()
+        with self.db.transaction(write=False) as conn:
+            for i in range(0, len(fps), 200):
+                chunk = fps[i:i + 200]
+                found.update(r[0] for r in conn.all("SELECT DISTINCT fingerprint FROM ops_alerts WHERE fingerprint IN ("
+                                                    + ",".join("?" * len(chunk)) + ")", chunk))
+        return found
+
+    def open_fingerprints(self, *, source: str) -> List[str]:
+        """Fingerprints of the unresolved alerts one evaluator (``source``) raised."""
+        with self.db.transaction(write=False) as conn:
+            return [r[0] for r in conn.all("SELECT fingerprint FROM ops_alerts WHERE status<>'RESOLVED' AND source=?",
+                                           (source,))]
+
     def health(self, *, now_ms: Optional[int] = None) -> Dict[str, Any]:
         """Health of the alerting system itself (not of the platform): can an alert reach a named person?"""
         findings = list(self.oncall.findings())
@@ -525,6 +735,8 @@ class AlertEngine:
                                       "AND next_attempt_at < ?", (now - 15 * 60_000,)) or 0)
             counts = conn.all("SELECT status, severity, COUNT(*) FROM ops_alerts WHERE status<>'RESOLVED' "
                               "GROUP BY status, severity")
+            suppressing = int(conn.scalar("SELECT COUNT(*) FROM ops_alert_suppressions WHERE cancelled_at IS NULL "
+                                          "AND starts_at <= ? AND ends_at > ?", (now, now)) or 0)
         if abandoned:
             findings.append({"code": "DELIVERIES_ABANDONED", "severity": HIGH,
                              "message": f"{abandoned} alert deliveries were abandoned after every retry."})
@@ -534,5 +746,5 @@ class AlertEngine:
         worst = CRITICAL if any(f["severity"] == CRITICAL for f in findings) else (HIGH if findings else None)
         return {"status": "OK" if worst is None else ("CRITICAL" if worst == CRITICAL else "DEGRADED"),
                 "owner_required": any(f["code"] == OPERATIONS_OWNER_REQUIRED for f in findings),
-                "findings": findings, "sinks": [s.name for s in self.sinks],
+                "findings": findings, "sinks": [s.name for s in self.sinks], "active_suppressions": suppressing,
                 "open_alerts": [{"status": s, "severity": sev, "count": int(n)} for s, sev, n in counts]}

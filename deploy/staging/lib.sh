@@ -199,4 +199,6 @@ roll_trading() {  # TAG OUTGOING: drain and replace each trading process in turn
     wait_release_ready "$tag" "$svc" || return 1
   done
   compose_at "$tag" up -d --no-deps healthcheck || { echo "healthcheck ($tag) did not start"; return 1; }
+  # the operations tick (alerting): not gating -- a second ticker only waits on the platform-database lease
+  compose_at "$tag" up -d --no-deps ops-tick || echo "WARNING ops-tick ($tag) did not start"
 }

@@ -169,6 +169,22 @@ services:
     depends_on: [bot-trading]
     restart: unless-stopped
 
+  # The operations tick (Section H Step 8.5): alert evaluators over the platform and runtime databases, escalation
+  # and delivery, every 60 s, as a long-running loop. Ownership is a lease in the platform database (fencing token,
+  # database clock), so a second replica or a leftover container only waits and takes over after the lease
+  # expires; SIGTERM releases it. Reads the runtime SQLite database read-mostly; never trades.
+  ops-tick:
+    <<: *backend
+    image: cosmicforge/bot-backend:${IMAGE_TAG:?set IMAGE_TAG}
+    environment:
+      PROCESS_ROLE: api
+      DATABASE_URL: sqlite:////var/lib/cosmicforge/cosmicforge.db
+    command: ["python", "-u", "-m", "app.ops.alerting", "--loop", "--interval", "60",
+              "--disk-path", "/var/lib/cosmicforge"]
+    stop_signal: SIGTERM
+    stop_grace_period: 90s
+    deploy: {replicas: 1}
+
 secrets:
   postgres_password:
     file: ${POSTGRES_PASSWORD_FILE:-./secrets/postgres_password}

@@ -1,12 +1,13 @@
 {
  "backup": {
-  "bytes": 4235264,
-  "file": "cosmicforge-20261017T110603Z.db",
+  "bytes": 4325376,
+  "file": "cosmicforge-20261029T223759Z.db",
   "quick_check": "ok",
-  "sha256": "4ec101135ae955d36e390bca535e7275584ed6cc540eb8d424ab63df0f11dcb9"
+  "sha256": "fed00394de2ff5160daee0fdb97ebe8f6e65b1c2b8e10598f63e3c4e8b24278d"
  },
  "checks": {
   "account_configuration_equal": true,
+  "account_ownership_and_financial_state_equal": true,
   "all_tables_equal_backup_snapshot": true,
   "all_tables_equal_source_at_backup": true,
   "artifact_is_not_plaintext_sqlite": true,
@@ -23,6 +24,7 @@
   "remote_holds_no_plaintext_database": true,
   "research_governance_equal": true,
   "restored_credentials_still_ciphertext": true,
+  "revoked_live_permission_not_restored": true,
   "rpo_measured_nonzero_for_post_backup_writes": true,
   "secret_scan_clean": true,
   "trading_intents_equal": true
@@ -30,27 +32,41 @@
  "encryption": {
   "age_available": false,
   "gpg_available": true,
-  "key_fingerprint": "9e09df11694d1eed",
+  "key_fingerprint": "ea541a9f70394967",
   "key_source": "ephemeral key generated for this run, held in memory only (TEST ONLY)",
   "method": "fernet-TEST-ONLY",
   "note": "TEST-ONLY symmetric encryption: production off-site copies use age/gpg public-key encryption (scripts/offsite_backup.py); the private key is never on the server."
  },
- "finished_at": "2026-10-17T11:06:07.120720Z",
+ "finished_at": "2026-10-29T22:38:27.628242Z",
+ "golive_revocation": {
+  "account_ownership_restored": true,
+  "anchored_revocations": [
+   "CONSENT_REVOKED"
+  ],
+  "consent_active_after_revocation": false,
+  "consent_active_at_backup": true,
+  "gate_authorized": false,
+  "gate_ledger_condition": "LEDGER_BEHIND_REVOCATION_ANCHOR:seq=3:CONSENT_REVOKED",
+  "ledger_reason": "LEDGER_BEHIND_REVOCATION_ANCHOR:seq=3:CONSENT_REVOKED",
+  "ledger_verified_after_restore": false,
+  "restored_database_alone_says_consent_active": true,
+  "status": "PASSED"
+ },
  "limits": "Run on a workstation against a disposable database; the 'remote' is a local directory and the encryption is TEST-ONLY unless age/gpg recipients are configured. It rehearses the procedure; it does not prove the production off-site copy can be restored.",
  "ok": true,
  "outcome": "PASSED",
  "postgres": {
-  "dump_ms": 272.1,
+  "dump_ms": 1281.8,
   "health_after_restore": true,
   "restore_equal": true,
-  "restored_database": "cfrestore_dst_c1a45442",
-  "rto_ms": 372.1,
-  "schema_version": 32,
+  "restored_database": "cfrestore_dst_87916e74",
+  "rto_ms": 4063.9,
+  "schema_version": 60,
   "secret_scan": {
    "findings": [],
    "ok": true
   },
-  "source_database": "cfrestore_src_d16182d1",
+  "source_database": "cfrestore_src_aaa1def7",
   "status": "PASSED",
   "tables": {
    "ops_alert_deliveries": {
@@ -117,18 +133,18 @@
   "upload_verified": true
  },
  "rpo": {
-  "backup_age_at_restore_ms": 973,
+  "backup_age_at_restore_ms": 5466,
   "definition": "newest data in the source now minus newest data in the restored backup",
-  "restored_newest_ms": 1792235163606,
-  "rpo_ms": 441,
+  "restored_newest_ms": 1793313478930,
+  "rpo_ms": 843,
   "simulated_post_backup_writes": true,
-  "source_newest_at_backup_ms": 1792235163606,
-  "source_newest_now_ms": 1792235164047,
+  "source_newest_at_backup_ms": 1793313478930,
+  "source_newest_now_ms": 1793313479773,
   "target": "UNSET (pending the operations owner's decision)"
  },
  "rto": {
   "definition": "fetch from remote + decrypt + verify until the database is usable",
-  "rto_ms": 190.9,
+  "rto_ms": 266.6,
   "target": "UNSET (pending the operations owner's decision)"
  },
  "schema": "cosmicforge-restore-drill-v1",
@@ -251,17 +267,17 @@
    "support_tickets": 5,
    "universe_manifests": 5
   },
-  "seeded_tables": 232
+  "seeded_tables": 233
  },
- "started_at": "2026-10-17T11:06:02.103842Z",
+ "started_at": "2026-10-29T22:37:53.981914Z",
  "upload": {
   "objects": {
-   "cosmicforge-20261017T110603Z.db.enc": {
-    "bytes": 5647116,
+   "cosmicforge-20261029T223759Z.db.enc": {
+    "bytes": 5767268,
     "sha256_matches": true
    },
-   "cosmicforge-20261017T110603Z.db.json": {
-    "bytes": 521,
+   "cosmicforge-20261029T223759Z.db.json": {
+    "bytes": 529,
     "sha256_matches": true
    }
   },
@@ -294,6 +310,138 @@
   },
   "credentials_decrypt_only_with_secret_manager_key": true,
   "integrity_check": "ok",
+  "ownership_and_financial_state": {
+   "account_equity_daily": {
+    "hash_equal": true,
+    "rows_restored": 5,
+    "rows_source": 5
+   },
+   "billing_audit_log": {
+    "hash_equal": true,
+    "rows_restored": 5,
+    "rows_source": 5
+   },
+   "billing_customers": {
+    "hash_equal": true,
+    "rows_restored": 5,
+    "rows_source": 5
+   },
+   "billing_events": {
+    "hash_equal": true,
+    "rows_restored": 5,
+    "rows_source": 5
+   },
+   "billing_payment_reviews": {
+    "hash_equal": true,
+    "rows_restored": 5,
+    "rows_source": 5
+   },
+   "bot_instances": {
+    "hash_equal": true,
+    "rows_restored": 5,
+    "rows_source": 5
+   },
+   "broker_accounts": {
+    "hash_equal": true,
+    "rows_restored": 5,
+    "rows_source": 5
+   },
+   "broker_transfer_events": {
+    "hash_equal": true,
+    "rows_restored": 5,
+    "rows_source": 5
+   },
+   "broker_transfer_reconciliations": {
+    "hash_equal": true,
+    "rows_restored": 5,
+    "rows_source": 5
+   },
+   "broker_transfer_requests": {
+    "hash_equal": true,
+    "rows_restored": 5,
+    "rows_source": 5
+   },
+   "broker_transfer_settings": {
+    "hash_equal": true,
+    "rows_restored": 5,
+    "rows_source": 5
+   },
+   "cati_account_income": {
+    "hash_equal": true,
+    "rows_restored": 5,
+    "rows_source": 5
+   },
+   "commission_ledger": {
+    "hash_equal": true,
+    "rows_restored": 5,
+    "rows_source": 5
+   },
+   "commission_tiers": {
+    "hash_equal": true,
+    "rows_restored": 5,
+    "rows_source": 5
+   },
+   "equity_snapshots": {
+    "hash_equal": true,
+    "rows_restored": 5,
+    "rows_source": 5
+   },
+   "invoices": {
+    "hash_equal": true,
+    "rows_restored": 5,
+    "rows_source": 5
+   },
+   "monthly_snapshots": {
+    "hash_equal": true,
+    "rows_restored": 5,
+    "rows_source": 5
+   },
+   "platform_account_assignments": {
+    "hash_equal": true,
+    "rows_restored": 5,
+    "rows_source": 5
+   },
+   "platform_accounts": {
+    "hash_equal": true,
+    "rows_restored": 5,
+    "rows_source": 5
+   },
+   "pricing_intents": {
+    "hash_equal": true,
+    "rows_restored": 5,
+    "rows_source": 5
+   },
+   "revenue_snapshots": {
+    "hash_equal": true,
+    "rows_restored": 5,
+    "rows_source": 5
+   },
+   "subscriptions": {
+    "hash_equal": true,
+    "rows_restored": 5,
+    "rows_source": 5
+   },
+   "track_record_daily": {
+    "hash_equal": true,
+    "rows_restored": 0,
+    "rows_source": 0
+   },
+   "track_record_publications": {
+    "hash_equal": true,
+    "rows_restored": 0,
+    "rows_source": 0
+   },
+   "users": {
+    "hash_equal": true,
+    "rows_restored": 5,
+    "rows_source": 5
+   },
+   "weekly_snapshots": {
+    "hash_equal": true,
+    "rows_restored": 5,
+    "rows_source": 5
+   }
+  },
   "research_governance": {
    "cati_adapter_cert_actions": {
     "hash_equal": true,
@@ -356,8 +504,8 @@
     "rows_source": 5
    }
   },
-  "rows": 1360,
-  "tables": 286,
+  "rows": 1369,
+  "tables": 292,
   "trading_intents": {
    "cati_execution_intents": {
     "hash_equal": true,

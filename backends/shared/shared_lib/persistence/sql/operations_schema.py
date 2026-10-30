@@ -147,6 +147,31 @@ V32 = [
     "CREATE INDEX ix_ops_status_updates_incident ON ops_status_incident_updates (incident_id, id)",
 ]
 
+# ── 33. operations tick ownership ───────────────────────────────────────────────────────────────────────────
+# One row per periodic operations job. Exactly one process holds it at a time: a lease by the database clock with a
+# fencing token that grows by one on every change of holder, so a holder that lost it (expired, taken over) cannot
+# record a tick. ``state`` carries what the job needs between ticks (disk samples, pending conditions) across
+# restarts and hosts; ``last_tick_*`` is the persisted time and result of the latest recorded tick.
+V33 = [
+    "CREATE TABLE ops_tick_leases (tick_name TEXT PRIMARY KEY, owner TEXT, "
+    "fencing_token {BIGINT} NOT NULL DEFAULT 0 CHECK (fencing_token >= 0), acquired_at {BIGINT}, renewed_at {BIGINT}, "
+    "expires_at {BIGINT} NOT NULL DEFAULT 0, released_at {BIGINT}, takeovers INTEGER NOT NULL DEFAULT 0, "
+    "last_tick_started_at {BIGINT}, last_tick_finished_at {BIGINT}, last_tick_owner TEXT, last_tick_token {BIGINT}, "
+    "last_tick_outcome TEXT, last_tick_result {JSON}, state {JSON} NOT NULL DEFAULT '{{}}', "
+    "updated_at {BIGINT} NOT NULL)",
+]
+
+# ── 34. maintenance-window suppression ──────────────────────────────────────────────────────────────────────
+# An operator-declared window in which alerts of a category (NULL: every suppressible category) are recorded but not
+# delivered. Rows are never deleted; ending a window early sets ``cancelled_at``/``cancelled_by``.
+V34 = [
+    "CREATE TABLE ops_alert_suppressions (suppression_id TEXT PRIMARY KEY, category TEXT, reason TEXT NOT NULL, "
+    "starts_at {BIGINT} NOT NULL, ends_at {BIGINT} NOT NULL, created_by TEXT NOT NULL, created_at {BIGINT} NOT NULL, "
+    "cancelled_at {BIGINT}, cancelled_by TEXT, CHECK (ends_at > starts_at), "
+    "CHECK (cancelled_at IS NULL OR cancelled_by IS NOT NULL))",
+    "CREATE INDEX ix_ops_alert_suppressions_window ON ops_alert_suppressions (cancelled_at, starts_at, ends_at)",
+]
+
 MIGRATIONS: List[Migration] = [
     Migration(30, "operations_alerting", _compose(V30, ["ops_alert_events"], first=True),
               down=_down(["ops_alert_deliveries", "ops_alert_events", "ops_alerts"], ["ops_alert_events"], last=True)),
@@ -154,7 +179,10 @@ MIGRATIONS: List[Migration] = [
               down=_down(["ops_oncall_history", "ops_oncall_members", "ops_oncall_rotations"], ["ops_oncall_history"])),
     Migration(32, "operations_status_page", _compose(V32, ["ops_status_incident_updates"]),
               down=_down(["ops_status_incident_updates", "ops_status_incidents"], ["ops_status_incident_updates"])),
+    Migration(33, "operations_tick_ownership", _compose(V33, []), down=_down(["ops_tick_leases"], [])),
+    Migration(34, "operations_alert_suppression", _compose(V34, []), down=_down(["ops_alert_suppressions"], [])),
 ]
 
 OPERATIONS_TABLES = ("ops_alerts", "ops_alert_events", "ops_alert_deliveries", "ops_oncall_rotations",
-                     "ops_oncall_members", "ops_oncall_history", "ops_status_incidents", "ops_status_incident_updates")
+                     "ops_oncall_members", "ops_oncall_history", "ops_status_incidents", "ops_status_incident_updates",
+                     "ops_tick_leases", "ops_alert_suppressions")

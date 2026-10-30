@@ -38,6 +38,12 @@ Exit status: 0 uploaded and verified (or a clean ``--dry-run``); 1 not
 configured, or plaintext refused, or a tool is missing; 2 no usable backup;
 3 the backup does not match its manifest; 4 encryption failed; 5 an upload
 failed; 6 the remote copy could not be verified. Standard library only.
+
+Every real (not ``--dry-run``) run also writes ``<backup dir>/offsite-status.json``
+(outcome, exit code, time, failure message, the last verified upload carried
+forward), so a failed or long-missing off-site copy is a durable fact for the
+operations tick (``app.ops.alerting.evaluate_backup_status``), not only a failed
+systemd unit. Writing it never changes the exit status.
 """
 from __future__ import annotations
 
@@ -297,6 +303,33 @@ def offsite(config: dict[str, str], backup_dir: Path, max_age_hours: float, dry_
         shutil.rmtree(staging, ignore_errors=True)
 
 
+STATUS_FILE = "offsite-status.json"
+STATUS_SCHEMA = "cosmicforge-backup-status-v1"
+
+
+def write_status(backup_dir: Path, code: int, message: str | None) -> None:
+    """Record this run's outcome in the backup directory (atomic replace). Never raises."""
+    try:
+        path = Path(backup_dir) / STATUS_FILE
+        previous = {}
+        try:
+            previous = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            pass
+        now = datetime.now(timezone.utc).isoformat()
+        ok = code == EXIT_OK
+        status = {"schema": STATUS_SCHEMA, "tool": "offsite_backup", "outcome": "OK" if ok else "FAILED",
+                  "exit_code": code, "finished_at": now, "message": None if ok else (message or f"exit {code}")[:300],
+                  "last_ok_at": now if ok else (previous.get("last_ok_at") if isinstance(previous, dict) else None)}
+        staged = path.with_name(path.name + ".partial")
+        staged.write_text(json.dumps(status, indent=2) + "\n", encoding="utf-8")
+        if os.name != "nt":
+            staged.chmod(0o600)
+        os.replace(staged, path)
+    except Exception as exc:  # noqa: BLE001 -- the marker is evidence, never a reason to fail differently
+        log(f"WARNING status marker not written: {type(exc).__name__}: {exc}")
+
+
 def main(argv: list[str] | None = None, environ=None) -> int:
     environ = os.environ if environ is None else environ
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -310,17 +343,20 @@ def main(argv: list[str] | None = None, environ=None) -> int:
 
     config = load_config(args.env_file, environ)
     backup_dir = Path(args.backup_dir or config.get("BACKUP_DIR") or DEFAULT_BACKUP_DIR).expanduser()
+    code, message = EXIT_OK, None
     try:
         max_age = args.max_age_hours if args.max_age_hours is not None \
             else float(config.get("BACKUP_MAX_AGE_HOURS") or 36)
         offsite(config, backup_dir, max_age, args.dry_run)
     except OffsiteError as exc:
         log(f"FAILED {exc}")
-        return exc.code
+        code, message = exc.code, str(exc)
     except ValueError as exc:
         log(f"FAILED bad setting: {exc}")
-        return EXIT_CONFIG
-    return EXIT_OK
+        code, message = EXIT_CONFIG, f"bad setting: {exc}"
+    if not args.dry_run and backup_dir.is_dir():
+        write_status(backup_dir, code, message)
+    return code
 
 
 if __name__ == "__main__":

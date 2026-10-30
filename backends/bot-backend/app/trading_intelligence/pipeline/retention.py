@@ -158,6 +158,7 @@ _BY_CLASS: Tuple[Tuple[str, Tuple[str, ...]], ...] = (
     (RECONCILIATION_STATE, (
         # Section H Steps 5-8 (platform layer, go-live, launch operations)
         "platform_account_assignments", "platform_accounts", "platform_workers",
+        "ops_tick_leases",              # Step 8.5 operations tick: one row per periodic job (lease + last tick)
         "platform_job_watermarks",      # Step 5.3 runtime jobs: per-account reconciliation watermark (rises only)
         # Step 5.1 EXT-DB-01 legacy PostgreSQL adapter (PostgreSQL only): the sqlite_master registry (current DDL
         # text per object) and schema metadata (bootstrap version, PRAGMA user_version) -- current schema state
@@ -177,7 +178,8 @@ _BY_CLASS: Tuple[Tuple[str, Tuple[str, ...]], ...] = (
         # Section H Steps 5-8 (platform layer, go-live, launch operations)
         "admin_mfa_recovery_codes", "legal_acceptances", "legal_audit_log", "legal_country_eligibility",
         "admin_mfa_bootstrap_codes",    # Step 8.4 F9: one-time admin MFA enrolment codes (hashed)
-        "legal_documents", "ops_oncall_members", "ops_oncall_rotations", "support_ticket_events",
+        "legal_documents", "ops_alert_suppressions", "ops_oncall_members", "ops_oncall_rotations",
+        "support_ticket_events",
         "support_ticket_messages", "support_tickets",
         "admin_roles", "admin_sessions", "admins", "affiliate_settings", "aml_alerts", "auth_audit_log", "auth_sessions",
         "bot_instances", "broker_accounts", "broker_auto_trading", "broker_credentials", "broker_credentials_v2",

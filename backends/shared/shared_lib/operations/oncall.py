@@ -28,12 +28,13 @@ CONTACT_CHANNELS = ("EMAIL", "TELEGRAM", "WEBHOOK", "PHONE", "OTHER")
 #: rotation key -> what it covers. Routing (``alerting.CATEGORIES``) refers only to these keys.
 ROTATIONS: Dict[str, str] = {
     "operations-owner": "Accountable owner of production operations; final escalation for every alert.",
-    "trading-operations": "Exchange execution, protection, reconciliation and kill switches.",
+    "trading-operations": "Exchange execution and connectivity, protection, reconciliation, kill switches, "
+                          "emergency flattens and risk brakes.",
     "platform-infrastructure": "Workers, leases, database, queues, API, disks, backups and latency.",
     "market-data": "Market data freshness and instrument rules.",
     "security": "Authentication anomalies and governance violation attempts.",
     "billing": "Billing provider webhooks.",
-    "research-governance": "Exchange certification expiry and research governance.",
+    "research-governance": "Exchange adapter and strategy family certification expiry; research governance.",
 }
 
 

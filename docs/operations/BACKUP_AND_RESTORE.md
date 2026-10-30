@@ -12,6 +12,7 @@ owner is assigned -- see `ALERTING.md`). The numbers below are what a drill *mea
 | Platform PostgreSQL (when used) | `pg_dump -Fc` | rehearsed by the drill; no scheduled job exists yet |
 | Drill | `scripts/restore_drill.py` | this document |
 | Age monitoring | `app.ops.alerting.evaluate_backup_age` | `BACKUP_FAILURE` when the newest verified backup is missing or > 36 h old |
+| Failure monitoring | `backup-status.json` / `offsite-status.json` (written by both scripts on every run) + `app.ops.alerting.evaluate_backup_status` | `BACKUP_FAILURE` when the last local or off-site run failed, or no verified off-site copy for 36 h; the scripts' exit status is unchanged and `OnFailure=` still alerts out of band |
 
 Manual restore steps for production remain in `docs/VPS_TRADING_DEPLOYMENT.md` ("Restore" in section 5 and the
 quarterly restore drill in section 10.3).
@@ -66,22 +67,33 @@ backup set that contains an env file or a plaintext credential.
    snapshot and the source at backup time, with research-governance (`cati_family_*`, `cati_governance_*`,
    `cati_promotion_*`, `cati_holdout_registry`, `cati_experiment_registry`, `cati_certification_*`,
    `cati_adapter_cert_*`), account-configuration (`bot_instances`, `broker_accounts`, `broker_credentials*`) and
-   trading-intent (`cati_execution_intents`, `platform_order_intents`) tables reported by name; credentials still
-   ciphertext after restore and decryptable only with the key from the (simulated) secret manager;
+   trading-intent (`cati_execution_intents`, `platform_order_intents`) tables reported by name; account ownership
+   (`users`, `broker_accounts`, `bot_instances`, `platform_accounts`, `platform_account_assignments`) and every
+   FINANCIAL_RECORD table of the retention policy equal (`account_ownership_and_financial_state_equal`);
+   credentials still ciphertext after restore and decryptable only with the key from the (simulated) secret
+   manager;
+   **revoked live permission is not restored** (`revoked_live_permission_not_restored`): in a scratch platform
+   database a live consent is recorded, the database is backed up, the consent is revoked (anchored outside the
+   database, `GOLIVE_REVOCATION_ANCHOR`), the database is restored from the backup. The restored ledger alone says
+   "consent active", but it no longer verifies against the anchor (`LEDGER_BEHIND_REVOCATION_ANCHOR`) and the
+   go-live gate refuses LIVE on `AUTHORIZATION_LEDGER_INTACT`, while the account and its owner are back. A test
+   proves the check fails if revocations were kept only in the database;
 7. PostgreSQL leg: platform schema in a throwaway database, rows written by the platform code, `pg_dump -Fc`,
    scan of the plain-SQL rendering, encrypt, "upload", `pg_restore` into a second throwaway database, per-table
    counts and hashes equal, both databases dropped;
 8. RPO = newest data in the source now minus newest data in the restored backup (the synthetic source receives
    a write after the backup, so the measurement is exercised); RTO = remote fetch -> decrypt -> verified.
 
-## Drill evidence (2026-10-17, workstation, synthetic source)
+## Drill evidence (2026-10-29, workstation, synthetic source)
 
-`evidence/step8/restore_drill.json`: **PASSED**, 20/20 checks. Synthetic representative database: 286 tables,
-1,360 rows (5 per table where constraints allowed) built from the real schema; encryption `fernet-TEST-ONLY`
-(ephemeral key; age not installed, no gpg recipient configured); PostgreSQL 18 leg PASSED (12 platform/ops
-tables equal after `pg_restore`). Measured RPO 441 ms (one synthetic write after the backup), RTO 191 ms for
-SQLite and 372 ms for PostgreSQL -- a few hundred rows on a local disk, so these say nothing about production
-scale; they show the measurement works.
+`evidence/step8/restore_drill.json`: **PASSED**, 22/22 checks (the 20 of 2026-10-17 plus
+`account_ownership_and_financial_state_equal` and `revoked_live_permission_not_restored`). Synthetic
+representative database: 292 tables, 1,369 rows built from the real schema; encryption `fernet-TEST-ONLY`
+(ephemeral key; age not installed, no gpg recipient configured); PostgreSQL 18 leg PASSED (12 platform/ops tables
+equal after `pg_restore`). Measured RPO 843 ms (one synthetic write after the backup), RTO 267 ms for SQLite and
+4,064 ms for PostgreSQL -- a few hundred rows on a local disk, so these say nothing about production scale; they
+show the measurement works. Go-live leg: consent active at backup, revoked after it, restored database alone says
+active, ledger `LEDGER_BEHIND_REVOCATION_ANCHOR:seq=3:CONSENT_REVOKED`, gate not authorized, ownership restored.
 
 Not shown by this drill: a real off-site provider, real age/gpg keys, a production-sized database, or the
 production server. The quarterly manual drill in `VPS_TRADING_DEPLOYMENT.md` section 10.3 remains required

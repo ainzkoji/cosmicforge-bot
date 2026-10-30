@@ -1,0 +1,20 @@
+# Runs cosmicforge-ops-tick.service every minute (alert evaluation, escalation, delivery).
+#
+# Install:  sudo cp deploy/systemd/cosmicforge-ops-tick.* /etc/systemd/system/
+#           sudo systemctl daemon-reload && sudo systemctl enable --now cosmicforge-ops-tick.timer
+# Inspect:  systemctl list-timers cosmicforge-ops-tick.timer
+# Planned maintenance: keep the timer running and declare a maintenance window instead
+#           (AlertEngine.add_suppression); stopping the timer also stops escalation of everything else.
+
+[Unit]
+Description=CosmicForge operations tick, every minute
+
+[Timer]
+OnBootSec=2min
+OnCalendar=*:*:00
+AccuracySec=5s
+# A host that was off runs one tick when it comes back; the lease paces ticks across hosts.
+Persistent=true
+
+[Install]
+WantedBy=timers.target

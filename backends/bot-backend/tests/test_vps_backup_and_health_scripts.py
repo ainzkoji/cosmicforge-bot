@@ -120,7 +120,11 @@ def test_a_copy_that_fails_its_integrity_check_is_discarded(live_database, tmp_p
     out = tmp_path / "backups"
     monkeypatch.setattr(backup, "quick_check", lambda path: "row 7 missing from index intents_idx")
     assert run(source, out) == backup.EXIT_INTEGRITY_FAILED
-    assert list(out.iterdir()) == []
+    # nothing but the failure marker the operations tick reads (Step 8.5): no copy, no partial, no manifest
+    assert [p.name for p in out.iterdir()] == [backup.STATUS_FILE]
+    status = json.loads((out / backup.STATUS_FILE).read_text(encoding="utf-8"))
+    assert (status["outcome"], status["exit_code"], status["last_ok_at"]) == ("FAILED", backup.EXIT_INTEGRITY_FAILED, None)
+    assert "quick_check" in status["message"]
 
 
 def test_missing_or_unreadable_sources_fail_with_a_distinct_status(tmp_path):

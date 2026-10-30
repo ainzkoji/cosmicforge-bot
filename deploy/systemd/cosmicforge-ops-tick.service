@@ -1,0 +1,58 @@
+# One operations tick (Section H Step 8.5): alert evaluators over the platform database and the runtime
+# database, escalation of unacknowledged alerts, delivery with retries. Triggered every minute by
+# cosmicforge-ops-tick.timer.
+#
+# Ownership: the tick takes a lease in the platform database (ops_tick_leases: database clock, fencing token,
+# takeover after expiry). Timers on several hosts -- or this unit plus a container `ops-tick` -- produce one tick
+# per interval; the others exit 0 with "LEASE_HELD" / "TICK_NOT_DUE". Ticks are idempotent anyway (alerts are
+# deduplicated by fingerprint, deliveries are claimed).
+#
+# Exit 2 means the tick RAN and the alerting system reports a CRITICAL finding of its own (today:
+# OPERATIONS_OWNER_REQUIRED -- nobody is on call). That finding is already an alert, so it is not a unit failure
+# (SuccessExitStatus=2). Exit 1 (cannot reach the platform database, bad configuration) fails the unit and
+# OnFailure= sends the out-of-band alert through scripts/notify_failure.py.
+#
+# Install:  sudo cp deploy/systemd/cosmicforge-ops-tick.* /etc/systemd/system/
+#           sudo systemctl daemon-reload && sudo systemctl enable --now cosmicforge-ops-tick.timer
+# Run once: sudo systemctl start cosmicforge-ops-tick && journalctl -u cosmicforge-ops-tick -n 5 --no-pager
+# Guide:    docs/operations/ALERTING.md
+
+[Unit]
+Description=CosmicForge operations tick (alerting, escalation, delivery)
+Documentation=file:///opt/cosmicforge/cosmicforge-bot/docs/operations/ALERTING.md
+Wants=network-online.target
+After=network-online.target
+OnFailure=cosmicforge-alert@%n.service
+
+[Service]
+Type=oneshot
+User=cosmicforge
+Group=cosmicforge
+WorkingDirectory=/opt/cosmicforge/cosmicforge-bot/backends/bot-backend
+Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONUTF8=1
+# PLATFORM_DATABASE_URL and DATABASE_URL come from the backend's .env (variables already set win); the alert
+# channels from /etc/cosmicforge/alerts.env (the same file cosmicforge-alert@ uses).
+ExecStart=/opt/cosmicforge/cosmicforge-bot/backends/venv/bin/python -u -X utf8 -m app.ops.alerting \
+    --dotenv /opt/cosmicforge/cosmicforge-bot/backends/bot-backend/.env \
+    --alerts-env /etc/cosmicforge/alerts.env \
+    --backup-dir /var/backups/cosmicforge \
+    --disk-path /var/lib/cosmicforge --disk-path /var/backups/cosmicforge \
+    --interval 60
+SuccessExitStatus=2
+# Escalation intervals / dedup window: engineering defaults until the operations owner decides, e.g.
+#   Environment=OPS_ESCALATION_MINUTES={"CRITICAL":[5,15],"HIGH":[15,60],"MEDIUM":[60]}
+#   Environment=OPS_DEDUP_WINDOW_MINUTES=10
+Nice=5
+TimeoutStartSec=170
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+SyslogIdentifier=cosmicforge-ops-tick

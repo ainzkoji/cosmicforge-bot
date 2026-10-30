@@ -58,6 +58,18 @@ def test_full_drill_passes_and_evidence_holds_no_secret(drill, tmp_path):
     for group in ("research_governance", "account_configuration", "trading_intents"):
         assert result["verification"][group]
     assert "cati_family_events" in result["verification"]["research_governance"]
+    # recovery restores account ownership and financial state ...
+    assert result["checks"]["account_ownership_and_financial_state_equal"] is True
+    owned = result["verification"]["ownership_and_financial_state"]
+    assert {"users", "broker_accounts", "billing_events", "subscriptions", "invoices"} <= set(owned)
+    # ... but never a live permission revoked after the backup
+    assert result["checks"]["revoked_live_permission_not_restored"] is True
+    rev = result["golive_revocation"]
+    assert rev["consent_active_at_backup"] and not rev["consent_active_after_revocation"]
+    assert rev["restored_database_alone_says_consent_active"] is True        # the DB alone would bring it back
+    assert rev["ledger_verified_after_restore"] is False and rev["gate_authorized"] is False
+    assert rev["gate_ledger_condition"].startswith("LEDGER_BEHIND_REVOCATION_ANCHOR")
+    assert rev["anchored_revocations"] == ["CONSENT_REVOKED"] and rev["account_ownership_restored"] is True
     assert result["rpo"]["rpo_ms"] > 0 and result["rto"]["rto_ms"] > 0
     assert result["rpo"]["target"].startswith("UNSET") and result["rto"]["target"].startswith("UNSET")
     if PG_URL and _pg_ok():
@@ -134,6 +146,49 @@ def test_main_exit_codes(drill, tmp_path):
 
 def test_offsite_uploader_still_refuses_plaintext(drill):
     assert drill.offsite_refuses_plaintext() is True
+
+
+def test_revocation_check_fails_when_revocations_are_not_anchored_outside_the_database(drill, tmp_path, monkeypatch):
+    """The check is not vacuous: were a revocation kept only inside the database, the restore would resurrect the
+    live consent, the ledger would verify, and the drill check must FAIL."""
+    from app.golive.ledger import GoLiveLedger
+    monkeypatch.setattr(GoLiveLedger, "_anchor", lambda self, ev: None)
+    leg = drill.revocation_leg(tmp_path)
+    assert leg["status"] == "FAILED"
+    assert leg["ledger_verified_after_restore"] is True and leg["anchored_revocations"] == []
+
+
+# ── backup failure markers (Step 8.5: failures, not only age, reach the alerting) ──────────────────────────
+def test_backup_and_offsite_scripts_record_durable_failure_markers(drill, tmp_path):
+    bt, off = drill._load("backup_trading_db"), drill._load("offsite_backup")
+    out = tmp_path / "backups"
+    out.mkdir()
+    assert bt.main(["--database", str(tmp_path / "missing.db"), "--output-dir", str(out)]) == bt.EXIT_USAGE
+    failed = json.loads((out / "backup-status.json").read_text(encoding="utf-8"))
+    assert (failed["outcome"], failed["exit_code"], failed["last_ok_at"]) == ("FAILED", bt.EXIT_USAGE, None)
+    src = tmp_path / "src.db"
+    conn = sqlite3.connect(str(src))
+    conn.execute("CREATE TABLE t (x)")
+    conn.commit()
+    conn.close()
+    assert bt.main(["--database", str(src), "--output-dir", str(out)]) == bt.EXIT_OK
+    ok = json.loads((out / "backup-status.json").read_text(encoding="utf-8"))
+    assert ok["outcome"] == "OK" and ok["last_ok_at"] == ok["finished_at"] and ok["file"].startswith("cosmicforge-")
+    # off-site: no destination configured -> exit 1, recorded; a dry run records nothing
+    assert off.main(["--backup-dir", str(out), "--env-file", str(tmp_path / "none.env")], environ={}) == off.EXIT_CONFIG
+    marker = json.loads((out / "offsite-status.json").read_text(encoding="utf-8"))
+    assert marker["outcome"] == "FAILED" and marker["exit_code"] == off.EXIT_CONFIG and "destination" in marker["message"]
+    (out / "offsite-status.json").unlink()
+    off.main(["--backup-dir", str(out), "--env-file", str(tmp_path / "none.env"), "--dry-run"], environ={})
+    assert not (out / "offsite-status.json").exists()
+    # the marker files never disturb backup selection, pruning or the drill's backup-set scan
+    assert [p.name for p in out.iterdir() if bt.NAME.match(p.name)] == [ok["file"]]
+
+
+def test_backup_status_marker_failure_is_never_fatal(drill, tmp_path, monkeypatch):
+    bt = drill._load("backup_trading_db")
+    monkeypatch.setattr(bt.os, "replace", lambda *a, **k: (_ for _ in ()).throw(PermissionError("read-only")))
+    bt.write_status(tmp_path, tool="backup_trading_db", code=2, file=None, message="FAILED x")   # does not raise
 
 
 # ── classification units ───────────────────────────────────────────────────────────────────────────────────

@@ -28,6 +28,13 @@ What it does, in order:
 Exit status: 0 success; 1 bad arguments or source missing; 2 the backup could
 not be taken; 3 the copy failed its integrity check; 4 the backup succeeded but
 pruning old ones did not. Standard library only.
+
+Every run that got as far as knowing its output directory also writes
+``<output-dir>/backup-status.json`` (outcome, exit code, time, the failure
+message, and the last successful run carried forward). A failed run therefore
+leaves a durable marker even though it wrote no backup and no manifest; the
+operations tick (``app.ops.alerting.evaluate_backup_status``) raises
+BACKUP_FAILURE from it. Writing the marker never changes the exit status.
 """
 from __future__ import annotations
 
@@ -50,10 +57,42 @@ PREFIX = "cosmicforge"
 NAME = re.compile(rf"^{PREFIX}-\d{{8}}T\d{{6}}Z\.db(\.gz)?$")
 
 EXIT_OK, EXIT_USAGE, EXIT_BACKUP_FAILED, EXIT_INTEGRITY_FAILED, EXIT_RETENTION_FAILED = 0, 1, 2, 3, 4
+STATUS_FILE = "backup-status.json"
+STATUS_SCHEMA = "cosmicforge-backup-status-v1"
+
+#: What this run knows for its status marker (set as the run goes).
+_RUN: dict = {"output_dir": None, "file": None, "failure": None}
 
 
 def log(message: str) -> None:
     print(f"[DB_BACKUP] {message}", flush=True)
+    if message.startswith(("FAILED", "WARNING")):
+        _RUN["failure"] = message[:300]
+
+
+def write_status(output_dir: Path, *, tool: str, code: int, file: str | None, message: str | None,
+                 status_file: str = STATUS_FILE) -> None:
+    """Record this run's outcome beside the backups (atomic replace). Never raises: a marker that cannot be
+    written is logged, and the run's own exit status still reports the failure to systemd."""
+    try:
+        path = Path(output_dir) / status_file
+        previous = {}
+        try:
+            previous = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            pass
+        now = datetime.now(timezone.utc).isoformat()
+        ok = code == 0
+        status = {"schema": STATUS_SCHEMA, "tool": tool, "outcome": "OK" if ok else "FAILED", "exit_code": code,
+                  "finished_at": now, "file": file, "message": None if ok else (message or f"exit {code}")[:300],
+                  "last_ok_at": now if ok else (previous.get("last_ok_at") if isinstance(previous, dict) else None)}
+        staged = path.with_name(path.name + ".partial")
+        staged.write_text(json.dumps(status, indent=2) + "\n", encoding="utf-8")
+        if os.name != "nt":
+            staged.chmod(0o600)
+        os.replace(staged, path)
+    except Exception as exc:  # noqa: BLE001 -- the marker is evidence, never a reason to fail differently
+        print(f"[DB_BACKUP] WARNING status marker not written: {type(exc).__name__}: {exc}", flush=True)
 
 
 def database_from_url(url: str) -> Path | None:
@@ -146,7 +185,20 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--keep", type=int, default=14, help="backups to retain (default 14)")
     parser.add_argument("--compress", action="store_true", help="gzip the verified copy")
     args = parser.parse_args(argv)
+    _RUN.update(output_dir=None, file=None, failure=None)
+    try:
+        code = _backup(args)
+    except Exception as exc:  # noqa: BLE001 -- an unexpected error is a failed backup, recorded like the others
+        log(f"FAILED unexpected: {type(exc).__name__}: {exc}")
+        code = EXIT_BACKUP_FAILED
+    if _RUN["output_dir"] is not None and Path(_RUN["output_dir"]).is_dir():
+        write_status(Path(_RUN["output_dir"]), tool="backup_trading_db", code=code, file=_RUN["file"],
+                     message=_RUN["failure"])
+    return code
 
+
+def _backup(args: argparse.Namespace) -> int:
+    _RUN["output_dir"] = Path(args.output_dir).expanduser()
     if args.keep < 1:
         log("FAILED --keep must be at least 1")
         return EXIT_USAGE
@@ -219,6 +271,7 @@ def main(argv: list[str] | None = None) -> int:
         remove(partial)
         log(f"FAILED finalize: {type(exc).__name__}: {exc}")
         return EXIT_BACKUP_FAILED
+    _RUN["file"] = final.name
     log(f"OK backup={final} size_bytes={manifest['size_bytes']} sha256={manifest['sha256']} "
         f"seconds={time.monotonic() - started:.1f}")
 
