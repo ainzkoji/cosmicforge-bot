@@ -75,15 +75,22 @@ def test_killed_worker_is_taken_over_within_one_lease_period(platform_db):
     killed_at = time.monotonic()                   # the worker stops here: no drain, no release
     survivor = TradingWorker(platform_db, maintain=book.maintain, recover=book.recover, worker_id="survivor",
                              assignments=WorkerAssignments(platform_db, ttl_ms=TTL, worker_liveness_ms=TTL))
-    took_over = None
+    # The claim: the FIRST survivor round that starts after the lease has expired takes every account. Asserted per
+    # round rather than as a fixed wall-clock margin, so a slow shared CI runner (slower rounds) cannot fail it while
+    # a takeover that waits longer than one lease period still does. 100 ms covers the clock read around the lease.
+    expired_at = killed_at + TTL / 1000 + 0.1
+    took_over, missed = None, []
     while time.monotonic() - killed_at < 3 * TTL / 1000:
+        started = time.monotonic()
         report = survivor.run_once()
         if report.owned == n:
             took_over = (time.monotonic() - killed_at) * 1000
             break
+        if started > expired_at:
+            missed.append((round((started - killed_at) * 1000), report.owned))
         time.sleep(0.05)
     assert took_over is not None, "survivor never took every account"
-    assert took_over <= TTL + 500, f"takeover {took_over:.0f} ms exceeds one lease period ({TTL} ms) + one poll"
+    assert not missed, f"rounds started after the {TTL} ms lease expired without taking every account: {missed}"
     assert sorted(book.recovered).count("acct0000") == 2   # recovered by both owners in turn
     for account_id, venue in venues.items():
         assert not [g for g in venue.protection_gaps("BTCUSDT") if g.open], account_id

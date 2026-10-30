@@ -1,6 +1,6 @@
 # Steps 5–8: external gates and owner decisions (closure register)
 
-Updated 17 October 2026. This register grants no trading or commercial authority. Every entry is a dependency that
+Updated 17 October 2026; EXT-DB-01, EXT-WRK-01 and EXT-LIQ-01 updated 30 October 2026 (see the [engineering closure](STEP5_STEP8_ENGINEERING_CLOSURE.md)). This register grants no trading or commercial authority. Every entry is a dependency that
 engineering cannot close. None of them may be replaced by simulated elapsed time, synthetic fills, a manual PASS, or
 a test that bypasses the unavailable dependency. The Step 3/4 register ([STEP3_STEP4_CARRY_FORWARD.md](STEP3_STEP4_CARRY_FORWARD.md))
 still applies in full. Its gates H-RESEARCH, H-PROMOTION, H-VENUE, H-BINGX, H-SHADOW-7D/28D, H-THROUGHPUT and
@@ -10,11 +10,11 @@ Gate types: certification separation (C), owner decision (O), external provider 
 
 | ID | Type | Blocks | Dependency / owner | Required action and acceptance evidence |
 |---|---|---|---|---|
-| EXT-DB-01 | I/O | Full Step 5.1 | Engineering + owner | Port the legacy runtime schema (about 250 tables, raw sqlite3, REAL money) to the dialect-neutral layer, or decide to keep SQLite for the single trading process. Acceptance: `scripts/migration_drill.py --source <sanitized production copy>` with every check passing, on authorized infrastructure. |
-| EXT-WRK-01 | I | Multi-worker production broker cycle | Engineering | Move `production_runtime._sync_accounts` onto `WorkerAssignments` behind a flag. Repeat `scripts/worker_kill_drill.py` against the real cycle on staging. |
+| EXT-DB-01 | I/O | Running production on PostgreSQL | Owner + operator | Engineering is done: the legacy runtime runs on PostgreSQL through the compatibility layer, and the legacy drill passes 13/13 on a synthetic source. Remaining: `scripts/migration_drill.py --legacy --source <sanitized production copy> --owner-authorization <ref>` with every check passing, on authorized infrastructure, then the owner's decision to switch `DATABASE_URL`. |
+| EXT-WRK-01 | I | Multi-worker production broker cycle | Owner: staging host | Engineering is done (`BROKER_CYCLE_ASSIGNMENT_MODE`, default `owner`). Remaining: run `scripts/worker_kill_drill.py` in orchestrator mode against the real cycle on the staging host with `assigned` mode enabled. |
 | EXT-STG-01 | I | Step 5.6 certification, the 1,000-account demo load | Owner: authorized staging host | Provide a host with Docker. Run `deploy/staging/deploy.sh <tag>`, a forced failure (rollback), `rollback.sh` and `restore.sh`. Keep the logs in `deploy/staging/.deploy-state`. |
 | EXT-LOAD-01 | C/I | Step 5 closure | Venue/infrastructure owner | The 1,000-account test on **exchange demo** accounts with replayed data, worker death mid-cycle, Linux resource figures. The synthetic results (`evidence/step5/load_test.json`) do not satisfy it. Needs H-VENUE and H-THROUGHPUT. |
-| EXT-LIQ-01 | O | Calibrated order-spreading capacity | Owner / research | Approve a participation-of-depth and impact model from measured fills. Until then budgets are stored `calibrated=0`. |
+| EXT-LIQ-01 | O | Calibrated order-spreading capacity; any production entry | Owner / research | The budget is enforced at the execution boundary. Under the default policy (`allow_market_fallback=False`) every production entry, which is a MARKET order, is refused. First: approve a single-account policy that permits market entries under the conservative cap. Then: approve a participation-of-depth and impact model from the collected `platform_spread_observations` (a policy with `calibrated=True` needs an `approval_ref`). Until then budgets stay `calibrated=0` and multi-account spreading is refused. |
 | EXT-GL-01 | O/C | Any live entry | Owner (release decision) | `BUILD_PERMITS_LIVE` is a reviewed code constant, false in this build, and LIVE certification is refused by the certification register. Changing either is a separate reviewed release after every gate below is met. |
 | EXT-GL-02 | O | Go-live gate conditions 3, 5, 9 | Owner | Set `MIN_DEMO_RUN_DAYS`, `LIVE_CONSENT_VERSION`, `STAGE_A_MAX_NOTIONAL` and `STAGE_B_MAX_BUDGET` through `POST /api/v1/admin/golive/policy`. Until then the conditions report BLOCKED_PENDING_POLICY. |
 | EXT-GL-03 | I | Revocation durability | Operator | Set `GOLIVE_REVOCATION_ANCHOR` to a path on storage that is separate from the database and its backups. Revocations are refused without it. |
