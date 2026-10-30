@@ -51,7 +51,13 @@ async def stream_events(
     if not payload or payload.get("type") != "access":
         logger.warning(f"SSE auth failed: Invalid token type or payload")
         raise HTTPException(status_code=401, detail="Invalid or expired token")
-    
+    # Section H 8.4 (F1): active account, current token_version, live device
+    # session -- the same check as every other authenticated route.
+    from app.core.deps import require_current_user
+    from shared_lib.persistence.db import DB
+    with DB().connect() as conn:
+        require_current_user(conn, payload, unknown_detail="Invalid or expired token")
+
     try:
         # Convert query param token to Authorization header for bot-backend
         headers = {"Authorization": f"Bearer {token}"}

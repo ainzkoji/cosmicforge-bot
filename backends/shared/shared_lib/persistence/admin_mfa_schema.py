@@ -7,6 +7,9 @@
   second factor. A refresh of a password-only session is refused once the
   admin has MFA (or MFA is required).
 * ``admin_mfa_recovery_codes``: salted SHA-256 hashes of one-time codes.
+* ``admin_mfa_bootstrap_codes`` (F9): salted SHA-256 hashes of one-time,
+  short-lived enrolment codes an operator issues out of band; required for
+  every enrolment while ``ADMIN_MFA_REQUIRED`` is on.
 """
 from __future__ import annotations
 
@@ -52,6 +55,25 @@ def ensure_admin_mfa_schema(conn) -> None:
     )
     conn.execute(
         "CREATE INDEX IF NOT EXISTS idx_admin_mfa_recovery_admin ON admin_mfa_recovery_codes(admin_id)"
+    )
+    # F9: one-time enrolment bootstrap codes, issued out of band by an operator
+    # with shell access (scripts/security_maintenance.py). Salted hashes only.
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS admin_mfa_bootstrap_codes (
+            id TEXT PRIMARY KEY,
+            admin_id TEXT NOT NULL,
+            code_hash TEXT NOT NULL,
+            issued_by TEXT,
+            created_at TEXT NOT NULL,
+            expires_at TEXT NOT NULL,
+            used_at TEXT,
+            revoked_at TEXT
+        )
+        """
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_admin_mfa_bootstrap_admin ON admin_mfa_bootstrap_codes(admin_id)"
     )
 
 

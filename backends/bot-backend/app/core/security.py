@@ -1,14 +1,13 @@
 """
 Security Module (Bot-Backend Subset)
 - JWT validation (decode_token)
-- Credential encryption helper (retained if needed, or could move to shared)
 
-User management, password hashing, and OTP logic have been removed as they belong in user-backend.
+User management, password hashing, OTP logic and the legacy credential
+encryption helpers have been removed: they belong in user-backend /
+shared_lib.core.security.broker_security.
 """
 from typing import Optional
 from jose import jwt, JWTError
-from cryptography.fernet import Fernet
-import base64
 
 from app.core.config import settings
 
@@ -53,25 +52,7 @@ def decode_token(token: str) -> Optional[dict]:
         return None
 
 
-# --- Credential Encryption (Fernet) ---
-# Retaining this if bot-backend has other encryption needs distinct from 'broker_security'
-# If unused, this can also be removed.
-
-def _get_fernet() -> Fernet:
-    key_bytes = settings.CREDENTIAL_KEY.encode()[:32].ljust(32, b'\0')
-    key_b64 = base64.urlsafe_b64encode(key_bytes)
-    return Fernet(key_b64)
-
-
-def encrypt_credential(text: str) -> str:
-    if not text:
-        return ""
-    f = _get_fernet()
-    return f.encrypt(text.encode()).decode()
-
-
-def decrypt_credential(encrypted: str) -> str:
-    if not encrypted:
-        return ""
-    f = _get_fernet()
-    return f.decrypt(encrypted.encode()).decode()
+# The truncate / zero-pad ``encrypt_credential`` / ``decrypt_credential`` helpers
+# that used to live here were removed (Section H 8.4, finding F4): nothing
+# called them. Exchange credentials are encrypted by
+# ``shared_lib.core.security.broker_security`` (BROKER_SECRET_KEY).

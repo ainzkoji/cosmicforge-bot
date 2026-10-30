@@ -2,10 +2,49 @@ from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from jose import jwt, JWTError
 from app.core.security import decode_token, decode_admin_token
+from shared_lib.core.security import token_state
 from shared_lib.persistence.db import DB
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
 admin_oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/admin-auth/login")
+
+# Section H 8.4 (F1): a token whose account was signed out everywhere, reset,
+# suspended, re-privileged, or whose device session ended. 401 so a client
+# refreshes (which fails when the refresh session is gone too) or signs in.
+_REVOKED_DETAIL = {"code": "TOKEN_REVOKED", "message": "Session ended. Sign in again."}
+
+
+def _unauthorized(detail) -> HTTPException:
+    return HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=detail,
+                         headers={"WWW-Authenticate": "Bearer"})
+
+
+def require_current_user(conn, payload: dict, *, unknown_detail="User not found") -> dict:
+    """The users row behind a decoded ``access`` token, or HTTPException.
+
+    One indexed read: the account must exist, be active, still have the token's
+    ``token_version`` and (when the token names one) a live device session."""
+    user, problem = token_state.user_token_problem(conn, payload)
+    if problem == token_state.UNKNOWN_SUBJECT:
+        raise _unauthorized(unknown_detail)
+    if problem == token_state.INACTIVE:
+        raise HTTPException(status_code=403, detail="Account not active")
+    if problem is not None:
+        raise _unauthorized(_REVOKED_DETAIL)
+    return user
+
+
+def require_current_admin_row(conn, payload: dict, admin_row=None) -> dict:
+    """Same for an ``admin_access`` token and the admins table."""
+    admin, problem = token_state.admin_token_problem(conn, payload, admin_row)
+    if problem == token_state.UNKNOWN_SUBJECT:
+        raise _unauthorized("Admin not found")
+    if problem == token_state.INACTIVE:
+        raise HTTPException(status_code=403, detail="Admin account is inactive")
+    if problem is not None:
+        raise _unauthorized(_REVOKED_DETAIL)
+    return admin
+
 
 def get_current_user_id(token: str = Depends(oauth2_scheme)) -> str:
     """
@@ -13,12 +52,10 @@ def get_current_user_id(token: str = Depends(oauth2_scheme)) -> str:
     """
     payload = decode_token(token)
     if not payload or payload.get("type") != "access":
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Could not validate credentials",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-    return payload.get("sub")
+        raise _unauthorized("Could not validate credentials")
+    with DB().connect() as conn:
+        user = require_current_user(conn, payload, unknown_detail="Could not validate credentials")
+    return user["id"]
 
 def get_current_active_user(token: str = Depends(oauth2_scheme)) -> dict:
     """
@@ -26,21 +63,9 @@ def get_current_active_user(token: str = Depends(oauth2_scheme)) -> dict:
     """
     payload = decode_token(token)
     if not payload or payload.get("type") != "access":
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid token",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-    
-    user_id = payload.get("sub")
-    db = DB()
-    with db.connect() as conn:
-        row = conn.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
-        if not row:
-            raise HTTPException(status_code=401, detail="User not found")
-        if row["status"] != "active":
-            raise HTTPException(status_code=403, detail="Account not active")
-        return dict(row)
+        raise _unauthorized("Invalid token")
+    with DB().connect() as conn:
+        return require_current_user(conn, payload)
 
 def get_current_admin(token: str = Depends(admin_oauth2_scheme)) -> dict:
     """
@@ -48,21 +73,11 @@ def get_current_admin(token: str = Depends(admin_oauth2_scheme)) -> dict:
     """
     payload = decode_admin_token(token)
     if not payload or payload.get("type") != "admin_access":
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Could not validate admin credentials",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-    
-    admin_id = payload.get("sub")
+        raise _unauthorized("Could not validate admin credentials")
+
     db = DB()
     with db.connect() as conn:
-        row = conn.execute("SELECT * FROM admins WHERE id = ?", (admin_id,)).fetchone()
-        if not row:
-            raise HTTPException(status_code=401, detail="Admin not found")
-        if row["is_active"] != 1:
-            raise HTTPException(status_code=403, detail="Admin account is inactive")
-        admin = dict(row)
+        admin = require_current_admin_row(conn, payload)
     # Section H 8.4: while admin MFA is mandatory, a session of an admin who has
     # not enrolled (e.g. one opened before the policy was switched on) is not
     # accepted anywhere; the console sends the admin through enrolment.

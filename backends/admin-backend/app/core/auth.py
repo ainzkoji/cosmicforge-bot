@@ -9,6 +9,7 @@ from jose.exceptions import ExpiredSignatureError, JWTClaimsError
 
 from app.core.config import settings
 from app.persistence.db import AdminDB
+from shared_lib.core.security import token_state
 
 
 logger = logging.getLogger(__name__)
@@ -46,15 +47,25 @@ def get_active_admin_from_token(token: str, db: AdminDB) -> dict[str, Any]:
             headers={"WWW-Authenticate": "Bearer"},
         )
 
+    # Section H 8.4 (F1): besides is_active, the token's ``tv`` must equal
+    # admins.token_version and its ``sid`` rotation chain must still have a live
+    # admin_sessions row -- so MFA enrolment/reset, refresh reuse, a password
+    # reset or a sign-out end the token here at once. One indexed read each.
     admin_id = payload.get("sub")
     with db.connect() as conn:
         row = conn.execute("SELECT * FROM admins WHERE id = ?", (admin_id,)).fetchone()
+        admin, problem = token_state.admin_token_problem(conn, payload, row) if row else (None, None)
 
     if not row:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Admin not found")
-    admin = dict(row)
-    if int(admin.get("is_active") or 0) != 1:
+    if problem == token_state.INACTIVE:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin account is inactive")
+    if problem is not None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail={"code": "TOKEN_REVOKED", "message": "Session ended. Sign in again."},
+            headers={"WWW-Authenticate": "Bearer"},
+        )
     return admin
 
 

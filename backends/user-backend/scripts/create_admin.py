@@ -106,6 +106,9 @@ def upsert_admin(conn, email: str, hashed_password: str, name: str, reset_passwo
         "UPDATE admin_sessions SET revoked_at = ? WHERE admin_id = ? AND revoked_at IS NULL",
         (now, existing["id"]),
     )
+    # ...and every access token issued with it (token_version, Section H 8.4 F1).
+    from shared_lib.core.security.token_state import bump_admin_token_version
+    bump_admin_token_version(conn, existing["id"])
     return "password_reset"
 
 

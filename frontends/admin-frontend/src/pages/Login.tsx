@@ -4,20 +4,21 @@ import { QRCodeSVG } from "qrcode.react";
 import { useAuth } from "@/auth/AuthContext";
 import { AdminAuthError, api } from "@/api/client";
 import type { MfaSetupResponse } from "@/api/client";
-import { isCompleteTotp, looksLikeRecoveryCode, normaliseTotpInput } from "@/lib/adminMfa";
+import { isCompleteTotp, looksLikeBootstrapCode, looksLikeRecoveryCode, normaliseTotpInput } from "@/lib/adminMfa";
 import { Loader2, Eye, EyeOff } from "lucide-react";
 import logo from "../assets/logo.png";
 
 /*
  * Admin sign-in (Section H 8.4):
  *   password -> (admin has MFA)        authenticator code or recovery code
- *            -> (MFA required, absent) enrolment: scan, confirm, save recovery codes
- * The step tokens live in this component's state only.
+ *            -> (MFA required, absent) enrolment: scan, confirm (with the operator-issued
+ *               one-time bootstrap code, F9), save recovery codes
+ * The step tokens and the bootstrap code live in this component's state only.
  */
 type Step =
     | { kind: "password" }
     | { kind: "mfa"; mfaToken: string }
-    | { kind: "enroll"; enrollmentToken: string; setup: MfaSetupResponse | null }
+    | { kind: "enroll"; enrollmentToken: string; setup: MfaSetupResponse | null; bootstrapRequired: boolean }
     | { kind: "recovery-codes"; codes: string[] };
 
 const INPUT_CLASS = "w-full px-4 py-3 rounded-xl border border-gray-200 bg-gray-50 focus:bg-white focus:border-[#1E1B4B] focus:ring-2 focus:ring-[#1E1B4B]/20 outline-none transition-all text-gray-900 placeholder:text-gray-400";
@@ -28,6 +29,9 @@ function messageFor(err: unknown, fallback: string): string {
         if (err.status === 429) return "Too many attempts. Wait a few minutes and try again.";
         if (err.code === "MFA_CHALLENGE_INVALID") return "This sign-in step expired. Enter your password again.";
         if (err.code === "MFA_INVALID") return "That code is not valid (or was already used).";
+        if (err.code === "MFA_BOOTSTRAP_INVALID") {
+            return "The enrolment bootstrap code is not valid, has expired or was already used. Ask an operator for a new one.";
+        }
         return err.message || fallback;
     }
     return fallback;
@@ -44,10 +48,12 @@ export default function Login() {
     const [showPassword, setShowPassword] = useState(false);
     const [code, setCode] = useState("");
     const [useRecovery, setUseRecovery] = useState(false);
+    const [bootstrapCode, setBootstrapCode] = useState("");
 
     const restart = (message: string | null = null) => {
         setStep({ kind: "password" });
         setCode("");
+        setBootstrapCode("");
         setUseRecovery(false);
         setError(message);
     };
@@ -67,8 +73,14 @@ export default function Login() {
                 setStep({ kind: "mfa", mfaToken: next.mfaToken });
             } else {
                 setCode("");
+                setBootstrapCode("");
                 const setup = await api.mfaSetup(next.enrollmentToken);
-                setStep({ kind: "enroll", enrollmentToken: next.enrollmentToken, setup });
+                setStep({
+                    kind: "enroll",
+                    enrollmentToken: next.enrollmentToken,
+                    setup,
+                    bootstrapRequired: next.bootstrapRequired || setup.bootstrap_required === true,
+                });
             }
         } catch (err) {
             console.error(err);
@@ -106,9 +118,11 @@ export default function Login() {
         setLoading(true);
         setError(null);
         try {
-            const res = await api.mfaEnroll(code, step.enrollmentToken);
+            const res = await api.mfaEnroll(code, step.enrollmentToken,
+                step.bootstrapRequired ? bootstrapCode : undefined);
             completeSignIn(res, email);
             setCode("");
+            setBootstrapCode("");
             setStep({ kind: "recovery-codes", codes: res.recovery_codes || [] });
         } catch (err) {
             if (err instanceof AdminAuthError && err.status === 401) {
@@ -230,7 +244,8 @@ export default function Login() {
                     <>
                         <h1 className="text-2xl font-bold text-center text-[#1E1B4B] mb-2">Set up two-step verification</h1>
                         <p className="text-center text-gray-500 text-sm mb-6">
-                            Admin accounts must use an authenticator app. Scan the code, then enter the 6-digit code it shows.
+                            Admin accounts must use an authenticator app. Scan the code, then enter the 6-digit code it shows
+                            {step.bootstrapRequired ? " together with the one-time bootstrap code an operator gave you." : "."}
                         </p>
                         {step.setup && (
                             <div className="flex flex-col items-center gap-3 mb-6">
@@ -241,17 +256,43 @@ export default function Login() {
                             </div>
                         )}
                         <form onSubmit={handleEnroll} className="space-y-5">
+                            {step.bootstrapRequired && (
+                                <div className="space-y-2">
+                                    <label htmlFor="mfa-bootstrap-code" className="block text-sm font-medium text-gray-700">
+                                        Enrolment bootstrap code
+                                    </label>
+                                    <input
+                                        id="mfa-bootstrap-code"
+                                        required
+                                        autoComplete="off"
+                                        spellCheck={false}
+                                        value={bootstrapCode}
+                                        onChange={(e) => setBootstrapCode(e.target.value.slice(0, 32))}
+                                        className={`${INPUT_CLASS} text-center tracking-widest font-mono`}
+                                        placeholder="xxxxx-xxxxx-xxxxx"
+                                    />
+                                    <p className="text-xs text-gray-500">
+                                        A one-time code an operator gives you separately. It expires quickly and works once.
+                                    </p>
+                                </div>
+                            )}
                             <input
                                 autoFocus
                                 required
                                 inputMode="numeric"
                                 autoComplete="one-time-code"
+                                aria-label="Authenticator code"
                                 value={code}
                                 onChange={(e) => setCode(normaliseTotpInput(e.target.value))}
                                 className={`${INPUT_CLASS} text-center tracking-widest`}
                                 placeholder="123456"
                             />
-                            <button type="submit" disabled={loading || !isCompleteTotp(code)} className={BUTTON_CLASS}>
+                            <button
+                                type="submit"
+                                disabled={loading || !isCompleteTotp(code)
+                                    || (step.bootstrapRequired && !looksLikeBootstrapCode(bootstrapCode))}
+                                className={BUTTON_CLASS}
+                            >
                                 {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : "Confirm and continue"}
                             </button>
                             <button type="button" className="w-full text-xs text-gray-500 hover:text-gray-700" onClick={() => restart()}>

@@ -9,8 +9,8 @@ from fastapi import APIRouter, Depends, Form, HTTPException, status, Request, Re
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 import pyotp
 from app.schemas.auth import (
-    UserCreate, UserResponse, Token, RefreshTokenReq, 
-    BrokerResponse, UserStatus,
+    UserCreate, UserResponse, Token, RefreshTokenReq,
+    UserStatus,
     VerifyEmailRequest, ResendVerificationRequest,
     ForgotPasswordRequest, ResetPasswordRequest,
     SessionResponse, SessionListResponse
@@ -27,13 +27,16 @@ from app.core.config import settings
 from app.core.session_cookies import (
     USER_REALM, clear_cookies, issue_session_cookies, refresh_token_from, token_body,
 )
+from app.core.deps import require_current_user
+from shared_lib.core.security.token_state import bump_user_token_version, read_token_version
 from shared_lib.persistence.db import DB, utc_now_iso
+from shared_lib.persistence.session_version_schema import ensure_session_version_schema
 import logging
 import os
 import sqlite3
 import threading
 import uuid
-from typing import List, Optional
+from typing import Optional
 from datetime import datetime, timedelta, timezone
 
 logger = logging.getLogger(__name__)
@@ -105,7 +108,11 @@ def get_current_user_id(token: str = Depends(oauth2_scheme)) -> str:
             detail="Could not validate credentials",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    return payload.get("sub")
+    # Section H 8.4 (F1): the account must still be active and the token not
+    # revoked (token_version, device session) -- one indexed read.
+    with DB().connect() as conn:
+        user = require_current_user(conn, payload, unknown_detail="Could not validate credentials")
+    return user["id"]
 
 
 def get_current_active_user(token: str = Depends(oauth2_scheme)) -> dict:
@@ -113,16 +120,8 @@ def get_current_active_user(token: str = Depends(oauth2_scheme)) -> dict:
     payload = decode_token(token)
     if not payload or payload.get("type") != "access":
         raise HTTPException(status_code=401, detail="Invalid token")
-    
-    user_id = payload.get("sub")
-    db = DB()
-    with db.connect() as conn:
-        row = conn.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
-        if not row:
-            raise HTTPException(status_code=401, detail="User not found")
-        if row["status"] != "active":
-            raise HTTPException(status_code=403, detail="Account not active")
-        return dict(row)
+    with DB().connect() as conn:
+        return require_current_user(conn, payload)
 
 
 _LOOPBACK_IPS = {"127.0.0.1", "::1", "localhost"}
@@ -149,6 +148,12 @@ def _row_value(row, key: str, default=None):
 
 def _window_cutoff(minutes: int) -> str:
     return (datetime.now(timezone.utc) - timedelta(minutes=minutes)).isoformat()
+
+
+def _session_expires_at() -> str:
+    """``auth_sessions.expires_at``: the refresh token's own lifetime (F2; the
+    row used to say 30 days while the JWT lives REFRESH_TOKEN_EXPIRE_DAYS)."""
+    return (datetime.now(timezone.utc) + timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS)).isoformat()
 
 
 def _check_rate_limit(conn, email: str, ip: Optional[str] = None, account_limit: Optional[int] = None) -> None:
@@ -666,19 +671,25 @@ def login(
         rt_hash = hash_token(refresh_token)
         now = utc_now_iso()
         session_id = str(uuid.uuid4())
-        expires = (datetime.now(timezone.utc) + timedelta(days=30)).isoformat()
+        expires = _session_expires_at()
         device = request.headers.get("User-Agent", "unknown") if request else "unknown"
-        
+
+        # Section H 8.4 (F1): this row starts a refresh-rotation chain (one
+        # device); its id is the access token's ``sid``. The token version is
+        # read inside this transaction, so a logout-all committed after it
+        # also ends the access token minted below.
+        ensure_session_version_schema(conn)
+        token_version = read_token_version(conn, "users", uid)
         conn.execute("""
-            INSERT INTO auth_sessions (id, user_id, refresh_token_hash, device, ip, created_at, expires_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?)""",
-            (session_id, uid, rt_hash, device[:255], ip, now, expires)
+            INSERT INTO auth_sessions (id, user_id, refresh_token_hash, device, ip, created_at, expires_at, family_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+            (session_id, uid, rt_hash, device[:255], ip, now, expires, session_id)
         )
 
     # The access token is minted only AFTER the transaction above has been
     # committed and its connection closed: building it reads the user's
     # entitlements on a connection of its own, and SQLite has a single writer.
-    access_token = create_access_token(uid, role=role)
+    access_token = create_access_token(uid, role=role, token_version=token_version, session_id=session_id)
     # Section H 8.4: httpOnly session cookies + CSRF token; the token strings
     # stay in the body only during the AUTH_BEARER_COMPAT migration window.
     csrf = issue_session_cookies(response, USER_REALM, access_token, refresh_token, request)
@@ -725,6 +736,9 @@ def refresh(response: Response, req: Optional[RefreshTokenReq] = None, request: 
                 "UPDATE auth_sessions SET revoked_at = ? WHERE user_id = ?",
                 (utc_now_iso(), uid)
             )
+            # ...and every access token already handed out (F1): whoever
+            # copied the refresh token may hold one of those as well.
+            bump_user_token_version(conn, uid)
             audit_event(conn, "refresh_reuse_detected", user_id=uid, ip=_client_ip(request))
             # Commit before raising, or the revocation is rolled back with the 401.
             conn.commit()
@@ -747,22 +761,28 @@ def refresh(response: Response, req: Optional[RefreshTokenReq] = None, request: 
         new_refresh = create_refresh_token(uid)
         new_hash = hash_token(new_refresh)
         now = utc_now_iso()
-        new_expires = (datetime.now(timezone.utc) + timedelta(days=30)).isoformat()
-        
+        new_expires = _session_expires_at()
+
         # Revoke old session
         conn.execute("UPDATE auth_sessions SET revoked_at = ? WHERE id = ?", (now, session["id"]))
-        
+
         # Create new session (rotation)
         ip = request.client.host if request else "unknown"
         device = request.headers.get("User-Agent", "unknown") if request else "unknown"
-        
+
+        # The new row continues the device's rotation chain (F1): access tokens
+        # of this device stay valid across rotations and die with the chain.
+        ensure_session_version_schema(conn)
+        family_id = _row_value(session, "family_id") or session["id"]
+        token_version = read_token_version(conn, "users", uid)
         conn.execute("""
-            INSERT INTO auth_sessions (id, user_id, refresh_token_hash, device, ip, created_at, expires_at, rotated_from)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
-            (str(uuid.uuid4()), uid, new_hash, device[:255], ip, now, new_expires, session["id"])
+            INSERT INTO auth_sessions (id, user_id, refresh_token_hash, device, ip, created_at, expires_at, rotated_from,
+                                       family_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (str(uuid.uuid4()), uid, new_hash, device[:255], ip, now, new_expires, session["id"], family_id)
         )
 
-    new_access = create_access_token(uid, role=role)
+    new_access = create_access_token(uid, role=role, token_version=token_version, session_id=family_id)
     csrf = issue_session_cookies(response, USER_REALM, new_access, new_refresh, request)
     return token_body(new_access, new_refresh, csrf)
 
@@ -865,8 +885,9 @@ def reset_password(req: ResetPasswordRequest):
         conn.execute("UPDATE password_resets SET used_at = ? WHERE id = ?", (now, reset["id"]))
         conn.execute("UPDATE users SET hashed_password = ? WHERE id = ?", (new_hash, user["id"]))
         
-        # Revoke all sessions
+        # Revoke all sessions, and every access token already issued (F1).
         conn.execute("UPDATE auth_sessions SET revoked_at = ? WHERE user_id = ?", (now, user["id"]))
+        bump_user_token_version(conn, user["id"])
         # The owner proved control of the mailbox: failed logins recorded
         # against the account (possibly someone else's guesses) no longer lock it.
         clear_login_failures(conn, email)
@@ -875,18 +896,10 @@ def reset_password(req: ResetPasswordRequest):
         return {"message": "Password reset successfully. Please login."}
 
 
-# --- Broker Management (requires active user) ---
-@router.get("/user/brokers", response_model=List[BrokerResponse])
-def list_brokers(user: dict = Depends(get_current_active_user)):
-    db = DB()
-    with db.connect() as conn:
-        rows = conn.execute("SELECT * FROM broker_accounts WHERE user_id = ?", (user["id"],)).fetchall()
-        return [dict(r) for r in rows]
-
-
-# The legacy POST /user/brokers (per-field encryption with CREDENTIAL_KEY into
-# columns that no longer exist) was removed: no client calls it. Broker
-# accounts are linked through app.api.brokers / broker_service.
+# The legacy GET and POST /user/brokers were removed (Section H 8.4, F3): no
+# client calls them, and GET declared a response model with columns the table
+# no longer has (it answered 500). Broker accounts are listed and linked
+# through app.api.brokers / broker_service.
 
 
 # --- User Profile ---
@@ -951,14 +964,18 @@ def update_me(
 # --- Logout All Sessions ---
 @router.post("/logout-all")
 def logout_all(user_id: str = Depends(get_current_user_id)):
-    """Revoke ALL sessions for current user"""
+    """Revoke ALL sessions for current user, and every access token already
+    issued to any of its devices (token_version, F1)."""
     db = DB()
     with db.connect() as conn:
         result = conn.execute(
             "UPDATE auth_sessions SET revoked_at = ? WHERE user_id = ? AND revoked_at IS NULL",
             (utc_now_iso(), user_id)
         )
-    return {"message": "All sessions revoked", "count": result.rowcount}
+        count = result.rowcount
+        bump_user_token_version(conn, user_id)
+        audit_event(conn, "logout_all", user_id=user_id, details={"sessions": count})
+    return {"message": "All sessions revoked", "count": count}
 
 
 # --- Admin Endpoints ---

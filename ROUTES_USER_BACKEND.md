@@ -134,8 +134,6 @@ These are correctly implemented in user-backend (91 routes).
 | GET | `/auth/sessions` | get_sessions |
 | POST | `/auth/sessions/revoke` | revoke_session |
 | DELETE | `/auth/sessions/{session_id}` | revoke_session |
-| GET | `/auth/user/brokers` | list_brokers |
-| POST | `/auth/user/brokers` | link_broker |
 | POST | `/auth/verify-email` | verify_email |
 | GET | `/kyc/checklist` | get_kyc_checklist |
 | GET | `/kyc/documents` | list_documents |

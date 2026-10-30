@@ -13,7 +13,6 @@ These endpoints are implemented locally in `user-backend`.
 - `POST /auth/login` - Login
 - `POST /auth/refresh` - Refresh token
 - `GET /auth/me` - Get current user profile
-- `GET /auth/user/brokers` - List linked broker accounts
 
 ### KYC (`/kyc`)
 - `GET /kyc/status` - Get KYC status

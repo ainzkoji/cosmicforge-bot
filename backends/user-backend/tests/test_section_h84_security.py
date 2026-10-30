@@ -331,7 +331,11 @@ def test_required_mfa_gives_an_unenrolled_admin_only_an_enrolment_token(ctx, mon
     assert client.post(f"{ADMIN_AUTH}/mfa/disable", json={"code": "123456"}, headers=_bearer(token)).status_code == 401
 
     secret = client.post(f"{ADMIN_AUTH}/mfa/setup", json={"enrollment_token": token}).json()["secret"]
-    enroll = client.post(f"{ADMIN_AUTH}/mfa/enroll", json={"enrollment_token": token, "code": _code(ctx, secret)})
+    # F9 (changed flow): while MFA is required, enrolment also needs an
+    # operator-issued bootstrap code.
+    assert body["mfa_bootstrap_required"] is True
+    enroll = client.post(f"{ADMIN_AUTH}/mfa/enroll", json={"enrollment_token": token, "code": _code(ctx, secret),
+                                                           "bootstrap_code": _bootstrap_code(ctx)})
     assert enroll.status_code == 200, enroll.text
     assert enroll.json()["access_token"] and len(enroll.json()["recovery_codes"]) == security.RECOVERY_CODE_COUNT
     assert client.post("/api/admin/probe", headers=_bearer(enroll.json()["access_token"])).status_code == 200
@@ -816,6 +820,13 @@ def _load_maintenance():
     return module
 
 
+def _bootstrap_code(ctx, email=ADMIN_EMAIL, minutes=30) -> str:
+    """F9: the one-time enrolment code an operator issues with the maintenance CLI."""
+    with ctx.db.connect() as conn:
+        code, _expires = _load_maintenance().issue_admin_mfa_bootstrap(conn, email, minutes)
+    return code
+
+
 def test_break_glass_reset_clears_mfa_revokes_sessions_and_is_audited(ctx):
     _make_admin(ctx)
     _enroll_admin(ctx)
@@ -838,7 +849,8 @@ def test_enrolment_with_the_step_token_works_despite_a_stale_admin_cookie(ctx, m
     setup = ctx.client.post(f"{ADMIN_AUTH}/mfa/setup", json={"enrollment_token": token})  # no CSRF header
     assert setup.status_code == 200, setup.text
     enroll = ctx.client.post(f"{ADMIN_AUTH}/mfa/enroll",
-                             json={"enrollment_token": token, "code": _code(ctx, setup.json()["secret"])})
+                             json={"enrollment_token": token, "code": _code(ctx, setup.json()["secret"]),
+                                   "bootstrap_code": _bootstrap_code(ctx)})  # F9 (changed flow)
     assert enroll.status_code == 200, enroll.text
 
 

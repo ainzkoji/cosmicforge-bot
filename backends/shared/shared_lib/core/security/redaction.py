@@ -28,9 +28,11 @@ SECRET_KEY_NAMES = frozenset({
     "encrypted_blob", "credentials",
 })
 
+# ``token`` covers the legacy SSE URL ``/api/v1/events/stream?token=<jwt>``
+# (Section H 8.4, F8) in access-log lines while AUTH_BEARER_COMPAT is on.
 _KEY_ALT = r"(?:api[_-]?key|api[_-]?secret|secret(?:_key)?|private_key|passphrase|password|api_token|" \
-           r"access_token|refresh_token|bridge_token|signature|sign|x-mbx-apikey|x-bapi-api-key|x-bapi-sign|" \
-           r"x-bx-apikey|encrypted_blob)"
+           r"access_token|refresh_token|bridge_token|token|signature|sign|x-mbx-apikey|x-bapi-api-key|" \
+           r"x-bapi-sign|x-bx-apikey|encrypted_blob)"
 
 _PATTERNS = (
     # key=value in query strings / form bodies / log text
@@ -85,7 +87,18 @@ class SecretRedactionFilter(logging.Filter):
             return True
         scrubbed = redact_text(message)
         if scrubbed != message:
-            record.msg, record.args = scrubbed, ()
+            if isinstance(record.args, tuple) and record.args:
+                # Keep the args shape: some formatters (uvicorn's access log)
+                # unpack record.args themselves.
+                record.args = tuple(redact_text(a) if isinstance(a, str) else a for a in record.args)
+                try:
+                    clean = redact_text(record.getMessage()) == record.getMessage()
+                except Exception:
+                    clean = False
+                if not clean:
+                    record.msg, record.args = scrubbed, ()
+            else:
+                record.msg, record.args = scrubbed, ()
         if record.exc_info and record.exc_info[1] is not None:
             exc = record.exc_info[1]
             text = str(exc)
@@ -98,13 +111,21 @@ class SecretRedactionFilter(logging.Filter):
 _FILTER = SecretRedactionFilter()
 
 
+#: Loggers that do not propagate to the root logger under uvicorn's default
+#: logging config; ``uvicorn.access`` writes every request line, query string
+#: included (Section H 8.4, F8: the legacy ``?token=`` SSE URL).
+SERVER_LOGGERS = ("uvicorn", "uvicorn.error", "uvicorn.access")
+
+
 def install_log_redaction(logger: logging.Logger | None = None) -> None:
-    target = logger or logging.getLogger()
-    if _FILTER not in target.filters:
-        target.addFilter(_FILTER)
-    for handler in target.handlers:
-        if _FILTER not in handler.filters:
-            handler.addFilter(_FILTER)
+    targets = [logger] if logger is not None else \
+        [logging.getLogger()] + [logging.getLogger(name) for name in SERVER_LOGGERS]
+    for target in targets:
+        if _FILTER not in target.filters:
+            target.addFilter(_FILTER)
+        for handler in target.handlers:
+            if _FILTER not in handler.filters:
+                handler.addFilter(_FILTER)
 
 
 __all__ = ["MASK", "SECRET_KEY_NAMES", "SecretRedactionFilter", "install_log_redaction", "redact_exception",

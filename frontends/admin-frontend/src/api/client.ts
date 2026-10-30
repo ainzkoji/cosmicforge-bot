@@ -237,12 +237,13 @@ export interface AuthResponse {
     mfa_required?: boolean;
     mfa_token?: string;
     mfa_enrollment_required?: boolean;
+    mfa_bootstrap_required?: boolean;
     enrollment_token?: string;
     recovery_codes?: string[];
     recovery_codes_remaining?: number;
 }
 
-export interface MfaSetupResponse { secret: string; provisioning_uri: string; }
+export interface MfaSetupResponse { secret: string; provisioning_uri: string; bootstrap_required?: boolean; }
 
 /** A failed admin auth call that keeps the backend's machine-readable code. */
 export class AdminAuthError extends Error {
@@ -385,9 +386,14 @@ export const api = {
     mfaSetup: async (enrollmentToken?: string): Promise<MfaSetupResponse> =>
         postAdminAuth('/mfa/setup', enrollmentToken ? { enrollment_token: enrollmentToken } : {}, "MFA setup failed"),
 
-    /** Confirm the authenticator; answers with a session and the one-time recovery codes. */
-    mfaEnroll: async (code: string, enrollmentToken?: string): Promise<AuthResponse> =>
-        postAdminAuth('/mfa/enroll', { code, enrollment_token: enrollmentToken || undefined }, "MFA enrolment failed"),
+    /** Confirm the authenticator; answers with a session and the one-time recovery codes.
+     *  While MFA is required the operator-issued bootstrap code is needed too (F9). */
+    mfaEnroll: async (code: string, enrollmentToken?: string, bootstrapCode?: string): Promise<AuthResponse> =>
+        postAdminAuth('/mfa/enroll', {
+            code,
+            enrollment_token: enrollmentToken || undefined,
+            bootstrap_code: bootstrapCode || undefined,
+        }, "MFA enrolment failed"),
 
     /** Revoke the session on the server and clear its cookies (best effort). */
     logout: async (): Promise<void> => {

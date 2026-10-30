@@ -6,13 +6,14 @@
  *   - a session ({ csrf_token, ... })                         -> signed in
  *   - { mfa_required: true, mfa_token }                       -> ask for the authenticator code
  *   - { mfa_enrollment_required: true, enrollment_token }     -> MFA is mandatory: enrol first
+ *     (+ mfa_bootstrap_required: the operator-issued one-time bootstrap code is needed too)
  * The step tokens are kept in component memory only, never in storage.
  */
 
 export type AdminLoginStep =
     | { kind: "session"; csrfToken: string | null }
     | { kind: "mfa"; mfaToken: string }
-    | { kind: "enroll"; enrollmentToken: string };
+    | { kind: "enroll"; enrollmentToken: string; bootstrapRequired: boolean };
 
 function record(value: unknown): Record<string, unknown> | null {
     return typeof value === "object" && value !== null && !Array.isArray(value) ? (value as Record<string, unknown>) : null;
@@ -26,7 +27,9 @@ export function classifyAdminLogin(body: unknown): AdminLoginStep | null {
         return { kind: "mfa", mfaToken: data.mfa_token };
     }
     if (data.mfa_enrollment_required === true && typeof data.enrollment_token === "string" && data.enrollment_token) {
-        return { kind: "enroll", enrollmentToken: data.enrollment_token };
+        // F9: while MFA is required the backend also asks for the one-time
+        // bootstrap code an operator issued out of band.
+        return { kind: "enroll", enrollmentToken: data.enrollment_token, bootstrapRequired: data.mfa_bootstrap_required === true };
     }
     if ("csrf_token" in data || "access_token" in data) {
         return { kind: "session", csrfToken: typeof data.csrf_token === "string" ? data.csrf_token : null };
@@ -46,6 +49,11 @@ export function isCompleteTotp(value: string): boolean {
 /** Recovery codes look like "abcde-fghjk"; spacing and case do not matter. */
 export function looksLikeRecoveryCode(value: string): boolean {
     return String(value || "").replace(/[^a-z0-9]/gi, "").length === 10;
+}
+
+/** Bootstrap codes look like "abcde-fghjk-mnpqr" (15 letters/digits); spacing and case do not matter. */
+export function looksLikeBootstrapCode(value: string): boolean {
+    return String(value || "").replace(/[^a-z0-9]/gi, "").length === 15;
 }
 
 /** The `code` field of a FastAPI error detail ({ detail: { code, message } }), if any. */

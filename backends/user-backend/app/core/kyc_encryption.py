@@ -75,6 +75,10 @@ def _configured_secret() -> str:
 def assert_kyc_encryption_configured() -> None:
     """Startup/request check. Raises ``KYCConfigError`` in production without a real key."""
     _configured_secret()
+    if _is_production() and legacy_dev_key_fallback_enabled():
+        logger.warning("[KYC Encryption] AUDIT: %s=true -- stored KYC data encrypted with the public "
+                       "development key is still accepted. Switch it off after re-encryption.",
+                       LEGACY_FALLBACK_ENV)
 
 
 def _derive_key(secret: str, salt: bytes) -> bytes:
@@ -106,15 +110,44 @@ def _get_fernet() -> Fernet:
     return _fernet_for(_configured_secret(), _PII_SALT)
 
 
+#: Section H 8.4 (finding F5). In production the public development default
+#: key is NOT tried when decrypting, unless this is explicitly set to true --
+#: an audited, temporary migration aid for data that was written before a real
+#: KYC_ENCRYPTION_KEY was configured (anything an attacker wrote with the public
+#: key would otherwise be accepted as genuine). Default off. Every production
+#: decryption that succeeds only with the legacy key is logged as a WARNING
+#: (never the value) so its use can be audited and the data re-encrypted.
+LEGACY_FALLBACK_ENV = "KYC_ALLOW_LEGACY_DEV_KEY_DECRYPT"
+_TRUE_VALUES = frozenset({"1", "true", "yes", "on"})
+
+
+def legacy_dev_key_fallback_enabled() -> bool:
+    """Whether reads may also try the development default key.
+
+    Outside production: always (local data stays readable). Production: only
+    with ``KYC_ALLOW_LEGACY_DEV_KEY_DECRYPT=true``."""
+    if not _is_production():
+        return True
+    return (os.getenv(LEGACY_FALLBACK_ENV) or "").strip().lower() in _TRUE_VALUES
+
+
 def _decrypt_fernets(salt: bytes) -> List[Fernet]:
-    """Keys to try when reading: the current key first, then the historical
-    development default, so data written before a real key was configured
-    remains readable. New data is never written with the fallback key."""
+    """Keys to try when reading: the current key first, then -- when
+    :func:`legacy_dev_key_fallback_enabled` -- the historical development
+    default, so data written before a real key was configured remains
+    readable. New data is never written with the fallback key."""
     primary = _configured_secret()
     fernets = [_fernet_for(primary, salt)]
-    if primary != _DEV_DEFAULT_SECRET:
+    if primary != _DEV_DEFAULT_SECRET and legacy_dev_key_fallback_enabled():
         fernets.append(_fernet_for(_DEV_DEFAULT_SECRET, salt))
     return fernets
+
+
+def _note_legacy_key_use(what: str) -> None:
+    if _is_production():
+        logger.warning("[KYC Encryption] AUDIT: a stored %s was decrypted with the legacy development key "
+                       "(%s=true). Re-encrypt it with the configured key and switch the fallback off.",
+                       what, LEGACY_FALLBACK_ENV)
 
 
 def encrypt_pii(value: Optional[str]) -> Optional[str]:
@@ -145,11 +178,14 @@ def decrypt_pii(encrypted_value: Optional[str]) -> Optional[str]:
     except Exception as e:
         logger.warning("[KYC Encryption] Decryption failed: %s", type(e).__name__)
         return None
-    for fernet in fernets:
+    for index, fernet in enumerate(fernets):
         try:
-            return fernet.decrypt(encrypted_bytes).decode("utf-8")
+            plaintext = fernet.decrypt(encrypted_bytes).decode("utf-8")
         except Exception:
             continue
+        if index > 0:
+            _note_legacy_key_use("PII value")
+        return plaintext
     # Log error but don't expose details
     logger.warning("[KYC Encryption] Decryption failed: no configured key matches")
     return None
@@ -177,11 +213,14 @@ def decrypt_file_bytes(blob: bytes) -> bytes:
     """
     if not is_encrypted_blob(blob):
         return blob
-    for fernet in _decrypt_fernets(_FILE_SALT):
+    for index, fernet in enumerate(_decrypt_fernets(_FILE_SALT)):
         try:
-            return fernet.decrypt(blob)
+            content = fernet.decrypt(blob)
         except InvalidToken:
             continue
+        if index > 0:
+            _note_legacy_key_use("document")
+        return content
     raise KYCConfigError(
         f"Stored KYC document cannot be decrypted with the configured {ENV_KEY}"
     )

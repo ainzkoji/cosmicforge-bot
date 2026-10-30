@@ -80,7 +80,35 @@ except ImportError:
 
 # ...
 
-def create_access_token(subject: Union[str, Any], role: str = "user", expires_delta: timedelta = None) -> str:
+def _current_token_version(table: str, subject: Any) -> int:
+    """``token_version`` of the account, read on a connection of its own. A
+    failure mints version 0, which a bumped account refuses (fails closed)."""
+    try:
+        from shared_lib.core.security.token_state import read_token_version
+        from shared_lib.persistence.db import DB
+        with DB().connect() as conn:
+            return read_token_version(conn, table, str(subject))
+    except Exception as exc:
+        logger.error("token_version lookup failed (%s); minting version 0", type(exc).__name__)
+        return 0
+
+
+def _session_claims(token_version: int, session_id: Optional[str]) -> dict:
+    """Section H 8.4 (F1): the server-side state every validator re-checks."""
+    claims = {"tv": int(token_version)}
+    if session_id:
+        claims["sid"] = str(session_id)
+    return claims
+
+
+def create_access_token(subject: Union[str, Any], role: str = "user", expires_delta: timedelta = None, *,
+                        token_version: Optional[int] = None, session_id: Optional[str] = None) -> str:
+    """User access token. ``token_version`` (claim ``tv``) and ``session_id``
+    (claim ``sid``, the refresh-rotation chain) are passed by login/refresh,
+    which read them inside their own transaction; other callers get the
+    account's current version."""
+    if token_version is None:
+        token_version = _current_token_version("users", subject)
     now = datetime.now(timezone.utc)
     if expires_delta:
         expire = now + expires_delta
@@ -108,7 +136,8 @@ def create_access_token(subject: Union[str, Any], role: str = "user", expires_de
         "type": "access",
         "role": role,
         "permissions": permissions,
-        "entitlements": entitlements
+        "entitlements": entitlements,
+        **_session_claims(token_version, session_id),
     }
     encoded_jwt = jwt.encode(to_encode, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
     return encoded_jwt
@@ -172,7 +201,10 @@ def decode_token(token: str) -> Optional[dict]:
 ADMIN_ISSUER = "cosmicforge-admin-backend"
 ADMIN_AUDIENCE = "admin-portal"
 
-def create_admin_access_token(subject: Union[str, Any], role: str = "admin", expires_delta: timedelta = None) -> str:
+def create_admin_access_token(subject: Union[str, Any], role: str = "admin", expires_delta: timedelta = None, *,
+                              token_version: Optional[int] = None, session_id: Optional[str] = None) -> str:
+    if token_version is None:
+        token_version = _current_token_version("admins", subject)
     now = datetime.now(timezone.utc)
     if expires_delta:
         expire = now + expires_delta
@@ -189,6 +221,7 @@ def create_admin_access_token(subject: Union[str, Any], role: str = "admin", exp
         "jti": str(uuid.uuid4()),
         "type": "admin_access",
         "role": role,
+        **_session_claims(token_version, session_id),
     }
     encoded_jwt = jwt.encode(to_encode, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
     return encoded_jwt

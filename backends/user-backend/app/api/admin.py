@@ -7,6 +7,7 @@ Admin API Endpoints
 """
 from fastapi import APIRouter, Depends, HTTPException, Query
 from shared_lib.persistence.db import DB, utc_now_iso
+from shared_lib.core.security.token_state import bump_user_token_version
 from app.core.deps import require_admin
 from app.schemas.auth import UserResponse
 from typing import List, Optional
@@ -224,7 +225,14 @@ async def suspend_user(
             "UPDATE users SET status = 'suspended' WHERE id = ?",
             (user_id,)
         )
-        
+        # Section H 8.4 (F1): end every session and access token of the
+        # account now, not when its tokens expire.
+        conn.execute(
+            "UPDATE auth_sessions SET revoked_at = ? WHERE user_id = ? AND revoked_at IS NULL",
+            (utc_now_iso(), user_id)
+        )
+        bump_user_token_version(conn, user_id)
+
         # Log audit event
         conn.execute("""
             INSERT INTO auth_audit_log (id, event_type, user_id, details, created_at)
@@ -1313,7 +1321,9 @@ async def grant_admin_role(
             INSERT INTO admin_roles (id, user_id, role, granted_by, granted_at)
             VALUES (?, ?, 'admin', ?, ?)
         """, (role_id, user_id, _admin["id"], utc_now_iso()))
-        
+        # Privilege change (F1): tokens minted with the old privileges end now.
+        bump_user_token_version(conn, user_id)
+
         # Log audit event
         conn.execute("""
             INSERT INTO auth_audit_log (id, event_type, user_id, details, created_at)
@@ -1348,7 +1358,9 @@ async def revoke_admin_role(
             "UPDATE admin_roles SET revoked_at = ? WHERE user_id = ? AND revoked_at IS NULL",
             (utc_now_iso(), user_id)
         )
-        
+        # Privilege change (F1): tokens minted with the old privileges end now.
+        bump_user_token_version(conn, user_id)
+
         # Log audit event
         conn.execute("""
             INSERT INTO auth_audit_log (id, event_type, user_id, details, created_at)

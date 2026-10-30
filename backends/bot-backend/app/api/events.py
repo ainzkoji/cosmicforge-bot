@@ -148,8 +148,36 @@ def _caller_is_admin(token: str = Depends(oauth2_scheme)) -> bool:
     return payload.get("type") == "access" and payload.get("role") == "admin"
 
 
-async def _event_stream(user_id: str, is_admin: bool) -> AsyncGenerator:
-    """Generate SSE events from the broadcaster for ONE subscriber (tenant-filtered)."""
+#: Section H 8.4 (F1): how often an open stream re-checks that its access token
+#: is still current (account active, token_version, device session). A stream
+#: of a signed-out, reset or suspended account ends within this many seconds.
+SSE_REAUTH_SECONDS = 30.0
+
+
+def _token_still_current(token: str):
+    """A callable telling whether ``token`` is still accepted (never raises)."""
+    from fastapi import HTTPException
+
+    from app.core.auth import authenticate_access_token
+
+    def check() -> bool:
+        try:
+            authenticate_access_token(token)
+            return True
+        except HTTPException:
+            return False
+        except Exception:
+            logger.warning("SSE re-authentication check failed; closing the stream")
+            return False
+    return check
+
+
+async def _event_stream(user_id: str, is_admin: bool, still_authorised=None) -> AsyncGenerator:
+    """Generate SSE events from the broadcaster for ONE subscriber (tenant-filtered).
+
+    ``still_authorised`` (sync callable) is re-evaluated every
+    ``SSE_REAUTH_SECONDS``; when it turns False the stream sends an
+    ``auth_revoked`` event and ends."""
     # Unique per connection: a second tab from the same user must not
     # replace (and later unsubscribe) the first one's listener.
     listener_id = f"sse_{user_id}_{uuid.uuid4().hex[:12]}"
@@ -169,7 +197,13 @@ async def _event_stream(user_id: str, is_admin: bool) -> AsyncGenerator:
         
         # Stream events as they arrive
         last_sent = time.monotonic()
+        last_auth_check = time.monotonic()
         while True:
+            if still_authorised is not None and time.monotonic() - last_auth_check >= SSE_REAUTH_SECONDS:
+                last_auth_check = time.monotonic()
+                if not await asyncio.to_thread(still_authorised):
+                    yield {"event": "auth_revoked", "data": json.dumps({"message": "Session ended"})}
+                    return
             # Wait for event from queue (with timeout for keepalive)
             try:
                 event = await asyncio.wait_for(queue.get(), timeout=10.0)
@@ -218,6 +252,7 @@ async def _event_stream(user_id: str, is_admin: bool) -> AsyncGenerator:
 async def stream_events(
     user_id: str = Depends(get_current_user_id),
     is_admin: bool = Depends(_caller_is_admin),
+    token: str = Depends(oauth2_scheme),
 ):
     """
     Server-Sent Events stream for real-time analytics updates.
@@ -244,7 +279,7 @@ async def stream_events(
     **Auto-reconnect**: Browser EventSource API handles reconnection automatically.
     """
     
-    return EventSourceResponse(_event_stream(user_id, is_admin))
+    return EventSourceResponse(_event_stream(user_id, is_admin, _token_still_current(token)))
 
 
 @router.get("/stream/health")

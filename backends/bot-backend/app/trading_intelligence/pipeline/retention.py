@@ -174,6 +174,7 @@ _BY_CLASS: Tuple[Tuple[str, Tuple[str, ...]], ...] = (
     (CUSTOMER_AND_COMPLIANCE, (
         # Section H Steps 5-8 (platform layer, go-live, launch operations)
         "admin_mfa_recovery_codes", "legal_acceptances", "legal_audit_log", "legal_country_eligibility",
+        "admin_mfa_bootstrap_codes",    # Step 8.4 F9: one-time admin MFA enrolment codes (hashed)
         "legal_documents", "ops_oncall_members", "ops_oncall_rotations", "support_ticket_events",
         "support_ticket_messages", "support_tickets",
         "admin_roles", "admin_sessions", "admins", "affiliate_settings", "aml_alerts", "auth_audit_log", "auth_sessions",

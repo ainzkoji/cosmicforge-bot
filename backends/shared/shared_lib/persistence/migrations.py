@@ -519,6 +519,11 @@ def migrate(db_path: str | DB = None):
         from shared_lib.persistence.admin_mfa_schema import ensure_admin_mfa_schema
         ensure_admin_mfa_schema(conn)
 
+        # 13c) Section H 8.4 (F1): token_version on users/admins and the
+        # refresh-rotation chain id on auth_sessions/admin_sessions. Additive only.
+        from shared_lib.persistence.session_version_schema import ensure_session_version_schema
+        ensure_session_version_schema(conn)
+
         # 14) Broker Connection Tables (Page 4)
         conn.execute("""
             CREATE TABLE IF NOT EXISTS broker_accounts (

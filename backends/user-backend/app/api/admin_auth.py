@@ -12,6 +12,9 @@ Login flow:
    * ``{"mfa_enrollment_required": true, "enrollment_token": ...}`` -- MFA is
      required but not set up. That token can do nothing except
      ``/mfa/setup`` + ``/mfa/enroll``; every admin route rejects it.
+     ``/mfa/enroll`` also needs the one-time ``bootstrap_code`` an operator
+     issued out of band (``mfa_bootstrap_required``, finding F9; see
+     ``app.core.admin_mfa_bootstrap``).
 2. A full session sets the ``cf_admin_*`` cookies (and, during the
    AUTH_BEARER_COMPAT window, also returns the token strings).
 
@@ -32,6 +35,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from fastapi.security import OAuth2PasswordRequestForm
 from pydantic import BaseModel
 
+from app.core import admin_mfa_bootstrap as mfa_bootstrap
 from app.core.config import settings
 from app.core.security import (
     ADMIN_MFA_CHALLENGE,
@@ -59,8 +63,10 @@ from app.core.session_cookies import (
     refresh_token_from,
     token_body,
 )
+from shared_lib.core.security.token_state import bump_admin_token_version, read_token_version
 from shared_lib.persistence.admin_mfa_schema import ensure_admin_mfa_schema
 from shared_lib.persistence.db import DB
+from shared_lib.persistence.session_version_schema import ensure_session_version_schema
 
 router = APIRouter()
 
@@ -77,6 +83,7 @@ class AdminAuthResponse(BaseModel):
     mfa_required: Optional[bool] = None
     mfa_token: Optional[str] = None
     mfa_enrollment_required: Optional[bool] = None
+    mfa_bootstrap_required: Optional[bool] = None
     enrollment_token: Optional[str] = None
     recovery_codes: Optional[List[str]] = None
     recovery_codes_remaining: Optional[int] = None
@@ -108,6 +115,8 @@ class MfaSetupRequest(BaseModel):
 class MfaEnrollRequest(BaseModel):
     code: str
     enrollment_token: Optional[str] = None
+    # F9: required while ADMIN_MFA_REQUIRED is on (issued by an operator).
+    bootstrap_code: Optional[str] = None
 
 
 class MfaCodeRequest(BaseModel):
@@ -164,18 +173,25 @@ def _issue_admin_session(conn, admin, request: Request, *, mfa_verified: bool) -
     """Insert a refresh session row; returns (access, refresh)."""
     now = _now()
     conn.execute("UPDATE admins SET last_login_at = ? WHERE id = ?", (now, admin["id"]))
-    access_token = create_admin_access_token(admin["id"], role=admin["role"])
+    # Section H 8.4 (F1): the row starts a rotation chain (``sid``) and the
+    # access token carries the admin's current token_version (``tv``), read in
+    # this transaction (after any bump the caller just made).
+    ensure_session_version_schema(conn)
+    session_id = str(uuid.uuid4())
+    access_token = create_admin_access_token(admin["id"], role=admin["role"],
+                                             token_version=read_token_version(conn, "admins", admin["id"]),
+                                             session_id=session_id)
     refresh_token = create_admin_refresh_token(admin["id"])
     expires_at = (datetime.now(timezone.utc) + timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS)).isoformat()
     conn.execute(
         """
         INSERT INTO admin_sessions
-        (id, admin_id, refresh_token_hash, device, ip, created_at, expires_at, mfa_verified)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        (id, admin_id, refresh_token_hash, device, ip, created_at, expires_at, mfa_verified, family_id)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
-        (str(uuid.uuid4()), admin["id"], hash_token(refresh_token),
+        (session_id, admin["id"], hash_token(refresh_token),
          (request.headers.get("User-Agent", "Unknown Device") or "")[:255], _client_ip(request),
-         now, expires_at, 1 if mfa_verified else 0),
+         now, expires_at, 1 if mfa_verified else 0, session_id),
     )
     return access_token, refresh_token
 
@@ -245,28 +261,33 @@ def _bearer_from(request: Request) -> Optional[str]:
     return token.strip() if scheme.lower() == "bearer" and token.strip() else None
 
 
-def _enrolling_admin_id(request: Request, enrollment_token: Optional[str]) -> Tuple[str, Optional[dict]]:
-    """Who is enrolling, from the enrollment step token or a full admin session.
+def _enrolling_admin_id(request: Request, enrollment_token: Optional[str]) -> Tuple[str, Optional[dict], Optional[dict]]:
+    """Who is enrolling: ``(admin_id, step_payload, session_payload)``, from the
+    enrollment step token or a full admin session.
 
     No database access, so it can run before begin_login_attempt()."""
     if enrollment_token:
         payload = decode_admin_mfa_token(enrollment_token, ADMIN_MFA_ENROLL)
         if not payload:
             raise HTTPException(status_code=401, detail="Enrollment token invalid or expired. Sign in again.")
-        return payload["sub"], payload
+        return payload["sub"], payload, None
     payload = decode_admin_token(_bearer_from(request) or "")
     if not payload or payload.get("type") != "admin_access":
         raise HTTPException(status_code=401, detail="Could not validate admin credentials",
                             headers={"WWW-Authenticate": "Bearer"})
-    return payload["sub"], None
+    return payload["sub"], None, payload
 
 
-def _load_enrolling_admin(conn, admin_id: str, step_payload: Optional[dict]):
+def _load_enrolling_admin(conn, admin_id: str, step_payload: Optional[dict], session_payload: Optional[dict] = None):
     admin = conn.execute("SELECT * FROM admins WHERE id = ?", (admin_id,)).fetchone()
     if not admin or admin["is_active"] != 1:
         raise HTTPException(status_code=403, detail="Admin account is inactive")
     if step_payload is not None and step_payload.get("pwf") != password_fingerprint(admin["hashed_password"]):
         raise HTTPException(status_code=401, detail="Enrollment token invalid or expired. Sign in again.")
+    if session_payload is not None:
+        # A session access token must not be revoked (token_version / session, F1).
+        from app.core.deps import require_current_admin_row
+        require_current_admin_row(conn, session_payload, admin)
     return admin
 
 
@@ -314,6 +335,8 @@ def admin_login(request: Request, response: Response, form_data: OAuth2PasswordR
             response.headers["Cache-Control"] = "no-store"
             return {
                 "mfa_enrollment_required": True,
+                # F9: enrolment while MFA is required also needs an operator-issued code.
+                "mfa_bootstrap_required": True,
                 "enrollment_token": create_admin_mfa_token(admin_row["id"], ADMIN_MFA_ENROLL,
                                                            admin_row["hashed_password"]),
                 "token_type": "mfa_enrollment",
@@ -369,12 +392,12 @@ def admin_mfa_verify(body: MfaVerifyRequest, request: Request, response: Respons
 @router.post("/mfa/setup")
 def admin_mfa_setup(request: Request, body: Optional[MfaSetupRequest] = None):
     """Start (or restart) enrolment: a new secret, pending until /mfa/enroll."""
-    admin_id, step = _enrolling_admin_id(request, body.enrollment_token if body else None)
+    admin_id, step, session = _enrolling_admin_id(request, body.enrollment_token if body else None)
     secret = pyotp.random_base32()
     db = DB()
     with db.connect() as conn:
         ensure_admin_mfa_schema(conn)
-        admin = _load_enrolling_admin(conn, admin_id, step)
+        admin = _load_enrolling_admin(conn, admin_id, step, session)
         if _mfa_enabled(admin):
             # Swapping the factor of an enrolled admin needs the old one first.
             raise HTTPException(status_code=400, detail="MFA is already enabled. Disable it first.")
@@ -384,7 +407,7 @@ def admin_mfa_setup(request: Request, body: Optional[MfaSetupRequest] = None):
         )
         email = admin["email"]
     uri = pyotp.totp.TOTP(secret).provisioning_uri(name=email, issuer_name=MFA_ISSUER_NAME)
-    return {"secret": secret, "provisioning_uri": uri}
+    return {"secret": secret, "provisioning_uri": uri, "bootstrap_required": admin_mfa_required()}
 
 
 @router.post("/mfa/enroll", response_model=AdminAuthResponse, response_model_exclude_none=True)
@@ -392,13 +415,13 @@ def admin_mfa_enroll(body: MfaEnrollRequest, request: Request, response: Respons
     """Confirm the authenticator with a first code. Enables MFA, returns ten
     one-time recovery codes (shown once), revokes every earlier admin session
     and opens a fresh, MFA-verified one."""
-    admin_id, step = _enrolling_admin_id(request, body.enrollment_token)
+    admin_id, step, session = _enrolling_admin_id(request, body.enrollment_token)
     db = DB()
     with db.connect() as conn:
         attempt_id = begin_login_attempt(conn, _mfa_attempt_key(admin_id), _client_ip(request),
                                          account_limit=MAX_LOGIN_ATTEMPTS)
         ensure_admin_mfa_schema(conn)
-        admin = _load_enrolling_admin(conn, admin_id, step)
+        admin = _load_enrolling_admin(conn, admin_id, step, session)
         if _mfa_enabled(admin):
             mark_login_attempt_success(conn, attempt_id)
             conn.commit()
@@ -407,18 +430,44 @@ def admin_mfa_enroll(body: MfaEnrollRequest, request: Request, response: Respons
             mark_login_attempt_success(conn, attempt_id)
             conn.commit()
             raise HTTPException(status_code=400, detail="MFA setup not initiated")
+
+        # F9: while MFA is required, the password alone must not be enough to
+        # register a factor -- an operator-issued one-time bootstrap code is
+        # needed too. A wrong or missing code stays a counted failure (the
+        # attempt recorded above) and is audited.
+        bootstrap_id = None
+        if admin_mfa_required():
+            bootstrap_id = mfa_bootstrap.matching_bootstrap_code(conn, admin_id, body.bootstrap_code)
+            if bootstrap_id is None:
+                mfa_bootstrap.record_failure(
+                    conn, admin, "missing" if not (body.bootstrap_code or "").strip() else "invalid_or_expired",
+                    ip=_client_ip(request))
+                conn.commit()
+                raise _mfa_error(400, "MFA_BOOTSTRAP_INVALID",
+                                 "A valid enrolment bootstrap code from an operator is required")
+
         if not consume_admin_totp_code(conn, admin_id, admin["mfa_secret"], body.code):
             raise _mfa_error(400, "MFA_INVALID", "Invalid code")
+        if bootstrap_id is not None and not mfa_bootstrap.consume_bootstrap_code(conn, bootstrap_id):
+            mfa_bootstrap.record_failure(conn, admin, "already_used", ip=_client_ip(request))
+            conn.commit()
+            raise _mfa_error(400, "MFA_BOOTSTRAP_INVALID",
+                             "A valid enrolment bootstrap code from an operator is required")
 
         mark_login_attempt_success(conn, attempt_id)
         now = _now()
         conn.execute("UPDATE admins SET mfa_enabled = 1, mfa_enrolled_at = ? WHERE id = ?", (now, admin_id))
         codes = _replace_recovery_codes(conn, admin_id)
-        # Sessions opened with the password alone end here.
+        # Sessions opened with the password alone end here, and so does every
+        # access token issued to them (token_version, F1).
         conn.execute("UPDATE admin_sessions SET revoked_at = ? WHERE admin_id = ? AND revoked_at IS NULL",
                      (now, admin_id))
+        bump_admin_token_version(conn, admin_id)
+        if bootstrap_id is not None:
+            mfa_bootstrap.record_use(conn, admin, ip=_client_ip(request))
         _audit(conn, "admin_mfa_enrolled", admin, request,
-               {"via": "enrollment_token" if step is not None else "session"})
+               {"via": "enrollment_token" if step is not None else "session",
+                "bootstrap_code": bootstrap_id is not None})
         access_token, refresh_token = _issue_admin_session(conn, admin, request, mfa_verified=True)
 
     return _session_body(response, request, access_token, refresh_token, recovery_codes=codes)
@@ -526,6 +575,7 @@ def admin_refresh(req: Request, response: Response, request: Optional[RefreshReq
             now = _now()
             conn.execute("UPDATE admin_sessions SET revoked_at = ? WHERE admin_id = ? AND revoked_at IS NULL",
                          (now, admin_id))
+            bump_admin_token_version(conn, admin_id)  # ...and every access token already issued (F1)
             admin_row = conn.execute("SELECT id, email FROM admins WHERE id = ?", (admin_id,)).fetchone()
             if admin_row:
                 _audit(conn, "admin_refresh_reuse_detected", admin_row, req)
@@ -546,9 +596,13 @@ def admin_refresh(req: Request, response: Response, request: Optional[RefreshReq
             conn.commit()
             raise _mfa_error(401, "MFA_REQUIRED", "Sign in again with your second factor")
 
-        # Rotate token
+        # Rotate token. The new row continues the device's rotation chain (F1).
         now = _now()
-        new_access = create_admin_access_token(admin_id, role=admin_row["role"])
+        ensure_session_version_schema(conn)
+        family_id = _value(session, "family_id") or session["id"]
+        new_access = create_admin_access_token(admin_id, role=admin_row["role"],
+                                               token_version=read_token_version(conn, "admins", admin_id),
+                                               session_id=family_id)
         new_refresh = create_admin_refresh_token(admin_id)
 
         conn.execute("UPDATE admin_sessions SET revoked_at = ?, rotated_from = ? WHERE id = ?",
@@ -561,11 +615,11 @@ def admin_refresh(req: Request, response: Response, request: Optional[RefreshReq
         conn.execute(
             """
             INSERT INTO admin_sessions
-            (id, admin_id, refresh_token_hash, device, ip, created_at, expires_at, mfa_verified)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            (id, admin_id, refresh_token_hash, device, ip, created_at, expires_at, mfa_verified, family_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (str(uuid.uuid4()), admin_id, hash_token(new_refresh), (device or "")[:255], ip, now, expires_at,
-             1 if mfa_verified else 0)
+             1 if mfa_verified else 0, family_id)
         )
 
     return _session_body(response, req, new_access, new_refresh)

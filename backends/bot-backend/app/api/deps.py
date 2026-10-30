@@ -3,14 +3,11 @@ Authentication Dependencies for Bot Backend
 
 Provides authentication utilities for bot-backend endpoints.
 """
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from jose import JWTError, jwt
-from typing import Optional, Dict
+from typing import Dict
 
-# JWT Configuration
-from app.core.config import settings
-from app.core.security import ISSUER, AUDIENCE
+from app.core.auth import authenticate_access_token
 
 security = HTTPBearer()
 
@@ -21,41 +18,15 @@ def get_current_active_user(
     """
     Validate JWT token and return user info.
     This is a simplified version for bot-backend.
+
+    Section H 8.4: only an ACCESS token authenticates a request (a refresh
+    token carries the same issuer/audience and used to be accepted here), and
+    since F1 the token must also still be current: active account, matching
+    ``token_version``, live device session (``app.core.auth``).
     """
-    token = credentials.credentials
-    
-    credentials_exception = HTTPException(
-        status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="Could not validate credentials",
-        headers={"WWW-Authenticate": "Bearer"},
-    )
-    
-    try:
-        
-        payload = jwt.decode(
-            token, 
-            settings.SECRET_KEY, 
-            algorithms=[settings.ALGORITHM],
-            audience=AUDIENCE,
-            issuer=ISSUER,
-            options={
-                "require": ["iss", "aud", "exp", "sub"]
-            }
-        )
-        user_id: str = payload.get("sub")
-        if user_id is None:
-            raise credentials_exception
-        # Section H 8.4: only an ACCESS token authenticates a request. A refresh
-        # token (14-day lifetime, revocable only at the user-backend) carries
-        # the same issuer/audience and used to be accepted here as well.
-        if payload.get("type") != "access":
-            raise credentials_exception
-        
-        # Return user dict
-        return {
-            "id": user_id,
-            "email": payload.get("email"),
-        }
-    except JWTError as e:
-        print(f"[DEBUG-DEPS] Token JWTError: {e}")
-        raise credentials_exception
+    payload, _user = authenticate_access_token(credentials.credentials,
+                                               unknown_detail="Could not validate credentials")
+    return {
+        "id": payload.get("sub"),
+        "email": payload.get("email"),
+    }

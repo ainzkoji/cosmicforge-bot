@@ -11,7 +11,7 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { classifyAdminLogin, errorCode, isCompleteTotp, looksLikeRecoveryCode, normaliseTotpInput } from "../lib/adminMfa.ts";
+import { classifyAdminLogin, errorCode, isCompleteTotp, looksLikeBootstrapCode, looksLikeRecoveryCode, normaliseTotpInput } from "../lib/adminMfa.ts";
 import { isPlaceholderAuthorization, isUnsafeMethod, purgeLegacyTokens, readCookie, refreshedSince } from "../lib/sessionAuth.ts";
 
 const src = (relative: string) => readFileSync(join(process.cwd(), "src", relative), "utf8");
@@ -30,7 +30,21 @@ describe("admin sign-in steps", () => {
 
     it("mandatory MFA without enrolment leads to enrolment", () => {
         assert.deepEqual(classifyAdminLogin({ mfa_enrollment_required: true, enrollment_token: "e" }),
-            { kind: "enroll", enrollmentToken: "e" });
+            { kind: "enroll", enrollmentToken: "e", bootstrapRequired: false });
+    });
+
+    it("enrolment asks for the operator-issued bootstrap code when the backend requires it (F9)", () => {
+        assert.deepEqual(
+            classifyAdminLogin({ mfa_enrollment_required: true, mfa_bootstrap_required: true, enrollment_token: "e" }),
+            { kind: "enroll", enrollmentToken: "e", bootstrapRequired: true });
+        assert.equal(looksLikeBootstrapCode("abcde-fghjk-mnpqr"), true);
+        assert.equal(looksLikeBootstrapCode("ABCDE FGHJK MNPQR"), true);
+        assert.equal(looksLikeBootstrapCode("abcde-fghjk"), false);
+        const login = src("pages/Login.tsx");
+        assert.ok(login.includes("api.mfaEnroll(code, step.enrollmentToken"));
+        assert.ok(login.includes("MFA_BOOTSTRAP_INVALID"));
+        assert.equal(/(local|session)Storage\.setItem\([^)]*bootstrap/i.test(login), false);
+        assert.ok(src("api/client.ts").includes("bootstrap_code: bootstrapCode || undefined"));
     });
 
     it("anything else is not a sign-in answer", () => {
