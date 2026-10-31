@@ -237,6 +237,13 @@ class Settings(ProductionSettings):
     # derivation stay readable and can be re-encrypted (reencrypt_credential).
     CREDENTIAL_KEY: str = "changeme_in_production_credential_key_32bytes!!!!"
 
+    # --- Outbound broker gateways (a customer-supplied IBKR gateway URL) ---
+    # "auto" verifies TLS in production and accepts a local self-signed gateway elsewhere; "true" always
+    # verifies; "false" never does (an operator's explicit choice for allow-listed gateways).
+    BROKER_GATEWAY_VERIFY_TLS: str = "auto"
+    # host or host:port entries the platform itself operates; customers never get them (public addresses only).
+    BROKER_GATEWAY_ALLOWED_HOSTS: str = ""
+
     # --- Section H 8.4: browser sessions and admin MFA ---
     # Admin TOTP is mandatory when true. Unset: true under the production
     # profile (APP_ENV=PRODUCTION), false in TEST / DEVELOPMENT.

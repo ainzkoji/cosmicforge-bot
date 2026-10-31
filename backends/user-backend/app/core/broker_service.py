@@ -592,6 +592,27 @@ def get_broker_summary(user_id: str, account_id: str) -> Dict[str, Any]:
 UNSUPPORTED_BROKER = "UNSUPPORTED_BROKER"
 
 
+def gateway_verify_tls(legacy_default: bool = False) -> bool:
+    """TLS verification for a customer gateway: the bot backend's rule (``BROKER_GATEWAY_VERIFY_TLS``)."""
+    from app.core.config import settings
+    mode = str(getattr(settings, "BROKER_GATEWAY_VERIFY_TLS", "auto") or "auto").strip().lower()
+    if mode in ("true", "1", "yes", "on"):
+        return True
+    if mode in ("false", "0", "no", "off"):
+        return legacy_default
+    return True if getattr(settings, "production", True) else legacy_default
+
+
+def _checked_gateway(gateway_url):
+    """The validated gateway URL, or a refusal result (never raises)."""
+    from app.core.config import settings
+    from shared_lib.core.security.url_guard import OutboundPolicy, UnsafeDestinationError, validate_gateway_url
+    try:
+        return validate_gateway_url(gateway_url, policy=OutboundPolicy.from_settings(settings).public_only()).url
+    except UnsafeDestinationError as exc:
+        return {"success": False, "error": f"Destination not allowed ({exc.reason})"}
+
+
 def _unsupported_broker_result(label: str) -> Dict[str, Any]:
     return {
         "success": False,
@@ -812,12 +833,18 @@ def _test_broker_connection(broker_id: str, credentials: Dict[str, Any], environ
             # IBKR validation
             from app.exchange.ibkr_client import IBKRClientValidator
             gateway_url = credentials.get("gateway_url", "https://localhost:5000")
+            # The server requests this customer-supplied URL: public destinations only in production
+            # (no loopback, private, metadata or allow-listed operator gateway), https, no redirect.
+            checked = _checked_gateway(gateway_url)
+            if isinstance(checked, dict):
+                return checked
             validator = IBKRClientValidator(
-                gateway_url=gateway_url,
+                gateway_url=checked,
                 username=credentials.get("username"),
                 password=credentials.get("password"),
                 account_id=credentials.get("account_id"),
-                environment=environment
+                environment=environment,
+                verify_tls=gateway_verify_tls(),
             )
             return validator.test_connection()
         

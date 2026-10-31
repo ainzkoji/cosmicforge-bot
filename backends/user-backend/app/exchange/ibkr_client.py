@@ -9,7 +9,7 @@ import urllib3
 from typing import Dict, Any
 import logging
 
-# Disable SSL warnings for local gateway
+# A local development gateway uses a self-signed certificate; production verifies (BROKER_GATEWAY_VERIFY_TLS).
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 logger = logging.getLogger(__name__)
@@ -29,9 +29,11 @@ class IBKRClientValidator:
         username: str = None,
         password: str = None,
         account_id: str = None,
-        environment: str = "paper"
+        environment: str = "paper",
+        verify_tls: bool = True,
     ):
         self.gateway_url = gateway_url.rstrip('/')
+        self.verify_tls = bool(verify_tls)
         self.username = username
         self.password = password
         self.account_id = account_id
@@ -77,7 +79,8 @@ class IBKRClientValidator:
         try:
             resp = requests.post(
                 f"{self.gateway_url}/iserver/auth/status",
-                verify=False,
+                verify=self.verify_tls,
+                allow_redirects=False,  # a validated gateway must not bounce the request elsewhere
                 timeout=5
             )
             
@@ -127,7 +130,8 @@ class IBKRClientValidator:
             # Get portfolio accounts
             resp = requests.get(
                 f"{self.gateway_url}/portfolio/accounts",
-                verify=False,
+                verify=self.verify_tls,
+                allow_redirects=False,  # a validated gateway must not bounce the request elsewhere
                 timeout=5
             )
             
