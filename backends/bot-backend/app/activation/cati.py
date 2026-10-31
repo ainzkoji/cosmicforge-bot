@@ -53,39 +53,76 @@ OVERRIDE_FLAGS: Mapping[str, str] = {
 RUNTIME_AUTHORITY_SWITCH_MISSING = "RUNTIME_AUTHORITY_SWITCH_NOT_IMPLEMENTED"
 
 
-def runtime_authority_switch() -> Prerequisite:
-    """REAL capability state of the Section 25 runtime switch (not a constant): the order-authority router
-    exists AND non-CATI scalar entries are always refused
-    (``PaperRunner._v2_order_authority_block`` inside ``_execute_signal_with_evidence``) and the CATI cycle routes
-    every TradePlan through it (``cati_dispatch.dispatch_trade_plans`` from ``cycle_shadow._portfolio_stage``).
-    Any missing piece -> unsatisfied."""
-    import inspect
+#: The symbol the capability probes use. No market has it and no permit can name it.
+CAPABILITY_PROBE_SYMBOL = "__CATI_CAPABILITY_PROBE__"
 
+
+class _ExecutorMustNotBeCalled:
+    """Stands in for the legacy runner's executor during the probe: reaching it means the gate is gone."""
+    called = False
+
+    def execute_signal(self, *args, **kwargs):
+        self.called = True
+        raise RuntimeError("CAPABILITY_PROBE_REACHED_THE_EXECUTOR")
+
+
+def _legacy_entry_refused() -> bool:
+    """A scalar BUY handed to the legacy runner is refused before its executor is called (no source reading:
+    the real method runs against a probe object; anything unexpected is a failure)."""
+    import importlib.util
+    from types import SimpleNamespace
+
+    if importlib.util.find_spec("app.runner.runner") is None:
+        return True                      # no legacy entry path exists at all; the executor permit still applies
+    from app.runner.runner import PaperRunner
+
+    executor = _ExecutorMustNotBeCalled()
+    probe = SimpleNamespace(executor=executor, db=None)
+    probe._v2_order_authority_block = lambda symbol, action: PaperRunner._v2_order_authority_block(probe, symbol, action)
+    result = PaperRunner._execute_signal_with_evidence(probe, CAPABILITY_PROBE_SYMBOL, "BUY", 1.0)
+    return not executor.called and getattr(result, "status", None) == "BLOCKED"
+
+
+def _executor_requires_permit() -> bool:
+    """The executor refuses an entry that carries no CATI boundary permit. The probe object has no state, so an
+    executor that went past the permit check would fail at once (counted as missing)."""
+    from app.execution.executor import BinanceExecutor
+
+    result = BinanceExecutor._execute_impl(object(), CAPABILITY_PROBE_SYMBOL, "BUY", float("nan"))
+    return getattr(result, "status", None) == "BLOCKED" and getattr(result, "error", None) == "CATI_BOUNDARY_PERMIT_REQUIRED"
+
+
+def _plans_route_through_dispatch() -> bool:
+    """The cycle hands its TradePlans to ``cati_dispatch.dispatch_trade_plans`` (its ``PLAN_ROUTER``)."""
+    from app.trading_intelligence.integration import cati_dispatch, cycle_shadow
+
+    return cycle_shadow.PLAN_ROUTER == ("app.trading_intelligence.integration.cati_dispatch", "dispatch_trade_plans") \
+        and callable(cycle_shadow.plan_router()) and cycle_shadow.plan_router() is cati_dispatch.dispatch_trade_plans
+
+
+def runtime_authority_switch() -> Prerequisite:
+    """REAL capability state of the Section 25 runtime switch (not a constant). Each part is checked by running
+    the real code against a probe, not by reading source text (Section I Batch 7):
+
+    * ``router``: the order-authority router imports;
+    * ``legacy_entry_gate``: a scalar entry given to the legacy runner is refused before its executor;
+    * ``cati_boundary_permit``: the executor refuses an entry without a CATI boundary permit;
+    * ``cati_dispatch``: the CATI cycle routes every TradePlan through ``cati_dispatch.dispatch_trade_plans``.
+
+    Any missing piece, or any error while checking it, -> unsatisfied."""
     missing = []
     try:
         from app.trading_intelligence.governance.runtime_authority import resolve_order_authority  # noqa: F401
     except Exception:
         missing.append("router")
-    try:
-        from app.runner.runner import PaperRunner
-
-        if "_v2_order_authority_block" not in inspect.getsource(PaperRunner._execute_signal_with_evidence):
-            missing.append("legacy_entry_gate")
-    except Exception:
-        missing.append("legacy_entry_gate")
-    try:
-        from app.execution.executor import BinanceExecutor
-        if "entry_permitted" not in inspect.getsource(BinanceExecutor._execute_impl):
-            missing.append("cati_boundary_permit")
-    except Exception:
-        missing.append("cati_boundary_permit")
-    try:
-        from app.trading_intelligence.integration import cycle_shadow
-
-        if "dispatch_trade_plans" not in inspect.getsource(cycle_shadow._portfolio_stage):
-            missing.append("cati_dispatch")
-    except Exception:
-        missing.append("cati_dispatch")
+    for name, check in (("legacy_entry_gate", _legacy_entry_refused), ("cati_boundary_permit", _executor_requires_permit),
+                        ("cati_dispatch", _plans_route_through_dispatch)):
+        try:
+            ok = bool(check())
+        except Exception:
+            ok = False
+        if not ok:
+            missing.append(name)
     return Prerequisite("runtime_authority_switch", not missing, RUNTIME_AUTHORITY_SWITCH_MISSING,
                         detail="wired" if not missing else "missing=" + ",".join(missing))
 

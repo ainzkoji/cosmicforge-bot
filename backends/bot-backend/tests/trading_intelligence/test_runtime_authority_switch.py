@@ -164,3 +164,54 @@ def test_the_runtime_switch_is_a_real_wiring_state_not_a_constant():
     assert not hasattr(act, "RUNTIME_AUTHORITY_SWITCH_IMPLEMENTED")
     state = act.runtime_authority_switch()
     assert state.satisfied and state.detail == "wired"
+
+
+# ── Section I Batch 7: behavioural probes, no source reading ────────────────────────────────────────────────
+
+def test_the_switch_reads_no_source_text():
+    import inspect
+    from app.activation import cati as act
+    assert "getsource" not in inspect.getsource(act)          # the probes run the code; they never read it
+
+
+def test_a_legacy_runner_that_reaches_its_executor_breaks_the_switch(monkeypatch):
+    from app.activation import cati as act
+    from app.runner.runner import PaperRunner
+    monkeypatch.setattr(PaperRunner, "_v2_order_authority_block", lambda self, symbol, action: None)
+    state = act.runtime_authority_switch()
+    assert not state.satisfied and state.detail == "missing=legacy_entry_gate"
+
+
+def test_an_executor_that_skips_the_boundary_permit_breaks_the_switch(monkeypatch):
+    from app.activation import cati as act
+    from app.trading_intelligence.execution import entry_permit
+    monkeypatch.setattr(entry_permit, "entry_permitted", lambda *a, **k: True)
+    state = act.runtime_authority_switch()
+    assert not state.satisfied and state.detail == "missing=cati_boundary_permit"
+
+
+def test_plans_routed_anywhere_else_break_the_switch(monkeypatch):
+    from app.activation import cati as act
+    from app.trading_intelligence.integration import cycle_shadow
+    monkeypatch.setattr(cycle_shadow, "PLAN_ROUTER", ("app.trading_intelligence.integration.cati_dispatch", "boundary_for"))
+    state = act.runtime_authority_switch()
+    assert not state.satisfied and state.detail == "missing=cati_dispatch"
+
+
+def test_without_the_legacy_runner_the_executor_permit_is_still_required(monkeypatch):
+    import importlib.util
+    from app.activation import cati as act
+    from app.trading_intelligence.execution import entry_permit
+    real = importlib.util.find_spec
+    monkeypatch.setattr(importlib.util, "find_spec", lambda name, *a: None if name == "app.runner.runner" else real(name, *a))
+    assert act.runtime_authority_switch().satisfied              # a removed runner is not a missing gate
+    monkeypatch.setattr(entry_permit, "entry_permitted", lambda *a, **k: True)
+    assert act.runtime_authority_switch().detail == "missing=cati_boundary_permit"
+
+
+def test_the_cycle_uses_the_router_the_switch_checks(monkeypatch):
+    from app.trading_intelligence.integration import cati_dispatch, cycle_shadow
+    calls = []
+    monkeypatch.setattr(cati_dispatch, "dispatch_trade_plans", lambda *a, **k: calls.append(a))
+    cycle_shadow.plan_router()("runner", ["plan"])
+    assert calls == [("runner", ["plan"])]

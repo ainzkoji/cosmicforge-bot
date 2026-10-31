@@ -30,9 +30,20 @@ import logging
 import os
 import threading
 import time
+from importlib import import_module
 from typing import Any, Dict, Optional, Set, Tuple
 
 logger = logging.getLogger(__name__)
+
+#: Section 25 runtime switch: the one router every TradePlan of the cycle goes through (module, function). It is
+#: resolved at call time, so ``activation.cati.runtime_authority_switch`` checks the routing this cycle really uses.
+PLAN_ROUTER: Tuple[str, str] = ("app.trading_intelligence.integration.cati_dispatch", "dispatch_trade_plans")
+
+
+def plan_router():
+    """The function the cycle hands its TradePlans to (``PLAN_ROUTER``)."""
+    module, name = PLAN_ROUTER
+    return getattr(import_module(module), name)
 
 ENV_FLAG = "CATI_CYCLE_SHADOW_ENABLED"
 
@@ -338,10 +349,8 @@ def _portfolio_stage(runner: Any, result: Any) -> None:
     # Section 25 runtime switch: every plan is routed by the order-authority router. Below M6 (and for any scope
     # CATI does not own) nothing is dispatched and the blocking reason is logged; CATI never falls back to V2.
     if plans:
-        from app.trading_intelligence.integration.cati_dispatch import dispatch_trade_plans
-
-        dispatch_trade_plans(runner, plans, evaluated=evaluated, capital_view=capital_view,
-                             reservation_status=getattr(outcome.reservation, "status", None), now_ms=now_ms)
+        plan_router()(runner, plans, evaluated=evaluated, capital_view=capital_view,
+                      reservation_status=getattr(outcome.reservation, "status", None), now_ms=now_ms)
     # Phase 5E/6F: SHADOW capital-routing evidence (flag-gated) -- the SAME dry-run plans the selection used,
     # with the topology / balances behind them. Evidence only: no transfer intent, no submission.
     from app.trading_intelligence.capital.shadow_hook import is_enabled as capital_shadow_enabled
