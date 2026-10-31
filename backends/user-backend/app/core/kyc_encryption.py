@@ -67,7 +67,9 @@ def _configured_secret() -> str:
                 "it decrypts stored KYC personal data and identity documents."
             )
         if len(secret) < 32:
-            logger.warning("%s is shorter than 32 characters; use a longer random value", ENV_KEY)
+            # Section J: refused, not only logged -- it protects identity documents and personal data.
+            raise KYCConfigError(f"{ENV_KEY} is shorter than 32 characters; set a long random value "
+                                 "(e.g. `openssl rand -hex 32`) and keep it stable.")
         return secret
     return secret or _DEV_DEFAULT_SECRET
 

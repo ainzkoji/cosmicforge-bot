@@ -1,5 +1,6 @@
 import logging
 import smtplib
+import ssl
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 import os
@@ -42,8 +43,16 @@ class EmailChannel:
             msg.attach(part1)
             msg.attach(part2)
 
-            with smtplib.SMTP(smtp_host, int(smtp_port), timeout=SMTP_TIMEOUT_SECONDS) as server:
-                server.starttls()
+            # The certificate and host name are verified (Section J): STARTTLS without a context accepts any
+            # certificate, so a man in the middle could read the codes and resets these mails carry.
+            context = ssl.create_default_context()
+            if int(smtp_port) == 465:
+                connection = smtplib.SMTP_SSL(smtp_host, 465, timeout=SMTP_TIMEOUT_SECONDS, context=context)
+            else:
+                connection = smtplib.SMTP(smtp_host, int(smtp_port), timeout=SMTP_TIMEOUT_SECONDS)
+            with connection as server:
+                if int(smtp_port) != 465:
+                    server.starttls(context=context)
                 server.login(smtp_user, smtp_pass)
                 server.sendmail(sender_email, recipient, msg.as_string())
             

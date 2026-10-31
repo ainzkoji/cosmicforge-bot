@@ -91,10 +91,33 @@ def _legacy_keys() -> List[bytes]:
     return keys
 
 
+#: Section J: a production broker-credential key must be at least this long (a Fernet key is 44 characters).
+MIN_PRODUCTION_KEY_LENGTH = 32
+_PLACEHOLDER_KEYS = frozenset({"changeme", "change_me", "change_me_before_production", "changeme_in_production",
+                               "your-broker-secret-key", "secret", "password"})
+
+
+def production_key_problem(secret: str) -> Optional[str]:
+    """Why ``secret`` is unacceptable as a production broker-credential key, or None."""
+    text = (secret or "").strip()
+    if text.lower() in _PLACEHOLDER_KEYS or text.upper().startswith("CHANGE_ME"):
+        return "is a placeholder value"
+    if len(text) < MIN_PRODUCTION_KEY_LENGTH:
+        return f"is shorter than {MIN_PRODUCTION_KEY_LENGTH} characters"
+    return None
+
+
 def _primary_key() -> bytes:
     global _warned_dev_fallback
     secret = os.getenv(ENV_KEY)
     if secret:
+        if is_production():
+            problem = production_key_problem(secret)
+            if problem:
+                raise BrokerEncryptionConfigError(
+                    f"{ENV_KEY} {problem}; refusing to encrypt broker credentials with it in production. "
+                    "Generate one with: python -c \"from cryptography.fernet import Fernet; "
+                    "print(Fernet.generate_key().decode())\"")
         return _as_fernet_key(secret)
     if is_production():
         raise BrokerEncryptionConfigError(

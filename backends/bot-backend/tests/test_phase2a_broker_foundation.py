@@ -244,7 +244,7 @@ def test_zero_key_never_used_to_encrypt_in_production(monkeypatch):
     from shared_lib.core.security import broker_security as bs
 
     monkeypatch.setenv("APP_ENV", "production")
-    monkeypatch.setenv("BROKER_SECRET_KEY", "a-dedicated-non-fernet-secret")
+    monkeypatch.setenv("BROKER_SECRET_KEY", "a-dedicated-non-fernet-secret-of-40-chars")
     blob = bs.encrypt_credentials({"api_key": "k"})
     with pytest.raises(InvalidToken):
         Fernet(bs._ZERO_KEY).decrypt(blob.encode())

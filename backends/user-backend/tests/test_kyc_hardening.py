@@ -435,7 +435,8 @@ def test_existing_pii_ciphertext_still_decrypts(monkeypatch):
 
 
 @pytest.mark.parametrize("value", [None, "", "cosmicforge-kyc-dev-secret-key-2024",
-                                   "your-kyc-encryption-key-32-chars-min"])
+                                   "your-kyc-encryption-key-32-chars-min",
+                                   "k" * 31])                     # Section J: a short key is refused too
 def test_encryption_key_is_mandatory_in_production(monkeypatch, value):
     _production_profile(monkeypatch)
     if value is None:

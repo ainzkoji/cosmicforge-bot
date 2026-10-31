@@ -56,3 +56,22 @@ def test_unconfigured_smtp_still_reports_failure(smtp, monkeypatch):
     monkeypatch.delenv("SMTP_HOST")
     assert _send() is False
     smtp.sendmail.assert_not_called()
+
+
+def test_port_465_uses_implicit_tls_with_a_verifying_context(monkeypatch):
+    """Section J: SMTPS on 465, STARTTLS elsewhere; both verify the certificate."""
+    import ssl
+    for name in SMTP_VARS:
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setenv("SMTP_HOST", "smtp.example.test")
+    monkeypatch.setenv("SMTP_PORT", "465")
+    monkeypatch.setenv("SMTP_USER", "mailer")
+    monkeypatch.setenv("SMTP_PASSWORD", "not-a-real-password")
+    plain, implicit = MagicMock(), MagicMock()
+    monkeypatch.setattr(email_channel.smtplib, "SMTP", plain)
+    monkeypatch.setattr(email_channel.smtplib, "SMTP_SSL", implicit)
+    assert _send() is True
+    plain.assert_not_called()
+    context = implicit.call_args.kwargs["context"]
+    assert isinstance(context, ssl.SSLContext) and context.verify_mode == ssl.CERT_REQUIRED
+    assert not implicit.return_value.__enter__.return_value.starttls.called

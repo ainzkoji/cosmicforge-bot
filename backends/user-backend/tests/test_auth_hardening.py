@@ -939,8 +939,12 @@ def test_smtp_connection_has_a_timeout(monkeypatch):
         def __exit__(self, *exc):
             return False
 
-        def starttls(self):
-            pass
+        def starttls(self, context=None):
+            # Section J: the certificate and host name are verified.
+            import ssl
+            assert isinstance(context, ssl.SSLContext) and context.verify_mode == ssl.CERT_REQUIRED
+            assert context.check_hostname is True
+            opened.append("starttls")
 
         def login(self, user, password):
             pass
@@ -955,7 +959,7 @@ def test_smtp_connection_has_a_timeout(monkeypatch):
     monkeypatch.setattr(email_channel.smtplib, "SMTP", FakeSMTP)
 
     assert EmailChannel.send(EMAIL, "subject", "<p>body</p>", "body") is True
-    assert opened == [("smtp.example.test", 2525, {"timeout": 15})]
+    assert opened == [("smtp.example.test", 2525, {"timeout": 15}), "starttls"]
 
 
 @pytest.mark.parametrize("smtp_result", [False, RuntimeError("smtp down")])

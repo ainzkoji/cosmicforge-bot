@@ -45,3 +45,20 @@ def test_transaction_rolls_back_when_audit_fails(records):
  with pytest.raises(sqlite3.IntegrityError):rotate(c,apply=True)
  assert c.execute('SELECT encrypted_blob FROM broker_credentials_v2').fetchone()[0]==old
  assert c.execute('SELECT active_credential_version FROM broker_accounts').fetchone()[0]==1
+
+
+def test_production_refuses_a_weak_broker_credential_key(monkeypatch):
+    """Section J: a short or placeholder BROKER_SECRET_KEY is refused in production, never used."""
+    import pytest
+    from cryptography.fernet import Fernet
+    from shared_lib.core.security import broker_security as bs
+    monkeypatch.setenv("APP_ENV", "production")
+    for weak in ("a", "changeme", "CHANGE_ME_BEFORE_PRODUCTION", "x" * 31):
+        monkeypatch.setenv("BROKER_SECRET_KEY", weak)
+        with pytest.raises(bs.BrokerEncryptionConfigError):
+            bs.encrypt_credentials({"api_key": "k"})
+    monkeypatch.setenv("BROKER_SECRET_KEY", Fernet.generate_key().decode())
+    assert bs.decrypt_credentials(bs.encrypt_credentials({"api_key": "k"}))["api_key"] == "k"
+    monkeypatch.setenv("APP_ENV", "TEST")
+    monkeypatch.setenv("BROKER_SECRET_KEY", "short")             # development keeps working
+    assert bs.decrypt_credentials(bs.encrypt_credentials({"api_key": "k"}))["api_key"] == "k"
