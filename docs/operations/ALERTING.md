@@ -112,7 +112,7 @@ for windows yet (engine call only).
 
 ## Delivery
 
-Sinks (`AlertSink.send(message)`; a raise is a failure):
+Sinks (`AlertSink.send(message)`; a raise is a failure, and so is a provider that answers but accepts nothing):
 
 * `JobQueueSink` -- enqueues a `NOTIFICATION` job on the platform JobQueue, idempotency key
   `ops-alert-delivery:<delivery_id>`; a worker runs `notification_job_handler`, which sends through the
@@ -128,6 +128,28 @@ left to finish on a daemon thread: delivery is at-least-once). Title and detail 
 (`redaction.redact_text`, `secrets_scan`, e-mail masking) when the message is built for a sink, whatever wrote the
 row. If the platform database itself is down, `evaluate_database` sends the alert straight to the sinks without
 storing it. Trading code never calls a sink: every producer below is an evaluator in the operations tick.
+
+**Accepted, not merely answered (31 October 2026).** A sink may return a `DeliveryReceipt(accepted, rejected)`;
+`accepted <= 0` (or `False`) is a failed attempt (`PROVIDER_REJECTED`, retried, then abandoned) and never a
+`SENT` delivery (`interpret_send_result`). `NotifyChannelsSink` returns one, and `scripts/notify_failure.py` now
+counts a channel only when its provider accepted the message: a 2xx webhook answer whose JSON says `"ok": false`
+(Slack-style), a Telegram answer that is not `"ok": true`, or an SMTP server that refused every recipient is a
+failed channel. (Partial SMTP refusal is logged and counts as delivered to the others. SMTP acceptance is still
+not proof of inbox delivery.)
+
+**Deliveries that keep failing** raise `ALERT_DELIVERY_FAILURE` before they are abandoned (`evaluate_alert_delivery`,
+source `alert_delivery`): per sink, deliveries still in RETRY after 2 attempts, and deliveries more than 15 min
+past due (a backlog the tick cannot clear: it delivers at most 50 per run). The alert goes to every sink, so a
+second channel can carry it; it resolves when the deliveries go through. The failure alert's own deliveries are
+not counted.
+
+**Never on the trading loop.** NOTIFICATION jobs (operator channels, customer e-mail / Telegram / push) are run by
+the trading process's job runner between two broker cycles. They now run on one background thread
+(`RuntimeJobRunner(notifications_in_background=True)`, set by `BrokerCycleAssignments.job_runner`), so a provider
+hanging up to its timeouts delays neither the other durable jobs nor the next broker cycle. Customer events are
+written to `notification_outbox` by the trade path and sent later; `tests/trading_intelligence/test_notification_isolation.py`
+runs the real emergency flatten and the real takeover recovery while every HTTP and SMTP call, the customer sender
+and an operations tick's sink hang, and proves the protective work finishes with no notification call on its thread.
 
 ## Alert producer matrix (Step 8.5, F1)
 
@@ -163,6 +185,9 @@ evaluator error in the tick result (and nothing is resolved from a database that
 | 20 | Unusual execution latency | `cati_execution_events` VENUE_AFTER - VENUE_BEFORE (last 5,000 events, 15 min); `pending_entries` confirmed - submitted. p95 > 5 s (3+ samples) or any > 30 s. (CATI attempts stamp submit and ack with one cycle time: no latency there) | `evaluate_execution_latency` (`execution_latency`) | EXCESSIVE_LATENCY / MEDIUM | `test_unusual_execution_latency` |
 | 21 | Governance violation attempts | `cati_execution_events` GATE rows and `cati_execution_evaluations.reason` (1 h) carrying a code only a bypass attempt produces: a non-authoritative family, submission, governance or order-spreading gate, `TEST_ADAPTER_NOT_ALLOWED`, `FAMILY_RULE_HASH_MISMATCH`, a tampered, mismatched or future-dated decision, a LIVE entry at the go-live gate. Routine M0 refusals never alert. One alert per code; accounts counted, never named | `evaluate_governance_violations` (`governance`) | GOVERNANCE_VIOLATION_ATTEMPT / HIGH | `test_governance_bypass_attempts_alert_and_routine_m0_refusals_do_not` |
 | 22 | API outage | each `--health-url name=url` (or `OPS_HEALTH_PROBES`) answering anything but 200 for 2 min. The systemd tick probes the user, admin and bot backends on loopback; the staging tick probes user-backend, admin-backend, bot-api and bot-trading | `evaluate_api_health` (`api_health`) | API_OUTAGE / CRITICAL | `test_an_api_that_stops_answering_raises_api_outage_after_the_hold`; `test_the_deployed_ticks_probe_every_api` |
+| 23 | Alert deliveries failing or overdue | `ops_alert_deliveries` RETRY after 2+ attempts, or PENDING/RETRY > 15 min past due (per sink) | `evaluate_alert_delivery` (`alert_delivery`) | ALERT_DELIVERY_FAILURE / HIGH | `test_deliveries_that_keep_failing_alert_before_they_are_abandoned_and_resolve`; `test_deliveries_nobody_sends_are_reported_overdue` |
+| 24 | Operations tick gap | `ops_tick_leases.last_tick_finished_at` more than 5 min before this tick | `evaluate_tick_gap` (`ops_tick`), run by `run_tick` itself | OPERATIONS_TICK_STALE / CRITICAL (unsuppressible) | `test_a_gap_between_ticks_is_alerted_by_the_next_tick_then_recovers` |
+| 25 | Platform database dump | `platform-backup-status.json` (written by `scripts/backup_platform_db.py`): last run failed; no verified dump for 36 h | `evaluate_platform_backup_status` (`platform_backup_status`) | BACKUP_FAILURE / HIGH | `test_the_tick_alerts_on_a_failed_or_stale_platform_dump` |
 
 All producer tests run on SQLite and PostgreSQL (`tests/platform_workers/test_operations_alert_producers.py`);
 `test_every_producer_runs_against_the_real_runtime_schema_without_error` runs every evaluator against a freshly
@@ -198,6 +223,22 @@ Topologies:
   `python -m app.ops.alerting --loop --interval 60 --disk-path /var/lib/cosmicforge` (one line of JSON per tick;
   SIGTERM ends it after the current tick and releases the lease). `deploy/staging/lib.sh` restarts it on the new
   image after the trading roll (not gating); `restore.sh` stops it with the other platform-database clients.
+
+### Dead-man (31 October 2026)
+
+The tick cannot report its own death, so two other things watch it:
+
+* `python -m app.ops.alerting --check-tick [--max-tick-age 300]` reads `ops_tick_leases` and exits 0 when a tick
+  finished within the bound, **3** when the last finished tick is older (`STALE`), the tick never ran
+  (`NEVER_RAN`) or its last run could not run its cycle (`ERROR`), 1 when the platform database cannot be read.
+  It runs from `deploy/systemd/cosmicforge-ops-deadman.timer` (every 5 min; `OnFailure=cosmicforge-alert@` ->
+  `scripts/notify_failure.py`, a delivery path independent of the tick) and as the `ops-tick` container's
+  healthcheck in staging;
+* when the tick does run again, `evaluate_tick_gap` raises `OPERATIONS_TICK_STALE` (CRITICAL, unsuppressible) for
+  the time nothing was evaluated, escalated or delivered, and the next tick resolves it (RECOVERED).
+
+A check on the same host cannot report that the host is gone: an external uptime monitor is still required
+(EXT-OPS-01).
 
 Escalation intervals and the dedup window are engineering defaults until the operations owner decides:
 `OPS_ESCALATION_MINUTES` (JSON, merged over the defaults, must increase) and `OPS_DEDUP_WINDOW_MINUTES` in the

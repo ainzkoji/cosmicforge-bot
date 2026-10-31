@@ -1,5 +1,7 @@
 # Master plan Sections I–L: compliance, consolidation and implementation record
 
+> **Superseded in part (31 October 2026, later pass):** the quarantine is now empty, D2/D3/D8 are fixed, D4 is partly fixed, F6 and L-07 are done and L-08 has its guarded mechanism. See [TRADINGBOT_FINAL_ENGINEERING_CLOSEOUT.md](TRADINGBOT_FINAL_ENGINEERING_CLOSEOUT.md).
+
 Assessed and implemented on 31 October 2026 on `main`, starting from `ef22dba`. It covers:
 
 - Section I (removal and consolidation);
@@ -271,21 +273,21 @@ cap into step 2 only changes which cap is reported as binding.
 rounding, maximum position, open risk, leverage, large ATR, the 15 % ceiling, partial fills, slippage, rebalance,
 stop and re-entry.
 - Fixed and percent budgets on the portfolio path: **added** (`test_k1_budget_resolution.py`, 8 tests).
-- Not yet covered on the portfolio path:
-  - liquidation distance (D2);
-  - invalid strength (strength is not validated to 0 < s ≤ 1, a safe follow-up);
-  - missing decision bar / mark price codes.
+- Liquidation distance (D2), budget-based caps (D3), the single 15 % / 0.40 % value (D8), invalid strength
+  (`DECISION_STRENGTH_INVALID`, 0 ≤ s ≤ 1 on the broker stage) and the missing decision bar / mark price
+  refusals (`BROKER_POSITION_DECISION_BAR_MISSING`, `POSITION_PRICE_UNKNOWN`, now in the reason registry):
+  **added** (`test_k1_sizing_gates.py`).
 
 | Deviation | Severity | Needs | Detail |
 |---|---|---|---|
 | D1 percent budget read as USDT | HIGH | — | **Fixed** (`cffa9ed`). Under-sized only; never over-risked. |
-| D2 no liquidation-distance or margin-mode gate on the portfolio path | MEDIUM | engineering (refusal only) | At the frozen 3× and 15 % the margin holds by arithmetic (1 / (0.30 + 0.0061) = 3.27). A refusal reusing `LIQUIDATION_DEDUCTION` is the follow-up. |
-| D3 account caps measured on equity, not the budget | MEDIUM | engineering (tightens) | Manual or other exposure does not reduce the budget's headroom. Measuring on min(budget, equity) only tightens. |
-| D4 trailing ratchet inert on Binance and BingX, and skipped on rebalance days | MEDIUM | **owner / venue** | The venues cannot replace a stop safely (`REPLACEMENT_NOT_POSSIBLE_SAFELY`). That differs from research rule I10. |
+| D2 no liquidation-distance or margin-mode gate on the portfolio path | MEDIUM | engineering (refusal only) | **Fixed**: `portfolio._gate` refuses an increase with `LIQUIDATION_TOO_CLOSE` when its leverage exceeds `1 / (2 d + LIQUIDATION_DEDUCTION)`; the leverage is chosen by margin mode (ISOLATED: the position's; CROSSED: the account maximum; not reported: the larger). A hedge-mode position is not increased (`POSITION_MODE_UNSUPPORTED`). Cannot fire at the frozen numbers (3.27 ≥ 3). |
+| D3 account caps measured on equity, not the budget | MEDIUM | engineering (tightens) | **Fixed**: `AccountLimits.capital_budget`; the per-trade clamp, open risk and gross leverage are measured on `min(budget, equity)` and every exposure of the account counts. Margin stays the venue's available margin. |
+| D4 trailing ratchet inert on Binance and BingX, and skipped on rebalance days | MEDIUM | venue certification | **Binance**: create-confirm-retire declared from the venue documentation (reduce-only stop beside the `closePosition` one, then the position-bound form back); trustworthy only after a certification run. **BingX**: still `REPLACEMENT_NOT_POSSIBLE_SAFELY` (no documented overlap; amend changes quantity only; cancel-and-replace can leave no stop). **Rebalance up**: carries the ratchet, sized at the wider resting stop. **Rebalance down**: the ratchet waits for the next close (needs a `pipeline.execution` change). |
 | D5 legacy presets below the family risk are refused, not resized | LOW | **owner** | |
 | D6 no `max_slippage_bps` on DAILY_TREND market entries | LOW | **owner** (frozen cost model) | |
 | D7 initial stop anchored to the decision close, not the fill | LOW | document | Bounded by `_executable_risk_refusal`. |
-| D8 the 15 % value has three sources | LOW | engineering | `spec.py:108`, `SystemLimits.max_stop_loss_pct`, `risk_sizing.py:45` agree today; an equality test is the follow-up. |
+| D8 the 15 % value has three sources | LOW | engineering | **Fixed (test)**: `test_k1_sizing_gates.py` holds `spec.py`, `SystemLimits.max_stop_loss_pct`, `risk_sizing.MAX_STOP_DISTANCE`, `AccountLimits` and the family's executable levels at one 15 % (and the 0.40 % ceiling at one value). `spec.py` is not edited. |
 | D9 `ATR_RISK_CAP_EXCEEDED` cannot fire on the plan path | LOW | document / owner | The hard-risk chain hands PolicyEngine a fixed margin, which it reports (`REPORTED_FIXED_MARGIN_AUTHORITATIVE`) but does not cap. Portfolio sizing is risk-based and has its own caps (0.40 %, 15 %, open risk, leverage). The legacy ATR risk-cap gate is redundant there, not missing. The test keeps it covered. |
 
 No ceiling was changed.

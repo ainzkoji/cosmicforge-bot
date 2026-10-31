@@ -308,3 +308,66 @@ only. H-019 (draft) is not registered or frozen.
 | Legacy signal scheduler | REPLACED BY CATI | No generation jobs are registered; the tests now assert that |
 
 Tables of every class are kept until a destructive migration is approved.
+
+# Update: Batch 7 pass (31 October 2026, later)
+
+This section supersedes the Batch 7 and Batch 8 parts of the 31 October update above. The quarantine result is in
+[QUARANTINE_REGISTER.md](QUARANTINE_REGISTER.md) (23 → 0).
+
+## Batch 7: done
+
+Dependency evidence for every removal: an AST import scan of `backends/` and `scripts/` (imports, relative
+imports and string references) finds no importer after the change, and `import app.main` succeeds (test
+environment, throwaway database).
+
+| Change | Detail |
+|---|---|
+| Removed `app/decision/external_signal_gate.py` (93 lines) | It always refused; no production importer. External candidates are still refused where they arrive (`PaperRunner.process_external_signal_candidate`); `test_external_signal_threshold_path.py` and `test_threshold_policy_1_1_recalibration.py::TestOneAuthority::test_19` now drive that entry point. |
+| Removed `app/strategy/activity_targets.py` (325 lines) | Only `app/strategy/__init__.py` re-exported it. The six tests of it were removed; the two B-6 tests on the threshold engine stay. |
+| Moved `runner/market_snapshot.py` → `app/market_data/market_snapshot.py` | The old path is a `sys.modules` alias shim: an import or a monkeypatch through either path reaches one module. The CATI, replay-provider, runner and API importers use the new path; `master_ensemble.py` (kept until M9) and the tests still use the shim. `destination_map["market_snapshot"]` names the new file. |
+| Moved `runner/effective_policy.py` → `app/policy/effective_policy.py` | Same shim pattern. `production_execution.py`, `portfolio_runtime.py`, `multi_runner.py`, `api/bot_instances.py`, `api/readiness_admin.py` and `scripts/phase12/harness.py` import the new path. `main.py` (two imports) still uses the shim: another engineer is editing its startup handlers. |
+| Retired `app/replay/engine.py` (630 lines) and `app/replay/fill_models.py` (270) | No production importer: `main.py` has no replay route and no deploy file names them. The engine's only other importer, `scripts/run_historical_baseline.py` (a V2 Phase-15 baseline), was removed with it. `app/replay/__init__.py` no longer re-exports the fill models. `historical_provider.py`, `cost_model.py` and `identity.py` stay: CATI research and certification use them, and the last two are research-evaluation code (not touched). |
+| `destination_map` | `"replay.engine"` became `"replay.historical_provider"` with only `historical_provider.py`. The responsibility the entry names ("causal historical provider reused by the library builder and certification") is unchanged. No governance rule lists the engine (`LEGACY_AFTER_PROMOTION` does not), and no test pins the key; `test_destination_map_is_semantically_compliant` passes. |
+| `RuntimeOwnerLoop` | The runtime-ownership lease loop moved out of `MultiBotRunner` into `app/trading_intelligence/integration/runtime_owner_loop.py`: acquire (fails closed, audits a collision), renew every iteration, watchdog heartbeat, stop on loss (watchdog + audit), chunked sleep, explicit release. `MultiBotRunner` delegates and keeps its surface (`owns_runtime`, `ownership_decided`, `ownership_reason`, `runtime_owner_id`, `_ownership`, `acquire_runtime_ownership`, `release_runtime_ownership`, `running`, `_stop_requested`), so `app.main`, `app.ops.runtime_shutdown` and `app.ops.runtime_supervisor` are unchanged. `tests/test_runtime_owner_loop.py` was written against the old `MultiBotRunner` first and its 13 cases passed there before the move; with 3 direct cases added (16) it covers acquisition, foreign-host and dead-local holders, error fail-closed, refusal, renew + heartbeat, a failing tick, loss, a transient renew failure, stop, release and the real `quiesce` path. Two source-text tests of `test_always_on_runtime.py` became behaviour tests. The lease rules (`app/ops/runtime_ownership.py`, cross-host staleness) did not change. **Linux CI and staging still have to run it**: the lease and PID checks differ by platform. |
+| Bug fixed | `PaperRunner._close_managed_position` now survives a fill-persistence failure after a successful broker close (see the quarantine register). |
+
+## What production still needs from the legacy runner
+
+| Module | Production use | Callers | What blocks removal |
+|---|---|---|---|
+| `runner/multi_runner.py` | `main.runner_loop` builds `MultiBotRunner` in every trading process. In production `run_once` returns at once; the object only carries the lease loop (now `RuntimeOwnerLoop`) and the surface read by `main._may_run_background_jobs`, the runner status routes (`iteration`, `_runners`), `api/bot_instances` (`_runners`), `ops/runtime_shutdown` (quiesce, release) and `ops/runtime_supervisor`. Outside production it runs the V2 `PaperRunner` per bot. | `main.py` (runner loop, status routes), `app/ops` (2 modules), `api/bot_instances.py`; 9 test files | `main.runner_loop` and the ops and status readers must take the owner loop directly (owned this pass by the security and ops engineers). Then the non-production simulation needs another home, or an owner decision to drop it. |
+| `runner/runner.py` | None in the order path: `get_runner()` raises HTTP 410 in production. Imported at module level by `main.py` (the type, and 21 legacy routes: `/runner/*`, `/risk/*`, `/trade/close*`, `/debug/*`, `/strategy/signal`, `/logs/events/tail`), by `activation/cati.py` (the reporting-only runtime-authority probe) and by `runner/session_monitor.py`. It hosts the non-production CATI cycle (`cycle_shadow`, `cati_dispatch`). | `main.py` (22 `get_runner()` calls), `multi_runner.py`, `activation/cati.py`, `session_monitor.py`, `scripts/phase12/harness.py`; 30 test files | The 21 legacy admin and debug routes need an owner decision (retire, or move to CATI read models). The non-production CATI cycle must move off `PaperRunner`. `activation/cati.py` must drop its runner probe. |
+| `runner/market_snapshot.py`, `runner/effective_policy.py` | Shims only | `main.py`, `master_ensemble.py`, tests | Remove once those import the new paths. |
+
+Dead code found (no runtime caller; for the next Batch 7 commit): `PaperRunner._run_iofs_pre_ensemble`,
+`_effective_iofs_mode` and the `iofs_*` attributes (their only tests are `test_iofs_gate_evaluator.TestRunnerModes`);
+the `build_hold_breakdown` import in `runner.py`.
+
+**Finding (not fixed; for the sizing owner).** `app/product_safety/readiness_gate.py` counts `SIZING_FAILURE` audit
+events for the user-capital readiness check. Only the legacy runner's entry path emitted them, and 6e0b42c removed
+it. On the CATI path a sizing refusal is a RiskDecision with `rejection_family=SIZING`. So the readiness check can
+never see a sizing failure. Making it read the CATI risk decisions would tighten a gate; the owner decides.
+
+## Batch 8: verified, still deferred
+
+The 31 October comparison holds against the current code. The three factories differ in:
+- boundary class;
+- authority: `AccountExecutionAuthority`, versus `GovernanceAuthority` with `FamilyExecutionGate`, versus the default;
+- adapter: `BinanceExecutor`, versus the certified and budgeted platform adapter, versus the runner's executor;
+- capital and sizing: `UserConfigurableLimits` with the executor's slot and margin gates, versus `AccountLimits`
+  with `ReservationLedger`;
+- protection and recovery: `BinanceExecutor` protection, versus `pipeline.protection` and
+  `PortfolioExecutionBoundary.recover`.
+
+`cati_dispatch.boundary_for` is still reached only through the legacy runner's cycle.
+
+**Correction: the "identical prelude" is not identical.** `tests/trading_intelligence/test_boundary_factory_prelude.py`
+(21 cases, new) pins both preludes, including two differences:
+1. `production_execution` also accepts a bot whose `strategy_id` is the frozen family id
+   (`RESIDUAL_MOMENTUM_PORTFOLIO_TOP1`); `portfolio_runtime` accepts only `cati`.
+2. `production_execution` first refuses a client of another environment, and passes the normalized environment
+   (`testnet` → `demo`) to the policy resolver; `portfolio_runtime` passes the stored value lower-cased.
+
+Ownership, the capability gate and the paper refusal behave the same, in the same order. An extraction must keep
+both differences as parameters. It was not done in this pass: both files carry another engineer's uncommitted
+changes. The tests above are the characterization it needs.

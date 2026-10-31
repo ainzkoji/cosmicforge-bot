@@ -189,7 +189,21 @@ A trading process that dies without draining (SIGKILL, OOM) keeps its platform a
 TTL); the replacement takes over and recovers every account before it maintains it. By code reading (not yet
 observed on a container host), its runtime-owner lease is taken over at once by the replacement container: the
 lease records the holder's PID and start time, and the new container's process is newer than the lease; the
-fallback is the 90 s heartbeat staleness. Step 5 of the hosted certification above observes it. The drill evidence is `evidence/step5/worker_kill_drill.json`;
+fallback is the 90 s heartbeat staleness. Step 5 of the hosted certification above observes it.
+
+Takeover latency (31 October 2026). Until this date the successor waited for the dead worker's HEARTBEAT to age
+out of the 2 x TTL liveness window before its fair share let it take the expired claims, and it claimed only at the
+start of a round. Now a worker holding an expired, unrenewed claim is not live capacity, and the broker cycle
+claims free accounts between two account steps (at most every TTL/6) and recovers them in the round in progress.
+Expected bound: one TTL after the dead worker's last renewal, plus one account step, plus at most the successor's
+idle wait between rounds (production: TTL 60 s, loop period 30 s). Measured on a workstation with a 3 s TTL
+(`scripts/worker_kill_drill.py --broker-cycle`): kill issued -> every account owned by the successor 3.7 s
+(SQLite) and 3.8 s (PostgreSQL), against 6.1 s and 7.9 s before the change on the same machine (baseline:
+`evidence/step5/broker_cycle_takeover_baseline_7aa13e4.json`, where PostgreSQL also missed the drill's own bound).
+Evidence: `evidence/step5/broker_cycle_takeover_mid_round_claims.json`.
+
+The `ops-tick` container has a dead-man healthcheck (`python -m app.ops.alerting --check-tick --max-tick-age 300`):
+it turns unhealthy when no tick finished in the last 5 minutes, whatever the container's own state. The drill evidence is `evidence/step5/worker_kill_drill.json`;
 `tests/platform_workers/test_deployment_drill.py` and `test_deployment_failure_drills.py` repeat it on every CI run.
 
 ## Emergency controls during a deploy

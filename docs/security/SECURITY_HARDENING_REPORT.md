@@ -228,9 +228,9 @@ External penetration testing is still **not performed** (section 1, row 22).
 | F3 | FIXED | `GET /api/v1/auth/user/brokers` removed (no caller), now 404 |
 | F4 | FIXED | bot-backend `encrypt_credential`/`decrypt_credential` deleted (no caller) |
 | F5 | FIXED | Production never tries the public KYC dev key unless `KYC_ALLOW_LEGACY_DEV_KEY_DECRYPT=true` (default off; every use logged) |
-| F6 | PARTIAL (31 Oct 2026: majors upgraded except starlette) | 31 October 2026: cryptography 50.0.2, pillow 13.0.0, pyasn1 0.6.5 and black 26.10.1 pinned after a regression in a separate venv. pip-audit then reports 25 advisories in 4 packages: starlette (needs FastAPI/Starlette 1.x and a `lifespan` migration of the bot backend's 12 `on_event` handlers), pip (tooling), ecdsa and python-jose (no fix, accepted). See docs/implementation/MASTER_PLAN_I_L_COMPLIANCE.md 5.2. Earlier: 20 pins upgraded in-major (6.6). |
+| F6 | FIXED for the services (pip: OPEN-OPERATIONAL, build tooling) | 31 October 2026, second pass: fastapi 0.136.3 + starlette 1.3.1 (bot backend startup/shutdown moved to a `lifespan`), python-jose and ecdsa removed (PyJWT). pip-audit: 0 advisories in the bot, user and full requirement sets (13 before); only the venv installer pip 24.0 remains (fixed in 26.2.2, build-time). See 6.11. Earlier the same day: cryptography 50.0.2, pillow 13.0.0, pyasn1 0.6.5, black 26.10.1; before that 20 in-major pins (6.6). |
 | F7 | FIXED | Both front ends: `npm audit` reports 0 advisories (full and `--omit=dev`) after in-major upgrades; see 6.7 |
-| F8 | OPEN-OPERATIONAL | Compat window unchanged (`AUTH_BEARER_COMPAT`). A log-redaction defect found on the way is FIXED; see 6.8 |
+| F8 | OPEN-OPERATIONAL (engineering ready) | `AUTH_BEARER_COMPAT` stays true by default. No in-repository client needs it; the switch-off is tested both ways in both backends, the bot backend's service bearer is unaffected, and the switch-off / rollback procedure is in 6.11. A log-redaction defect found on the way is FIXED; see 6.8 |
 | F9 | FIXED | While `ADMIN_MFA_REQUIRED` is on, enrolment needs an operator-issued one-time bootstrap code |
 
 ### 6.1 F1 - stateless access tokens (and the session lifecycle)
@@ -612,3 +612,236 @@ External penetration testing is still **not performed** (section 1, row 22).
   * Other: `test_sections7_9_closure`, `markets/test_step7_market_activation`,
     `trading_intelligence/test_step3_retention` (every table classified).
 * **Platform caveat.** Windows workstation only. Ubuntu CI is the Linux evidence and has not run on these changes yet.
+
+### 6.11 Final hardening pass (2026-10-31): F6 majors, F8 switch-off readiness, N5 / L-07, historical credentials
+
+#### F6 - the blocked majors
+
+* **Upgraded** (`backends/requirements.txt`, `deploy/constraints.txt`):
+  * `fastapi` 0.128.0 → 0.136.3 and `starlette` 0.50.0 → 1.3.1.
+    * fastapi 0.128 required `starlette<0.51`; 0.133.0 is the first release without an upper bound.
+    * starlette 1.3.1 is the lowest release that fixes all five starlette advisories.
+    * **Why not a newer fastapi.** 0.137.0 stopped flattening included routers: `app.routes` now holds lazily
+      resolved `_IncludedRouter` entries. Trialled with fastapi 0.140.13, the bot backend's security route walk
+      failed, along with three route lookups in `test_api_auth_hardening.py`:
+      * `test_every_route_requires_auth_unless_explicitly_public`;
+      * `test_public_allow_list_is_short_and_not_stale`.
+
+      Serving itself worked. Adapting the walk would mean depending on FastAPI internals, so 0.136.3, the last
+      release before that change, was chosen. It passes everything below. Moving past 0.136 needs that walk
+      rewritten first.
+    * `sse-starlette` 3.2.0, `httpx` 0.28.1 and `uvicorn` 0.40.0 are unchanged and work with it.
+  * `python-jose` 3.5.0 and `ecdsa` 0.19.2 **removed**. JWTs now use PyJWT 2.15.1, which was already pinned as a
+    firebase-admin dependency. `rsa`, `pyasn1` and `six` stay: google-auth and python-dateutil need them.
+* **lifespan migration.** Starlette 1.x has no `@app.on_event`.
+  * Only the bot backend used it: 12 handlers in `app/main.py`. The user and admin backends had none.
+  * The handlers keep their place in the file. `@app.on_event("startup"/"shutdown")` became `@_on_startup` /
+    `@_on_shutdown`, which append to two lists. `_lifespan` (passed to `FastAPI(lifespan=...)`) runs those lists.
+  * The semantics are on_event's:
+    * Startup runs in registration order. The first hook that raises aborts startup: uvicorn refuses to serve,
+      and a `TestClient` context raises. No later startup hook and no shutdown hook runs.
+    * Shutdown also runs in registration order, not reversed (`_shutdown_run_manager` releases the runtime lease
+      first). A hook that raises stops the ones after it.
+  * Tests: `tests/test_app_lifespan.py`.
+    * Pins the exact order: 7 startup hooks, 5 shutdown hooks.
+    * Checks that no `on_event` or `add_event_handler` is left.
+    * Checks that a `TestClient` context runs both phases.
+    * Checks that a failing startup hook refuses startup and runs nothing after it, and that a failing shutdown
+      hook stops the rest.
+    * Checks that the real live-mode safety refusal (`_startup_validate_config`) still refuses startup.
+  * The code is compatible with both starlette 0.50 and 1.3.1. Both runs pass.
+* **Other Starlette 1.x API breaks checked.**
+  * No `@app.route`, `websocket_route`, `on_startup=`/`on_shutdown=` arguments, templates or WSGI middleware anywhere.
+  * `@app.middleware("http")` is FastAPI's own decorator.
+  * `SessionCookieMiddleware` is pure ASGI.
+  * `StreamingResponse`, `BackgroundTask`, exception handlers and `TestClient` usage are unchanged APIs. The SSE
+    suites below pass.
+* **python-jose → PyJWT.**
+  * Every use was HS256 `encode`/`decode` with the same claims, so the swap is mechanical.
+  * The one shim is `shared_lib/core/security/jwt_tokens.py`. It exports `jwt`, `JWTError`, `ExpiredSignatureError`
+    and a `JWTClaimsError` tuple. Call sites changed only their import line:
+    * bot `app/core/security.py`;
+    * user `app/core/security.py`, `app/core/deps.py` and `app/api/admin_emergency.py`;
+    * admin `app/core/auth.py`;
+    * 11 test modules.
+  * Tokens minted by either library verify with the other, so a rolling restart is safe.
+  * **Behaviour change, deliberately stricter.** python-jose silently ignored `options={"require": [...]}`, so a
+    correctly signed token without `exp` (or `iss`/`aud`/`sub`) was accepted and never expired. PyJWT enforces the
+    list. Every token we mint carries all four claims.
+  * Tests: `test_section_h84_token_type.py::test_a_token_missing_a_required_claim_is_refused` (4 cases) and
+    `::test_foreign_keys_unsigned_tokens_and_other_algorithms_are_refused` (`alg: none`, another secret, HS512,
+    expired).
+* **pip-audit 2.10.1, scratch venv.** Each requirements file was audited with `-c deploy/constraints.txt`, as CI
+  installs it.
+
+  | Set | Before (raw entries / unique advisories) | After |
+  |---|---|---|
+  | `backends/bot-backend/requirements.txt` + constraints | 13 / 7: starlette 10/5, ecdsa 2/1, python-jose 1/1 | **0** |
+  | `backends/user-backend/requirements.txt` + constraints | 13 / 7 (same three packages) | **0** |
+  | `backends/requirements.txt` (full freeze) | 13 / 7 (same three packages) | **0** |
+  | `pip` itself (the venv installer, not a requirement) | pip 24.0: 12 / 6 | pip 26.2.2: 0 |
+
+  The "25 advisories in 4 packages" of compliance 5.2 were these 13 plus pip's 12.
+* **pip is build-time only.**
+  * The server venv's pip 24.0 comes from Python 3.12.2's `ensurepip`. It runs only while packages are being
+    installed, never in a serving process.
+  * CI uses `actions/setup-python`'s current pip.
+  * **Operator / ops action** when a venv or image is built:
+    `backends/venv/bin/python -m pip install --upgrade pip==26.2.2` before the `pip install -r ...` step. In
+    `deploy/containers/backend.Dockerfile`, add `pip install --upgrade pip==26.2.2` first (deploy files other than
+    the pins are owned by operations).
+  * Status: OPEN-OPERATIONAL (build tooling).
+* **Not changed.** The mt-bridge server's own pins (fastapi 0.104.1, starlette 0.27.0) await the Batch 9 keep/remove
+  decision. Its two `@app.on_event` handlers are not on the certified runtime.
+* **Status: FIXED** for the deployed services, with zero advisories in every service requirement set. pip is
+  OPEN-OPERATIONAL (build tooling only).
+
+#### F8 - bearer compatibility window: ready to close, still open by default
+
+* **Default kept at `true`.** This covers `user-backend/app/core/config.py`, the admin backend's env fallback and
+  `deploy/env.production.example`. The code default is not flipped:
+  * 13 user- and admin-backend test modules (66 `Bearer` call sites, most in shared helpers) authenticate with
+    bearer headers;
+  * the stale `tests/integration` (INT-01) does too;
+  * out-of-repository API clients cannot be ruled out from the code.
+
+  Flipping the default is the operator's observation-window decision (section 3, step 2), not a code change.
+* **No in-repository client needs the window.**
+  * Both front ends send cookies only:
+    * `withCredentials: true` and `credentials: "include"`;
+    * legacy stored tokens are purged on load;
+    * placeholder `Authorization` headers are stripped.
+  * The SSE `EventSource` uses `withCredentials`, never `?token=`.
+  * The MT connector calls the platform with body-carried pairing codes. Its own bearer goes only to the local
+    bridge.
+  * No service calls the user or admin backend with a bearer.
+* **The service-to-service bearer is unaffected.**
+  * The bot backend has no cookie middleware and never reads `AUTH_BEARER_COMPAT`.
+  * The user backend's middleware turns the browser's cookie into `Authorization: Bearer` before the routes run.
+    The proxies forward that header, and `admin_emergency` mints its own short service token.
+  * Test: `test_the_service_bearer_to_the_bot_backend_does_not_depend_on_the_compat_window[True|False]`.
+* **Switch-off verified both ways.**
+  * user backend (`tests/test_section_h84_security.py`):
+    * true: bearer headers and the body refresh token work;
+    * false: login and refresh bodies carry no tokens, and a bearer header is ignored (401). The body
+      `refresh_token` is refused (401) while the cookie refresh with CSRF works. Admin bearer headers are ignored
+      while the admin cookie works, and `?token=` on the SSE stream is ignored.
+  * admin backend (`tests/test_admin_backend_shell.py`, `false`/`0`/`off`): a bearer-only request gets 401. The
+    `cf_admin_access` cookie gets 200. A cookie POST without the CSRF header gets 403 `CSRF_FAILED`.
+* **Switch-off procedure (operator).**
+  1. **Observe** for at least one release cycle:
+     * no `?token=` requests on `/api/v1/events/stream`;
+     * no requests carrying `Authorization` that did not come from a cookie. Log the presence of
+       `$http_authorization` in a temporary nginx log format; never log the value.
+  2. Set `AUTH_BEARER_COMPAT=false` in **both** `/etc/cosmicforge/user-backend.env` and
+     `/etc/cosmicforge/admin-backend.env`, then `systemctl restart cosmicforge-user-backend cosmicforge-admin-backend`.
+     The trading service needs no change.
+  3. **Watch** for 24 h:
+     * the 401 rate on `/api/v1/*` and `/api/admin/*`;
+     * 401s on `/api/v1/auth/refresh` and `/api/v1/admin-auth/refresh`;
+     * 403 `CSRF_FAILED`;
+     * support tickets about being signed out;
+     * MT-connector pairing success;
+     * the admin console's emergency and governance actions, which go user backend → bot backend.
+* **Rollback.**
+  * Set `AUTH_BEARER_COMPAT=true` in the same two files and restart the same two services.
+  * There is no data migration and no session loss: cookie sessions keep working in both states, and bearer clients
+    work again at once.
+  * Roll back if a legitimate client breaks; do not wait for the cause.
+* **Clean-up (later).** Remove `token_body`, the body `refresh_token` and `?token=` in `events_proxy` once the flag
+  has stayed false for a release cycle (section 3, step 4).
+* **Status: OPEN-OPERATIONAL.** The engineering is ready and tested both ways. The flip is the operator's
+  observation-window step.
+
+#### N5 / L-07 - non-enumerating sign-up (authorized and implemented)
+
+* **`POST /api/v1/auth/register`** returns the same answer for every address: 200 and
+  `{id, email, status: "pending_verification", role: "user", is_verified: false, created_at}`.
+  * `created_at` is always the time of the request.
+  * For an existing account, `id` is an HMAC-derived decoy: stable per address, never the real id. Repeated sign-ups
+    for one address therefore return one id, exactly as they do for a new address.
+  * Every path performs one hash and one password comparison: new, unverified and existing alike.
+  * Nothing is created or changed for an existing account.
+  * An **active** account's owner is mailed a notice through the existing mail path (fire-and-forget, never raises,
+    never blocks). The notice says the account exists and suggests sign-in or "Forgot password". A suspended account
+    is not mailed.
+  * An audit row `registration_existing_account` records the attempt (internal only).
+  * Rate limits are unchanged and identical for every address: the request counts against the per-address and
+    per-IP code limits before the lookup. This also bounds the notices: at most 3 per 15 minutes and 10 per day.
+* **`POST /api/v1/auth/verify-email`** for an already-verified address now answers 400 `CODE_FAILED_DETAIL`. That is
+  the same answer an unknown address or a wrong code gets. It used to answer "Email already verified" to anyone,
+  without a code.
+* **Front end.**
+  * `pages/Register.tsx` dropped its unreachable "already registered / exists" branch: the backend never sent that
+    text.
+  * After every sign-up it shows one neutral message: "If this address is new, we've sent a verification code. If it
+    already has an account, we've sent sign-in instructions instead."
+  * `npm test` 91/91, `tsc` clean, eslint 0 errors.
+* **Tests** (`user-backend/tests/test_auth_hardening.py`): these replace
+  `test_registering_an_active_address_is_refused`.
+  * Same status, content type and body for an existing and a new address. No second account, the old password still
+    works, the owner gets a mail call and the existing owner gets no code.
+  * Stable decoy id.
+  * Suspended account: same answer, no mail.
+  * Identical limits for an existing and a new address (3 × 200, then 429), with the notices bounded by them.
+  * Equal hashing work on all three paths (one `hash`, one `verify`).
+  * Generic `verify-email` answer.
+  * Notice delivery is queued in the background and survives an SMTP failure.
+* **Status: FIXED.**
+
+#### Historical administrator credentials - procedure verified, rotation OPERATOR-REQUIRED
+
+* **Drill.** The procedure of compliance 5.3 was run against a throwaway SQLite database, with a dummy admin, from a
+  pristine export (no `.env`).
+  * The two real CLIs ran as subprocesses, from `backends/user-backend`:
+    * `python scripts/create_admin.py <email>`;
+    * `... --reset-password`;
+    * `python scripts/security_maintenance.py reset-admin-mfa <email> --issue-bootstrap`.
+  * Passwords were generated at run time and passed only through `ADMIN_PASSWORD`. **23/23 checks passed:**
+    * a password given as an argument is refused (exit 2) and nothing is created;
+    * create succeeds without printing the password;
+    * re-running without `--reset-password` changes nothing (exit 1);
+    * the reset prints neither password;
+    * the old password stops signing in and the new one works;
+    * every session opened before the reset is revoked;
+    * `token_version` 0 → 1, and an access token issued before the reset is refused;
+    * `reset-admin-mfa --issue-bootstrap` clears MFA, bumps `token_version` again and leaves no live session;
+    * exactly one bootstrap code is printed, and it is stored only as a hash;
+    * both audit rows are written;
+    * an unknown admin gets exit 1.
+  * Windows caveat: with no `ADMIN_PASSWORD` and no terminal, Linux refuses with a message. On Windows, `NUL` reports
+    `isatty()` and `getpass` waits on the console, so that check is Linux-only.
+* **Test added.** `test_section_h84_closure.py::test_operator_rotation_procedure_end_to_end` runs the same sequence
+  through both CLIs' `main`.
+* **Correction to compliance 5.3, step 2.** The script is `backends/user-backend/scripts/security_maintenance.py`;
+  run it from `backends/user-backend`.
+* **Status: OPERATOR-REQUIRED.**
+  * Nothing was rotated: there is no access to a deployed database.
+  * Every administrator account named in `db4580b`, `cc13da0` and `b35c198` stays compromised until the operator has
+    run steps 1-4 on every environment and recorded the date and operator in EXT-SEC-02.
+  * No historical credential was read out, displayed or used in this pass.
+
+#### Evidence (2026-10-31)
+
+**Method.**
+* Baseline: a `git archive` export of `7aa13e4`.
+* After: the same export plus only this pass's files; other work streams' uncommitted edits are excluded.
+* Two scratch venvs from the same Python 3.12.2:
+  * one with the old pins (`backends/requirements.txt` + both service files + `deploy/constraints.txt`);
+  * one with the new pins.
+* `backends/venv` was not modified.
+* CI environment (`APP_ENV=TEST`, `-p ci_quarantine`); failure sets compared by name.
+
+| Suite | Baseline, old pins | After, **new pins** | After, old pins | Failures |
+|---|---|---|---|---|
+| user-backend (full) | 880 passed / 1 failed | 891 / 1 (+11 new) | 891 / 1 | identical: `test_step1_proxies::test_every_report_path_the_portal_calls_has_a_route` reads `frontends/`, which is not in the export |
+| admin-backend (full) | 94 / 0 | 98 / 0 (+4 new) | 98 / 0 | none |
+| shared (full) | 256 / 0 | 256 / 0 | 256 / 0 | none |
+| bot-backend: every module that imports fastapi/starlette/jwt or uses `TestClient`/SSE/routes/auth (67 files) | 1,261 passed, 10 failed, 33 errors, 31 skipped | 1,272 / 10 / 33 / 31 (+11 new) | 1,272 / 10 / 33 / 31 | identical sets: the export has no `research/`, `docs/research/` or model files (37 `FileNotFoundError`s and their consequences) |
+| bot `markets/test_step7_market_scope.py` | 10 / 0 | 10 / 0 | — | none |
+| user front end | — | `npm test` 91/91; `tsc` clean; eslint on `Register.tsx` 0 errors (1 pre-existing warning) | — | none |
+| rotation drill | — | 23/23 checks | — | none |
+
+* The fastapi 0.140.13 trial is recorded above: 4 route-walk failures in `test_api_auth_hardening.py`. That is why
+  0.136.3 was chosen.
+* **Platform caveat.** Windows workstation only. Ubuntu CI is the Linux evidence and has not run on these changes.

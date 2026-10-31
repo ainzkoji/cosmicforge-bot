@@ -9,7 +9,7 @@ owner is assigned -- see `ALERTING.md`). The numbers below are what a drill *mea
 |---|---|---|
 | Local, verified snapshot | `scripts/backup_trading_db.py` (`cosmicforge-db-backup.timer`) | SQLite online backup API, `quick_check`, SHA-256 manifest |
 | Off-site, encrypted | `scripts/offsite_backup.py` (`cosmicforge-offsite-backup.timer`) | age (`BACKUP_ENCRYPTION_RECIPIENT`) or gpg (`BACKUP_GPG_RECIPIENT`); **refuses plaintext** |
-| Platform PostgreSQL (when used) | `pg_dump -Fc` | rehearsed by the drill; no scheduled job exists yet |
+| Platform PostgreSQL | `scripts/backup_platform_db.py` (`cosmicforge-platform-db-backup.timer`, daily 04:00 UTC) | `pg_dump -Fc`, password through `PGPASSWORD` (never argv), verified with `pg_restore --list` (table data present), SHA-256 manifest, keep 14, `platform-backup-status.json` marker -> `evaluate_platform_backup_status`. Staging still dumps before every deploy (`deploy.sh`). Not yet off-site: `offsite_backup.py` selects the SQLite backups only |
 | Drill | `scripts/restore_drill.py` | this document |
 | Age monitoring | `app.ops.alerting.evaluate_backup_age` | `BACKUP_FAILURE` when the newest verified backup is missing or > 36 h old |
 | Failure monitoring | `backup-status.json` / `offsite-status.json` (written by both scripts on every run) + `app.ops.alerting.evaluate_backup_status` | `BACKUP_FAILURE` when the last local or off-site run failed, or no verified off-site copy for 36 h; the scripts' exit status is unchanged and `OnFailure=` still alerts out of band |

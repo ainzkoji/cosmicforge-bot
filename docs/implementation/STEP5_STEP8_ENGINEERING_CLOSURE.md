@@ -202,6 +202,8 @@ New reason codes (customer mappings added): `ASSIGNMENT_RECOVERY_ONLY`, `EMERGEN
 
 ## 5. Worker takeover evidence
 
+> **Corrected (31 October 2026):** the explanation below ("lease plus one successor round") was wrong. A dead worker counted as live capacity for 2 × TTL. Fixed in `e6a7533`; new figures: SQLite 3.7 s, PostgreSQL 3.8 s (TTL + ~0.7 s). See [TRADINGBOT_FINAL_ENGINEERING_CLOSEOUT.md](TRADINGBOT_FINAL_ENGINEERING_CLOSEOUT.md) section 18.
+
 `tests/trading_intelligence/test_step5_broker_cycle_assignment.py` (44 tests, both dialects) runs the real broker
 cycle (`_sync_accounts`, `broker_cycle`, `sync_account`) over fake broker clients and disposable databases. A worker
 is killed (abandons work, lease expiry, or an injected exception) during account processing, order preparation, an

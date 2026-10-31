@@ -1,8 +1,29 @@
 # Test quarantine register
 
-## Current state (31 October 2026): 23 entries
+## Current state (31 October 2026, Section I Batch 7 pass): 0 entries
 
-This section supersedes the counts further down.
+This section supersedes everything below. `.github/known-test-failures.list` holds **no** test id. Each of the 23
+entries was re-run without the quarantine plugin first (13 replay entries: 2 failed, 11 errored; the other 10 failed).
+No skip, xfail or quarantine entry was added, and no gate, ceiling or governance rule changed.
+
+| Entry | Disposition | Where the capability is asserted now |
+|---|---|---|
+| `test_replay_production_parity` (13) | **Retired with code.** `app/replay/engine.py` drove the V2 `PaperRunner`; since 6e0b42c that runner only observes (`CATI_OBSERVE`), so the 13 lifecycle/determinism assertions could not hold. No production importer; the only other importer, `scripts/run_historical_baseline.py`, was removed with it. `app/replay/fill_models.py` (consumer: the engine only) went too. | CATI replay: `trading_intelligence/test_section22_replay.py` (canonical controller, determinism, no look-ahead, same-bar TP/SL, cost stress), `test_determinism.py`, `test_replay_historical_clock.py` (provider HTF alignment). Two engine-independent checks were kept: the correlation filter (`test_correlation_filter.py`) and slot capacity (already `test_fill_resolution_and_slots::test_max_two_slots_block_a_third_position`). The cost-model half of `test_replay_fill_and_cost_models.py` is `test_replay_cost_model.py`. |
+| `test_logging_harden` (2) | **Rewritten.** Drive `_step_symbol_orchestrated`: a normal step is observe-only and never calls the V2 orchestrator; an exception inside the step is caught, logged (`CRITICAL: Runner exception`, with traceback) and returned as `decision=error`. | same file |
+| `test_section_b_code_fixes.TestTradeFillPersistence` (2) | **Close path: rewritten and a real defect fixed.** `PaperRunner._close_managed_position` (kill switch, daily close, eviction and emergency flatten) persisted the close fill without a guard: a persistence error after a successful broker close propagated, left the position open in `PositionManager` and the state `LONG` (a paper book never reconciles that away), and `flatten_all` reported a closed position as an error. It now logs `TRADE_FILL_PERSISTENCE_FAILED`, finishes the local close and returns `fill_persisted: False`. **Open path: retired** (the legacy OPEN path was removed in 6e0b42c). | close: same file (3 behaviour tests); open: `trading_intelligence/test_section20_execution_boundary.py::test_position_lifecycle_registered_with_filled_quantity` |
+| `test_fill_resolution_and_slots::test_the_runner_registers_…` | **Rewritten** (now `test_the_entry_path_registers_…`): drives `CATIExecutionBoundary._register_lifecycle` with a partial fill and checks PositionManager holds the executed 3.5, not the requested 5.0, at the broker's average price. | same file |
+| `test_capital_allocation_semantics::test_htf_bias_halving_…` | **Retired** (V2 runner sizing rule removed in 6e0b42c; nothing sizes from `htf_opposed`). | per-trade, not slot-divided sizing: `test_section20_execution_boundary.py::test_fixed_amount_is_per_trade_not_aggregate` |
+| `test_iofs_gate_evaluator.TestRunnerModes::test_enforce_blocks_before_ensemble_…` | **Retired**: it asserted an ordering inside `_step_symbol_evaluate` that no longer exists (no ensemble call, no IOFS call). `_run_iofs_pre_ensemble` itself now has no runtime caller (Batch 7 follow-up). | its mode handling: the other `TestRunnerModes` tests |
+| `test_paper_live_parity::test_runner_state_parity` | **Rewritten**: paper and broker modes give the runner the identical observe-only outcome for a strong scalar BUY; no position state is saved, the strategy and executor are never called. | same file |
+| `test_runner_decision_breakdown::test_runner_emits_structured_hold_breakdown_log` | **Retired** (V2 `[HOLD_BREAKDOWN]` log removed in 6e0b42c). | `test_logging_harden.py`; `trading_intelligence/test_cati_sole_runtime.py::test_observation_reason_is_canonical_and_never_approved_or_filled` |
+| `test_section_b_code_fixes_b5_b8.TestSizingFailureVisibility::test_runner_source_contains_sizing_audit` | **Retired** (the runner's `SIZING_FAILURE` audit block went with the legacy entry path). | `test_section20_execution_boundary.py::test_executor_sizing_rejection` (durable RiskDecision, family `SIZING`). **Finding:** `product_safety/readiness_gate.py` still counts `SIZING_FAILURE` audit events, which nothing emits any more, so that readiness check can never fire; see the Batch 7 update in SECTION_I_REMOVAL_INVENTORY.md. |
+
+**The list is empty**, which is J-07's condition; closing J-07 still needs a green Linux CI run on the commit. CI
+still loads the plugin; with an empty list it does nothing.
+
+---
+
+## Superseded: 31 October 2026 (before the Batch 7 pass), 23 entries
 
 **Commit `1ab866d`** repaired 39 entries and removed them from `.github/known-test-failures.list`: 62 → **23**. Every
 repaired test passes in a pristine export without the quarantine plugin. No skip, xfail or quarantine entry was

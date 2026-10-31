@@ -104,7 +104,9 @@ class Settings(ProductionSettings):
     #: without one). See app/platform_workers/broker_assignment.py.
     BROKER_CYCLE_ASSIGNMENT_MODE: str = "owner"
     #: How long an account assignment lives unless renewed (database clock). A
-    #: killed worker's accounts are taken over within this plus one cycle.
+    #: killed worker's accounts are claimed about this long after its last
+    #: renewal, between two account steps of a busy successor; an idle successor
+    #: claims at its next round (measured: TTL + ~0.7 s with a 3 s TTL).
     BROKER_ASSIGNMENT_TTL_MS: int = Field(default=60_000, gt=0)
     #: Lease that must remain after every fence check before a venue mutation (below the TTL; checked when the
     #: assignment layer is built, BROKER_ASSIGNMENT_FENCE_MARGIN_MUST_BE_BELOW_TTL).
