@@ -9,7 +9,7 @@ from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
-from jose import jwt
+import jwt  # PyJWT (F6)
 
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -2712,3 +2712,33 @@ def test_admin_signal_endpoints_handle_missing_tables(tmp_path: Path):
         assert test_client.get("/api/admin/signals/scan-runs/missing-scan", headers=headers).status_code == 404
     finally:
         app.dependency_overrides.clear()
+
+
+# --------------------------------------------------------------------------- F8: bearer compatibility window
+
+def test_bearer_headers_work_while_the_compat_window_is_open(client: TestClient, monkeypatch):
+    monkeypatch.setenv("AUTH_BEARER_COMPAT", "true")
+    response = client.get("/health/admin-auth-check", headers={"Authorization": f"Bearer {_admin_token()}"})
+    assert response.status_code == 200
+
+
+@pytest.mark.parametrize("closed", ["false", "0", "off"])
+def test_a_closed_compat_window_refuses_bearer_only_access_and_keeps_the_cookie_session(
+        client: TestClient, monkeypatch, closed):
+    """AUTH_BEARER_COMPAT=false: an Authorization header is dropped; only the admin session cookie authenticates."""
+    from shared_lib.core.security.session_cookies import ADMIN_REALM
+
+    monkeypatch.setenv("AUTH_BEARER_COMPAT", closed)
+    token = _admin_token()
+
+    bearer_only = client.get("/health/admin-auth-check", headers={"Authorization": f"Bearer {token}"})
+    assert bearer_only.status_code == 401
+
+    client.cookies.set(ADMIN_REALM.access_cookie, token)
+    try:
+        assert client.get("/health/admin-auth-check").status_code == 200
+        # A state-changing request with the cookie still needs the double-submit CSRF header.
+        refused = client.post("/health/admin-auth-check")
+        assert refused.status_code == 403 and refused.json()["detail"]["code"] == "CSRF_FAILED"
+    finally:
+        client.cookies.clear()

@@ -559,6 +559,68 @@ def test_without_bearer_compat_tokens_leave_the_body_and_bearer_headers_are_igno
     assert _fresh_client(ctx).get("/api/v1/probe", headers=_bearer(legacy)).status_code == 401
 
 
+def test_without_bearer_compat_a_body_refresh_token_is_refused_and_the_cookie_refresh_works(ctx, monkeypatch):
+    """F8: a bearer-only client cannot keep its session alive by posting the refresh token either."""
+    _activate_user(ctx)
+    legacy = _user_login(_fresh_client(ctx)).json()
+    monkeypatch.setattr(settings, "AUTH_BEARER_COMPAT", False)
+
+    assert _fresh_client(ctx).post(f"{AUTH}/refresh", json={"refresh_token": legacy["refresh_token"]}).status_code == 401
+    csrf = _user_login(ctx.client).json()["csrf_token"]
+    refreshed = ctx.client.post(f"{AUTH}/refresh", headers={"X-CSRF-Token": csrf})
+    assert refreshed.status_code == 200, refreshed.text
+    assert "access_token" not in refreshed.json() and "refresh_token" not in refreshed.json()
+
+
+def test_without_bearer_compat_admin_bearer_headers_are_ignored_and_the_admin_cookie_works(ctx, monkeypatch):
+    _make_admin(ctx)
+    legacy = _admin_login(_fresh_client(ctx)).json()["access_token"]
+    monkeypatch.setattr(settings, "AUTH_BEARER_COMPAT", False)
+
+    login = _admin_login(ctx.client)
+    body = login.json()
+    assert "access_token" not in body and "refresh_token" not in body and body["csrf_token"]
+    assert _fresh_client(ctx).post("/api/admin/probe", headers=_bearer(legacy)).status_code == 401
+    assert ctx.client.post("/api/admin/probe", headers={"X-CSRF-Token": body["csrf_token"]}).status_code == 200
+
+
+@pytest.mark.parametrize("compat", [True, False])
+def test_the_service_bearer_to_the_bot_backend_does_not_depend_on_the_compat_window(ctx, monkeypatch, compat):
+    """F8: the user backend calls the bot backend with ``Authorization: Bearer``. With the window closed the
+    browser's cookie session is still turned into that header, so proxied calls keep working."""
+    from app.api import analytics_proxy
+
+    forwarded: list = []
+
+    class FakeAsyncClient:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *exc):
+            return False
+
+        async def get(self, url, params=None, headers=None):
+            forwarded.append((url, dict(headers or {})))
+            return SimpleNamespace(status_code=200, json=lambda: {"ok": True}, text="")
+
+    monkeypatch.setattr(analytics_proxy.httpx, "AsyncClient", FakeAsyncClient)
+    ctx.app.include_router(analytics_proxy.router, prefix="/api/v1/analytics")
+    _activate_user(ctx)
+    monkeypatch.setattr(settings, "AUTH_BEARER_COMPAT", compat)
+    _user_login(ctx.client)
+
+    response = ctx.client.get("/api/v1/analytics/overview")  # cookie session only, no Authorization header
+
+    assert response.status_code == 200, response.text
+    assert len(forwarded) == 1
+    url, headers = forwarded[0]
+    assert url.endswith("/api/v1/analytics/overview")
+    assert headers["Authorization"].startswith("Bearer ") and len(headers["Authorization"]) > 40
+
+
 def test_admin_cookies_are_separate_from_user_cookies(ctx):
     _make_admin(ctx)
     login = _admin_login(ctx.client)
