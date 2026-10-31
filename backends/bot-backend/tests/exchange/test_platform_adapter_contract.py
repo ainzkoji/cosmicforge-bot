@@ -30,15 +30,19 @@ from app.exchange.platform_adapter.factory import ADAPTER_VERSIONS
 
 #: the capability matrix both the real adapters and the fake profiles must state
 CAPABILITIES = {
-    c.BINANCE: dict(close_position_stop=True, quantity_stop=False, stop_amend_in_place=False,
+    # Section K1 D4: Binance carries both stop forms and lets reduce-only stops rest beside a closePosition one
+    c.BINANCE: dict(close_position_stop=True, quantity_stop=True, stop_amend_in_place=False,
+                    multiple_stops_per_position=True,
                     position_stop_endpoint=False, stop_client_order_id=True, client_order_id_max_length=36),
     c.BYBIT: dict(close_position_stop=True, quantity_stop=False, stop_amend_in_place=True,
+                  multiple_stops_per_position=False,
                   position_stop_endpoint=True, stop_client_order_id=False, client_order_id_max_length=36),
     c.BINGX: dict(close_position_stop=False, quantity_stop=True, stop_amend_in_place=False,
+                  multiple_stops_per_position=False,
                   position_stop_endpoint=False, stop_client_order_id=False, client_order_id_max_length=40),
 }
 COMMON_CAPABILITIES = dict(native_stop_market=True, native_take_profit=True, reduce_only=True,
-                           multiple_stops_per_position=False, one_way_mode=True, hedge_mode=False, demo_environment=True)
+                           one_way_mode=True, hedge_mode=False, demo_environment=True)
 
 
 @pytest.fixture(autouse=True)
@@ -322,7 +326,7 @@ def test_a_protective_stop_is_placed_in_the_venue_form_and_read_back(rig):
     stop = adapter.place_order(rig.stop_request(BTC, c.SELL, 49_000.0, "stop-1", 0.01))
     assert (stop.status, stop.order_type, stop.side, stop.stop_price) == (c.NEW, c.STOP_MARKET, c.SELL, 49_000.0)
     assert stop.client_order_id == "stop-1" and stop.venue_order_id and stop.open and stop.filled_quantity == 0
-    assert stop.close_position is caps.close_position_stop and (stop.quantity == 0.01) is caps.quantity_stop
+    assert stop.close_position is caps.close_position_stop and (stop.quantity == 0.01) is (not caps.close_position_stop)
     assert [gap.open for gap in rig.fake.protection_gaps(BTC)] == [False]     # the venue behind it holds the stop
     for read in (adapter.order(BTC, venue_order_id=stop.venue_order_id), adapter.order(BTC, client_order_id="stop-1")):
         assert (read.venue_order_id, read.client_order_id) == (stop.venue_order_id, "stop-1")
@@ -374,6 +378,32 @@ def test_a_second_stop_is_refused_and_the_first_keeps_resting(rig):
     assert rig.effects() == effects and not rig.fake.protection_gaps(BTC)[-1].open
 
 
+def test_a_reduce_only_stop_rests_beside_the_first_only_where_the_venue_declares_it(rig):
+    """Section K1 D4: the create-confirm-retire replacement. Where ``multiple_stops_per_position`` is declared a
+    reduce-only stop for the whole position rests beside the stop that rests; elsewhere it is refused and the
+    first keeps resting. Either way nothing is cancelled."""
+    adapter, caps = rig.adapter, rig.adapter.capabilities()
+    open_long(rig)
+    first = adapter.place_order(rig.stop_request(BTC, c.SELL, 49_000.0, "stop-1", 0.01))
+    beside = OrderRequest(symbol=BTC, side=c.SELL, order_type=c.STOP_MARKET, client_order_id="stop-2",
+                          stop_price=49_500.0, quantity=0.01, reduce_only=True)
+    if not caps.multiple_stops_per_position:
+        assert refused(lambda: adapter.place_order(beside)).code == c.STOP_ALREADY_EXISTS
+        assert [s.venue_order_id for s in resting_stops(rig)] == [first.venue_order_id]
+        return
+    second = adapter.place_order(beside)
+    assert (second.close_position, second.reduce_only, second.quantity, second.stop_price) == (False, True, 0.01, 49_500.0)
+    assert sorted(s.stop_price for s in resting_stops(rig)) == [49_000.0, 49_500.0]
+    read = adapter.order(BTC, venue_order_id=second.venue_order_id)
+    assert (read.reduce_only, read.quantity, read.close_position) == (True, 0.01, False)
+    adapter.cancel_order(BTC, venue_order_id=first.venue_order_id)       # retired only after the new one rests
+    (left,) = resting_stops(rig)
+    assert left.venue_order_id == second.venue_order_id and not rig.fake.protection_gaps(BTC)[-1].open
+    if rig.real:
+        sent = rig.wire.mutations()[-2][2]
+        assert sent["reduceOnly"] == "true" and sent["quantity"] == "0.01" and "closePosition" not in sent
+
+
 def test_a_stop_that_would_fire_at_once_is_refused(rig):
     open_long(rig)
     effects = rig.effects()
@@ -386,7 +416,12 @@ def test_a_stop_that_would_fire_at_once_is_refused(rig):
 def test_the_stop_form_a_venue_does_not_have_is_unsupported_before_anything_is_sent(rig):
     open_long(rig)
     sent, effects = rig.mutations_sent(), rig.effects()
-    error = refused(lambda: rig.adapter.place_order(rig.unsupported_stop_request(BTC, c.SELL, 49_000.0, "stop-1", 0.01)))
+    request_ = rig.unsupported_stop_request(BTC, c.SELL, 49_000.0, "stop-1", 0.01)
+    if request_ is None:                                               # binance: it carries both forms
+        caps = rig.adapter.capabilities()
+        assert caps.close_position_stop and caps.quantity_stop
+        return
+    error = refused(lambda: rig.adapter.place_order(request_))
     assert error.code == c.UNSUPPORTED and not error.uncertain
     assert rig.effects() == effects
     if rig.real:

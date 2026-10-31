@@ -325,7 +325,8 @@ class BinanceWire(Wire):
     def _algo(self, order: Any) -> Dict[str, Any]:
         return {"algoId": int(order.venue_order_id), "clientAlgoId": order.client_order_id, "algoType": "CONDITIONAL",
                 "symbol": order.symbol, "side": order.side, "orderType": order.order_type, "algoStatus": "NEW",
-                "triggerPrice": _text(order.stop_price), "closePosition": order.close_position, "reduceOnly": False,
+                "triggerPrice": _text(order.stop_price), "closePosition": order.close_position,
+                "reduceOnly": order.reduce_only, "quantity": _text(order.quantity) if order.quantity is not None else "0",
                 "updateTime": order.updated_at_ms}
 
     def _user_trades(self, p: Dict[str, Any]) -> List[Dict[str, Any]]:
@@ -344,11 +345,15 @@ class BinanceWire(Wire):
             reduce_only=p.get("reduceOnly") == "true")))
 
     def _create_algo(self, p: Dict[str, Any]) -> Dict[str, Any]:
-        assert p["algoType"] == "CONDITIONAL" and p["closePosition"] == "true"
+        assert p["algoType"] == "CONDITIONAL"
+        # the documented forms: closePosition alone, or reduceOnly with a quantity (never both: -4137 / -4138)
+        whole = p.get("closePosition") == "true"
+        assert whole != ("quantity" in p) and whole != (p.get("reduceOnly") == "true"), p
         self._refuse_duplicate(p["clientAlgoId"])
         return self._algo(self.fake.place_order(OrderRequest(
             symbol=p["symbol"], side=p["side"], order_type=p["type"], client_order_id=p["clientAlgoId"],
-            stop_price=float(p["triggerPrice"]), close_position=True, working_type=p["workingType"])))
+            stop_price=float(p["triggerPrice"]), close_position=whole, working_type=p["workingType"],
+            quantity=None if whole else float(p["quantity"]), reduce_only=not whole)))
 
     def _cancel_algo(self, p: Dict[str, Any]) -> Dict[str, Any]:
         order = self._lookup(p["symbol"], venue_order_id=p["algoId"], protective=True, only_open=True)
@@ -752,9 +757,13 @@ class Rig:
                             stop_price=stop_price, quantity=quantity, reduce_only=True)
 
     def unsupported_stop_request(self, symbol: str, side: str, stop_price: float, client_order_id: str,
-                                 quantity: float) -> OrderRequest:
-        """The stop form this venue does NOT have: part of the position, or the position without a quantity."""
-        if self.adapter.capabilities().close_position_stop:
+                                 quantity: float) -> Optional[OrderRequest]:
+        """The stop form this venue does NOT have: part of the position, or the position without a quantity.
+        None where the venue carries both (Binance)."""
+        caps = self.adapter.capabilities()
+        if caps.close_position_stop and caps.quantity_stop:
+            return None
+        if caps.close_position_stop:
             return OrderRequest(symbol=symbol, side=side, order_type=c.STOP_MARKET, client_order_id=client_order_id,
                                 stop_price=stop_price, quantity=quantity / 2, reduce_only=True)
         return OrderRequest(symbol=symbol, side=side, order_type=c.STOP_MARKET, client_order_id=client_order_id,

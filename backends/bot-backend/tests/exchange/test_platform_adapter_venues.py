@@ -317,22 +317,35 @@ def test_binance_stops_are_conditional_orders_in_their_own_id_space(binance):
     again = refused(lambda: adapter.place_order(stop(trigger=48_500.0, client_order_id="stop-2", close_position=True)))
     assert (again.code, again.venue_code) == (c.STOP_ALREADY_EXISTS, "-4130")
     assert refused(lambda: adapter.fills(BTC, venue_order_id=placed.venue_order_id)).code == c.UNSUPPORTED
+    # Section K1 D4: a reduce-only stop with its own quantity rests BESIDE the closePosition one (the
+    # create-confirm-retire replacement); the documented form is reduceOnly + quantity, never with closePosition
+    beside = adapter.place_order(stop(trigger=49_500.0, client_order_id="stop-r", quantity=0.01, reduce_only=True,
+                                      working_type="CONTRACT_PRICE"))
+    assert wire.mutations()[-1] == ("POST", "/fapi/v1/algoOrder", {
+        "algoType": "CONDITIONAL", "symbol": BTC, "side": "SELL", "type": "STOP_MARKET", "triggerPrice": "49500",
+        "workingType": "CONTRACT_PRICE", "clientAlgoId": "stop-r", "quantity": "0.01", "reduceOnly": "true"})
+    assert (beside.close_position, beside.quantity, beside.reduce_only) == (False, 0.01, True)
+    assert sorted(o.stop_price for o in adapter.open_orders(BTC)) == [49_000.0, 49_500.0]
+    read = adapter.order(BTC, venue_order_id=beside.venue_order_id)
+    assert (read.reduce_only, read.quantity, read.close_position) == (True, 0.01, False)
     adapter.cancel_order(BTC, client_order_id="stop-1")
-    # a quantity is carried only when it is the whole open position, and then as the same closePosition order
-    sent = len(wire.mutations())
-    assert refused(lambda: adapter.place_order(stop(client_order_id="part", quantity=0.004, reduce_only=True))).code == (
-        c.UNSUPPORTED)
-    assert len(wire.mutations()) == sent
+    adapter.cancel_order(BTC, client_order_id="stop-r")
+    # part of a position is a reduce-only stop of that quantity; without a position nothing is sent
+    part = adapter.place_order(stop(client_order_id="part", quantity=0.004, reduce_only=True))
+    assert (part.quantity, part.reduce_only) == (0.004, True)
+    adapter.cancel_order(BTC, client_order_id="part")
     # the id of the cancelled stop cannot be reused: the venue refuses it and no open order answers for it
     assert refused(lambda: adapter.place_order(stop(quantity=0.01, reduce_only=True))).code == c.DUPLICATE_CLIENT_ORDER_ID
-    placed = adapter.place_order(stop(client_order_id="stop-3", quantity=0.01, reduce_only=True))
-    assert wire.mutations()[-1][2]["closePosition"] == "true" and "quantity" not in wire.mutations()[-1][2]
-    assert (placed.close_position, placed.quantity, placed.reduce_only) == (True, None, False)
+    placed = adapter.place_order(stop(client_order_id="stop-3", close_position=True))
     wire.calls.clear()
     assert [o.venue_order_id for o in adapter.open_orders()] == [placed.venue_order_id]
     assert wire.calls == [("GET", "/fapi/v1/openOrders", {}), ("GET", "/fapi/v1/openAlgoOrders", {})]   # every symbol
     adapter.cancel_order(BTC, client_order_id="stop-3")
     assert wire.mutations()[-1] == ("DELETE", "/fapi/v1/algoOrder", {"symbol": BTC, "algoId": placed.venue_order_id[5:]})
+    adapter.place_order(market(BTC, c.SELL, 0.01, "close-1", reduce_only=True))
+    sent = len(wire.mutations())
+    flat = refused(lambda: adapter.place_order(stop(client_order_id="flat", quantity=0.01, reduce_only=True)))
+    assert flat.code == c.REDUCE_ONLY_REJECTED and len(wire.mutations()) == sent
     assert refused(lambda: adapter.order(BTC, venue_order_id="not-a-number")).code == c.ORDER_NOT_FOUND
     hedged = [{"symbol": BTC, "positionAmt": "0.01", "positionSide": "LONG", "entryPrice": "50000"}]
     wire.answer_next("GET", "/fapi/v2/positionRisk", Reply(200, hedged))

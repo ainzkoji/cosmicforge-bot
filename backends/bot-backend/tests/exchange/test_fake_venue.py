@@ -357,21 +357,34 @@ def test_one_stop_form_works_on_every_profile_and_the_others_follow_the_profile(
 
     whole = OrderRequest(symbol=BTC, side=c.SELL, order_type=c.STOP_MARKET, client_order_id="whole", stop_price=49_000.0,
                          close_position=True)
-    for profile, bound_to_position in ((c.BINANCE, True), (c.BYBIT, True), (c.BINGX, False)):
+    for profile in (c.BINANCE, c.BYBIT, c.BINGX):
         fake = venue(profile)
+        caps = fake.capabilities()
         assert refused(lambda: fake.place_order(sized(0.02, "flat"))).code == c.REDUCE_ONLY_REJECTED
         fake.place_order(market(BTC, c.BUY, 0.02, "entry-1"))
         placed = fake.place_order(sized(0.02, "full"))                 # reduce-only, the whole position: everywhere
         assert placed.status == c.NEW and not fake.protection_gaps(BTC)[-1].open
-        again = stop_for(fake, BTC, c.SELL, 48_500.0, "second", 0.02)
-        assert refused(lambda: fake.place_order(again)).code == c.STOP_ALREADY_EXISTS       # one stop of a kind
+        again = sized(0.02, "second")
+        if caps.multiple_stops_per_position:                           # binance: reduce-only stops rest side by side
+            assert fake.place_order(again).status == c.NEW
+            fake.cancel_order(BTC, client_order_id="second")
+        else:
+            assert refused(lambda: fake.place_order(again)).code == c.STOP_ALREADY_EXISTS   # one stop of a kind
         target = stop_for(fake, BTC, c.SELL, 52_000.0, "target", 0.02, c.TAKE_PROFIT_MARKET)
         assert fake.place_order(target).status == c.NEW                # a take-profit is another kind
         fake.cancel_order(BTC, client_order_id="full")
-        if bound_to_position:           # it rests as the venue's whole-position stop, and says so
+        if not caps.quantity_stop:      # bybit: it rests as the venue's whole-position stop, and says so
             assert (placed.close_position, placed.quantity, placed.reduce_only) == (True, None, False)
             assert refused(lambda: fake.place_order(sized(0.01, "part"))).code == c.UNSUPPORTED
             assert fake.place_order(whole).close_position
+        elif caps.close_position_stop:  # binance: both forms; one whole-position stop of a kind and side (-4130)
+            assert (placed.close_position, placed.quantity, placed.reduce_only) == (False, 0.02, True)
+            assert fake.place_order(whole).close_position
+            second_whole = OrderRequest(symbol=BTC, side=c.SELL, order_type=c.STOP_MARKET, client_order_id="whole-2",
+                                        stop_price=48_000.0, close_position=True)
+            assert refused(lambda: fake.place_order(second_whole)).code == c.STOP_ALREADY_EXISTS
+            part = fake.place_order(sized(0.01, "part"))               # beside the whole-position stop
+            assert part.quantity == 0.01 and not fake.protection_gaps(BTC)[-1].open
         else:
             assert (placed.close_position, placed.quantity, placed.reduce_only) == (False, 0.02, True)
             assert refused(lambda: fake.place_order(whole)).code == c.UNSUPPORTED

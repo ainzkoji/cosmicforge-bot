@@ -194,20 +194,21 @@ again. The cost is one read before each create on Binance and BingX and up to tw
 
 | | Binance | Bybit | BingX |
 |---|---|---|---|
-| What rests | a conditional order with `closePosition` | the position's own stop (`trading-stop`, Full) | a trigger order with a quantity and `reduceOnly` |
+| What rests | a conditional (algo) order with `closePosition`, or with a quantity and `reduceOnly` | the position's own stop (`trading-stop`, Full) | a trigger order with a quantity and `reduceOnly` |
 | `close_position=True` | yes | yes, needs an open position | `UNSUPPORTED` |
-| `reduce_only` with the whole open quantity | placed as the `closePosition` order | set as the position's stop | yes |
-| `reduce_only` with part of the position | `UNSUPPORTED` | `UNSUPPORTED` | yes |
+| `reduce_only` with the whole open quantity | yes (`reduceOnly` + `quantity`) | set as the position's stop | yes |
+| `reduce_only` with part of the position | yes | `UNSUPPORTED` | yes |
 | `venue_order_id` | `algo:<algoId>` | `POSITION_SL:<symbol>` / `POSITION_TP:<symbol>` | the venue's order id |
 | Caller's id stored at the venue | yes (`clientAlgoId`) | no | no |
-| Second stop of the same kind | refused by the venue (`-4130`) | refused by the adapter | refused by the adapter |
-| Change the trigger | cancel, then create | `amend_stop`, in place | cancel, then create |
+| Second stop of the same kind | a second `closePosition` is refused by the venue (`-4130`); a `reduceOnly` stop rests beside any stop | refused by the adapter | refused by the adapter |
+| Change the trigger | create beside, read back, then cancel the old one (`pipeline.protection`, create-confirm-retire); an untriggered conditional order cannot be modified | `amend_stop`, in place | not done: the old stop stays (`REPLACEMENT_NOT_POSSIBLE_SAFELY`) |
 | Stop after the position closes | not established | gone with the position (documentation) | not established |
 
-One request form works on all three: `reduce_only=True` with the quantity of the whole open position. On Binance
-and Bybit the adapter reads the position first; the stop is placed only when the quantity is exactly what is
-open, and it comes back as what rests (`close_position=True`, no quantity). A partial quantity is refused there,
-never widened to the whole position.
+One request form works on all three: `reduce_only=True` with the quantity of the whole open position. On Bybit
+the adapter reads the position first; the stop is placed only when the quantity is exactly what is open, and it
+comes back as what rests (`close_position=True`, no quantity). A partial quantity is refused there, never widened
+to the whole position. On Binance it rests as a reduce-only conditional order of that quantity (Section K1 D4),
+sent only against an open one-way position it can reduce.
 
 Where the venue stores no client id for a stop (Bybit, BingX):
 
@@ -234,9 +235,9 @@ state the same matrix, except `user_stream`.
 | `native_stop_market`, `native_take_profit` | True | True | True | the raw clients place both. UNVERIFIED at the venue for Bybit and BingX |
 | `reduce_only` | True | True | True | the raw clients send it |
 | `close_position_stop` | True | True | False | Binance, Bybit: repository code. BingX: False because the repository always sends a quantity. UNVERIFIED |
-| `quantity_stop` | False | False | True | False where the repository has no partial stop. UNVERIFIED (conservative) |
+| `quantity_stop` | True | False | True | Binance: `reduceOnly` + `quantity` on `POST /fapi/v1/algoOrder` (venue documentation, Section K1 D4). Others: False where the repository has no partial stop. UNVERIFIED |
 | `stop_amend_in_place` | False | True | False | Bybit: the raw client amends in place. Others: no amend in the repository |
-| `multiple_stops_per_position` | False | False | False | Binance: `-4130` in the raw client. Bybit: one stop field per position. BingX: UNVERIFIED (conservative; the raw client assumes the opposite) |
+| `multiple_stops_per_position` | True | False | False | Binance: venue documentation: up to 10 open conditional orders per symbol, `-4130` only for a second `closePosition` order, a stop-market reduce-only order is not limited by the reduce-only priority rules; DOC-ONLY until a certification run (`PROTECTION_REPLACE`). Bybit: one stop field per position. BingX: UNVERIFIED (conservative; the raw client assumes the opposite; operator check step 7) |
 | `position_stop_endpoint` | False | True | False | repository code |
 | `stop_client_order_id` | True | False | False | Binance: `clientAlgoId` in repository code. BingX: the repository states trigger orders take no client id. UNVERIFIED |
 | `one_way_mode` / `hedge_mode` | True / False | True / False | True / False | the adapters send one-way orders only |

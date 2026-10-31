@@ -199,7 +199,11 @@ allow, on one symbol. Each line is one action and what to record. Stop at the fi
 6. Place a `STOP_MARKET` with `reduceOnly`, the position's quantity and `positionSide=BOTH`, well below the
    market. Record whether it is accepted, the answer, and its open-order row (`reduceOnly`, `closePosition`,
    `stopPrice`, `origQty`, whether a client id appears).
-7. Place a second stop at another trigger. Record whether the venue accepts it. Cancel the second one.
+7. Place a second stop at another trigger. Record whether the venue accepts it, and whether the FIRST stop is
+   still open with its own trigger and quantity afterwards (some venues trim or cancel reduce-only orders whose
+   sum exceeds the position). Cancel the second one. Only both answers together would let the adapter declare
+   `multiple_stops_per_position` and move a stop by create-confirm-retire (Section K1 D4); until then a stop is
+   never moved on BingX (`REPLACEMENT_NOT_POSSIBLE_SAFELY`).
 8. Try a stop above the market for a long position. Record the refusal and its code.
 9. Try a reduce-only order larger than the position, an order off the quantity step, an order below the minimum
    notional and an order on a symbol that does not exist. Record each code.

@@ -8,11 +8,17 @@ takes a stop while flat). The first test shows that the same measure DOES catch 
 Venues:
 
 ``bybit``           the real ``FakeVenue`` profile with amend-in-place: protocol (a).
-``binance``/``bingx``  the real profiles, one stop per position and no amend: no safe overlap exists today, so
-                    the replacement is refused and the old stop stays (``REPLACEMENT_NOT_POSSIBLE_SAFELY``).
-``overlap-*``       ``_step3_execution.OverlapVenue``: a HYPOTHETICAL capability (a second stop may rest beside
-                    the first) that no adapter of this repository declares, so that protocol (b) and its failure
-                    cases are exercised. What passes there proves the state machine, not a venue.
+``binance``         the real profile (Section K1 D4): one position-bound stop of a kind and side, reduce-only
+                    stops with a quantity beside it, no amend: protocol (b). The replacement rests as a
+                    reduce-only stop, then a second create-confirm-retire puts the position-bound form back.
+``bingx``           the real profile, one stop per position and no amend: no safe overlap is established, so the
+                    replacement is refused and the old stop stays (``REPLACEMENT_NOT_POSSIBLE_SAFELY``).
+``overlap-bingx``   ``_step3_execution.OverlapVenue``: a HYPOTHETICAL capability (a second quantity stop may rest
+                    beside the first) that the BingX adapter does not declare, so that protocol (b) with
+                    quantity stops is exercised. What passes there proves the state machine, not a venue.
+
+The fake profiles follow each venue's documentation; that is not evidence about the venue. A venue
+certification run is.
 """
 from __future__ import annotations
 
@@ -28,8 +34,8 @@ from shared_lib.persistence.cati_execution_schema import REPLACEMENT_TABLE
 BTC = E.BTC
 QTY, OLD, NEW = 0.02, 49_000.0, 49_500.0
 #: venues on which a gap-free replacement is declared: (profile, hypothetical overlap capability)
-PROTOCOL_VENUES = {"bybit": (c.BYBIT, False), "overlap-binance": (c.BINANCE, True), "overlap-bingx": (c.BINGX, True)}
-OVERLAP_VENUES = ("overlap-binance", "overlap-bingx")
+PROTOCOL_VENUES = {"bybit": (c.BYBIT, False), "binance": (c.BINANCE, False), "overlap-bingx": (c.BINGX, True)}
+OVERLAP_VENUES = ("binance", "overlap-bingx")
 
 
 def build(tmp_path_factory, tmp_path, name):
@@ -105,6 +111,15 @@ def test_a_replacement_moves_the_stop_with_no_unprotected_interval(world):
     if world.fake.capabilities().stop_amend_in_place:
         assert result.protocol == PR.AMEND_IN_PLACE
         assert [e.method for e in world.fake.mutations] == ["amend_stop"]            # nothing created, nothing cancelled
+    elif world.protection()._restores_position_bound():
+        # binance: a reduce-only stop beside the position-bound one, then the position-bound form back
+        assert result.protocol == PR.CREATE_CONFIRM_RETIRE
+        assert [e.method for e in world.fake.mutations] == ["place_order", "cancel_order", "place_order", "cancel_order"]
+        placed = [e.arguments["request"] for e in world.fake.mutations if e.method == "place_order"]
+        assert [(r.close_position, r.reduce_only, r.quantity) for r in placed] == [(False, True, QTY), (True, False, None)]
+        assert one_stop_at(world, NEW).close_position                  # it follows the position again
+        follow_up = replacement_row(world, "move-1" + PR.POSITION_BOUND_SUFFIX)
+        assert (follow_up["state"], follow_up["outcome"], follow_up["reason"]) == ("DONE", PR.REPLACED, C.RESIZE)
     else:
         assert result.protocol == PR.CREATE_CONFIRM_RETIRE
         assert [e.method for e in world.fake.mutations] == ["place_order", "cancel_order"]
@@ -126,9 +141,9 @@ def test_several_moves_in_a_row_ratchet_without_a_gap(world):
     never_cancelled_first(world)
 
 
-@pytest.mark.parametrize("profile", [c.BINANCE, c.BINGX])
+@pytest.mark.parametrize("profile", [c.BINGX])
 def test_where_no_safe_overlap_exists_the_replacement_is_refused_and_the_old_stop_stays(tmp_path_factory, tmp_path, profile):
-    """The Binance and BingX profiles as they are today: one stop per position, no amend. Never cancel-then-create."""
+    """The BingX profile as it is today: one stop per position, no amend. Never cancel-then-create."""
     world = build(tmp_path_factory, tmp_path, profile)
     result = replace(world)
     assert (result.state, result.outcome, result.protocol) == ("REFUSED", PR.REPLACEMENT_NOT_POSSIBLE_SAFELY, None)
@@ -146,7 +161,7 @@ def test_where_no_safe_overlap_exists_the_replacement_is_refused_and_the_old_sto
     assert world.protection().journal.active_blocks() == ()        # the old stop protects: nothing is uncertain
 
 
-@pytest.mark.parametrize("name", sorted(PROTOCOL_VENUES) + [c.BINANCE, c.BINGX])
+@pytest.mark.parametrize("name", sorted(PROTOCOL_VENUES) + [c.BINGX])
 def test_a_widening_move_is_refused_everywhere(tmp_path_factory, tmp_path, name):
     world = build(tmp_path_factory, tmp_path, name)
     result = replace(world, 48_500.0)
@@ -226,13 +241,14 @@ def test_a_fill_during_the_replacement_is_covered_for_the_quantity_that_exists(w
     assert world.protection().record(BTC).position_quantity == pytest.approx(0.03)
     never_cancelled_first(world)
     gaps = fake.protection_gaps(BTC)
-    if fake.capabilities().quantity_stop:
+    if not fake.capabilities().close_position_stop:
         # a stop that carries a quantity is outgrown by the fill itself, before any replacement step: that
         # interval is the fill's, it ends when the stop for the new quantity rests, and no stop was retired in it
         assert len(gaps) == len(world.baseline) + 1 and not gaps[-1].open
         assert [e.method for e in fake.mutations] == ["place_order", "place_order", "cancel_order", "cancel_order"]
     else:
         assert gaps == world.baseline                               # a stop bound to the position covered it throughout
+        assert stop.close_position                                  # and the stop that rests at the end is that form
 
 
 # ============================================================================== old-stop cancellation failure
@@ -252,13 +268,16 @@ def test_a_failed_retirement_leaves_both_stops_resting_and_is_retried_later(over
 
 def test_a_retirement_whose_acknowledgement_is_lost_is_settled_by_reading_the_venue(overlap):
     world = overlap
+    (old,) = world.stops(BTC)
     world.fake.fail_next("cancel_order", c.NETWORK_UNCERTAIN, after_effect=True)      # cancelled; the answer was lost
     result = replace(world)
     assert result.outcome == PR.RETIREMENT_PENDING and world.stop_prices(BTC) == [NEW]
     (resumed,) = world.protection().resume()
     assert (resumed.state, resumed.outcome) == ("DONE", PR.REPLACED)
     one_stop_at(world, NEW)
-    assert [e.method for e in world.fake.mutations].count("cancel_order") == 1       # it was not cancelled twice
+    cancels = [e for e in world.fake.mutations if e.method == "cancel_order"
+               and e.arguments.get("venue_order_id") == old.venue_order_id]
+    assert len(cancels) == 1                                        # it was not cancelled twice
 
 
 # ===================================================================================== replacement rejection
@@ -306,8 +325,9 @@ def test_a_crash_at_any_venue_call_is_resumed_without_a_gap(tmp_path_factory, tm
             replace(world)
         died_in = world.adapter.calls[-1]
         assert world.fake.protection_gaps(BTC) == world.baseline, (index, died_in)   # dead, and still covered
-        row = replacement_row(world)
-        assert row["state"] == "OPEN"                               # the step was written before it was taken
+        # the step was written before it was taken: the replacement, or (binance) the follow-up that puts the
+        # position-bound form back, is open
+        assert any(r["state"] == "OPEN" for r in world.rows(REPLACEMENT_TABLE)), (index, died_in)
         journal = world.protection().journal
         assert len(journal.unanswered()) == (1 if died_in in c.MUTATING_METHODS else 0), (index, died_in)
         world.adapter.crash_at = None
@@ -475,3 +495,101 @@ def test_a_closed_position_has_its_resting_stop_retired(tmp_path_factory, tmp_pa
     assert world.protection().journal.active_blocks(E.ETH) == ()
     (retired,) = world.protection().resume()
     assert retired.status == PR.FLAT and world.stops(BTC) == [] and world.protection().journal.active_blocks() == ()
+
+
+# ====================================================================== Section K1 D4: the Binance protocol
+def test_each_venue_profile_declares_the_replacement_its_documentation_supports(tmp_path_factory, tmp_path):
+    protocols = {}
+    for profile in c.VENUES:
+        (tmp_path / profile).mkdir()
+        protocols[profile] = E.make_world(tmp_path_factory, tmp_path / profile, profile=profile).protection().protocol()
+    assert protocols == {c.BYBIT: (PR.AMEND_IN_PLACE, ""), c.BINANCE: (PR.CREATE_CONFIRM_RETIRE, ""),
+                         c.BINGX: (None, PR.REPLACEMENT_NOT_POSSIBLE_SAFELY)}
+
+
+def test_binance_never_asks_for_a_second_position_bound_stop(tmp_path_factory, tmp_path):
+    """The venue refuses a second closePosition stop of a kind and side (-4130). The replacement is the
+    reduce-only form beside it, so the venue never has to refuse anything."""
+    world = build(tmp_path_factory, tmp_path, c.BINANCE)
+    for n, price in enumerate((49_200.0, 49_400.0, 49_600.0)):
+        assert replace(world, price, key=f"trail-{n}").outcome == PR.REPLACED
+        assert one_stop_at(world, price).close_position
+    assert all(e.outcome == "OK" for e in world.fake.mutations)
+    never_cancelled_first(world)
+
+
+def test_binance_a_fill_after_the_ratchet_is_covered_without_a_call(tmp_path_factory, tmp_path):
+    """The position-bound form is back after the replacement, so an increase is covered the moment it fills."""
+    world = build(tmp_path_factory, tmp_path, c.BINANCE)
+    assert replace(world).outcome == PR.REPLACED
+    world.fake.mutations.clear()
+    world.fake.external_trade(BTC, c.BUY, 0.01)
+    assert world.fake.protection_gaps(BTC) == world.baseline
+    grown = world.protection().protect(BTC, C.LONG, NEW, origin="test")
+    assert (grown.status, grown.position_quantity) == (PR.PROTECTED, pytest.approx(0.03))
+    assert world.fake.mutations == []
+
+
+def test_binance_a_follow_up_the_venue_defers_leaves_the_reduce_only_stop_covering(tmp_path_factory, tmp_path):
+    world = build(tmp_path_factory, tmp_path, c.BINANCE)
+    world.adapter.hook_after("cancel_order", lambda: world.fake.fail_next(
+        "place_order", AdapterError(c.RATE_LIMITED, "slow down", retry_after_s=5)))
+    result = replace(world)
+    assert (result.state, result.outcome, result.protection) == ("DONE", PR.REPLACED, PR.PROTECTED)
+    stop = one_stop_at(world, NEW)                                  # the new trigger rests and covers everything
+    assert (stop.close_position, stop.reduce_only, stop.quantity) == (False, True, QTY)
+    follow_up = replacement_row(world, "move-1" + PR.POSITION_BOUND_SUFFIX)
+    assert (follow_up["state"], follow_up["outcome"]) == ("OPEN", "")
+    assert world.protection().journal.active_blocks() == ()        # nothing is in doubt: it only waits
+    assert world.protection().resume() == ()                        # not one call before the time the venue named
+    world.clock.advance(5_100)
+    (resumed,) = world.protection().resume()
+    assert (resumed.state, resumed.outcome) == ("DONE", PR.REPLACED)
+    assert one_stop_at(world, NEW).close_position
+
+
+def test_binance_a_follow_up_the_venue_refuses_keeps_the_ratcheted_stop(tmp_path_factory, tmp_path):
+    world = build(tmp_path_factory, tmp_path, c.BINANCE)
+    world.adapter.hook_after("cancel_order", lambda: world.fake.fail_next("place_order", c.INVALID_PRICE))
+    assert replace(world).outcome == PR.REPLACED
+    follow_up = replacement_row(world, "move-1" + PR.POSITION_BOUND_SUFFIX)
+    assert (follow_up["state"], follow_up["outcome"]) == ("REFUSED", f"VENUE_REFUSED:{c.INVALID_PRICE}")
+    assert not one_stop_at(world, NEW).close_position              # reduce-only, for the whole position
+    world.fake.external_trade(BTC, c.BUY, 0.01)                    # outgrown: extended beside it, never removed first
+    grown = world.protection().protect(BTC, C.LONG, NEW, origin="test")
+    assert grown.status == PR.PROTECTED and grown.position_quantity == pytest.approx(0.03)
+    assert one_stop_at_any_form(world, NEW)
+    never_cancelled_first(world)
+
+
+def one_stop_at_any_form(world, price):
+    (stop,) = world.stops(BTC)
+    return stop.stop_price == price and (stop.close_position or stop.quantity >= abs(world.signed(BTC)))
+
+
+# ============================================================ native stop fill and out-of-order venue events
+def test_the_new_stop_firing_before_the_old_one_is_retired_leaves_nothing_resting(world):
+    """Out of order: the replacement fires (the price falls between the two triggers) before the old stop is
+    cancelled. The position is flat; the old stop is retired, nothing is placed again."""
+    world.adapter.hook_after(establishing(world), lambda: world.fake.set_price(BTC, 49_400.0))
+    result = replace(world)
+    assert (result.state, result.outcome, result.protection) == ("DONE", PR.POSITION_CLOSED, PR.FLAT)
+    assert world.signed(BTC) == 0.0 and world.stops(BTC) == []
+    assert world.fake.protection_gaps(BTC) == world.baseline
+    assert world.protection().journal.active_blocks() == ()
+
+
+def test_a_replacement_needs_no_user_stream_and_reconciles_by_rest_after_an_outage(world):
+    """The stream may be disconnected: a replacement reads positions and open orders by REST only. A REST outage
+    after the venue acted leaves it open and blocks entries; the next read (``resume``) reconciles it."""
+    world.fake.fail_next("user_stream", c.VENUE_UNAVAILABLE, times=1_000)        # the stream is down throughout
+    world.adapter.hook_after(establishing(world), lambda: world.fake.fail_next("positions", c.VENUE_UNAVAILABLE))
+    result = replace(world)
+    assert (result.state, result.outcome) == ("OPEN", PR.OUTCOME_UNCERTAIN)
+    assert world.protection().journal.active_blocks() != ()
+    assert world.fake.protection_gaps(BTC) == world.baseline
+    (resumed,) = world.protection().resume()
+    assert (resumed.state, resumed.outcome) == ("DONE", PR.REPLACED)
+    one_stop_at(world, NEW)
+    assert world.protection().journal.active_blocks() == ()
+    assert "user_stream" not in [e.method for e in world.fake.reads]

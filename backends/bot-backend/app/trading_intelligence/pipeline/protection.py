@@ -15,9 +15,17 @@ none. Nothing in this module ever cancels a stop in order to create its replacem
                                  cancelled. If that cancel fails both rest (over-protected is safe) and the
                                  retirement is retried later.
 neither                          (c) the replacement is REFUSED with ``REPLACEMENT_NOT_POSSIBLE_SAFELY``, the
-                                 old stop stays where it is and the refusal is recorded. This is the state of the
-                                 Binance and BingX adapters today (one stop per position, no amend): a gap-free
-                                 replacement needs a venue-certified overlap protocol that does not exist yet.
+                                 old stop stays where it is and the refusal is recorded.
+
+Per venue (Section K1 D4; the evidence is in each adapter's docstring): Bybit amends in place (a). Binance
+creates-confirms-retires (b): it takes ONE position-bound (``closePosition``) stop of a kind and side and
+reduce-only stops with a quantity beside it, and cannot modify an untriggered conditional order. So the
+replacement is a reduce-only stop for the whole open quantity, and a second create-confirm-retire at the same
+trigger puts the position-bound form back (``_drive``). BingX refuses (c): its documentation names a
+quantity-only amend and a cancel-and-replace that, when the new order fails after the cancel, leaves the
+position without a stop; whether a second reduce-only stop may rest beside the first is not established
+(``docs/exchanges/BINGX_ENVIRONMENT_CERTIFICATION.md`` step 7). Every declaration is documentation-based until a
+venue certification run (``PROTECTION_REPLACE``) confirms it.
 
 **The seven steps** (the assignment's protocol) and where they are in the code: 1 read the position and its
 protection (``_coverage``); 2 build a valid replacement (``_build``: never wider than what rests, protective at
@@ -55,7 +63,7 @@ from app.exchange.platform_adapter import contract as V
 from app.exchange.platform_adapter.contract import AdapterError, OrderInfo, OrderRequest, PositionInfo
 from app.trading_intelligence.hashing import short_id
 from app.trading_intelligence.observability.sanitize import sanitize_text
-from app.trading_intelligence.pipeline.contracts import LONG, STOP_REASONS, stop_side_valid
+from app.trading_intelligence.pipeline.contracts import LONG, RESIZE, STOP_REASONS, stop_side_valid
 from shared_lib.persistence.cati_execution_schema import (
     BACKOFF_TABLE, BLOCK_ACTIVE, BLOCK_CLEARED, BLOCK_TABLE, EVENT_TABLE, PROTECTION_TABLE, REPLACEMENT_DONE,
     REPLACEMENT_OPEN, REPLACEMENT_REFUSED, REPLACEMENT_TABLE, REPLACEMENT_UNWOUND,
@@ -104,6 +112,8 @@ DEFAULT_BAN_CLOSURE_MS = 600_000
 _RETRYABLE_UNSENT: Tuple[str, ...] = (V.VENUE_UNAVAILABLE, V.TIMESTAMP_OUT_OF_SYNC)
 _LIMITED: Tuple[str, ...] = (V.RATE_LIMITED, V.BANNED)
 _TOL = 1e-9
+#: request-key suffix of the follow-up that puts a position-bound stop back (``ProtectionManager._drive``)
+_POSITION_BOUND = POSITION_BOUND_SUFFIX = "|position-bound"
 
 
 def closing_side(direction: str) -> str:
@@ -481,8 +491,18 @@ class ProtectionManager:
         return None, REPLACEMENT_NOT_POSSIBLE_SAFELY
 
     def follows_position(self) -> bool:
-        """The venue binds its stop to the whole position, so a fill needs no new stop (verified by read-back)."""
-        return not self._adapter.capabilities().quantity_stop
+        """The stop this module places on a position that has none is bound to the whole position, so a fill
+        needs no new stop (verified by read-back). Where the venue also has the reduce-only form, a replacement
+        may rest in that form for a while; ``_drive`` puts the position-bound form back afterwards, and a fill
+        under a stop that does not cover is extended by create-confirm-retire (``_settle``)."""
+        return bool(self._adapter.capabilities().close_position_stop)
+
+    def _restores_position_bound(self) -> bool:
+        """The venue takes one position-bound stop of a kind and side, and reduce-only stops beside it: a
+        replacement leaves the reduce-only form, and a second create-confirm-retire at the same trigger puts the
+        position-bound form back (so a later fill is covered without any call)."""
+        caps = self._adapter.capabilities()
+        return bool(caps.close_position_stop and caps.quantity_stop and self.protocol()[0] == CREATE_CONFIRM_RETIRE)
 
     # -- reads ---------------------------------------------------------------------------------------------
     def coverage(self, symbol: str, direction: str) -> Coverage:
@@ -725,6 +745,22 @@ class ProtectionManager:
         return self._drive(row)
 
     def _drive(self, row: _Replacement) -> ReplacementOutcome:
+        """``_drive_once``, and where the venue takes only one position-bound stop of a kind and side
+        (``_restores_position_bound``): once the replacement rests in the reduce-only form, a second
+        create-confirm-retire at the same trigger puts the position-bound form back. It is its own durable
+        replacement (``<key>|position-bound``), written before any of its venue calls, so ``resume`` finishes it
+        after a restart; until it is done the reduce-only stop at the new trigger covers the whole position.
+        The outcome returned is the requested replacement's."""
+        outcome = self._drive_once(row)
+        if (outcome.done and outcome.outcome == REPLACED and not row.request_key.endswith(_POSITION_BOUND)
+                and self._restores_position_bound()):
+            rec = self._record(row.symbol)
+            if rec is not None and rec.status == PROTECTED and rec.form == "QUANTITY" and rec.resting_stop_price:
+                self.replace(row.symbol, row.direction, float(rec.resting_stop_price), reason=RESIZE,
+                             request_key=row.request_key + _POSITION_BOUND)
+        return outcome
+
+    def _drive_once(self, row: _Replacement) -> ReplacementOutcome:
         """Take the replacement as far as the venue's present state allows. One read, then at most one mutation,
         repeated a bounded number of times."""
         retry_at = self.journal.backoff_until()
@@ -778,7 +814,8 @@ class ProtectionManager:
         resting = float(old.stop_price)
         if wider(row.direction, new_price, resting):
             return row, self._finish(row, REPLACEMENT_REFUSED, STOP_WIDENING_REFUSED, old_stop_price=resting)
-        if same_price(new_price, resting) and found.covers(old):
+        if same_price(new_price, resting) and found.covers(old) and (old.close_position
+                                                                    or not self._restores_position_bound()):
             self._confirmed(rec, found, old)
             return row, self._finish(row, REPLACEMENT_DONE, NO_CHANGE, old_stop_price=resting)
         mark = found.position.mark_price
@@ -861,7 +898,7 @@ class ProtectionManager:
         # step 3: establish the replacement for the quantity that exists now
         row = self._step(row, step=ESTABLISHING, new_quantity=found.quantity)        # journaled before the call
         request = self._stop_request(row.symbol, row.direction, float(row.new_stop_price), found.quantity,
-                                     row.new_client_order_id)
+                                     row.new_client_order_id, resting=found.stops)
         try:
             placed = self.journal.mutate("place_order", lambda: self._adapter.place_order(request), symbol=row.symbol,
                                          client_order_id=row.new_client_order_id, replacement_id=row.replacement_id,
@@ -970,10 +1007,15 @@ class ProtectionManager:
         return tuple(results)
 
     # -- venue helpers -------------------------------------------------------------------------------------
-    def _stop_request(self, symbol: str, direction: str, stop_price: float, quantity: float, client_order_id: str) -> OrderRequest:
+    def _stop_request(self, symbol: str, direction: str, stop_price: float, quantity: float, client_order_id: str,
+                      resting: Sequence[OrderInfo] = ()) -> OrderRequest:
         """The protective stop in the form the venue has: bound to the position where that exists, else for the
-        whole quantity that is open."""
-        if self._adapter.capabilities().close_position_stop:
+        whole quantity that is open. Where a stop bound to the position already rests on the closing side (the
+        one being replaced) and the venue takes only one of those but lets a reduce-only stop with a quantity
+        rest beside it (Binance, -4130), the replacement is that reduce-only stop for the whole open quantity."""
+        caps = self._adapter.capabilities()
+        whole_rests = any(s.close_position for s in resting)
+        if caps.close_position_stop and not (whole_rests and caps.quantity_stop):
             return OrderRequest(symbol=symbol, side=closing_side(direction), order_type=V.STOP_MARKET,
                                 client_order_id=client_order_id, stop_price=stop_price, close_position=True)
         return OrderRequest(symbol=symbol, side=closing_side(direction), order_type=V.STOP_MARKET,
@@ -1108,6 +1150,7 @@ __all__ = ["AMEND_IN_PLACE", "CREATE_CONFIRM_RETIRE", "PROTOCOLS", "PENDING", "P
            "ABSENT", "RETIRE_PENDING", "FLAT", "RESUMABLE", "READ", "BUILT", "ESTABLISHING", "ESTABLISHED", "CONFIRMED",
            "RETIRING", "RECONCILED", "PERSISTED", "REPLACED", "NO_CHANGE", "RESTORED", "POSITION_CLOSED",
            "RETIREMENT_PENDING", "DEFERRED", "OUTCOME_UNCERTAIN", "REPLACEMENT_NOT_POSSIBLE_SAFELY",
+           "POSITION_BOUND_SUFFIX",
            "STOP_WIDENING_REFUSED", "STOP_NOT_PROTECTIVE_AT_MARK", "POSITION_DIRECTION_MISMATCH", "STOP_CHANGED_ELSEWHERE",
            "PROTECTION_ABSENT", "CONFLICTING_REPLAY", "NO_VENUE_HELD_STOP", "RATE_LIMIT_BACKOFF",
            "BLOCK_PROTECTION_UNSETTLED", "BLOCK_PROTECTION_ABSENT", "BLOCK_STALE_PROTECTION", "ACCOUNT_SCOPE",

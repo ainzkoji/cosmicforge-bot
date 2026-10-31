@@ -24,6 +24,21 @@ Protective stops are trigger orders (``STOP_MARKET`` / ``TAKE_PROFIT_MARKET``) w
   False and a second stop of the same kind and side is refused with ``STOP_ALREADY_EXISTS`` before anything
   is sent. The raw client's ``update_protection`` assumes the opposite (create, then cancel).
 
+Stop replacement (Section K1 D4), from the venue's API reference as BingX publishes it
+(https://github.com/bingx-api/api-ai-skills, ``skills/swap-trade/api-reference.md``; the rendered docs at
+https://bingx-api.github.io/docs/ are script-only), read 2026-10-31:
+
+* ``POST /openApi/swap/v1/trade/amend`` changes the QUANTITY of an open order only: it cannot move a trigger,
+  so ``stop_amend_in_place`` stays False;
+* ``POST /openApi/swap/v1/trade/cancelReplace`` cancels and then places. ``STOP_ON_FAILURE`` only stops the
+  place when the CANCEL fails; when the cancel succeeds and the new order is refused the position is left
+  without a stop. It is not a gap-free replacement and is not used;
+* the open-order limit (200, ``maxNumOrder``) counts ``STOP_MARKET`` orders and code 110206 caps TP/SL orders,
+  which suggests several may rest, but no statement says that a second reduce-only stop for one position is
+  accepted, nor that the venue leaves the first one untouched (some venues trim reduce-only orders whose sum
+  exceeds the position). So the replacement is refused (``REPLACEMENT_NOT_POSSIBLE_SAFELY``) and the stop that
+  rests stays. Step 7 of ``docs/exchanges/BINGX_ENVIRONMENT_CERTIFICATION.md`` is the check that would change it.
+
 Error codes: none is handled anywhere in this repository. Every entry of ``_CODES`` comes from the venue's
 published error list only, and nothing was verified against the venue in this work. See
 ``docs/exchanges/BINGX_ENVIRONMENT_CERTIFICATION.md`` for what an operator must confirm on a demo account.
@@ -79,7 +94,9 @@ class BingXAdapter(AdapterBase):
     _NOTES: Tuple[str, ...] = (
         "a stop is a trigger order with its own quantity and reduceOnly; close_position is not carried",
         "trigger orders are sent without a client order id: persist venue_order_id",
-        "UNVERIFIED: whether a second stop may rest beside the first; treated as not possible",
+        "UNVERIFIED: whether a second stop may rest beside the first; treated as not possible, so a stop is "
+        "never moved (REPLACEMENT_NOT_POSSIBLE_SAFELY): amend changes quantity only and cancelReplace can "
+        "leave the position without a stop",
         "UNVERIFIED: every error-code mapping and every response shape of this venue",
         "client order ids are stored lower-case by the venue; an id with capitals travels as its hash",
         "hedge mode is not carried: orders are sent with positionSide BOTH",

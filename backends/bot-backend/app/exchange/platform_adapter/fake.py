@@ -12,18 +12,22 @@ The rules it follows
 * **Profiles.** ``binance``, ``bybit`` and ``bingx`` reproduce the capability matrix of the three real
   adapters (``capabilities()`` is equal to theirs except for ``user_stream`` and ``notes``):
 
-  - ``binance``: a stop is bound to the whole position (``close_position``), may be placed while flat, stays
-    resting after the position closes, cannot be amended.
+  - ``binance``: a stop is either bound to the whole position (``close_position``: may be placed while flat,
+    stays resting after the position closes) or carries its own quantity (``reduce_only``: needs a position at
+    least that large). Neither can be amended. Several stops may rest at once
+    (``multiple_stops_per_position``), except a second WHOLE-POSITION stop of the same kind and side (the
+    venue's -4130). These are the rules of the venue's documentation (USDS-M conditional "algo" orders); a
+    venue certification run is what confirms them.
   - ``bybit``: a stop is an attribute of the position (``close_position``), needs an open position, is
     amended in place by ``amend_stop`` and disappears when the position closes.
   - ``bingx``: a stop carries its own quantity (``reduce_only``), needs a position at least that large, stays
     resting after the position closes, cannot be amended.
 
-  One form works on every profile: ``reduce_only`` with the quantity of the WHOLE open position. On
-  ``binance`` and ``bybit`` it is placed as the whole-position stop and reads back with ``close_position``
-  True; a quantity that is only part of the position is ``UNSUPPORTED`` there, and ``close_position`` is
-  ``UNSUPPORTED`` on ``bingx``. On every profile a second resting trigger order of the same kind and side is
-  refused with ``STOP_ALREADY_EXISTS``.
+  One form works on every profile: ``reduce_only`` with the quantity of the WHOLE open position. On ``bybit``
+  it is placed as the whole-position stop and reads back with ``close_position`` True, and a quantity that is
+  only part of the position is ``UNSUPPORTED`` there; on ``binance`` and ``bingx`` it rests as that quantity.
+  ``close_position`` is ``UNSUPPORTED`` on ``bingx``. On ``bybit`` and ``bingx`` a second resting trigger order
+  of the same kind and side is refused with ``STOP_ALREADY_EXISTS``.
 * **Instrument rules are enforced.** Quantity on the step, at least the minimum, at most the maximum; limit
   and trigger prices on the tick; notional at least the minimum (reduce-only orders are exempt); nothing new
   on an instrument that is not trading.
@@ -73,11 +77,11 @@ _FUNDING_INTERVAL_MS = 8 * 3_600_000
 _VENUE_READS = tuple(m for m in c.READ_METHODS if m not in ("capabilities", "rate_limit"))
 
 #: profile -> (close_position_stop, quantity_stop, stop_amend_in_place, position_stop_endpoint,
-#:             stop_client_order_id, client_order_id_max_length)
-_PROFILES: Mapping[str, Tuple[bool, bool, bool, bool, bool, int]] = {
-    c.BINANCE: (True, False, False, False, True, 36),
-    c.BYBIT: (True, False, True, True, False, 36),
-    c.BINGX: (False, True, False, False, False, 40),
+#:             stop_client_order_id, client_order_id_max_length, multiple_stops_per_position)
+_PROFILES: Mapping[str, Tuple[bool, bool, bool, bool, bool, int, bool]] = {
+    c.BINANCE: (True, True, False, False, True, 36, True),
+    c.BYBIT: (True, False, True, True, False, 36, False),
+    c.BINGX: (False, True, False, False, False, 40, False),
 }
 
 
@@ -174,7 +178,7 @@ class FakeVenue:
             raise ValueError(f"unknown environment {environment!r}")
         self.venue, self.environment, self.adapter_version = profile, environment, FAKE_ADAPTER_VERSION
         (self._close_stop, self._quantity_stop, self._amend, self._position_stop, self._stop_cid,
-         self._cid_length) = _PROFILES[profile]
+         self._cid_length, self._overlap) = _PROFILES[profile]
         self._clock, self._now = clock, int(start_ms)
         self.margin_asset, self.maker_fee, self.taker_fee = margin_asset, float(maker_fee), float(taker_fee)
         self.default_leverage, self.fill_market_orders = int(default_leverage), bool(fill_market_orders)
@@ -321,7 +325,7 @@ class FakeVenue:
         return AdapterCapabilities(
             venue=self.venue, environment=self.environment, native_stop_market=True, native_take_profit=True,
             reduce_only=True, close_position_stop=self._close_stop, stop_amend_in_place=self._amend,
-            multiple_stops_per_position=False, one_way_mode=True, hedge_mode=False, user_stream=True,
+            multiple_stops_per_position=self._overlap, one_way_mode=True, hedge_mode=False, user_stream=True,
             demo_environment=True, client_order_id_max_length=self._cid_length,
             position_stop_endpoint=self._position_stop, quantity_stop=self._quantity_stop,
             stop_client_order_id=self._stop_cid,
@@ -632,7 +636,9 @@ class FakeVenue:
         if (self._position_stop or quantity is not None) and (reducible == 0 or (quantity or _ZERO) > reducible):
             raise self._error(c.REDUCE_ONLY_REJECTED, f"there is no open {symbol} position this stop could reduce")
         if any(o.open and o.symbol == symbol and (o.order_type, o.side) == (request.order_type, request.side)
-               for o in self._orders.values()):
+               and (not self._overlap or (whole and o.close_position)) for o in self._orders.values()):
+            # one trigger of a kind and side; where stops may overlap (binance), one WHOLE-POSITION trigger of a
+            # kind and side (venue code -4130), while reduce-only stops with a quantity rest beside anything
             raise self._error(c.STOP_ALREADY_EXISTS, f"a {request.side} {request.order_type} already rests on {symbol}")
         return self._new_order(symbol, request.side, request.order_type, request.client_order_id, quantity, None,
                                _d(request.stop_price), not whole, whole)

@@ -23,8 +23,19 @@ Where the adapter uses a public method of the raw client and where it uses the c
     ``get_algo_orders`` needs a symbol. If the venue insists on one it answers with an error, which the
     adapter raises; it never returns a list with the stops silently left out.
 
-Protective stops are Binance conditional ("algo") orders bound to the whole position (``closePosition``).
-They carry the caller's id as ``clientAlgoId`` and live in their own id space, so their ``venue_order_id`` is
+Protective stops are Binance conditional ("algo") orders, since the venue moved STOP_MARKET to its Algo
+Service (effective 2025-12-09; ``/fapi/v1/order`` answers -4120 for them). Two forms are carried: bound to the
+whole position (``closePosition=true``, at most one per kind and side: -4130) and reduce-only with its own
+quantity (``reduceOnly=true`` + ``quantity``). An untriggered conditional order cannot be modified (change log
+2025-11-06), so a stop moves by create-confirm-retire: the reduce-only form is created beside the stop that
+rests, read back, and only then is the old one cancelled (``pipeline.protection``). Sources, read 2026-10-31:
+https://developers.binance.com/docs/derivatives/usds-margined-futures/trade/rest-api/New-Algo-Order,
+https://developers.binance.com/docs/derivatives/change-log and the venue FAQ
+https://www.binance.com/en/support/faq/detail/360039707291 (at most 10 open conditional orders per symbol; a
+stop-market reduce-only order is not limited by the reduce-only priority rules). None of it has been exercised
+against the venue by this code; a venue certification run (PROTECTION_REPLACE) is the gate.
+
+Stops carry the caller's id as ``clientAlgoId`` and live in their own id space, so their ``venue_order_id`` is
 written ``algo:<algoId>``. One limit follows from what the raw client exposes and is stated in
 ``capabilities().notes``: only OPEN conditional orders can be read back. One that fired or was cancelled is
 reported as ``ORDER_NOT_FOUND``, exactly like one that never existed.
@@ -93,15 +104,17 @@ class BinanceAdapter(AdapterBase):
     _OUTCOME_UNKNOWN = frozenset(range(-1099, -999)) - {-1002, -1003, -1013, -1014, -1015, -1020, -1021, -1022, -1023}
     _CAPABILITIES: Mapping[str, bool] = {
         "native_stop_market": True, "native_take_profit": True, "reduce_only": True, "close_position_stop": True,
-        "stop_amend_in_place": False, "multiple_stops_per_position": False, "one_way_mode": True, "hedge_mode": False,
-        "user_stream": False, "position_stop_endpoint": False, "quantity_stop": False, "stop_client_order_id": True}
+        "stop_amend_in_place": False, "multiple_stops_per_position": True, "one_way_mode": True, "hedge_mode": False,
+        "user_stream": False, "position_stop_endpoint": False, "quantity_stop": True, "stop_client_order_id": True}
     _NOTES: Tuple[str, ...] = (
-        "stops are conditional orders bound to the whole position; venue_order_id is written algo:<algoId>",
-        "a second closePosition stop of the same kind and side is refused by the venue (-4130)",
+        "stops are conditional (algo) orders; venue_order_id is written algo:<algoId>",
+        "a stop is either bound to the whole position (closePosition) or reduce-only with its own quantity",
+        "a second closePosition stop of the same kind and side is refused by the venue (-4130); reduce-only "
+        "stops with a quantity may rest beside it (doc: up to 10 conditional orders per symbol), which is the "
+        "create-confirm-retire replacement. DOC-ONLY until a venue certification run confirms it",
+        "an untriggered conditional order cannot be modified (doc, 2025-11-06 change log): no amend in place",
         "a conditional order that is no longer open cannot be read back: ORDER_NOT_FOUND",
         "UNVERIFIED: open_orders() without a symbol lists conditional orders through a request the raw client never sends",
-        "a stop for PART of a position is not carried (the repository sends closePosition stops only); a stop "
-        "request whose quantity is the whole open position is placed as that closePosition stop",
         "hedge mode is not carried: orders are sent for a one-way account",
         "private user stream uses the /private/ws route; venue certification remains separately required",
         "the raw client itself repeats a rate-limited READ within a small bounded sleep budget; mutations never",
@@ -297,22 +310,31 @@ class BinanceAdapter(AdapterBase):
                                      client_order_id=request.client_order_id)
 
         def send() -> OrderInfo:
-            if not request.close_position:              # a quantity: only the whole open position can be carried
+            params = {"algoType": "CONDITIONAL", "symbol": venue_symbol, "side": request.side,
+                      "type": request.order_type, "triggerPrice": decimal_text(request.stop_price),
+                      "workingType": request.working_type, "clientAlgoId": venue_id}
+            if request.close_position:
+                params["closePosition"] = "true"        # bound to the whole position; one per kind and side (-4130)
+            else:
+                # a reduce-only stop with its own quantity (doc: "reduceOnly ... cannot be sent in Hedge Mode;
+                # cannot be sent with closePosition=true"). It may rest beside another stop, which is what a
+                # gap-free replacement needs. It is sent only against an open one-way position it can reduce.
                 held = [r for r in self._rows(self._call(self._client.position_risk, venue_symbol), "positionRisk")
                         if self._need(r, "positionAmt", "position") != 0]
                 if any(_POSITION_MODES.get(str(r.get("positionSide") or "").upper()) == "HEDGE" for r in held):
                     raise self._error(c.POSITION_MODE_MISMATCH, "the account holds a hedge-mode position")
-                self._whole_position_stop(request, self._need(held[0], "positionAmt", "position") if held else 0.0)
-            params = {"algoType": "CONDITIONAL", "symbol": venue_symbol, "side": request.side,
-                      "type": request.order_type, "triggerPrice": decimal_text(request.stop_price),
-                      "closePosition": "true", "workingType": request.working_type, "clientAlgoId": venue_id}
+                signed = self._need(held[0], "positionAmt", "position") if held else 0.0
+                if not ((signed > 0 and request.side == c.SELL) or (signed < 0 and request.side == c.BUY)):
+                    raise self._error(c.REDUCE_ONLY_REJECTED, "there is no open position this stop could reduce")
+                params.update(quantity=decimal_text(request.quantity), reduceOnly="true")
             answer = self._call(self._client._signed_post, "/fapi/v1/algoOrder", params, mutation=True)
             self._refuse_stop_marker(answer)
             if not isinstance(answer, Mapping) or answer.get("algoId") in (None, ""):
                 raise self._unconfirmed("conditional order id")
             # accepted by the venue as a resting conditional order; the caller reads protection back
             return self._acknowledged(request, _ALGO + str(answer["algoId"]), status=c.NEW,
-                                      venue_status=str(answer.get("algoStatus") or "ACCEPTED"), whole_position=True)
+                                      venue_status=str(answer.get("algoStatus") or "ACCEPTED"),
+                                      whole_position=bool(request.close_position))
 
         return self._idempotent(request, lookup, send)
 
