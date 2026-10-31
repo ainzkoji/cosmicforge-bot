@@ -11,9 +11,11 @@ from pydantic import model_validator
 from pydantic_settings import BaseSettings
 
 FROZEN_STRATEGY = "RESIDUAL_MOMENTUM_PORTFOLIO_TOP1"
-#: Whether this build may trade real money. A reviewed code constant, never a setting: the go-live gate
-#: (``app.golive.gate``) reads it, and the production profile refuses LIVE_ORDER_SUBMISSION_ENABLED=true while
-#: it is False. Changing it is a separate, reviewed release.
+#: Whether this build's source permits real money. A reviewed code constant, never a setting. It is only the first
+#: part of key A of a live-capable build: ``shared_lib.core.live_build.live_build_status`` also needs the approved
+#: release pinned in ``live_release_allowlist`` (key A) and the matching release manifest baked into the artifact
+#: (key B). The go-live gate (condition 15), the L-08 policy and the production profile below read that status, so
+#: flipping this constant alone permits nothing. Changing it is a separate, reviewed release.
 BUILD_PERMITS_LIVE = False
 ACTIVE_FLAGS = (
     "BROKER_DISCOVERY_ENABLED", "BALANCE_SYNC_ENABLED", "POSITION_SYNC_ENABLED",
@@ -76,10 +78,14 @@ class ProductionSettings(BaseSettings):
                 errors.append(f"{key} must be false in production")
         if getattr(self, "ADAPTIVE_DAILY_RISK_ENABLED", True) is not True:
             errors.append("ADAPTIVE_DAILY_RISK_ENABLED must remain true")
-        if self.LIVE_ORDER_SUBMISSION_ENABLED and not BUILD_PERMITS_LIVE:
+        if self.LIVE_ORDER_SUBMISSION_ENABLED:
             # Section K4: an unsupported, unsafe combination is refused at startup, not only at the order gates.
-            errors.append("LIVE_ORDER_SUBMISSION_ENABLED must be false: this build does not permit live trading "
-                          "(BUILD_PERMITS_LIVE=False)")
+            # Section 30: only a live-capable build artifact (both release keys) may even start with the flag on.
+            from shared_lib.core.live_build import live_build_status
+            build = live_build_status()
+            if not build.capable:
+                errors.append("LIVE_ORDER_SUBMISSION_ENABLED must be false: this build does not permit live trading "
+                              f"({build.reason})")
         if errors:
             raise ValueError("PRODUCTION_PROFILE_CONFLICT: " + "; ".join(errors))
         return self
@@ -98,8 +104,18 @@ class ProductionSettings(BaseSettings):
                 "DATABASE ROLE": self.DATABASE_ROLE.upper(),
                 "LEGACY V2/FALLBACK": "DISABLED" if not self.LEGACY_V2_ENABLED and not self.FALLBACK_ENGINE_ENABLED else "ENABLED",
                 "LIVE_ORDER_SUBMISSION_ENABLED": self.LIVE_ORDER_SUBMISSION_ENABLED,
+                "LIVE BUILD": _live_build_reason(),
                 "DEMO_ORDER_SUBMISSION_ENABLED": self.DEMO_ORDER_SUBMISSION_ENABLED,
                 "STRATEGY": FROZEN_STRATEGY, "DAILY_LOSS_LIMIT": "PER BOT EFFECTIVE POLICY"}
+
+
+def _live_build_reason() -> str:
+    """Read-only status for the status surfaces: LIVE_BUILD_CAPABLE or the reason this artifact is not."""
+    try:
+        from shared_lib.core.live_build import live_build_status
+        return live_build_status().reason
+    except Exception as exc:  # pragma: no cover - shown, never a pass
+        return f"LIVE_BUILD_STATUS_UNAVAILABLE:{type(exc).__name__}"
 
 
 def production_enabled() -> bool:

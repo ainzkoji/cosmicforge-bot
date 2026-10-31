@@ -6,6 +6,7 @@ Operator routes (``require_admin_emergency`` -- the short-lived service token mi
     GET  /api/v1/admin/golive/accounts            per-account eligibility view of every LIVE broker account
     GET  /api/v1/admin/golive/switches            per-exchange live switch state and pending requests
     GET  /api/v1/admin/golive/history             the authorization ledger and its integrity
+    GET  /api/v1/admin/golive/build               whether this build artifact is live-capable, and why not
     POST /api/v1/admin/golive/switches/{venue}/request | approve | reject | off
     POST /api/v1/admin/golive/approvals           request an account approval
     POST /api/v1/admin/golive/approvals/{id}/grant | reject | revoke
@@ -211,6 +212,13 @@ def switches(admin_id: str = Depends(require_admin_emergency)):
                     "last_change": {"type": st.last_change.event_type, "actor": st.last_change.actor_ref,
                                     "at": st.last_change.recorded_at} if st.last_change else None})
     return {"switches": out}
+
+
+@router.get("/build")
+def build(admin_id: str = Depends(require_admin_emergency)):
+    """Read-only: is this build artifact live-capable (section 30)? Capability authorizes nothing by itself."""
+    from shared_lib.core.live_build import live_build_status
+    return {"live_build": live_build_status().to_plain()}
 
 
 @router.get("/history")

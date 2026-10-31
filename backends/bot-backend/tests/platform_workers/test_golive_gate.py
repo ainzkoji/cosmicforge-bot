@@ -15,6 +15,8 @@ from app.golive.beta import BetaReviews, LiveBeta, export_evidence
 from app.golive.ledger import GoLiveError, GoLiveLedger, Operator
 from shared_lib.persistence.sql import Database
 
+from _live_release import install_capable_release
+
 ALICE, BOB = Operator("alice", "test"), Operator("bob", "test")
 DAY = 86_400_000
 REQ = G.Request(account_id="acct-1", user_id="alice", family_id="FAM", family_version="1.0.0", venue="binance")
@@ -52,6 +54,7 @@ def green_sources(**override):
 def fully_authorized(ledger, *, until_days=30):
     auth, beta = GoLiveAuthority(ledger), LiveBeta(ledger)
     auth.set_policy("MIN_DEMO_RUN_DAYS", 28, ALICE, reason="owner decision (test)")
+    auth.set_policy("APPROVAL_MAX_VALIDITY_DAYS", 90, ALICE, reason="owner decision (test)")
     auth.set_policy("LIVE_CONSENT_VERSION", "live-v1", ALICE, reason="test")
     auth.set_policy("STAGE_A_MAX_NOTIONAL", "1000", ALICE, reason="test")
     now = int(time.time() * 1000)
@@ -76,8 +79,8 @@ def test_this_build_refuses_live_even_when_everything_else_passes(ledger):
     assert len(decision.conditions) == len(G.CONDITION_IDS) == 17
 
 
-def test_conditions_are_satisfiable_together_when_the_build_lock_is_lifted_in_a_test(ledger, monkeypatch):
-    monkeypatch.setattr(G, "BUILD_PERMITS_LIVE", True)       # test process only
+def test_conditions_are_satisfiable_together_when_the_build_lock_is_lifted_in_a_test(tmp_path, ledger, monkeypatch):
+    install_capable_release(monkeypatch, tmp_path)       # test process only: both release keys
     fully_authorized(ledger)
     assert G.GoLiveGate(ledger, green_sources()).evaluate(REQ).authorized
 
@@ -101,16 +104,16 @@ BREAKERS = {
 
 
 @pytest.mark.parametrize("condition", sorted(BREAKERS))
-def test_each_source_condition_fails_on_its_own(ledger, monkeypatch, condition):
-    monkeypatch.setattr(G, "BUILD_PERMITS_LIVE", True)
+def test_each_source_condition_fails_on_its_own(tmp_path, ledger, monkeypatch, condition):
+    install_capable_release(monkeypatch, tmp_path)       # test process only: both release keys
     fully_authorized(ledger)
     decision = G.GoLiveGate(ledger, green_sources(**BREAKERS[condition])).evaluate(REQ)
     assert [c.id for c in decision.blocking] == [condition]
     assert decision.blocking[0].reason, "a blocked condition always says why"
 
 
-def test_ledger_conditions_fail_on_their_own(ledger, monkeypatch):
-    monkeypatch.setattr(G, "BUILD_PERMITS_LIVE", True)
+def test_ledger_conditions_fail_on_their_own(tmp_path, ledger, monkeypatch):
+    install_capable_release(monkeypatch, tmp_path)       # test process only: both release keys
     auth, approval = fully_authorized(ledger)
     gate = G.GoLiveGate(ledger, green_sources())
     auth.revoke_consent(account_id="acct-1", user_id="alice")
@@ -134,6 +137,34 @@ def test_unset_owner_policy_blocks_instead_of_defaulting(ledger):
     auth.give_consent(account_id="acct-1", user_id="alice", consent_version="live-v1", text_sha256="ab" * 32)
     d = G.GoLiveGate(ledger, green_sources()).evaluate(REQ)
     assert {c.id: c for c in d.conditions}["CUSTOMER_LIVE_RISK_CONSENT"].status == G.BLOCKED_PENDING_POLICY
+
+
+def test_an_approval_is_never_open_ended(ledger):
+    """APPROVAL_MAX_VALIDITY_DAYS (an owner key) bounds every approval from its grant, an approval requested
+    without an expiry included. Unset, the condition blocks instead of treating approvals as permanent."""
+    auth = GoLiveAuthority(ledger)
+    aid = auth.request_approval(account_id="acct-1", family_id="FAM", venue="binance", operator=ALICE, reason="A")
+    auth.grant_approval(aid, BOB, reason="reviewed")
+    gate = G.GoLiveGate(ledger, green_sources())
+
+    def cond(now=None):
+        return {c.id: c for c in gate.evaluate(REQ, now_ms=now).conditions}["OPERATOR_APPROVAL_AUDITED"]
+
+    unset = cond()
+    assert (unset.status, unset.reason) == (G.BLOCKED_PENDING_POLICY, "APPROVAL_MAX_VALIDITY_DAYS_NOT_SET")
+    auth.set_policy("APPROVAL_MAX_VALIDITY_DAYS", 30, ALICE, reason="owner decision (test)")
+    granted_at = next(e.recorded_at for e in ledger.events(scope_type="APPROVAL", scope_id=aid)
+                      if e.event_type == "APPROVAL_GRANTED")
+    assert cond(granted_at + 29 * DAY).status == G.PASS
+    late = cond(granted_at + 30 * DAY)
+    assert (late.status, late.reason) == (G.FAIL, "APPROVAL_EXPIRED")
+    # a stated expiry earlier than the maximum still ends it first
+    short = auth.request_approval(account_id="acct-1", family_id="FAM", venue="binance", operator=ALICE, reason="B",
+                                  expires_at_ms=granted_at + 2 * DAY)
+    auth.grant_approval(short, BOB, reason="reviewed")
+    auth.revoke_approval(aid, ALICE, reason="replaced by the short one")
+    assert cond(granted_at + DAY).status == G.PASS
+    assert cond(granted_at + 3 * DAY).status == G.FAIL
 
 
 def test_short_or_failed_or_invalidated_demo_runs_do_not_count(ledger):
@@ -164,8 +195,8 @@ def test_self_approval_is_refused_for_switch_and_account_approval(ledger):
         auth.grant_approval(aid, ALICE, reason="me again")
 
 
-def test_live_switch_alone_cannot_authorize(ledger, monkeypatch):
-    monkeypatch.setattr(G, "BUILD_PERMITS_LIVE", True)
+def test_live_switch_alone_cannot_authorize(tmp_path, ledger, monkeypatch):
+    install_capable_release(monkeypatch, tmp_path)       # test process only: both release keys
     auth = GoLiveAuthority(ledger)
     rid = auth.request_switch_on("binance", ALICE, reason="r")
     auth.approve_switch_on("binance", rid, BOB, reason="r")
@@ -174,8 +205,8 @@ def test_live_switch_alone_cannot_authorize(ledger, monkeypatch):
     assert len(d.blocking) >= 4
 
 
-def test_expired_approval_and_beta_window_refuse_automatically(ledger, monkeypatch):
-    monkeypatch.setattr(G, "BUILD_PERMITS_LIVE", True)
+def test_expired_approval_and_beta_window_refuse_automatically(tmp_path, ledger, monkeypatch):
+    install_capable_release(monkeypatch, tmp_path)       # test process only: both release keys
     fully_authorized(ledger, until_days=1)
     gate = G.GoLiveGate(ledger, green_sources())
     later = int(time.time() * 1000) + 2 * DAY
@@ -184,8 +215,8 @@ def test_expired_approval_and_beta_window_refuse_automatically(ledger, monkeypat
     assert {c.id: c for c in d.conditions}["LIVE_BETA_ENROLLMENT_CURRENT"].reason == "BETA_AUTHORIZATION_EXPIRED"
 
 
-def test_a_failing_check_is_a_refusal_not_a_pass(ledger, monkeypatch):
-    monkeypatch.setattr(G, "BUILD_PERMITS_LIVE", True)
+def test_a_failing_check_is_a_refusal_not_a_pass(tmp_path, ledger, monkeypatch):
+    install_capable_release(monkeypatch, tmp_path)       # test process only: both release keys
     fully_authorized(ledger)
 
     def boom(*a):
@@ -210,7 +241,7 @@ def test_revocation_requires_an_off_database_anchor(platform_db):
 
 
 def test_database_restore_cannot_resurrect_a_revoked_authorization(tmp_path, anchor, monkeypatch):
-    monkeypatch.setattr(G, "BUILD_PERMITS_LIVE", True)
+    install_capable_release(monkeypatch, tmp_path)       # test process only: both release keys
     path = tmp_path / "golive.db"
     from shared_lib.persistence.sql import migrate
     from shared_lib.persistence.sql.platform_schema import all_migrations
@@ -358,8 +389,8 @@ def test_execution_boundary_refuses_live_entries_through_the_gate(platform_db, d
     assert why.startswith("GO_LIVE_GATE:") and why != "GO_LIVE_GATE:"
 
 
-def test_withdrawn_legal_acceptance_blocks_consent(ledger, monkeypatch):
-    monkeypatch.setattr(G, "BUILD_PERMITS_LIVE", True)
+def test_withdrawn_legal_acceptance_blocks_consent(tmp_path, ledger, monkeypatch):
+    install_capable_release(monkeypatch, tmp_path)       # test process only: both release keys
     fully_authorized(ledger)
     d = G.GoLiveGate(ledger, green_sources(legal_acceptance=lambda u: ["AUTOMATED_EXECUTION_CONSENT_NOT_ACCEPTED"])
                      ).evaluate(REQ)

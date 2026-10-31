@@ -17,11 +17,15 @@ exception inside a check is that check's failure (``CHECK_ERROR``), never a pass
  9 ACCOUNT_CAPITAL_RULES            a positive capital allocation within the beta budget ceiling, if enrolled
 10 OPERATOR_LIVE_SWITCH_ON          the exchange's live switch, opened by two different operators
 11 OPERATOR_APPROVAL_AUDITED        an unexpired, unrevoked approval for (account, family, venue) granted by an
-                                    operator other than the requester, recorded in the ledger
+                                    operator other than the requester, recorded in the ledger, and granted no
+                                    longer ago than the owner's APPROVAL_MAX_VALIDITY_DAYS (unset ->
+                                    BLOCKED_PENDING_POLICY)
 12 LIVE_ORDER_SUBMISSION_ENABLED    the deployment's LIVE_ORDER_SUBMISSION_ENABLED
 13 KILL_SWITCHES_CLEAR              platform, account and family kill switches
 14 NO_OPEN_EXECUTION_UNCERTAINTY    no unresolved submission, reconciliation or protection uncertainty
-15 BUILD_PERMITS_LIVE               this build refuses LIVE certification outright: always FAIL here
+15 BUILD_PERMITS_LIVE               this build artifact is live-capable (``shared_lib.core.live_build``: the
+                                    reviewed source keys AND the baked, pinned release manifest); FAIL in every
+                                    build of this repository, with the build's reason code
 16 AUTHORIZATION_LEDGER_INTACT      ledger chain intact and not behind its revocation anchor
 17 LIVE_BETA_ENROLLMENT_CURRENT     the account is enrolled in live beta Stage A or B and its authorization
                                     window has not expired (refused automatically after expiry)
@@ -49,8 +53,10 @@ CONDITION_IDS = (
 )
 #: This build refuses LIVE venue certification (certification.py: LIVE_CERTIFICATION_NOT_PERMITTED_IN_THIS_BUILD)
 #: and caps families at M6. Changing that is a separate, reviewed release -- never a setting. One source for the
-#: gate and the production profile (which refuses LIVE_ORDER_SUBMISSION_ENABLED=true while it is False).
+#: gate and the production profile (which refuses LIVE_ORDER_SUBMISSION_ENABLED=true in a non-capable build):
+#: ``live_build_status`` (section 30), whose first key is BUILD_PERMITS_LIVE.
 from shared_lib.core.production import BUILD_PERMITS_LIVE  # noqa: E402
+from shared_lib.core.live_build import live_build_status  # noqa: E402
 VALID_RISK_LEVELS = ("conservative", "balanced", "aggressive")
 
 
@@ -255,13 +261,27 @@ class GoLiveGate:
               "last_change": st.last_change.event_type if st.last_change else None}
         return Condition("OPERATOR_LIVE_SWITCH_ON", PASS if st.on else FAIL, "" if st.on else "LIVE_SWITCH_OFF", ev)
 
-    def _operator_approval_audited(self, request, events, now, ledger_error, **_):
+    def _operator_approval_audited(self, request, events, now, ledger_error, policy=None, **_):
         if ledger_error:
             return Condition("OPERATOR_APPROVAL_AUDITED", FAIL, "LEDGER_UNREADABLE:" + ledger_error)
+        # The owner's maximum validity of an approval (``APPROVAL_MAX_VALIDITY_DAYS``): an approval is in force at
+        # most that long after it was granted, whatever expiry its request stated (none included). Unset, the
+        # condition is BLOCKED_PENDING_POLICY, like every other owner key: no approval is open-ended.
+        max_days = (policy or {}).get("APPROVAL_MAX_VALIDITY_DAYS")
+        try:
+            max_ms = int(float(max_days) * 86_400_000) if max_days is not None else None
+        except (TypeError, ValueError):
+            max_ms = None
+        if max_ms is None or max_ms <= 0:
+            return Condition("OPERATOR_APPROVAL_AUDITED", BLOCKED_PENDING_POLICY, "APPROVAL_MAX_VALIDITY_DAYS_NOT_SET")
         matching = [a for a in fold_approvals(events).values()
                     if a.account_id == request.account_id and a.family_id == request.family_id
                     and a.venue == request.venue.upper()]
-        active = [a for a in matching if a.active(now)]
+
+        def in_force(a) -> bool:
+            return a.active(now) and int(a.granted.recorded_at) + max_ms > int(now)
+
+        active = [a for a in matching if in_force(a)]
         for a in active:
             if a.granted.payload.get("approved_by") == a.requested.payload.get("requested_by"):  # pragma: no cover
                 return Condition("OPERATOR_APPROVAL_AUDITED", FAIL, "SELF_APPROVED")
@@ -272,7 +292,7 @@ class GoLiveGate:
         reason = "APPROVAL_MISSING"
         if any(a.revoked for a in matching):
             reason = "APPROVAL_REVOKED"
-        elif any(a.granted and not a.active(now) for a in matching):
+        elif any(a.granted and not in_force(a) for a in matching):
             reason = "APPROVAL_EXPIRED"
         elif any(a.granted is None and a.rejected is None for a in matching):
             reason = "APPROVAL_PENDING_SECOND_OPERATOR"
@@ -299,8 +319,10 @@ class GoLiveGate:
         return Condition("NO_OPEN_EXECUTION_UNCERTAINTY", FAIL if codes else PASS, ",".join(codes))
 
     def _build_permits_live(self, **_):
-        return Condition("BUILD_PERMITS_LIVE", PASS if BUILD_PERMITS_LIVE else FAIL,
-                         "" if BUILD_PERMITS_LIVE else "LIVE_NOT_PERMITTED_IN_THIS_BUILD")
+        build = live_build_status()
+        return Condition("BUILD_PERMITS_LIVE", PASS if build.capable else FAIL, "" if build.capable else build.reason,
+                         {"release_id": build.release_id, "manifest_sha256": build.manifest_sha256,
+                          "keys": dict(build.keys)})
 
     def _live_beta_enrollment_current(self, request, events, now, ledger_error, **_):
         if ledger_error:

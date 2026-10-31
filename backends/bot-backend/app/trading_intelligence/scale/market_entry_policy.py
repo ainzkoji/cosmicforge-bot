@@ -93,8 +93,9 @@ class MarketPolicyError(RuntimeError):
 
 
 def _live_permitted() -> bool:
-    from shared_lib.core.production import BUILD_PERMITS_LIVE
-    return bool(BUILD_PERMITS_LIVE)
+    """A live-capable build artifact (section 30, ``shared_lib.core.live_build``), not the source constant alone."""
+    from shared_lib.core.live_build import live_build_status
+    return live_build_status().capable
 
 
 def _require_operator(operator: Any):

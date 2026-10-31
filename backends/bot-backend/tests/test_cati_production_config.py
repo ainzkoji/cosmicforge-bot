@@ -49,12 +49,17 @@ def test_submission_permission_independent_of_live_mode():
         production(LIVE_ORDER_SUBMISSION_ENABLED=True)
 
 
-def test_the_gate_and_the_profile_read_one_build_constant(monkeypatch):
+def test_the_gate_and_the_profile_read_one_build_status(monkeypatch):
     from app.golive import gate
+    from shared_lib.core import live_build as LB
     from shared_lib.core import production as P
     assert gate.BUILD_PERMITS_LIVE is P.BUILD_PERMITS_LIVE is False
-    monkeypatch.setattr(P, "BUILD_PERMITS_LIVE", True)               # a different, reviewed build
-    assert production(LIVE_ORDER_SUBMISSION_ENABLED=True).LIVE_ORDER_SUBMISSION_ENABLED is True
+    assert gate.live_build_status is LB.live_build_status
+    # Section 30: the source constant alone is not a live-capable build (no approved release pinned, no manifest).
+    # A capable build is accepted: tests/platform_workers/test_live_build_release.py.
+    monkeypatch.setattr(P, "BUILD_PERMITS_LIVE", True)
+    with pytest.raises(ValidationError, match="LIVE_RELEASE_NOT_APPROVED_IN_SOURCE"):
+        production(LIVE_ORDER_SUBMISSION_ENABLED=True)
 
 
 @pytest.mark.parametrize("broker,path", [
