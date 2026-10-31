@@ -10,10 +10,16 @@ Snapshots are recorded at various trigger points:
 import logging
 from datetime import datetime, timezone, timedelta
 from typing import Optional
+from shared_lib.core.money_math import dsum, to_dec, to_float
 from shared_lib.persistence.db import DB
 from app.core.config import settings
 
 logger = logging.getLogger(__name__)
+
+
+def _exact(*values) -> float:
+    """The exact decimal sum of venue money values, as the nearest float (what the snapshot stores)."""
+    return to_float(dsum(values))
 
 
 class EquitySnapshotService:
@@ -75,41 +81,46 @@ class EquitySnapshotService:
             margin_used = None
             currency = "USDT"  # Default, most futures use USDT
             
-            # Parse based on broker type
+            # Parse based on broker type. Derived values (equity, margin used) are computed exactly from the
+            # venue's decimal strings and stored as the nearest float, without binary addition error.
             if broker_id == "binance":
                 # Binance Futures structure
-                wallet_balance = float(account_info.get("totalWalletBalance", 0))
-                unrealized_pnl = float(account_info.get("totalUnrealizedProfit", 0))
-                available_balance = float(account_info.get("availableBalance", 0))
-                margin_used = float(account_info.get("totalMarginBalance", 0)) - available_balance
-                equity = wallet_balance + unrealized_pnl
+                wallet_d = to_dec(account_info.get("totalWalletBalance", 0))
+                unrealized_d = to_dec(account_info.get("totalUnrealizedProfit", 0))
+                available_d = to_dec(account_info.get("availableBalance", 0))
+                margin_used = _exact(to_dec(account_info.get("totalMarginBalance", 0)), -available_d)
+                equity = _exact(wallet_d, unrealized_d)
                 
             elif broker_id == "bybit":
                 # Bybit structure (check actual API response)
                 result = account_info.get("result", {})
-                wallet_balance = float(result.get("walletBalance", 0))
-                unrealized_pnl = float(result.get("unrealisedPnl", 0))
-                available_balance = float(result.get("availableBalance", 0))
-                equity = float(result.get("equity", wallet_balance + unrealized_pnl))
-                margin_used = wallet_balance - available_balance
+                wallet_d = to_dec(result.get("walletBalance", 0))
+                unrealized_d = to_dec(result.get("unrealisedPnl", 0))
+                available_d = to_dec(result.get("availableBalance", 0))
+                equity = (to_float(to_dec(result["equity"])) if "equity" in result
+                          else _exact(wallet_d, unrealized_d))
+                margin_used = _exact(wallet_d, -available_d)
                 
             elif broker_id == "bingx":
                 # BingX structure
                 balance = account_info.get("balance", {})
-                wallet_balance = float(balance.get("balance", 0))
-                unrealized_pnl = float(balance.get("unrealizedProfit", 0))
-                available_balance = float(balance.get("availableMargin", 0))
-                equity = wallet_balance + unrealized_pnl
-                margin_used = wallet_balance - available_balance
+                wallet_d = to_dec(balance.get("balance", 0))
+                unrealized_d = to_dec(balance.get("unrealizedProfit", 0))
+                available_d = to_dec(balance.get("availableMargin", 0))
+                equity = _exact(wallet_d, unrealized_d)
+                margin_used = _exact(wallet_d, -available_d)
             
             else:
                 logger.warning(f"Unknown broker_id: {broker_id}, using generic parsing")
                 # Generic fallback
-                wallet_balance = float(account_info.get("balance", 0) or account_info.get("totalWalletBalance", 0))
-                unrealized_pnl = float(account_info.get("unrealizedProfit", 0) or account_info.get("totalUnrealizedProfit", 0))
-                equity = wallet_balance + unrealized_pnl
-                available_balance = float(account_info.get("availableBalance", equity))
-                margin_used = wallet_balance - available_balance
+                wallet_d = to_dec(account_info.get("balance", 0) or account_info.get("totalWalletBalance", 0))
+                unrealized_d = to_dec(account_info.get("unrealizedProfit", 0) or account_info.get("totalUnrealizedProfit", 0))
+                equity = _exact(wallet_d, unrealized_d)
+                available_d = (to_dec(account_info["availableBalance"]) if "availableBalance" in account_info
+                               else to_dec(equity))
+                margin_used = _exact(wallet_d, -available_d)
+            wallet_balance, unrealized_pnl, available_balance = (
+                to_float(wallet_d), to_float(unrealized_d), to_float(available_d))
             
             # Get current UTC timestamp
             # The 'now' variable is already defined above, so we can reuse it.

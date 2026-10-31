@@ -11,6 +11,8 @@ from statistics import median
 from typing import Any, Iterable
 from zoneinfo import ZoneInfo
 
+from shared_lib.core.money_math import f_add, f_div, f_mul, f_sub, f_sum
+
 
 POLICY_VERSION = "adaptive_daily_risk_budget/1.0.0"
 
@@ -145,7 +147,8 @@ class AdaptiveDailyRiskBudgetEngine:
         p = self.policy
         if p.max_daily_loss_pct is None or not float(p.max_daily_loss_pct) > 0:
             raise ValueError("DAILY_LOSS_POLICY_REQUIRED")
-        hard_cap = max(0.0, float(inputs.day_open_equity) * float(p.max_daily_loss_pct))
+        # Money (cap, consumption, remaining) is exact; the adaptive factors below are statistics and stay float.
+        hard_cap = max(0.0, f_mul(float(inputs.day_open_equity), float(p.max_daily_loss_pct)))
         history = self._bounded_positive(inputs.initial_risk_history_usdt, p.risk_lookback_trades)
         data_sufficient = len(history) >= p.minimum_history_trades
         if data_sufficient:
@@ -171,8 +174,8 @@ class AdaptiveDailyRiskBudgetEngine:
 
         consumed = max(0.0, -float(inputs.realized_pnl_today))
         reserved = self.reserved_risk(inputs.bot_instance_id, inputs.risk_date)
-        remaining = max(0.0, effective_budget - consumed - reserved)
-        consumed_pct = 1.0 if effective_budget <= 0 else min(1.0, (consumed + reserved) / effective_budget)
+        remaining = max(0.0, f_sub(f_sub(effective_budget, consumed), reserved))
+        consumed_pct = 1.0 if effective_budget <= 0 else min(1.0, f_div(f_add(consumed, reserved), effective_budget))
 
         state = DailyRiskState.NORMAL
         if consumed >= hard_cap > 0:
@@ -231,7 +234,7 @@ class AdaptiveDailyRiskBudgetEngine:
         with self._lock:
             available = float(decision.remaining_daily_risk_usdt)
             existing = self._reservations.get((bot_instance_id, str(risk_date), reservation_id), 0.0)
-            if planned - existing > available + 1e-9:
+            if f_sub(planned, existing) > available + 1e-9:
                 return False
             self._reservations[(bot_instance_id, str(risk_date), reservation_id)] = planned
             return True
@@ -250,7 +253,7 @@ class AdaptiveDailyRiskBudgetEngine:
     def reserved_risk(self, bot_instance_id: str, risk_date: date) -> float:
         key_prefix = (bot_instance_id, str(risk_date))
         with self._lock:
-            return sum(v for (bot, day, _), v in self._reservations.items() if (bot, day) == key_prefix)
+            return f_sum(v for (bot, day, _), v in self._reservations.items() if (bot, day) == key_prefix)
 
     def persist_decision(self, bot_instance_id: str, decision: AdaptiveDailyRiskDecision) -> None:
         if self.db is None:

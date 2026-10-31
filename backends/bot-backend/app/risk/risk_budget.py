@@ -14,6 +14,8 @@ from dataclasses import dataclass, field
 from typing import Dict, List, Optional, TYPE_CHECKING
 from enum import Enum
 
+from shared_lib.core.money_math import f_add, f_div, f_mul, f_sub, f_sum
+
 if TYPE_CHECKING:
     from app.exchange.binance.client import BinanceFuturesClient
 
@@ -109,7 +111,7 @@ class RiskBudgetConfig:
         Compute effective budget: clamp(equity * pct * multiplier, floor, cap)
         Precedence: Multiplier applies to pct-based amount, then clamped.
         """
-        raw_budget = equity * pct * multiplier
+        raw_budget = f_mul(f_mul(equity, pct), multiplier)
         
         # Apply Floor
         if floor is not None:
@@ -160,14 +162,14 @@ class PositionRisk:
         """Calculate risk to stop in USDT."""
         if self.stop_price is None or self.stop_price <= 0:
             # No stop = assume 2% risk as fallback
-            return self.notional * 0.02
+            return f_mul(self.notional, 0.02)
         
         if self.side == "LONG":
-            stop_distance = self.entry_price - self.stop_price
+            stop_distance = f_sub(self.entry_price, self.stop_price)
         else:
-            stop_distance = self.stop_price - self.entry_price
+            stop_distance = f_sub(self.stop_price, self.entry_price)
         
-        return max(0, self.qty * stop_distance)
+        return max(0, f_mul(self.qty, stop_distance))
 
 
 @dataclass
@@ -260,7 +262,7 @@ class RiskBudgetEngine:
             risk_mult *= self.config.drawdown_risk_multiplier
         
         # Portfolio risk (Percent + Fixed Cap/Floor + Multiplier)
-        total_risk = sum(p.risk_usdt for p in self._positions)
+        total_risk = f_sum(p.risk_usdt for p in self._positions)
         
         portfolio_budget = self.config.calculate_effective_budget(
             equity, 
@@ -275,7 +277,7 @@ class RiskBudgetEngine:
         margin_level = (equity / self._margin_used) if self._margin_used > 0 else 999
         
         # Margin Budget (effective)
-        margin_budget_usdt = equity * self.config.max_margin_usage_pct
+        margin_budget_usdt = f_mul(equity, self.config.max_margin_usage_pct)
         if self.config.max_margin_used_cap_usdt:
             margin_budget_usdt = min(margin_budget_usdt, self.config.max_margin_used_cap_usdt)
         if margin_budget_usdt > 0:
@@ -293,24 +295,24 @@ class RiskBudgetEngine:
         
         for p in self._positions:
             # By symbol
-            exposure_by_symbol[p.symbol] = exposure_by_symbol.get(p.symbol, 0) + p.notional
+            exposure_by_symbol[p.symbol] = f_add(exposure_by_symbol.get(p.symbol, 0), p.notional)
             
             # By strategy
             if p.strategy:
-                exposure_by_strategy[p.strategy] = exposure_by_strategy.get(p.strategy, 0) + p.notional
+                exposure_by_strategy[p.strategy] = f_add(exposure_by_strategy.get(p.strategy, 0), p.notional)
             
             # By Bucket
             bucket = self._get_bucket(p.symbol)
-            exposure_by_bucket[bucket] = exposure_by_bucket.get(bucket, 0) + p.notional
+            exposure_by_bucket[bucket] = f_add(exposure_by_bucket.get(bucket, 0), p.notional)
             
             # By side
             if p.side == "LONG":
-                exposure_long += p.notional
+                exposure_long = f_add(exposure_long, p.notional)
             else:
-                exposure_short += p.notional
+                exposure_short = f_add(exposure_short, p.notional)
         
-        gross_exposure = exposure_long + exposure_short
-        net_exposure = abs(exposure_long - exposure_short)
+        gross_exposure = f_add(exposure_long, exposure_short)
+        net_exposure = abs(f_sub(exposure_long, exposure_short))
         
         # Dynamic slots
         allowed_slots = self._compute_allowed_slots()
@@ -335,8 +337,8 @@ class RiskBudgetEngine:
             limits={
                 "portfolio_risk_budget": portfolio_budget,
                 "max_margin_usage": self.config.max_margin_usage_pct,
-                "max_gross_exposure": equity * self.config.max_gross_exposure_mult,
-                "max_net_exposure": equity * self.config.max_net_exposure_mult,
+                "max_gross_exposure": f_mul(equity, self.config.max_gross_exposure_mult),
+                "max_net_exposure": f_mul(equity, self.config.max_net_exposure_mult),
                 "allowed_slots": allowed_slots,
             }
         )
@@ -403,7 +405,7 @@ class RiskBudgetEngine:
                 "HARD_BLOCK", "EQUITY", 0, 0, 0
             )
         
-        notional = qty * entry_price
+        notional = f_mul(qty, entry_price)
         
         # Create hypothetical position
         new_pos = PositionRisk(
@@ -419,8 +421,8 @@ class RiskBudgetEngine:
         # =========================================================
         # 1) Portfolio Risk Budget (pct + clamp + multipliers)
         # =========================================================
-        current_risk = sum(p.risk_usdt for p in self._positions)
-        new_total_risk = current_risk + new_pos.risk_usdt
+        current_risk = f_sum(p.risk_usdt for p in self._positions)
+        new_total_risk = f_add(current_risk, new_pos.risk_usdt)
         
         # Determine multipliers
         risk_mult = 1.0
@@ -473,10 +475,10 @@ class RiskBudgetEngine:
         # =========================================================
         # 2) Margin Usage Budget
         # =========================================================
-        new_margin_used = self._margin_used + margin_required
+        new_margin_used = f_add(self._margin_used, margin_required)
         
         # Effective Margin Budget
-        margin_budget_usdt = equity * self.config.max_margin_usage_pct
+        margin_budget_usdt = f_mul(equity, self.config.max_margin_usage_pct)
         if self.config.max_margin_used_cap_usdt:
              margin_budget_usdt = min(margin_budget_usdt, self.config.max_margin_used_cap_usdt)
              
@@ -501,10 +503,10 @@ class RiskBudgetEngine:
         # We enforce a hard ceiling where total Maintenance Margin cannot exceed 50% of Equity.
         
         MAINTENANCE_MARGIN_RATE = 0.005  # 0.5% of notional
-        current_maint_margin_est = sum(p.notional * MAINTENANCE_MARGIN_RATE for p in self._positions)
-        new_maint_margin_est = current_maint_margin_est + (notional * MAINTENANCE_MARGIN_RATE)
+        current_maint_margin_est = f_sum(f_mul(p.notional, MAINTENANCE_MARGIN_RATE) for p in self._positions)
+        new_maint_margin_est = f_add(current_maint_margin_est, f_mul(notional, MAINTENANCE_MARGIN_RATE))
         
-        max_maint_margin_allowed = equity * 0.50  # Hard floor for liquidation safety
+        max_maint_margin_allowed = f_mul(equity, 0.50)  # Hard floor for liquidation safety
         
         if new_maint_margin_est > max_maint_margin_allowed:
             return BudgetDecision(
@@ -521,11 +523,11 @@ class RiskBudgetEngine:
         # =========================================================
         # 4) Symbol Concentration
         # =========================================================
-        current_symbol_exposure = sum(
+        current_symbol_exposure = f_sum(
             p.notional for p in self._positions if p.symbol == symbol
         )
-        new_symbol_exposure = current_symbol_exposure + notional
-        max_symbol_exposure = equity * self.config.max_exposure_per_symbol_pct
+        new_symbol_exposure = f_add(current_symbol_exposure, notional)
+        max_symbol_exposure = f_mul(equity, self.config.max_exposure_per_symbol_pct)
         
         if new_symbol_exposure > max_symbol_exposure:
             return BudgetDecision(
@@ -544,13 +546,13 @@ class RiskBudgetEngine:
         # =========================================================
         bucket = self._get_bucket(symbol)
         
-        current_bucket_exposure = sum(
+        current_bucket_exposure = f_sum(
             p.notional for p in self._positions if self._get_bucket(p.symbol) == bucket
         )
-        new_bucket_exposure = current_bucket_exposure + notional
+        new_bucket_exposure = f_add(current_bucket_exposure, notional)
         
         limit_pct = self.config.bucket_limits_pct.get(bucket, self.config.default_bucket_limit_pct)
-        max_bucket_exposure = equity * limit_pct
+        max_bucket_exposure = f_mul(equity, limit_pct)
         
         if new_bucket_exposure > max_bucket_exposure:
              return BudgetDecision(
@@ -568,11 +570,11 @@ class RiskBudgetEngine:
         # 4.2) Strategy Concentration
         # =========================================================
         if strategy:
-            current_strategy_exposure = sum(
+            current_strategy_exposure = f_sum(
                 p.notional for p in self._positions if p.strategy == strategy
             )
-            new_strategy_exposure = current_strategy_exposure + notional
-            max_strategy_exposure = equity * self.config.max_exposure_per_strategy_pct
+            new_strategy_exposure = f_add(current_strategy_exposure, notional)
+            max_strategy_exposure = f_mul(equity, self.config.max_exposure_per_strategy_pct)
             
             if new_strategy_exposure > max_strategy_exposure:
                 return BudgetDecision(
@@ -589,15 +591,17 @@ class RiskBudgetEngine:
         # =========================================================
         # 5) Side Concentration (avoid all-long or all-short)
         # =========================================================
-        long_exposure = sum(p.notional for p in self._positions if p.side == "LONG")
-        short_exposure = sum(p.notional for p in self._positions if p.side == "SHORT")
+        long_exposure = f_sum(p.notional for p in self._positions if p.side == "LONG")
+        short_exposure = f_sum(p.notional for p in self._positions if p.side == "SHORT")
         
         if side == "LONG":
-            new_long = long_exposure + notional
-            new_side_pct = new_long / (new_long + short_exposure) if (new_long + short_exposure) > 0 else 1.0
+            new_long = f_add(long_exposure, notional)
+            side_total = f_add(new_long, short_exposure)
+            new_side_pct = f_div(new_long, side_total) if side_total > 0 else 1.0
         else:
-            new_short = short_exposure + notional
-            new_side_pct = new_short / (long_exposure + new_short) if (long_exposure + new_short) > 0 else 1.0
+            new_short = f_add(short_exposure, notional)
+            side_total = f_add(long_exposure, new_short)
+            new_side_pct = f_div(new_short, side_total) if side_total > 0 else 1.0
         
         if new_side_pct > self.config.max_exposure_per_side_pct:
             return BudgetDecision(
@@ -614,9 +618,9 @@ class RiskBudgetEngine:
         # =========================================================
         # 6) Gross Exposure
         # =========================================================
-        current_gross = long_exposure + short_exposure
-        new_gross = current_gross + notional
-        max_gross = equity * self.config.max_gross_exposure_mult
+        current_gross = f_add(long_exposure, short_exposure)
+        new_gross = f_add(current_gross, notional)
+        max_gross = f_mul(equity, self.config.max_gross_exposure_mult)
         
         if new_gross > max_gross:
             return BudgetDecision(
@@ -663,13 +667,13 @@ class RiskBudgetEngine:
     def get_remaining_capacity(self) -> Dict[str, float]:
         """Get remaining capacity for each budget."""
         equity = self._equity
-        current_risk = sum(p.risk_usdt for p in self._positions)
-        current_gross = sum(p.notional for p in self._positions)
+        current_risk = f_sum(p.risk_usdt for p in self._positions)
+        current_gross = f_sum(p.notional for p in self._positions)
         
         return {
-            "portfolio_risk_remaining": (equity * self.config.portfolio_risk_pct) - current_risk,
-            "margin_remaining": (equity * self.config.max_margin_usage_pct) - self._margin_used,
-            "gross_exposure_remaining": (equity * self.config.max_gross_exposure_mult) - current_gross,
+            "portfolio_risk_remaining": f_sub(f_mul(equity, self.config.portfolio_risk_pct), current_risk),
+            "margin_remaining": f_sub(f_mul(equity, self.config.max_margin_usage_pct), self._margin_used),
+            "gross_exposure_remaining": f_sub(f_mul(equity, self.config.max_gross_exposure_mult), current_gross),
             "slots_remaining": self._compute_allowed_slots() - len(self._positions),
         }
 

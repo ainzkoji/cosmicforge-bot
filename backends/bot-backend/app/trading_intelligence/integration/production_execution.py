@@ -17,6 +17,7 @@ import time
 from app.core.config import settings
 from shared_lib.broker.environment import normalize_environment
 from shared_lib.core.production import order_submission_gate
+from shared_lib.core.money_math import ZERO, MoneyValueError, dsum, exact, to_dec, to_float
 from .residual_prospective import FAMILY, REGISTRY_HASH, SOURCE, Q, owner_current, frozen_definition
 from app.platform_workers.assignments import AssignmentLost
 
@@ -70,18 +71,21 @@ def account_periods(db, account, client, wallet, equity, risk_date, zone, now):
         for period, date in starts.items():
             stamp = int(datetime.combine(date, day_time.min, zone).timestamp()*1000)
             rows = sorted((r for r in history if int(r["time"]) >= stamp), key=lambda r:(int(r["time"]), str(r.get("tranId", ""))))
-            opening = wallet - sum(float(r["income"]) for r in rows)
-            transfers = sum(float(r["income"]) for r in rows if r["incomeType"] not in _TRADING_INCOME)
-            adjusted = equity
-            running = peak = opening
-            for r in rows:
-                if r["incomeType"] in _TRADING_INCOME:
-                    running += float(r["income"])
-                else:
-                    running += float(r["income"])
-                    peak += float(r["income"])
-                peak = max(peak, running)
-            peak = max(peak, adjusted)
+            # Exact decimal cash ledger (the venue's own income strings); one float conversion at the end.
+            try:
+                amounts = [to_dec(r["income"]) for r in rows]
+                with exact():
+                    running = peak = to_dec(wallet) - dsum(amounts)
+                    transfers_d = dsum(a for r, a in zip(rows, amounts) if r["incomeType"] not in _TRADING_INCOME)
+                    for r, amount in zip(rows, amounts):
+                        running += amount
+                        if r["incomeType"] not in _TRADING_INCOME:
+                            peak += amount
+                        peak = max(peak, running)
+                    peak = max(peak, to_dec(equity))
+            except MoneyValueError:
+                raise ValueError("BROKER_PERIOD_RISK_BASIS_UNAVAILABLE") from None
+            peak, transfers, adjusted = to_float(peak), to_float(transfers_d), equity
             if not all(math.isfinite(v) for v in (peak, adjusted)) or peak <= 0:
                 raise ValueError("BROKER_PERIOD_RISK_BASIS_UNAVAILABLE")
             c.execute("INSERT INTO cati_account_period_risk VALUES(?,?,?,?,?) ON CONFLICT(account_id,period,start_date) DO UPDATE SET peak_equity=MAX(peak_equity+excluded.transfers-transfers,excluded.peak_equity),transfers=excluded.transfers", (account["id"],period,date.isoformat(),peak,transfers))
@@ -89,6 +93,17 @@ def account_periods(db, account, client, wallet, equity, risk_date, zone, now):
             output[period] = {"peak_equity": durable, "adjusted_equity": adjusted,
                 "drawdown_pct": max(0., (durable-adjusted)/durable*100), "source": "BROKER_CASH_LEDGER_AND_DURABLE_EQUITY"}
     return output
+
+
+def _fill_vwap(fills):
+    """Volume-weighted average price of venue fills, computed exactly from their decimal strings (one rounding,
+    in the division, at 50 digits) and returned as the float the callers compare and report. None when the fills
+    hold no quantity."""
+    from shared_lib.core.money_math import div, mul
+    quantity = dsum(f.get("qty", 0) for f in fills)
+    if quantity == 0:
+        return None
+    return to_float(div(dsum(mul(f["price"], f["qty"]) for f in fills), quantity))
 
 
 def initialize(db):
@@ -163,18 +178,20 @@ def eligibility(row, now):
     return None
 
 
-def certification_pnl(db, account_id, start, now):
+def certification_pnl(db, account_id, start, now, *, exact_decimal=False):
     """Fill ids and realized PnL net of fees of labelled DEMO_CERTIFICATION
     fills in [start, now]. Operational certification is account truth, never
-    CATI strategy performance."""
+    CATI strategy performance. The PnL is summed exactly in Decimal and
+    returned as a float, or as the Decimal itself with ``exact_decimal``."""
     with db.connect() as c:
         if not c.execute("SELECT 1 FROM sqlite_master WHERE name='cati_production_fills'").fetchone():
-            return set(), 0.
+            return set(), (ZERO if exact_decimal else 0.)
         docs = [json.loads(r[0]) for r in c.execute("SELECT document FROM cati_production_fills WHERE account_id=?", (account_id,))]
     docs = [d for d in docs if (d.get("_execution") or {}).get("purpose") == "DEMO_CERTIFICATION"]
-    pnl = sum(float(d.get("realizedPnl") or 0) - float(d.get("commission") or 0)
-              for d in docs if start <= int(d.get("time", 0)) <= now)
-    return {str(d.get("id")) for d in docs}, pnl
+    window = [d for d in docs if start <= int(d.get("time", 0)) <= now]
+    with exact():
+        pnl = dsum(d.get("realizedPnl") for d in window) - dsum(d.get("commission") for d in window)
+    return {str(d.get("id")) for d in docs}, (pnl if exact_decimal else to_float(pnl))
 
 
 def account_daily_loss_policy(db, account, bots):
@@ -183,7 +200,7 @@ def account_daily_loss_policy(db, account, bots):
     share the account (losses are aggregated account-wide). None when no
     active bot resolves a policy -- the caller fails closed."""
     from app.core.bot_instance_service import BotInstanceService
-    from app.runner.effective_policy import resolve_effective_bot_policy
+    from app.policy.effective_policy import resolve_effective_bot_policy
     service = BotInstanceService(db=db)
     resolved = []
     for bot in bots:
@@ -234,15 +251,23 @@ def account_risk(db, account, client, positions, orders, bots, now, *, account_s
     history = income_ledger.rows(db, account["id"], day_start, now)
     # Strategy accounting excludes labelled DEMO_CERTIFICATION fills; the
     # wallet, equity, opening basis and drawdowns remain broker account truth.
-    cert_ids, cert_pnl = certification_pnl(db, account["id"], day_start, now)
+    cert_ids, cert_pnl_d = certification_pnl(db, account["id"], day_start, now, exact_decimal=True)
+    cert_pnl = to_float(cert_pnl_d)
     strategy = [p for p in history if str(p.get("tradeId") or "") not in cert_ids]
     # Wallet cashflow reconstructs midnight wallet; transfers affect capital,
     # never realized trading PnL. All broker trading losses/fees/funding count.
     trading = _TRADING_INCOME
-    realized = sum(float(p["income"]) for p in strategy if p["incomeType"] in trading)
-    fees = -sum(float(p['income']) for p in strategy if p['incomeType'] == 'COMMISSION')
-    funding = sum(float(p['income']) for p in strategy if p['incomeType'] == 'FUNDING_FEE')
-    flows = sum(float(p["income"]) for p in history if p["incomeType"] not in trading)
+    # Exact decimal sums of the venue's income strings (the ledger re-checked each one is finite); the
+    # results stay Decimal through the latch comparison below and become floats once, for the callers.
+    try:
+        realized_d = dsum(p["income"] for p in strategy if p["incomeType"] in trading)
+        fees_d = -dsum(p['income'] for p in strategy if p['incomeType'] == 'COMMISSION')
+        funding_d = dsum(p['income'] for p in strategy if p['incomeType'] == 'FUNDING_FEE')
+        flows_d = dsum(p["income"] for p in history if p["incomeType"] not in trading)
+        history_d = dsum(p["income"] for p in history)
+    except MoneyValueError:
+        raise ValueError("DAILY_RISK_BASIS_UNAVAILABLE") from None
+    realized, fees, funding, flows = (to_float(v) for v in (realized_d, fees_d, funding_d, flows_d))
     from app.risk.daily_loss import DailyLossState
     streak = DailyLossState(risk_date)
     realized_events = sorted((p for p in strategy if p["incomeType"] == "REALIZED_PNL" and float(p["income"]) != 0),
@@ -252,8 +277,13 @@ def account_risk(db, account, client, positions, orders, bots, now, *, account_s
             hard_limit=settings.MAX_CONSECUTIVE_LOSSES_HARD, cooldown_minutes=settings.CONSECUTIVE_LOSS_COOLDOWN_MINUTES,
             now_ms=int(event["time"]), emit_events=False)
     unrealized = float(raw["totalUnrealizedProfit"])
-    opening = wallet - sum(float(p["income"]) for p in history)
-    if not math.isfinite(opening) or opening <= 0 or not math.isfinite(realized + unrealized):
+    if not math.isfinite(unrealized):
+        raise ValueError("DAILY_RISK_BASIS_UNAVAILABLE")
+    wallet_d, unrealized_d = to_dec(raw["totalWalletBalance"]), to_dec(raw["totalUnrealizedProfit"])
+    with exact():
+        opening_d = wallet_d - history_d
+    opening = to_float(opening_d)
+    if opening_d <= 0:
         raise ValueError("DAILY_RISK_BASIS_UNAVAILABLE")
     policy = account_daily_loss_policy(db, account, bots)
     day = risk_date.isoformat()
@@ -262,15 +292,20 @@ def account_risk(db, account, client, positions, orders, bots, now, *, account_s
         c.execute("INSERT OR IGNORE INTO cati_production_daily_risk VALUES(?,?,?,0)", (account["id"], day, opening))
         state = c.execute("SELECT * FROM cati_production_daily_risk WHERE account_id=? AND day=?", (account["id"], day)).fetchone()
         basis = float(state["opening_wallet"])
-        account_realized = wallet - basis - flows
-        # The broker income ledger can lag the wallet. Strategy PnL never reads
-        # better than the wallet's own change since the day's opening basis,
-        # net of capital flows and of labelled certification fills.
-        realized = min(realized, account_realized - cert_pnl)
-        loss = max(0., -realized - unrealized)
-        limit = basis * policy["pct"] if policy else None
+        basis_d = to_dec(state["opening_wallet"])
+        with exact():
+            account_realized_d = wallet_d - basis_d - flows_d
+            # The broker income ledger can lag the wallet. Strategy PnL never reads
+            # better than the wallet's own change since the day's opening basis,
+            # net of capital flows and of labelled certification fills.
+            realized_d = min(realized_d, account_realized_d - cert_pnl_d)
+            loss_d = max(ZERO, -realized_d - unrealized_d)
+            limit_d = basis_d * to_dec(policy["pct"]) if policy else None
+            remaining_d = max(ZERO, limit_d - loss_d) if limit_d is not None else None
+        account_realized, realized, loss = (to_float(v) for v in (account_realized_d, realized_d, loss_d))
+        limit = to_float(limit_d) if limit_d is not None else None
         already_latched = bool(state["loss_latched"])
-        latched = already_latched or (limit is not None and loss >= limit)
+        latched = already_latched or (limit_d is not None and loss_d >= limit_d)
         if latched:
             c.execute("UPDATE cati_production_daily_risk SET loss_latched=1 WHERE account_id=? AND day=?", (account["id"], day))
     if latched and not already_latched:
@@ -309,7 +344,7 @@ def account_risk(db, account, client, positions, orders, bots, now, *, account_s
             "opening_equity": basis, "realized_pnl": realized, "unrealized_pnl": unrealized,
             "fees": fees, "funding": funding,
             "account_realized_pnl": account_realized, "certification_pnl": cert_pnl,
-            "daily_loss_usage": loss, "remaining_daily_risk": max(0., limit-loss) if limit is not None else 0.,
+            "daily_loss_usage": loss, "remaining_daily_risk": to_float(remaining_d) if remaining_d is not None else 0.,
             "daily_loss_limit_fraction": policy["pct"] if policy else None, "daily_loss_policy": policy,
             "loss_latched": latched,
             "open_positions": len(active), "entry_orders": len(entry_orders),
@@ -406,7 +441,7 @@ def boundary_for(db, account, bot, client):
     """Build execution components directly, without constructing PaperRunner."""
     from app.core.bot_instance_service import BotInstanceService
     from app.core.broker_capability_gate import assert_broker_execution_capability, load_permission_evidence
-    from app.runner.effective_policy import resolve_effective_bot_policy
+    from app.policy.effective_policy import resolve_effective_bot_policy
     from app.risk.system_limits import UserConfigurableLimits, RiskLevel
     from app.core.trading_orchestrator import TradingOrchestrator
     from app.execution.executor import BinanceExecutor
@@ -1381,8 +1416,8 @@ def _reconcile_attempt(db, boundary, client, now, plans, attempts, account, atte
                 "protection": "NOT_REQUIRED_FLAT" if position.answered and position.quantity == 0 else "UNCONFIRMED"}
         # Binance prints avgPrice rounded; the order's own complete fills give
         # the exact average the position entryPrice is computed from.
-        fill_qty = sum(float(f.get("qty", 0)) for f in fills)
-        entry_avg = (sum(float(f["price"])*float(f["qty"]) for f in fills)/fill_qty
+        fill_qty = to_float(dsum(f.get("qty", 0) for f in fills))
+        entry_avg = (_fill_vwap(fills)
                      if fill_qty and abs(fill_qty-order.executed_qty) <= 1e-9*order.executed_qty else order.avg_price)
         if order.answered and order.executed_qty > 0 and position.answered and position.side == plan.side and position.quantity > 0 \
                 and position.quantity <= order.executed_qty and position.entry_price and entry_avg \
@@ -1457,7 +1492,7 @@ def _reconcile_attempt(db, boundary, client, now, plans, attempts, account, atte
             entry_time = max((int(f.get('time',now)) for f in fills),default=now)
             exits = [f for f in all_fills if int(f.get('time',0)) >= entry_time
                      and f.get('side') == ('SELL' if plan.side == 'LONG' else 'BUY')]
-            if closed or (fills and sum(float(f.get('qty',0)) for f in exits) >= order.executed_qty):
+            if closed or (fills and dsum(f.get('qty',0) for f in exits) >= to_dec(order.executed_qty)):
                 with db.connect() as c:
                     for fill in exits:
                         if fill.get('id') is None or fill.get('orderId') is None:
@@ -1478,10 +1513,10 @@ def _reconcile_attempt(db, boundary, client, now, plans, attempts, account, atte
                 boundary._resolve(plan,'CONSUMED',now,'BROKER_CONFIRMED_ENTRY_AND_CLOSE')
                 item.update(lifecycle='CLOSED',exit_fills=exits)
                 # The exit fills and the POSITION_CLOSED attempt state are committed above.
-                realized = sum(float(f.get('realizedPnl', 0) or 0) for f in exits)
-                fees = sum(float(f.get('commission', 0) or 0) for f in fills + exits)
-                exit_qty = sum(float(f.get('qty', 0) or 0) for f in exits)
-                exit_avg = (sum(float(f['price'])*float(f['qty']) for f in exits)/exit_qty) if exit_qty else None
+                realized = to_float(dsum(f.get('realizedPnl', 0) for f in exits))
+                fees = to_float(dsum(f.get('commission', 0) for f in fills + exits))
+                exit_qty = to_float(dsum(f.get('qty', 0) for f in exits))
+                exit_avg = _fill_vwap(exits) if exit_qty else None
                 _user_event(db, plan, 'EXIT_FILLED', ('exit', plan.trade_plan_id), {
                     "symbol": symbol, "side": plan.side, "quantity": exit_qty, "exit_price": exit_avg, "entry_price": entry_avg,
                     "realized_pnl_gross": realized, "fees": fees, "trade_plan_id": plan.trade_plan_id,

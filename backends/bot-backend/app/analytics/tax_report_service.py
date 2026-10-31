@@ -9,6 +9,7 @@ Phase 2 (Future): FIFO/LIFO matching when position lifecycle IDs exist
 """
 from typing import Optional, Dict, List, Any
 from datetime import datetime, timezone
+from shared_lib.core.money_math import ZERO, dsum, mul, to_dec, to_float
 from shared_lib.persistence.db import DB
 import logging
 import csv
@@ -91,28 +92,16 @@ class TaxReportService:
                 params
             ).fetchall()
             
-            # Summary stats
-            summary_row = conn.execute(
-                f"""
-                SELECT 
-                    COUNT(*) as total_trades,
-                    SUM(CASE WHEN realized_pnl > 0 THEN 1 ELSE 0 END) as gains_count,
-                    SUM(CASE WHEN realized_pnl < 0 THEN 1 ELSE 0 END) as losses_count,
-                    SUM(CASE WHEN realized_pnl > 0 THEN realized_pnl ELSE 0 END) as total_gains,
-                    SUM(CASE WHEN realized_pnl < 0 THEN realized_pnl ELSE 0 END) as total_losses,
-                    SUM(realized_pnl) as net_pnl,
-                    SUM(fee) as total_fees
-                FROM trade_fills
-                WHERE {where_sql}
-                """,
-                params
-            ).fetchone()
-        
-        # Format trades
+        # Format trades. Money is summed in exact decimal over the same rows (every CLOSE fill of the year) and
+        # reported as the float nearest each exact total; a NULL fee or PnL counts as zero, as SQL SUM skipped it.
         trade_list = []
         by_symbol = {}
+        pnl_values = [to_dec(row["realized_pnl"], default=ZERO) for row in trades]
+        fee_values = [to_dec(row["fee"], default=ZERO) for row in trades]
+        symbol_pnl: Dict[str, List[Any]] = {}
+        symbol_fees: Dict[str, List[Any]] = {}
         
-        for row in trades:
+        for row, row_pnl, row_fee in zip(trades, pnl_values, fee_values):
             trade = {
                 "date": row["timestamp_utc"][:10] if row["timestamp_utc"] else "",
                 "timestamp": row["timestamp_utc"],
@@ -120,7 +109,7 @@ class TaxReportService:
                 "side": row["side"],
                 "qty": float(row["qty"]),
                 "price": float(row["price"]),
-                "proceeds": float(row["qty"]) * float(row["price"]),
+                "proceeds": to_float(mul(row["qty"], row["price"])),
                 "fee": float(row["fee"] or 0.0),
                 "realized_pnl": float(row["realized_pnl"] or 0.0),
                 "quote_currency": row["quote_currency"] or "USDT",
@@ -140,18 +129,21 @@ class TaxReportService:
                     "total_fees": 0.0
                 }
             by_symbol[symbol]["trade_count"] += 1
-            by_symbol[symbol]["total_pnl"] += float(row["realized_pnl"] or 0.0)
-            by_symbol[symbol]["total_fees"] += float(row["fee"] or 0.0)
+            symbol_pnl.setdefault(symbol, []).append(row_pnl)
+            symbol_fees.setdefault(symbol, []).append(row_fee)
+        for symbol, entry in by_symbol.items():
+            entry["total_pnl"] = to_float(dsum(symbol_pnl[symbol]))
+            entry["total_fees"] = to_float(dsum(symbol_fees[symbol]))
         
         # Summary
         summary = {
-            "total_trades": summary_row["total_trades"] if summary_row else 0,
-            "gains_count": summary_row["gains_count"] or 0 if summary_row else 0,
-            "losses_count": summary_row["losses_count"] or 0 if summary_row else 0,
-            "total_gains": float(summary_row["total_gains"] or 0.0) if summary_row else 0.0,
-            "total_losses": float(summary_row["total_losses"] or 0.0) if summary_row else 0.0,
-            "net_pnl": float(summary_row["net_pnl"] or 0.0) if summary_row else 0.0,
-            "total_fees": float(summary_row["total_fees"] or 0.0) if summary_row else 0.0
+            "total_trades": len(trades),
+            "gains_count": sum(1 for v in pnl_values if v > 0),
+            "losses_count": sum(1 for v in pnl_values if v < 0),
+            "total_gains": to_float(dsum(v for v in pnl_values if v > 0)),
+            "total_losses": to_float(dsum(v for v in pnl_values if v < 0)),
+            "net_pnl": to_float(dsum(pnl_values)),
+            "total_fees": to_float(dsum(fee_values))
         }
         
         disclaimer = (

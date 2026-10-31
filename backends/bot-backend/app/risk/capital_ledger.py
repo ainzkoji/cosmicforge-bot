@@ -66,8 +66,13 @@ from dataclasses import dataclass, field
 from typing import Any, Callable
 
 from app.decision.reasons import ExecutionReason, RiskReason
+from shared_lib.core.money_math import f_div as _x_div, f_mul as _x_mul, f_sub as _x_sub, f_sum as _x_sum
 
 logger = logging.getLogger(__name__)
+
+# Money arithmetic on the float interface (``shared_lib.core.money_math.f_*``): each result is computed exactly
+# from the operands' decimals and returned as the nearest float; the EPSILON comparisons below are unchanged. A
+# non-finite operand keeps plain float semantics, so no new exception reaches the order path.
 
 #: Float comparisons on money. Below this, a residual is zero.
 EPSILON = 1e-9
@@ -167,7 +172,7 @@ def capital_rejection(
         per_trade_allocation=float(per_trade_allocation or 0.0), committed_margin=0.0,
         open_positions=0, portfolio_margin_limit=0.0,
         requested_notional=requested, approved_notional=0.0,
-        requested_margin=requested / lev, approved_margin=0.0, leverage=lev,
+        requested_margin=_x_div(requested, lev), approved_margin=0.0, leverage=lev,
         stages=({"stage": "unavailable", "notional": 0.0, "margin": 0.0, "note": detail},),
     )
 
@@ -247,7 +252,7 @@ class CapitalLedger:
         """
         leverage = max(1.0, float(leverage or 1.0))
         requested_notional = float(risk_notional or 0.0)
-        requested_margin = requested_notional / leverage
+        requested_margin = _x_div(requested_notional, leverage)
         try:
             committed = self._read_committed_margin()
             open_count = self._read_open_positions()
@@ -270,7 +275,7 @@ class CapitalLedger:
             stage = {
                 "stage": name,
                 "notional": round(notional, 8),
-                "margin": round(notional / leverage, 8),
+                "margin": round(_x_div(notional, leverage), 8),
                 "note": note,
             }
             if reason:
@@ -283,7 +288,7 @@ class CapitalLedger:
                 per_trade_allocation=self.per_trade_allocation, committed_margin=committed,
                 open_positions=open_count, portfolio_margin_limit=self.portfolio_margin_limit,
                 requested_notional=requested_notional, approved_notional=notional,
-                requested_margin=requested_margin, approved_margin=notional / leverage,
+                requested_margin=requested_margin, approved_margin=_x_div(notional, leverage),
                 leverage=leverage, stages=tuple(stages),
             )
 
@@ -303,7 +308,7 @@ class CapitalLedger:
                 False, RiskReason.CAPITAL_BUDGET_REQUIRED,
                 "no per-trade allocation is configured for this bot", 0.0,
             )
-        allocation_notional = self.per_trade_allocation * leverage
+        allocation_notional = _x_mul(self.per_trade_allocation, leverage)
         if notional > allocation_notional + EPSILON:
             notional = allocation_notional
             record(
@@ -319,7 +324,7 @@ class CapitalLedger:
 
         # ── 3. Explicit portfolio limit — only when one is configured ───────
         if self.portfolio_margin_limit > EPSILON:
-            room = max(0.0, self.portfolio_margin_limit - committed)
+            room = max(0.0, _x_sub(self.portfolio_margin_limit, committed))
             if room <= EPSILON:
                 record("portfolio_limit", 0.0, "explicit portfolio limit fully used",
                        RiskReason.PORTFOLIO_EXPOSURE_LIMIT)
@@ -328,8 +333,8 @@ class CapitalLedger:
                     f"explicit portfolio margin limit {self.portfolio_margin_limit:g} "
                     f"is fully used ({committed:g} committed)", 0.0,
                 )
-            if notional / leverage > room + EPSILON:
-                notional = room * leverage
+            if _x_div(notional, leverage) > room + EPSILON:
+                notional = _x_mul(room, leverage)
                 record(
                     "portfolio_limit", notional,
                     f"capped to the {room:g} margin left under the explicit portfolio "
@@ -377,7 +382,7 @@ class CapitalLedger:
 
         return verdict(
             True, RiskReason.APPROVED,
-            f"{notional:.8g} notional / {notional / leverage:.8g} margin against a "
+            f"{notional:.8g} notional / {_x_div(notional, leverage):.8g} margin against a "
             f"{self.per_trade_allocation:g} per-trade allocation "
             f"({committed:g} committed in {open_count} open positions)",
             notional,
@@ -464,7 +469,7 @@ class AccountMarginReservations:
 
     def _pending(self, account_key: str) -> tuple[int, float]:
         entries = [e for e in self._entries.values() if e["account"] == account_key]
-        return len(entries), sum(e["margin"] for e in entries)
+        return len(entries), _x_sum(e["margin"] for e in entries)
 
     def pending_margin(self, account_key: str) -> float:
         with self._lock:
@@ -499,7 +504,7 @@ class AccountMarginReservations:
             now = self._clock()
             self._prune(now)
             _, pending = self._pending(account_key)
-            effective = max(0.0, available - pending)
+            effective = max(0.0, _x_sub(available, pending))
             if effective < float(min_available or 0.0) or requested <= EPSILON:
                 return AccountReservation(
                     token=None, account_key=account_key, approved=False,
@@ -508,7 +513,7 @@ class AccountMarginReservations:
                     available_balance=available, pending_margin=pending,
                     effective_available=effective,
                 )
-            reserved = min(requested, effective * float(safety_buffer))
+            reserved = min(requested, _x_mul(effective, float(safety_buffer)))
             token = uuid.uuid4().hex
             self._entries[token] = {
                 "account": account_key,
@@ -579,7 +584,7 @@ def allocation_variance(
     """
     configured = float(configured_trade_allocation or 0.0)
     actual = float(actual_committed_margin or 0.0)
-    variance = actual - configured
+    variance = _x_sub(actual, configured)
     return {
         "allocation_scope": ALLOCATION_SCOPE,
         "configured_trade_allocation": round(configured, 8),
@@ -587,7 +592,7 @@ def allocation_variance(
         "actual_committed_margin": round(actual, 8),
         "allocation_variance": round(variance, 8),
         "allocation_variance_pct": (
-            round(variance / configured * 100.0, 6) if configured > EPSILON else None
+            round(_x_div(_x_mul(variance, 100.0), configured), 6) if configured > EPSILON else None
         ),
         "exceeds_trade_allocation": variance > EPSILON,
     }
@@ -605,7 +610,7 @@ def per_trade_allocation_margin(
         return value
     if kind in {"percent_balance", "percent_equity", "percent"}:
         capital = float(capital_allocation or 0.0)
-        return capital * value / 100.0 if capital > 0 else 0.0
+        return _x_div(_x_mul(capital, value), 100.0) if capital > 0 else 0.0
     if kind == "risk_based":
         # The risk-derived size (execution.risk_sizing) is the authoritative
         # ceiling and already honours the user's max position; the ledger's
@@ -641,7 +646,7 @@ def capital_diagnostics(
     pending = reservations.snapshot(account_key) if account_key else {"count": 0, "margin": 0.0}
     affordable = None
     if broker_available_margin is not None:
-        affordable = max(0.0, min(per_trade, float(broker_available_margin) - pending["margin"]))
+        affordable = max(0.0, min(per_trade, _x_sub(float(broker_available_margin), pending["margin"])))
     return {
         "allocation_type": allocation_type,
         "allocation_value": allocation_value,
@@ -670,4 +675,4 @@ def capital_diagnostics(
 
 def margin_for(quantity: float, price: float, leverage: float) -> float:
     """Margin a position ties up. One definition, used everywhere."""
-    return abs(float(quantity) * float(price)) / max(1.0, float(leverage or 1.0))
+    return _x_div(abs(_x_mul(float(quantity), float(price))), max(1.0, float(leverage or 1.0)))

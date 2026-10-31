@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Optional
 
+from shared_lib.core.money_math import exact, to_dec, to_float
 from shared_lib.persistence.db import DB, utc_now_iso
 
 
@@ -99,9 +100,12 @@ def update_strategy_performance(
         wins = int(row["wins"]) + (1 if outcome_win else 0)
         losses = int(row["losses"]) + (0 if outcome_win else 1)
 
-        net_pnl = float(row["net_pnl"]) + float(net_pnl_delta)
-        gross_pnl = float(row["gross_pnl"]) + float(gross_pnl_delta)
-        fees = float(row["fees"]) + float(fees_delta)
+        # Running money totals are added in exact decimal and stored as the float nearest the exact total, so
+        # repeated updates do not accumulate binary rounding error (10,000 fees of 0.1 store exactly 1000.0).
+        with exact():
+            net_pnl = to_float(to_dec(row["net_pnl"]) + to_dec(net_pnl_delta))
+            gross_pnl = to_float(to_dec(row["gross_pnl"]) + to_dec(gross_pnl_delta))
+            fees = to_float(to_dec(row["fees"]) + to_dec(fees_delta))
         avg_slippage = (
             float(row["avg_slippage"]) * (trades - 1) + float(slippage_delta)
         ) / trades

@@ -7,12 +7,18 @@ from the equity_snapshots table.
 from fastapi import APIRouter, Depends, HTTPException, Query
 from typing import List, Optional
 from datetime import datetime, timezone, timedelta
+from shared_lib.core.money_math import dsub, dsum, to_float
 from shared_lib.persistence.db import DB
 from app.core.config import settings
 from app.core.auth import get_current_active_user
 import logging
 
 logger = logging.getLogger(__name__)
+
+
+def _exact_change(later, earlier) -> float:
+    """``later - earlier`` on the stored values' exact decimals (NULL as zero), as the nearest float."""
+    return to_float(dsub(later, earlier))
 
 router = APIRouter()
 
@@ -186,8 +192,9 @@ async def get_latest_equity(
             })
         
         # Calculate total across all accounts
-        total_equity = sum(a["equity"] for a in accounts)
-        total_unrealized_pnl = sum(a["unrealized_pnl"] for a in accounts)
+        # Exact decimal totals of the stored values, reported as the nearest float.
+        total_equity = to_float(dsum(a["equity"] for a in accounts))
+        total_unrealized_pnl = to_float(dsum(a["unrealized_pnl"] for a in accounts))
         
         return {
             "accounts": accounts,
@@ -281,8 +288,8 @@ async def get_reconciliation(
                     balance_change = {
                         "from_ts": start_eq["timestamp_utc"],
                         "to_ts": latest_eq["timestamp_utc"],
-                        "wallet_balance_change": float(latest_eq["wallet_balance"] or 0.0) - float(start_eq["wallet_balance"] or 0.0),
-                        "equity_change": float(latest_eq["equity"] or 0.0) - float(start_eq["equity"] or 0.0),
+                        "wallet_balance_change": _exact_change(latest_eq["wallet_balance"], start_eq["wallet_balance"]),
+                        "equity_change": _exact_change(latest_eq["equity"], start_eq["equity"]),
                     }
 
             # -----------------------------
@@ -342,7 +349,7 @@ async def get_reconciliation(
             closed_positions = int(grouped_row["closed_positions"] or 0) if grouped_row else 0
             gross_realized = float(grouped_row["gross_realized_pnl"] or 0.0) if grouped_row else 0.0
             fees = float(grouped_row["fees"] or 0.0) if grouped_row else 0.0
-            net_closed = gross_realized - fees
+            net_closed = _exact_change(gross_realized, fees)
 
             trade_fills_summary = {
                 "closed_positions": closed_positions,

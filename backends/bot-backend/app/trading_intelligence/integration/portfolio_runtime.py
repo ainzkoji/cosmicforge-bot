@@ -55,8 +55,10 @@ def close_brakes(db, account, client, market, risk_level, now_ms):
     # The account ledger must cover exactly the two observed closes, including
     # all transfers. No inference from a change in wallet balance is used.
     income_ledger.ensure_covered(db, client, account["id"], previous_observed, observed, force=True)
-    flows = sum(float(row["income"]) for row in income_ledger.rows(db, account["id"], previous_observed, observed)
-                if row["incomeType"] not in _TRADING_INCOME and int(row["time"]) > previous_observed)
+    # Exact decimal sum of the venue's transfer amounts, one float conversion for the brake evaluation.
+    from shared_lib.core.money_math import fsum_exact
+    flows = fsum_exact(row["income"] for row in income_ledger.rows(db, account["id"], previous_observed, observed)
+                       if row["incomeType"] not in _TRADING_INCOME and int(row["time"]) > previous_observed)
     return brakes.evaluate(
         db, account_id=account["id"], scope=brakes.ACCOUNT_SCOPE, risk_day=day,
         day_definition=brakes.UTC_DAY, closing_equity=closing, initial_equity=opening,
@@ -72,7 +74,7 @@ def boundary_for(db, account, client, bot, clock):
     from app.core.bot_instance_service import BotInstanceService
     from app.core.broker_capability_gate import assert_broker_execution_capability
     from app.core.risk_profile_params import risk_based_params
-    from app.runner.effective_policy import resolve_effective_bot_policy
+    from app.policy.effective_policy import resolve_effective_bot_policy
     from app.core.config import settings
 
     service = BotInstanceService(db=db)

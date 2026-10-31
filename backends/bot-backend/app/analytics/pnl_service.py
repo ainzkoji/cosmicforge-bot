@@ -7,6 +7,7 @@ Provides multi-user, multi-broker P&L reporting using:
 """
 from typing import Optional, Dict, List, Any
 from datetime import datetime, timezone, timedelta
+from shared_lib.core.money_math import dsub, dsum, to_float
 from shared_lib.persistence.db import DB
 import logging
 
@@ -117,7 +118,7 @@ class PnLService:
         return {
             "total_pnl": total_pnl,
             "total_fees": total_fees,
-            "net_pnl": total_pnl - total_fees,
+            "net_pnl": _exact_difference(total_pnl, total_fees),
             "trade_count": result["trade_count"],
             "profitable_trades": result["profitable_trades"] or 0,
             "losing_trades": result["losing_trades"] or 0,
@@ -191,12 +192,12 @@ class PnLService:
             ).fetchall()
         
         accounts = []
-        total_unrealized = 0.0
+        unrealized_values = []
         latest_timestamp = None
         
         for row in rows:
             upnl = float(row["unrealized_pnl"] or 0.0)
-            total_unrealized += upnl
+            unrealized_values.append(row["unrealized_pnl"])
             
             accounts.append({
                 "broker_account_id": row["broker_account_id"],
@@ -210,7 +211,7 @@ class PnLService:
                 latest_timestamp = row["timestamp_utc"]
         
         return {
-            "total_unrealized_pnl": total_unrealized,
+            "total_unrealized_pnl": _exact_total(unrealized_values),
             "accounts": accounts,
             "currency": "USDT",  # Assuming all in USDT for now
             "timestamp": latest_timestamp
@@ -260,9 +261,9 @@ class PnLService:
         return {
             "realized_pnl": realized["total_pnl"],
             "unrealized_pnl": unrealized["total_unrealized_pnl"],
-            "total_pnl": realized["total_pnl"] + unrealized["total_unrealized_pnl"],
+            "total_pnl": _exact_total((realized["total_pnl"], unrealized["total_unrealized_pnl"])),
             "total_fees": realized["total_fees"],
-            "net_total_pnl": realized["net_pnl"] + unrealized["total_unrealized_pnl"],
+            "net_total_pnl": _exact_total((realized["net_pnl"], unrealized["total_unrealized_pnl"])),
             "trade_count": realized["trade_count"],
             "profitable_trades": realized["profitable_trades"],
             "losing_trades": realized["losing_trades"],
@@ -336,18 +337,18 @@ class PnLService:
             ).fetchall()
         
         breakdown = []
-        total_pnl = 0.0
+        group_totals = []
         
         for row in rows:
             pnl = float(row["total_pnl"] or 0.0)
             fees = float(row["total_fees"] or 0.0)
-            total_pnl += pnl
+            group_totals.append(pnl)
             
             breakdown.append({
                 group_by: row["group_key"],
                 "total_pnl": pnl,
                 "total_fees": fees,
-                "net_pnl": pnl - fees,
+                "net_pnl": _exact_difference(pnl, fees),
                 "trade_count": row["trade_count"],
                 "profitable_trades": row["profitable_trades"] or 0,
                 "losing_trades": row["losing_trades"] or 0,
@@ -357,9 +358,19 @@ class PnLService:
         return {
             "group_by": group_by,
             "breakdown": breakdown,
-            "total_pnl": total_pnl,
+            "total_pnl": _exact_total(group_totals),
             "currency": "USDT"
         }
+
+
+def _exact_total(values) -> float:
+    """The float nearest the exact decimal sum of money values (NULL counts as zero, as SQL SUM skips it)."""
+    return to_float(dsum(values))
+
+
+def _exact_difference(a, b) -> float:
+    """``a - b`` computed exactly on the values' decimals, returned as the nearest float."""
+    return to_float(dsub(a, b))
 
 
 # Singleton instance

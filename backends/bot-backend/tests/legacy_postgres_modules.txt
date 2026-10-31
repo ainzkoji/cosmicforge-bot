@@ -38,3 +38,5 @@ tests/test_fill_resolution_and_slots.py
 tests/exchange/test_rules_cache.py
 tests/exchange/test_user_stream.py
 tests/exchange/test_rate_budget.py
+# Exact runtime money arithmetic: account risk, fills, metrics, reports, capital (persist -> reload)
+tests/trading_intelligence/test_runtime_decimal_money.py
