@@ -1,6 +1,6 @@
 # Steps 5–8: external gates and owner decisions (closure register)
 
-Updated 17 October 2026; EXT-DB-01, EXT-WRK-01 and EXT-LIQ-01 updated 30 October 2026 (see the [engineering closure](STEP5_STEP8_ENGINEERING_CLOSURE.md)). This register grants no trading or commercial authority. Every entry is a dependency that
+Updated 17 October 2026. EXT-DB-01, EXT-WRK-01 and EXT-LIQ-01 updated 30 October 2026 (see the [engineering closure](STEP5_STEP8_ENGINEERING_CLOSURE.md)). The Section J launch checklist and EXT-J-01, EXT-SEC-02 and EXT-OWN-I updated 31 October 2026 (see [MASTER_PLAN_I_L_COMPLIANCE.md](MASTER_PLAN_I_L_COMPLIANCE.md)). This register grants no trading or commercial authority. Every entry is a dependency that
 engineering cannot close. None of them may be replaced by simulated elapsed time, synthetic fills, a manual PASS, or
 a test that bypasses the unavailable dependency. The Step 3/4 register ([STEP3_STEP4_CARRY_FORWARD.md](STEP3_STEP4_CARRY_FORWARD.md))
 still applies in full. Its gates H-RESEARCH, H-PROMOTION, H-VENUE, H-BINGX, H-SHADOW-7D/28D, H-THROUGHPUT and
@@ -29,26 +29,36 @@ Gate types: certification separation (C), owner decision (O), external provider 
 | EXT-LEGAL-01 | P | Public launch | Qualified counsel | Review every legal document (all are DRAFT_PENDING_COUNSEL). Record each approval through the admin review endpoint. Determine eligibility country by country (all are UNDETERMINED). |
 | EXT-KYC-01 | P/O | Identity for live trading | Owner + provider | Choose an identity provider (or keep manual review) and certify it. Schedule `expire_due_verifications` if a validity period is set. |
 | EXT-SEC-01 | P | Public launch | Independent assessor | External penetration test of the portal, APIs and servers (scope: `docs/security/EXTERNAL_ASSESSMENT_SCOPE.md`). Remediate the findings. A self-run test suite is not equivalent. |
-| EXT-SEC-02 | O | Production secrets | Operator | Real `SECRET_KEY`, `CREDENTIAL_KEY`, `BROKER_SECRET_KEY`, `LEGAL_EVIDENCE_HASH_KEY`, `TRACK_RECORD_PSEUDONYM_KEY`; administrator passwords from Git history rotated (SEC-01, SEC-02 of Step 1); admin MFA enrolled. |
+| EXT-SEC-02 | O | Production secrets | Operator | Real `SECRET_KEY`, `CREDENTIAL_KEY`, `BROKER_SECRET_KEY` (at least 32 characters; production now refuses shorter), `KYC_ENCRYPTION_KEY` (at least 32), `LEGAL_EVIDENCE_HASH_KEY`, `TRACK_RECORD_PSEUDONYM_KEY`. Administrator passwords from Git history (`db4580b`, `cc13da0`, `b35c198`) rotated with `create_admin.py <email> --reset-password`, then MFA reset and re-enrolled (procedure: MASTER_PLAN_I_L_COMPLIANCE.md section 5.3). Record the date and operator here. |
 | EXT-OPS-01 | O | Public launch | Owner | A named on-call rotation (today: OPERATIONS OWNER REQUIRED), off-site backup credentials, a restore drill on production-like infrastructure, help-desk staffing. |
-| EXT-J-01 | O | Step 8 closure | Owner | Section J launch checklist: the authoritative text is not in the repository. The provisional checklist below must be reconciled with it. |
+| EXT-J-01 | O | Step 8 closure | Owner | The Section J launch checklist J-01…J-09 below. It replaces the provisional checklist of 17 October. Every item needs its external, elapsed or owner part before it is accepted. |
+| EXT-OWN-I | O | Section I Batches 2, 3, 4, 6, 9 and 10 | Owner | Approve or reject each deletion plan in [SECTION_I_REMOVAL_INVENTORY.md](SECTION_I_REMOVAL_INVENTORY.md) (31 October update): REM-01 for Batches 2–4; amend or keep the M9 rule for Batch 6; the traditional venue (H-019 D1/D3) for Batch 9; the news and Signal Center product surfaces for Batch 10. |
+| EXT-F8-01 | O | Removal of the authentication compatibility window | Operator | No in-repository client needs bearer headers or URL tokens. Log their presence (never the value) for an observation window. Then set `AUTH_BEARER_COMPAT=false` in the user and admin backends. |
 | EXT-LAUNCH | O | Public launch | Owner | Explicit public-launch approval after every entry above. |
 
-## Provisional Step 8 launch checklist
+## Section J launch checklist (J-01 … J-09)
 
-Built from the Step 8 requirements in the assignment, not from Section J, which is unavailable.
+Taken from the master plan's Section J (as quoted in the Sections I–L assignment). It replaces the provisional list
+of 17 October.
 
-| # | Item | State |
-|---|---|---|
-| 1 | Billing verified (test mode, then one authorized live verification) | test mode PASS; live BLOCKED (EXT-BILL-01) |
-| 2 | Legal documents approved by counsel | BLOCKED (EXT-LEGAL-01) |
-| 3 | Country-specific regulatory determination | BLOCKED (EXT-LEGAL-01) |
-| 4 | Identity-verification readiness | policy and adapter PASS; provider BLOCKED (EXT-KYC-01) |
-| 5 | Independent security assessment | BLOCKED (EXT-SEC-01) |
-| 6 | Admin MFA | engineering: see 8.4; enrolment: operator |
-| 7 | Verified backups and recovery | synthetic drill: see 8.5; production BLOCKED (EXT-OPS-01) |
-| 8 | Named operations team | BLOCKED: OPERATIONS OWNER REQUIRED |
-| 9 | Customer support | help desk engineered; staffing BLOCKED |
-| 10 | Accurate performance disclosure | public page shows NOT_YET_AVAILABLE; methodology published |
-| 11 | Strategy and venue certification for any enabled trading | BLOCKED (H-RESEARCH, H-VENUE) |
-| 12 | Explicit owner launch approval | BLOCKED (EXT-LAUNCH) |
+Columns:
+- **E**: engineering complete;
+- **CI**: CI verified;
+- **S**: staging verified;
+- **X**: external certification or elapsed time;
+- **O**: owner approval;
+- **Accepted**: full acceptance.
+
+No item is accepted. A page, an API or a passing test is not acceptance.
+
+| Item | Requirement | E | CI | S | X | O | Accepted | What is missing |
+|---|---|---|---|---|---|---|---|---|
+| J-01 | Strategy passes its research test, a demo run and eight weeks of live operation | gates built | yes | — | **missing** | promotion | **No** | No family passes (H-018 uncertified; residual failed Mandate 003; Mandate 004 holdout unopened). No demo run, no live weeks (H-RESEARCH, H-PROMOTION, EXT-BETA-A). |
+| J-02 | All three exchanges certified; every beta position has exchange-side protection | harness, register, protection gate | yes | — | **missing** | permits | **No** | No venue certification run (H-VENUE, H-BINGX). Protection is enforced in code (fail-safe close otherwise). |
+| J-03 | Daily shadow decisions match the certified strategy rules | shadow comparisons recorded daily | yes | — | **missing** | — | **No** | Nothing is certified to compare against; H-SHADOW-7D/28D. |
+| J-04 | A new user reaches a running, authorized bot without operator help; the interface shows positions, trades, fees, results, reasons and notifications | yes | yes | not run | real demo journey | — | **No** | A staging run and a real demo journey. This build has no authorized strategy to run, so a bot shows SHADOW / blocked reasons, honestly. |
+| J-05 | Stop, pause and risk changes take effect according to their documented semantics | yes | yes | not run | — | — | **Engineering only** | Staging confirmation. |
+| J-06 | Independent security assessment; admin MFA enforced; session tokens protected; kill switch and flatten drilled in an authorized environment | MFA mandatory in production (both backends), sessions, kill switch, flatten | yes | drills not on staging | **penetration test** | drill authorization | **No** | EXT-SEC-01, EXT-DRILL-01, EXT-F8-01. |
+| J-07 | Every valid remaining test failure resolved; quarantine empty | partly (QUARANTINE_REGISTER.md) | — | — | — | Batch 7 owner items | **No** | The remaining entries test the legacy runner. |
+| J-08 | 1,000-account load, PostgreSQL restore, off-site backups, staging, monitoring, reachable on-call, runbooks | synthetic load, restore and backup drills, alerting, runbooks | yes | **no host** | demo-account load | on-call person | **No** | EXT-STG-01, EXT-LOAD-01, EXT-OPS-01. |
+| J-09 | Approved terms, privacy and risk disclosures; licensing per served country; billing verified; accurate live track record; working support and status page | drafts, help desk, status page, track-record page (NOT_YET_AVAILABLE), billing in test mode | yes | — | **counsel, licensing advice, live track record** | billing activation | **No** | EXT-LEGAL-01, EXT-BILL-01, EXT-TR-01. |

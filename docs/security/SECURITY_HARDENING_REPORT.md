@@ -228,7 +228,7 @@ External penetration testing is still **not performed** (section 1, row 22).
 | F3 | FIXED | `GET /api/v1/auth/user/brokers` removed (no caller), now 404 |
 | F4 | FIXED | bot-backend `encrypt_credential`/`decrypt_credential` deleted (no caller) |
 | F5 | FIXED | Production never tries the public KYC dev key unless `KYC_ALLOW_LEGACY_DEV_KEY_DECRYPT=true` (default off; every use logged) |
-| F6 | OPEN-UPSTREAM (in-major fixes applied) | pip-audit run in a separate venv; 20 pins upgraded; the remaining advisories need starlette 1.x, cryptography 48+ or pillow 13, or have no fix (accepted); see 6.6 |
+| F6 | PARTIAL (31 Oct 2026: majors upgraded except starlette) | 31 October 2026: cryptography 50.0.2, pillow 13.0.0, pyasn1 0.6.5 and black 26.10.1 pinned after a regression in a separate venv. pip-audit then reports 25 advisories in 4 packages: starlette (needs FastAPI/Starlette 1.x and a `lifespan` migration of the bot backend's 12 `on_event` handlers), pip (tooling), ecdsa and python-jose (no fix, accepted). See docs/implementation/MASTER_PLAN_I_L_COMPLIANCE.md 5.2. Earlier: 20 pins upgraded in-major (6.6). |
 | F7 | FIXED | Both front ends: `npm audit` reports 0 advisories (full and `--omit=dev`) after in-major upgrades; see 6.7 |
 | F8 | OPEN-OPERATIONAL | Compat window unchanged (`AUTH_BEARER_COMPAT`). A log-redaction defect found on the way is FIXED; see 6.8 |
 | F9 | FIXED | While `ADMIN_MFA_REQUIRED` is on, enrolment needs an operator-issued one-time bootstrap code |

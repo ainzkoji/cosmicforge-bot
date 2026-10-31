@@ -1,5 +1,44 @@
 # Test quarantine register
 
+## Current state (31 October 2026): 23 entries
+
+This section supersedes the counts further down.
+
+**Commit `1ab866d`** repaired 39 entries and removed them from `.github/known-test-failures.list`: 62 → **23**. Every
+repaired test passes in a pristine export without the quarantine plugin. No skip, xfail or quarantine entry was
+added. No gate, risk ceiling, certification check or governance rule changed.
+
+| Disposition | Entries | Detail |
+|---|---|---|
+| Real defect fixed | 1 | `test_phase2a_broker_foundation::test_unknown_broker_fails_closed`: `shared_lib/broker/client_factory.py` now checks the supported broker before `require_execution_account`. An unknown broker is refused with `BrokerResolverError(AUTH_FAILED)` instead of a plain `ValueError`. |
+| Retargeted to the real plan path (`TradingOrchestrator.process_trade_plan`) | 8 | `test_policy_side_normalization` (6), `test_orchestrator_context_integrity` (2). Every reason code and fail-closed default is kept. **Finding:** `ATR_RISK_CAP_EXCEEDED` cannot fire on the plan path: the hard-risk chain passes a fixed margin, which PolicyEngine reports (`REPORTED_FIXED_MARGIN_AUTHORITATIVE`) but does not cap. The test keeps the gate covered by driving a real PolicyEngine with the captured context. Recorded as K1 finding D9. |
+| Updated for intentional changes | 13 | One test asserts `LEGACY_SCALAR_ENTRY_PATH_REMOVED`. One TP1 call site (`6e0b42c`). `STRATEGY_NAME == FROZEN_STRATEGY` (2). External signals stay advisory (TestOneAuthority). The retired V2 ML and signal-generation schedulers assert that their jobs are absent and that the generator is BLOCKED (7). |
+| Deleted as duplicates | 10 | Old-strategy construction tests (`TestStrategyDefault` 4, `test_strategy_loader_typeerror` 5, `TestSmaCrossUserBotBlock` 1). `trading_intelligence/test_cati_sole_runtime.py::test_historical_configuration_never_constructs_an_old_strategy` now also covers the empty name, the sma aliases and the parameter sets. |
+| Time-bomb fixtures dated relative to now | 8 | `admin-backend/tests/test_admin_backend_shell.py` (6), root `tests/test_admin_ml_service.py` (2) |
+
+**The 23 left all test the legacy runner** (Section I Batch 7). They retire with it, or with the replay engine, which
+has no production importer:
+
+| Test file | Entries |
+|---|---|
+| `test_replay_production_parity` | 13 |
+| `test_logging_harden` | 2 |
+| `test_section_b_code_fixes.TestTradeFillPersistence` | 2 |
+| `test_capital_allocation_semantics`, `test_fill_resolution_and_slots`, `test_iofs_gate_evaluator.TestRunnerModes`, `test_paper_live_parity`, `test_runner_decision_breakdown`, `test_section_b_code_fixes_b5_b8.TestSizingFailureVisibility` | 1 each |
+
+They assert legacy-runner sizing, fill and logging source text, or a replay that installs a legacy strategy.
+- That code was intentionally changed when CATI became the only engine.
+- They are not deleted before Batch 7 removes or replaces the code they describe.
+- The register entries below give the per-test reasons.
+
+**The quarantine is therefore not empty (J-07 open).** Emptying it needs the next Batch 7 steps, in
+[SECTION_I_REMOVAL_INVENTORY.md](SECTION_I_REMOVAL_INVENTORY.md) (31 October update).
+
+---
+
+# Earlier record
+
+
 Reconciled 29 October 2026 against `main` at `78a14e4` (plus the uncommitted Workstream I repairs listed below) and
 its CI run **39035814073**. The quarantine is `.github/known-test-failures.list` (junit `classname::name`),
 loaded in CI by `.github/scripts/ci_quarantine.py` as a non-strict xfail: a listed test that fails is XFAIL, one

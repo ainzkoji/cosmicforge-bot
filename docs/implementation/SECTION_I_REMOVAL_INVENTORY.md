@@ -149,3 +149,162 @@ Each batch must be its own commit series with its own CI run:
 5. Removed tests listed with their replacement coverage.
 6. Quarantine entries removed only together with the implementation they covered.
 7. A green exact-commit CI run.
+
+---
+
+# Update of 31 October 2026 (Master plan Sections I–L pass)
+
+The summary table above is the 17 October assessment. This section supersedes it where they differ. The overall
+record is [MASTER_PLAN_I_L_COMPLIANCE.md](MASTER_PLAN_I_L_COMPLIANCE.md).
+
+## Status per batch
+
+| Batch | Status 31 Oct | Change since 17 Oct |
+|---|---|---|
+| 1 | COMPLETE (`9fb120f`) | Verified in history again |
+| 2 | DEFERRED — owner (REM-01) | Deletion plan below |
+| 3 | DEFERRED — owner (REM-01) | Deletion plan below |
+| 4 | DEFERRED — owner (REM-01) | Deletion plan below |
+| 5 | REMOVED (`d16ebe1`) | Verified: no route, script or page remains |
+| 6 | BLOCKED — conflicting governance rule | Conflict report below |
+| 7 | **PARTIAL** | Behavioural probes (`570984e`); 4 modules removed (`129353a`) |
+| 8 | DEFERRED — the factories are not duplicates | Comparison below |
+| 9 | KEEP pending the owner's venue choice | Decision matrix below |
+| 10 | PARTIAL KEEP; remainder owner | Classification below |
+
+## Batch 7: done in this pass
+
+**Corrections to the 17 October dependency list.** CATI does not import `app/strategy/regime`, and it does not import
+`runner/bot_context.py`: `exchange/factory.py` is imported only by `multi_runner.py`.
+
+**`570984e`: the runtime authority switch no longer reads source text.** `activation/cati.py`
+`runtime_authority_switch()` used `inspect.getsource` on three objects:
+- `PaperRunner._execute_signal_with_evidence`;
+- `BinanceExecutor._execute_impl`;
+- `cycle_shadow._portfolio_stage`.
+
+Each part is now a behavioural probe:
+- a scalar BUY given to the legacy runner must be refused before a trap executor is called;
+- the executor must refuse an entry without a CATI boundary permit;
+- the cycle's `PLAN_ROUTER` must resolve to `cati_dispatch.dispatch_trade_plans`. `PLAN_ROUTER` is a new explicit
+  constant, resolved at call time.
+
+Any error counts as missing. If the legacy runner is absent, the entry gate is no longer reported missing; the
+executor permit is still required. Fail-closed tests break each part. The switch is reporting only: no order path
+reads it (consumers are the engine-status route, the admin `/cati` route and market eligibility).
+
+**`129353a`: removed** `app/strategy/router.py`, `mode.py`, `timeframe.py` and `activation.py` (1,441 lines).
+- No production module, script or deploy file imported them; they imported only each other.
+- The only test importer was `test_regime_ensemble.py::TestActivationEngine`, removed with them. The regime,
+  risk-compression, execution-filter and ensemble tests stay.
+- Evidence: an AST import scan of `backends/` is clean after the change; `import app.main` succeeds; the strategy,
+  section 23–26, multi-asset and runtime-authority suites pass.
+
+**Next Batch 7 commits** (safe, not done in this pass):
+- `decision/external_signal_gate.py` (TradingView leftover) and `strategy/activity_targets.py`. Their tests were being
+  repaired in the same pass.
+- Move `runner/market_snapshot.py` to `app/market_data/` and `runner/effective_policy.py` to `app/policy/`, each with a
+  re-export shim.
+- Retire `replay/engine.py` and `fill_models.py` (no production importer). This retires
+  `test_replay_production_parity` (13 quarantined) and needs the `destination_map` entry edited.
+
+**Still blocked:**
+- `runner.py`: it hosts the non-production CATI cycle and about 18 `get_runner()` callers in `main.py`; 29 test files
+  import it.
+- `multi_runner.py`: in production it only holds the runtime-ownership lease. A `RuntimeOwnerLoop` migration is
+  designed; medium risk, needs Linux CI and staging.
+- `replay/cost_model.py` and `identity.py`: inside the research evaluation fingerprint; they must not move.
+- The V2 modules listed until M9 (Batch 6).
+
+## Batch 6: conflict report
+
+1. **The rule.** `trading_intelligence/governance/destination_map.py:94`: `LEGACY_AFTER_PROMOTION`, "runtime files
+   that become legacy AFTER promotion -- NOT deleted before M9". It lists `app/ml/scorer.py` ("legacy V2 ML entry
+   scorer -- never CATI authority") and twelve V2 strategy, threshold and framework files.
+2. **Where it is enforced.** `tests/trading_intelligence/test_sections23_26.py::test_destination_map_is_semantically_compliant`
+   asserts that every listed file exists ("retained until M9"). `trading_intelligence/ml/legacy.py` tags the scorer
+   `OBSOLETE_AFTER_M9`.
+3. **What M9 is.** It is not a different governance system: it is stage M9 "CLEANUP" of CATI's own phase ladder
+   (`governance/phases.py`). M0–M6 are research and demo, M7 limited production, M8 full promotion; M9 needs a
+   `rollback_evidence_ref` and an elapsed `migration_window`. The rule keeps the V2 code as a rollback path until CATI
+   has run as sole alpha in production and the rollback window has passed. This build caps families at M6, and every
+   family is at M0.
+4. **Callers today.** The scorer has none in the order path. It is reachable through the user backend's mounted
+   `admin_ml` router (ML dashboards) and `scripts/ml`. `calibrated_model.py` is used by CATI `ml/training.py` and stays.
+5. **Conflict.** The master plan approves deleting the scorer now; the governance rule forbids it before M9. Both are
+   owner-level statements.
+6. **What the owner must decide.** Either amend `LEGACY_AFTER_PROMOTION` (remove the scorer entry, recorded as a
+   governance change) and delete per the Batch 6 plan above, or keep the scorer until M9.
+
+## Batches 2–4: deletion plans (ready; need REM-01)
+
+**Batch 2: retired backtest engine.**
+- Remove `app/backtest/` (6 files, 2,195 lines), the `BacktestWorker` start in `main.py`, the HTTP 409 route, the
+  list/detail/export routes and their user-backend proxies, the three portal Backtesting pages with their routes and
+  navigation, and `tests/backtest_replay.py`.
+- Keep the backtest database tables (historical runs; export first if the owner wants the read view gone) and
+  everything under `research/` and `trading_intelligence/research/`.
+- Owner question: does the historical read/export view stay (an audit document asks for it)?
+
+**Batch 3: old shadow-trade subsystem.**
+- Remove `app/shadow/` (6 files, 1,763 lines), `api/shadow_routes.py` and its registration, the guarded hook in
+  `multi_runner.py:1075`, and the shadow route entries of `test_api_auth_hardening.py`.
+- Keep the CATI `ShadowScheduler`, shadow books, shadow comparisons and their APIs: they share only the word.
+  `trading_intelligence/config.py` names `app/shadow/config.py` only in a docstring.
+- Keep the `shadow_trades` table (historical).
+
+**Batch 4: callerless routers.**
+- Candidates (no repository caller), with lines:
+  - `news_intelligence` (192);
+  - `threshold_diagnostics` (179);
+  - `trading_evidence` (311);
+  - `trading_operations` (364);
+  - `readiness_admin` (193);
+  - `shadow_routes` (325, with Batch 3);
+  - `cati_simulation` (23, script caller);
+  - `ibkr` (239, with Batch 9).
+- `monitoring` (573) has a proxy but no frontend caller. It keeps operational value; the owner decides.
+- Before removal: confirm with operators that no external tool calls them, and check the access logs of a deployed
+  instance.
+
+## Batch 8: why it stays
+
+The three `boundary_for` factories are not duplicates:
+
+| | `production_execution.py:405` | `portfolio_runtime.py:66` | `cati_dispatch.py:55` |
+|---|---|---|---|
+| Boundary | `CATIExecutionBoundary` | `PortfolioExecutionBoundary` | `CATIExecutionBoundary` |
+| Authority | `AccountExecutionAuthority` (scope, consent, lease; DEMO below M6) | `GovernanceAuthority` and the family gate | default `GovernanceAuthority` (M6) |
+| Adapter | `BinanceExecutor` | platform `adapter_for`, budgeted, certified | the runner's executor |
+| Checks | environment mismatch; strategy cati/FAMILY; preflight permissions | strategy cati; `AccountLimits` | no ownership or policy checks |
+
+Merging any two changes a gate.
+- `_process_account` and `build_plan` run for every account without a manageable family. At M0 that is all of them;
+  this is their maintenance, reconciliation and risk cycle, and the family gate refuses their plans.
+- `cati_dispatch.boundary_for` is reached only from the legacy runner (outside production) and disappears with
+  Batch 7.
+- The only safe consolidation is extracting the identical ownership, CATI-bot, capability and policy prelude
+  (`production_execution.py:421-441`, `portfolio_runtime.py:77-89`), after characterization tests.
+
+## Batch 9: decision matrix
+
+| Component | Wired into the platform adapter factory? | Recommendation |
+|---|---|---|
+| Binance, Bybit, BingX (crypto) | yes | RETAIN (the supported venues) |
+| OANDA adapter | no (legacy factory only) | BLOCKED_PENDING_OWNER: retain if H-019 D3 picks FX via OANDA, else REMOVE |
+| Interactive Brokers (Client Portal) and IBKR-TWS | no; reachable from the broker-connection page and `api/ibkr.py` | BLOCKED_PENDING_OWNER: candidate for futures/equities (D3). The portal's IBKR connection test is now SSRF-guarded (`62f2ee8`). |
+| MetaTrader adapters, `backends/mt-bridge`, MT pairing routes and pages | no; pairing works; mt-bridge pins carry 19 advisories | BLOCKED_PENDING_OWNER: REPLACE or REMOVE unless D3 selects MetaTrader. If it is kept, its dependencies must be upgraded first. |
+
+No traditional-market execution adapter is certified or wired; Step 7 built venue-neutral calendars and contracts
+only. H-019 (draft) is not registered or frozen.
+
+## Batch 10: classification
+
+| Component | Class | Reason |
+|---|---|---|
+| `app/events` calendar sync, `economic_events`, `event_blackout_windows`, `shared_lib/persistence/economic_events.py` | ACTIVE AND NEEDED | CATI reads them (`integration/context_adapters.py`); Step 7 needs session and blackout controls |
+| `app/news` (31 files), news routers, admin news pages | OWNER DECISION | A live product surface with no CATI dependency; candidate for removal |
+| Signal Center (`app/signals`, 10 files; user page `/dashboard/signals`; admin pages) | OWNER DECISION | The legacy generator is already retired (it returns BLOCKED); the pages show historical signals |
+| Legacy signal scheduler | REPLACED BY CATI | No generation jobs are registered; the tests now assert that |
+
+Tables of every class are kept until a destructive migration is approved.

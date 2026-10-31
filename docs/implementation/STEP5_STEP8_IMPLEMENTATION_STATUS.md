@@ -83,12 +83,12 @@ See [SECTION_I_REMOVAL_INVENTORY.md](SECTION_I_REMOVAL_INVENTORY.md).
 | 4 | DEFERRED, owner (REM-01) |
 | 5 | **REMOVED** in its own commit and CI run |
 | 6 | BLOCKED: conflicting retain-until-M9 governance rule |
-| 7 | BLOCKED: live dependencies |
+| 7 | PARTIAL (31 Oct): behavioural probes `570984e`, four dead modules removed `129353a`; the runner itself is still a live dependency |
 | 8 | BLOCKED: live dependencies |
 | 9 | KEEP pending the venue decision |
 | 10 | PARTIAL keep / pending |
 
-Quarantine: 117 entries; Batch 5 removed 11 (106). The closure repaired 44 more, leaving **62** (54 bot, 6 admin, 2 root); none was added. See [QUARANTINE_REGISTER.md](QUARANTINE_REGISTER.md).
+Quarantine: 117 entries; Batch 5 removed 11 (106). The closure repaired 44 more, leaving 62. On 31 October `1ab866d` repaired 39 more, leaving **23**, all legacy-runner (Batch 7); none was added. See [QUARANTINE_REGISTER.md](QUARANTINE_REGISTER.md) and [MASTER_PLAN_I_L_COMPLIANCE.md](MASTER_PLAN_I_L_COMPLIANCE.md).
 
 ## Verification log
 
