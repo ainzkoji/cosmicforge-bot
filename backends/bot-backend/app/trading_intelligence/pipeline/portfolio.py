@@ -18,10 +18,13 @@ REFUSED. A stop is never clipped or moved to make an entry fit. No number is def
    thanks to such a release is marked ``awaits_releases`` and the execution stage must see the release at the
    venue before it submits that order (the reservation ledger enforces it).
 2. *Gates* on each risk-increasing intent (entry, add, rebalance up): brake state, account equity, instrument
-   rules, position and reservation state, rebalancing band, stop geometry and the 15 % limit, leverage, the
-   stated per-trade risk.
-3. *Per-intent ceilings*, which can only make an order smaller: the per-trade risk clamp measured on the
-   snapshot's equity (halved while the halve brake holds), then the customer's maximum position.
+   rules, position and reservation state (a hedge-mode position is not increased), rebalancing band, stop
+   geometry and the 15 % limit, the liquidation distance by margin mode (``liquidation_ceiling``), leverage,
+   the stated per-trade risk. An increase of a held position is measured at the wider of its stated stop and
+   the resting one (``_sizing_stop``).
+3. *Per-intent ceilings*, which can only make an order smaller: the per-trade risk clamp measured on
+   ``min(budget, equity)`` (halved while the halve brake holds), then the customer's maximum position. Open
+   risk and gross leverage below are measured on the same basis; every exposure of the account counts.
 4. *Position slots*, first come first served in the given order.
 5. *Shared budgets*. Each one scales EVERY surviving increase of the decision by one common factor, the
    proportional form of the frozen rule, in its order: open risk, then gross leverage, then available margin.
@@ -52,6 +55,7 @@ from app.exchange.platform_adapter.contract import (
     FLAT, TRADING, AccountBalance, InstrumentRules, PositionInfo, round_down_to_step,
 )
 from app.risk.system_limits import SystemLimits
+from app.trading_intelligence.execution.leverage import LIQUIDATION_DEDUCTION
 from app.trading_intelligence.execution.risk_sizing import MARGIN_FILL_BUFFER
 from app.trading_intelligence.hashing import stable_hash
 from app.trading_intelligence.pipeline.brakes import BrakeFlags
@@ -87,12 +91,21 @@ INSIDE_REBALANCE_BAND = "INSIDE_REBALANCE_BAND"
 STOP_WIDENING_REFUSED = "STOP_WIDENING_REFUSED"
 INVALID_STOP_GEOMETRY = "INVALID_STOP_GEOMETRY"
 CONTRADICTORY_ACTION = "CONTRADICTORY_ACTION"
+#: Section K1 D2: the liquidation price would lie inside twice the stop distance (see ``liquidation_ceiling``)
+LIQUIDATION_TOO_CLOSE = "LIQUIDATION_TOO_CLOSE"
+#: Section K1 D2: the venue reports the position in a mode this engine does not carry (hedge mode)
+POSITION_MODE_UNSUPPORTED = "POSITION_MODE_UNSUPPORTED"
 REFUSAL_REASONS: Tuple[str, ...] = (
     POSITION_LIMIT, OPEN_RISK_CAP, LEVERAGE_CAP, INSUFFICIENT_MARGIN, RISK_ABOVE_CEILING, ENTRY_STOP_TOO_WIDE,
     BELOW_MIN_NOTIONAL, BELOW_MIN_QUANTITY, QUANTITY_ROUNDS_TO_ZERO, CUSTOMER_MAX_POSITION, BRAKE_ACTIVE,
     BRAKE_STATE_UNKNOWN, EQUITY_UNAVAILABLE, INSTRUMENT_RULES_MISSING, INSTRUMENT_RULES_INCOMPLETE,
     INSTRUMENT_NOT_TRADING, POSITION_EXISTS, NO_POSITION, DIRECTION_MISMATCH, DUPLICATE_RESERVATION,
-    LEGACY_CLAIM_UNSIZED, INSIDE_REBALANCE_BAND, STOP_WIDENING_REFUSED, INVALID_STOP_GEOMETRY, CONTRADICTORY_ACTION)
+    LEGACY_CLAIM_UNSIZED, INSIDE_REBALANCE_BAND, STOP_WIDENING_REFUSED, INVALID_STOP_GEOMETRY, CONTRADICTORY_ACTION,
+    LIQUIDATION_TOO_CLOSE, POSITION_MODE_UNSUPPORTED)
+
+#: margin modes as ``PositionInfo.margin_mode`` states them
+ISOLATED_MARGIN, CROSSED_MARGIN = "ISOLATED", "CROSSED"
+HEDGE_MODE = "HEDGE"
 
 #: adjustments that are not caps: what else made an executable quantity or price differ from the stated one
 EXCHANGE_MAX_QUANTITY = "EXCHANGE_MAX_QUANTITY"
@@ -137,6 +150,9 @@ class AccountLimits:
     max_leverage: float
     max_entry_stop_distance: float      # the engine's widest entry stop (15 %): a refusal, never a clip
     max_position_notional: Optional[float] = None   # the customer's optional maximum position, quote units
+    #: Section K1 D3: the bot's capital budget in quote units (a percentage already resolved against equity).
+    #: The account caps are measured on ``min(budget, equity)`` (``capital_basis``); None: on equity alone.
+    capital_budget: Optional[float] = None
 
     def __post_init__(self) -> None:
         for name in ("approved_per_trade_risk", "per_trade_risk", "max_open_risk", "max_leverage", "max_entry_stop_distance"):
@@ -147,6 +163,16 @@ class AccountLimits:
             raise PortfolioDataError("INVALID_LIMITS", "the engine clamp only ever lowers the per-trade risk")
         if self.max_position_notional is not None:
             _finite("INVALID_LIMITS", "max_position_notional", self.max_position_notional, positive=True)
+        if self.capital_budget is not None:
+            _finite("INVALID_LIMITS", "capital_budget", self.capital_budget, positive=True)
+
+    def capital_basis(self, equity: float) -> float:
+        """What the account caps are measured on: the equity, never more than the bot's budget. Every exposure
+        of the account (manual, another bot's, this one's) counts against it, so a budget smaller than the
+        equity only ever lowers the headroom (Section K1 D3)."""
+        if self.capital_budget is None:
+            return equity
+        return min(equity, float(self.capital_budget))
 
     @classmethod
     def from_profile(cls, level: Any, *, version: Optional[str] = None,
@@ -189,6 +215,8 @@ class PortfolioPosition:
     stop_price: Optional[float]         # None: no protective stop is known
     family_id: str = ""
     leverage: Optional[float] = None
+    margin_mode: Optional[str] = None   # CROSSED | ISOLATED as the venue reports it; None: not reported
+    position_mode: Optional[str] = None  # ONE_WAY | HEDGE as the venue reports it; None: not reported
 
     def __post_init__(self) -> None:
         symbol = self.symbol
@@ -280,7 +308,8 @@ class AccountSnapshot:
             held.append(PortfolioPosition(symbol=p.symbol, direction=p.side, quantity=float(p.quantity),
                                           entry_price=float(p.entry_price), mark_price=float(p.mark_price),
                                           stop_price=stops.get(p.symbol), family_id=(families or {}).get(p.symbol, ""),
-                                          leverage=p.leverage))
+                                          leverage=p.leverage, margin_mode=getattr(p, "margin_mode", None),
+                                          position_mode=getattr(p, "position_mode", None)))
         return cls(account_id=account_id, equity=float(balance.equity), wallet_balance=float(balance.wallet_balance),
                    available_margin=float(balance.available_balance), positions=tuple(held),
                    reservations=tuple(reservations), as_of_ms=int(as_of_ms))
@@ -527,6 +556,33 @@ def _wider(direction: str, new_stop: float, current_stop: float) -> bool:
     return new_stop < current_stop if direction == LONG else new_stop > current_stop
 
 
+def liquidation_ceiling(stop_distance: float) -> float:
+    """The highest leverage at which the liquidation price stays at least TWICE the stop distance away after
+    maintenance margin, fees and funding: ``1 / (2 d + LIQUIDATION_DEDUCTION)``. The invariant and the deduction
+    are those of ``execution.leverage.resolve_cati_leverage`` (the executor's own); at the engine's widest entry
+    stop (15 %) it is 3.27, above every profile's leverage ceiling (at most 3), so it binds only on a position
+    whose venue leverage is above the account's."""
+    return 1.0 / (2.0 * float(stop_distance) + LIQUIDATION_DEDUCTION)
+
+
+def liquidation_leverage(intent: Intent, position: Optional[PortfolioPosition], limits: AccountLimits) -> float:
+    """The leverage that decides how far the liquidation price is, by margin mode.
+
+    ISOLATED: the position's own margin carries it, so its own leverage (an entry's stated one; a held
+    position's reported one, or the account's maximum when the venue does not report it). CROSSED: the
+    account's margin carries every position, and the account's gross leverage is bounded by ``max_leverage``
+    (the shared leverage budget below). Not reported (every entry: the venue keeps the mode per symbol and no
+    position exists yet): the larger of the two, so either mode is covered."""
+    own = float(intent.leverage) if intent.kind == ENTRY else float(
+        (position.leverage if position is not None else None) or limits.max_leverage)
+    mode = position.margin_mode if position is not None else None
+    if mode == ISOLATED_MARGIN:
+        return own
+    if mode == CROSSED_MARGIN:
+        return float(limits.max_leverage)
+    return max(own, float(limits.max_leverage))
+
+
 def _factor(headroom: float, demand: float) -> float:
     if demand <= 0 or (headroom > 0 and demand <= headroom * (1.0 + _TOL)):
         return 1.0
@@ -547,10 +603,11 @@ class _Candidate:
     held: float
     rule: InstrumentRules
     limited: List[Tuple[str, float]] = field(default_factory=list)
+    sizing_stop: Optional[float] = None  # the stop the risk is measured at, when it is not ``stop`` (``_sizing_stop``)
 
     @property
     def distance(self) -> float:
-        return abs(self.reference - self.stop)
+        return abs(self.reference - (self.stop if self.sizing_stop is None else self.sizing_stop))
 
     def cap(self, code: str, maximum: float) -> None:
         if self.quantity > maximum * (1.0 + _TOL):
@@ -624,6 +681,18 @@ def _reduction(intent: Intent, position: Optional[PortfolioPosition],
     return accept(quantity, requested, held - quantity, quantity * reference)
 
 
+def _sizing_stop(intent: Intent, position: Optional[PortfolioPosition]) -> float:
+    """The stop an increase is sized and checked at. An entry: its own. An increase of a held position whose
+    stop rests: the WIDER of the stated stop and the resting one, because the order fills under the resting
+    stop and a tighter stated stop only rests after the fill, by a replacement that may not happen (Section K1
+    D4: a ratchet carried on a rebalance). Never narrower than what protects the position while it grows."""
+    stated = float(intent.stop_price)
+    if intent.kind == ENTRY or position is None or not position.protected:
+        return stated
+    resting = float(position.stop_price)
+    return resting if _wider(position.direction, resting, stated) else stated
+
+
 def _gate(intent: Intent, position: Optional[PortfolioPosition], rule: Optional[InstrumentRules], limits: AccountLimits,
           book: _Book, brake_state: Optional[BrakeFlags]) -> Optional[Tuple[str, str]]:
     """The first reason a risk-increasing intent cannot be sized at all, or None."""
@@ -656,11 +725,18 @@ def _gate(intent: Intent, position: Optional[PortfolioPosition], rule: Optional[
                     f"held {position.quantity} is within {intent.band} of the target {intent.target_quantity}")
         if position.protected and _wider(position.direction, intent.stop_price, position.stop_price):
             return STOP_WIDENING_REFUSED, f"the resting stop is {position.stop_price}"
+        if position.position_mode == HEDGE_MODE:
+            return POSITION_MODE_UNSUPPORTED, "the venue reports this position in hedge mode; one-way is carried"
     if book.unsized:
         return LEGACY_CLAIM_UNSIZED, f"an open claim of unknown size exists on {', '.join(book.unsized)}"
-    distance = stop_distance_fraction(intent.reference_price, intent.stop_price)
+    distance = stop_distance_fraction(intent.reference_price, _sizing_stop(intent, position))
     if distance > limits.max_entry_stop_distance * (1.0 + _TOL):
         return ENTRY_STOP_TOO_WIDE, f"stop distance {distance:.6f} is above {limits.max_entry_stop_distance}; never clipped"
+    leverage, ceiling = liquidation_leverage(intent, position, limits), liquidation_ceiling(distance)
+    if leverage > ceiling * (1.0 + _TOL):
+        mode = (position.margin_mode if position is not None else None) or "NOT_REPORTED"
+        return (LIQUIDATION_TOO_CLOSE, f"leverage {leverage} ({mode} margin) puts liquidation inside twice the stop "
+                                       f"distance {distance:.6f}; at most {ceiling:.4f}")
     if intent.kind == ENTRY:
         if intent.leverage > limits.max_leverage * (1.0 + _TOL):
             return LEVERAGE_CAP, f"leverage {intent.leverage} is above the account's {limits.max_leverage}"
@@ -680,6 +756,9 @@ def _candidate(intent: Intent, position: Optional[PortfolioPosition], rule: Inst
     c = _Candidate(intent=intent, symbol=intent.symbol, direction=intent.direction, kind=intent.kind,
                    requested=requested, quantity=requested, reference=float(intent.reference_price),
                    stop=float(intent.stop_price), leverage=float(leverage), held=held, rule=rule)
+    sizing = _sizing_stop(intent, position)
+    if sizing != c.stop:
+        c.sizing_stop = sizing
     # the whole position after the order may lose at most the ceiling at its stop; half of it under the halve brake
     full = limits.per_trade_risk * equity / c.distance - held
     room = limits.per_trade_risk * HALVE_FACTOR * equity / c.distance - held if halve else full
@@ -738,6 +817,9 @@ def authorize(snapshot: AccountSnapshot, limits: AccountLimits, intents: Union[I
     else:
         items = tuple(intents)
     equity = snapshot.equity
+    # Section K1 D3: the per-trade clamp, open risk and gross leverage are measured on min(budget, equity), and
+    # every exposure of the account counts against that. Margin stays what the venue says is available.
+    basis = limits.capital_basis(equity)
     held = {p.symbol: p for p in snapshot.positions}
     before = _book(snapshot, limits, held)
 
@@ -783,7 +865,7 @@ def authorize(snapshot: AccountSnapshot, limits: AccountLimits, intents: Union[I
         if blocked is not None:
             refused.append(_refuse(intent, *blocked))
             continue
-        candidate = _candidate(intent, position, rule, limits, equity, halve)
+        candidate = _candidate(intent, position, rule, limits, basis, halve)
         if isinstance(candidate, RefusedIntent):
             refused.append(candidate)
             continue
@@ -802,9 +884,9 @@ def authorize(snapshot: AccountSnapshot, limits: AccountLimits, intents: Union[I
                 c.quantity *= factor
         return factor
 
-    risk_factor = scale(OPEN_RISK_CAP, _factor(limits.max_open_risk * equity - sum(book.risk.values()),
+    risk_factor = scale(OPEN_RISK_CAP, _factor(limits.max_open_risk * basis - sum(book.risk.values()),
                                                sum(c.quantity * c.distance for c in candidates)))
-    leverage_factor = scale(LEVERAGE_CAP, _factor(limits.max_leverage * equity - sum(book.notional.values()),
+    leverage_factor = scale(LEVERAGE_CAP, _factor(limits.max_leverage * basis - sum(book.notional.values()),
                                                   sum(c.quantity * c.reference for c in candidates)))
     margin_factor = scale(INSUFFICIENT_MARGIN, _factor(book.usable_margin,
                                                        sum(c.quantity * c.reference / c.leverage for c in candidates)))
@@ -812,8 +894,8 @@ def authorize(snapshot: AccountSnapshot, limits: AccountLimits, intents: Union[I
     # 6. exchange filters; then which accepted increases stand only on the releases
     unreleased = _book(snapshot, limits, held)
     free = {"slots": limits.max_positions - len(unreleased.slots),
-            "risk": limits.max_open_risk * equity - sum(unreleased.risk.values()),
-            "notional": limits.max_leverage * equity - sum(unreleased.notional.values()),
+            "risk": limits.max_open_risk * basis - sum(unreleased.risk.values()),
+            "notional": limits.max_leverage * basis - sum(unreleased.notional.values()),
             "margin": unreleased.usable_margin}
     increases: List[AuthorizedIntent] = []
     for c in candidates:
@@ -832,9 +914,14 @@ def authorize(snapshot: AccountSnapshot, limits: AccountLimits, intents: Union[I
         limit = conform_limit_price(c.direction, stated_limit, c.rule.price_tick) if stated_limit is not None else None
         if stop != c.stop or (limit is not None and limit != stated_limit):
             notes.append(PRICE_TICK)
-        notional, risk_amount = quantity * c.reference, quantity * c.distance
+        notional = quantity * c.reference
+        # The reserved risk is stated at the order's own stop: the boundary re-checks the executable price against
+        # it at that stop (``execution._executable_risk_refusal``), which then admits no price above the
+        # reference. The quantity was clamped at the wider resting stop, so at any admitted price the position
+        # holds the per-trade ceiling at the stop that actually rests until the tighter one replaces it.
+        risk_amount = quantity * abs(c.reference - c.stop)
         margin = notional / c.leverage
-        free["risk"] -= risk_amount
+        free["risk"] -= quantity * c.distance
         free["notional"] -= notional
         free["margin"] -= margin
         if c.kind == ENTRY:
@@ -877,7 +964,8 @@ def authorize(snapshot: AccountSnapshot, limits: AccountLimits, intents: Union[I
 
 __all__ = list(REFUSAL_REASONS) + [
     "REFUSAL_REASONS", "EXCHANGE_MAX_QUANTITY", "QUANTITY_STEP", "PRICE_TICK", "CAPPED_TO_POSITION",
-    "RULES_UNAVAILABLE", "PIPELINE_SOURCE", "HALVE_FACTOR", "PortfolioDataError", "AccountLimits", "PortfolioPosition",
+    "RULES_UNAVAILABLE", "PIPELINE_SOURCE", "HALVE_FACTOR", "ISOLATED_MARGIN", "CROSSED_MARGIN", "HEDGE_MODE",
+    "liquidation_ceiling", "liquidation_leverage", "PortfolioDataError", "AccountLimits", "PortfolioPosition",
     "OpenReservation", "AccountSnapshot", "OpenRisk", "open_risk", "PortfolioUsage", "usage", "Release",
     "AuthorizedIntent", "RefusedIntent", "BudgetScales", "TargetAllocation", "PortfolioAuthorization",
     "rebalance_required", "conform_stop_price", "conform_limit_price", "flatten_intents", "authorize"]

@@ -29,7 +29,7 @@ from __future__ import annotations
 
 import hashlib
 import math
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import date, datetime, timedelta, timezone
 from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
 
@@ -435,6 +435,18 @@ def _intent(order: T.Order, book: Book, prices: Mapping[str, float], equity: flo
                              stop_price=min(pos.stop, price * (1.0 - 1e-9)), band=float(spec.SPECIFICATION["rebalance_band"]))
 
 
+def _with_ratchet(intent: C.Intent, target: Optional[float]) -> C.Intent:
+    """A rebalance UP of a held long whose ratcheted stop ``target`` is tighter than the stop it states: the same
+    rebalance, stating the ratcheted stop (kept below the reference price). Every other intent is unchanged."""
+    if (target is None or not isinstance(intent, C.RebalanceIntent) or intent.direction != C.LONG
+            or intent.target_quantity <= intent.current_quantity):
+        return intent
+    stop = min(float(target), float(intent.reference_price) * (1.0 - 1e-9))
+    if not stop > float(intent.stop_price):
+        return intent
+    return replace(intent, stop_price=stop)
+
+
 def pending_from(orders: Sequence[T.Order]) -> List[Dict[str, Any]]:
     return [{"symbol": o.symbol, "kind": o.kind, "quantity": o.quantity, "target_notional": o.target_notional,
              "stop_distance": o.stop_distance} for o in orders]
@@ -466,6 +478,12 @@ class DailyTrendPipeline:
 
         if not isinstance(snapshot, AccountSnapshot) or not isinstance(brake_flags, BrakeFlags):
             raise ValueError("BROKER_SNAPSHOT_AND_ACCOUNT_BRAKES_REQUIRED")
+        # Section K1: the frozen strength is k/7 in [0, 1] (``rules.strength``); target = strength x risk x
+        # equity / d. Anything else is a data or code fault, and no decision is sized from it.
+        for candidate in market.candidates:
+            s = candidate.strength
+            if isinstance(s, bool) or not isinstance(s, (int, float)) or not math.isfinite(s) or not 0.0 <= s <= 1.0:
+                raise ValueError("DECISION_STRENGTH_INVALID")
         equity = snapshot.equity
         if capital_budget is not None:
             if not math.isfinite(float(capital_budget)) or capital_budget <= 0:
@@ -488,6 +506,11 @@ class DailyTrendPipeline:
             if math.isfinite(distance):
                 targets[held.symbol] = max(held.stop_price, float(market.features.close[market.row, j]) * (1 - distance))
         decision = decide(book, market)
+        # Research rule I10: the stop ratchets at EVERY close. A symbol carries one intent per decision, so a
+        # position that is rebalanced UP carries its ratcheted stop on that intent: the portfolio gate sizes the
+        # increase at the wider resting stop (``portfolio._sizing_stop``) and the boundary tightens the stop
+        # after the fill. A rebalance DOWN is a reduction and keeps the resting stop until the next close.
+        decision.intents = tuple(_with_ratchet(i, targets.get(i.symbol)) for i in decision.intents)
         trailing = trailing_stop_intents(targets, snapshot, skip=[i.symbol for i in decision.intents])
         decision.intents += trailing
         decision.document["intents"] = [C.to_plain(i) for i in decision.intents]

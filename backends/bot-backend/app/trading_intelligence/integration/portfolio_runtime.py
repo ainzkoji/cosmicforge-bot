@@ -105,6 +105,9 @@ def boundary_for(db, account, client, bot, clock):
                      max_open_risk=min(limits.max_open_risk, policy.max_open_risk_fraction or limits.max_open_risk),
                      max_positions=min(limits.max_positions, policy.max_open_positions),
                      max_leverage=min(limits.max_leverage, policy.max_leverage))
+    if fixed_budget:
+        # Section K1 D3: a fixed budget bounds the account caps too; a percentage is set by ``resolve_capital_budget``
+        limits = replace(limits, capital_budget=float(policy.capital_budget))
 
     adapter = adapter_for(client, account["broker_id"].lower(), account["environment"], clock=clock)
     client._production_db, client._production_account_id = db, account["id"]
@@ -144,7 +147,9 @@ def resolve_capital_budget(boundary, equity) -> Optional[float]:
     leverage = float(policy.max_leverage) if policy is not None else float(boundary.limits.max_leverage)
     cap = budget * leverage
     current = boundary.limits.max_position_notional
-    boundary.limits = replace(boundary.limits, max_position_notional=min(cap, current) if current else cap)
+    # Section K1 D3: the account caps are measured on min(budget, equity) (``AccountLimits.capital_basis``)
+    boundary.limits = replace(boundary.limits, max_position_notional=min(cap, current) if current else cap,
+                              capital_budget=budget)
     boundary.capital_budget = budget
     return budget
 

@@ -119,6 +119,16 @@ _add("USER_DAILY_LOSS_LIMIT_REACHED", BLOCKED, "Today's loss limit was reached; 
 _add("ACCOUNT_DAILY_LOSS_POLICY_UNAVAILABLE", BLOCKED, "The bot's daily loss policy could not be resolved.", "Check the bot configuration.")
 # Section K1/K3: a percentage budget is resolved against the exchange account's equity.
 _add("ACCOUNT_CAPITAL_BUDGET_UNRESOLVED", BLOCKED, "The bot's percentage budget could not be worked out from the account balance, so nothing is sized.", "Retried next cycle; check that the account holds a positive balance.")
+# Section K1: the connected-account decision stage of the daily trend family (``pipeline.daily_trend``) and the
+# portfolio gate (``pipeline.portfolio``). Each refuses the whole decision or one increase; exchange stops stay.
+_add("ACCOUNT_CAPITAL_BUDGET_REQUIRED", BLOCKED, "The bot's capital budget is missing or not a positive amount, so nothing is sized.", "Check the bot's budget setting.")
+_add("BROKER_SNAPSHOT_AND_ACCOUNT_BRAKES_REQUIRED", ATTENTION, "The account's exchange holdings or its loss brakes could not be read for this decision.", "No order was sent; retried next cycle. The operator reviews it if it persists.")
+_add("BROKER_POSITION_NOT_SUPPORTED_OR_UNPROTECTED", ATTENTION, "A strategy position is short or has no confirmed exchange stop, so no decision is taken for the account.", "The operator reviews the position's protection at the exchange.")
+_add("BROKER_POSITION_DECISION_BAR_MISSING", WAITING, "The daily price bar of a held coin is missing at the decision close, so no decision is taken.", "No action needed; existing exchange stops stay in place and the next close is used.")
+_add("DECISION_STRENGTH_INVALID", ATTENTION, "The strategy signal strength is outside 0 to 1, so nothing is sized from it.", "No order was sent; the operator reviews the market data.")
+_add("POSITION_PRICE_UNKNOWN", ATTENTION, "The exchange reported a position without its entry or mark price, so the account's risk cannot be measured.", "No new position is opened until the exchange reports the price.")
+_add("LIQUIDATION_TOO_CLOSE", BLOCKED, "At the position's leverage the liquidation price would be closer than twice the stop distance, so the position is not increased.", "Lower the leverage set at the exchange for this coin.")
+_add("POSITION_MODE_UNSUPPORTED", BLOCKED, "The exchange reports this position in hedge mode; the engine only increases one-way positions.", "Switch the futures account to one-way position mode.")
 _add("NO_EQUITY_READING", WAITING, "The engine has not read this account's balance yet, so the money figures of a percentage budget are not shown.", "No action needed; they appear after the first account read.")
 _add("NO_POSITIVE_EQUITY", BLOCKED, "The account balance is zero or negative, so a percentage budget is zero.", "Deposit funds or choose a fixed budget.")
 _add("ACCOUNT_WIDE_POSITION_OR_ORDER_ACTIVE", WAITING, "A position or order is already open on this account; one position at a time.", "No action needed.")

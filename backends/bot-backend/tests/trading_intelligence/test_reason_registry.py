@@ -16,6 +16,7 @@ SOURCES = [
     APP / "trading_intelligence" / "integration" / "production_runtime.py",
     APP / "trading_intelligence" / "integration" / "production_portfolio.py",
     APP / "trading_intelligence" / "integration" / "portfolio_runtime.py",
+    APP / "trading_intelligence" / "pipeline" / "daily_trend.py",       # Section K1: the broker decision stage
     APP / "trading_intelligence" / "integration" / "income_ledger.py",
     APP / "execution" / "protection_state.py",
     APP / "core" / "deployment_service.py",
