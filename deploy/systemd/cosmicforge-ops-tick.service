@@ -38,6 +38,9 @@ ExecStart=/opt/cosmicforge/cosmicforge-bot/backends/venv/bin/python -u -X utf8 -
     --alerts-env /etc/cosmicforge/alerts.env \
     --backup-dir /var/backups/cosmicforge \
     --disk-path /var/lib/cosmicforge --disk-path /var/backups/cosmicforge \
+    --health-url user-backend=http://127.0.0.1:8000/health \
+    --health-url admin-backend=http://127.0.0.1:8100/health \
+    --health-url bot-backend=http://127.0.0.1:9000/health \
     --interval 60
 SuccessExitStatus=2
 # Escalation intervals / dedup window: engineering defaults until the operations owner decides, e.g.

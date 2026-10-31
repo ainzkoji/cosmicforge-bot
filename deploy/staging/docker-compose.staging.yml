@@ -180,7 +180,11 @@ services:
       PROCESS_ROLE: api
       DATABASE_URL: sqlite:////var/lib/cosmicforge/cosmicforge.db
     command: ["python", "-u", "-m", "app.ops.alerting", "--loop", "--interval", "60",
-              "--disk-path", "/var/lib/cosmicforge"]
+              "--disk-path", "/var/lib/cosmicforge",
+              "--health-url", "user-backend=http://user-backend:8000/health",
+              "--health-url", "admin-backend=http://admin-backend:8000/health",
+              "--health-url", "bot-api=http://bot-api:8000/health",
+              "--health-url", "bot-trading=http://bot-trading:8000/health"]
     stop_signal: SIGTERM
     stop_grace_period: 90s
     deploy: {replicas: 1}

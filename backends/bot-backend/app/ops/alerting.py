@@ -37,7 +37,7 @@ import threading
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Mapping, Optional, Sequence
+from typing import Any, Callable, Dict, List, Mapping, Optional, Sequence, Tuple
 
 from shared_lib.operations.alerting import (  # noqa: F401  (re-exported API)
     ACKNOWLEDGED, CATEGORIES, CRITICAL, DEFAULT_DEDUP_WINDOW_MS, ESCALATION_MINUTES, HIGH, LOW, MEDIUM, OPEN, RESOLVED,
@@ -398,9 +398,11 @@ def run_cycle(engine: AlertEngine, evaluators: Sequence[Callable[[], Any]] = (),
 def default_evaluators(engine: AlertEngine, db: Database, *, backup_dir: Optional[Path] = None,
                        disk_paths: Sequence[Path] = (), disk_state: Optional[Dict[str, DiskSample]] = None,
                        runtime_db: Any = None, runtime_db_path: Optional[str] = None,
-                       producer_state: Optional[Dict[str, Any]] = None):
-    """The evaluators a periodic operations job runs: the platform database ones, the backup and disk ones, and
-    -- when the legacy runtime database is given -- every producer of ``app.ops.alert_producers``."""
+                       producer_state: Optional[Dict[str, Any]] = None,
+                       health_probes: Sequence[Tuple[str, str]] = ()):
+    """The evaluators a periodic operations job runs: the platform database ones, the backup and disk ones, the
+    API health checks named in ``health_probes`` (``(name, url)``), and -- when the legacy runtime database is
+    given -- every producer of ``app.ops.alert_producers``."""
     from app.ops import alert_producers as P
     queue = JobQueue(db)
     state = disk_state if disk_state is not None else {}
@@ -422,9 +424,13 @@ def default_evaluators(engine: AlertEngine, db: Database, *, backup_dir: Optiona
         evaluators.append(named(lambda: evaluate_backup_status(engine, Path(backup_dir)), "evaluate_backup_status"))
     for p in disk_paths:
         evaluators.append(named(lambda p=p: evaluate_disk_growth(engine, Path(p), state=state), "evaluate_disk_growth"))
+    shared_state = producer_state if producer_state is not None else {}
+    if health_probes:
+        probe_ctx = P.ProducerContext(engine, runtime_db=runtime_db, platform_db=db, state=shared_state)
+        probes = tuple(health_probes)
+        evaluators.append(named(lambda: P.evaluate_api_health(probe_ctx, probes), "evaluate_api_health"))
     if runtime_db is not None:
-        ctx = P.ProducerContext(engine, runtime_db=runtime_db, platform_db=db,
-                                state=producer_state if producer_state is not None else {})
+        ctx = P.ProducerContext(engine, runtime_db=runtime_db, platform_db=db, state=shared_state)
         evaluators.extend(P.runtime_producers(ctx))
     return evaluators
 
@@ -530,6 +536,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     ap.add_argument("--alerts-env", default=DEFAULT_ALERTS_ENV)
     ap.add_argument("--runtime-db", help="legacy runtime SQLite file (default: DATABASE_URL)")
     ap.add_argument("--no-runtime-db", action="store_true", help="platform-database evaluators only")
+    ap.add_argument("--health-url", action="append", default=[], metavar="NAME=URL",
+                    help="an API health check to probe every tick (repeatable; also OPS_HEALTH_PROBES, comma-separated)")
     ap.add_argument("--dotenv", help="load this .env first (variables already set win)")
     ap.add_argument("--loop", action="store_true", help="run ticks until SIGTERM (container topology)")
     ap.add_argument("--interval", type=float, default=60.0, help="seconds between ticks (default 60)")
@@ -548,6 +556,12 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         except Exception as exc:  # noqa: BLE001
             print(json.dumps({"ok": False, "error": f"dotenv: {type(exc).__name__}"}))
             return 1
+    try:
+        from app.ops.alert_producers import parse_health_probes
+        health_probes = parse_health_probes([*a.health_url, os.environ.get("OPS_HEALTH_PROBES", "")])
+    except ValueError as exc:
+        print(json.dumps({"ok": False, "error": str(exc)}))
+        return 1
     try:
         db = Database.from_env(pool_size=6)       # sinks that time out may still hold a connection for a while
     except Exception as exc:  # noqa: BLE001
@@ -568,7 +582,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         def build(state: Dict[str, Any], disk: Dict[str, DiskSample]):
             return default_evaluators(engine, db, backup_dir=Path(a.backup_dir) if a.backup_dir else None,
                                       disk_paths=[Path(p) for p in a.disk_path], disk_state=disk,
-                                      runtime_db=runtime_db, runtime_db_path=runtime_path, producer_state=state)
+                                      runtime_db=runtime_db, runtime_db_path=runtime_path, producer_state=state,
+                                      health_probes=health_probes)
         if a.loop:
             return run_loop(engine, lease, build, interval_s=a.interval, max_ticks=a.max_ticks)
         try:

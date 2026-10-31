@@ -144,7 +144,7 @@ def test_every_producer_runs_against_the_real_runtime_schema_without_error(engin
                                     runtime_db=runtime_db, runtime_db_path=runtime_db.path,  # host: not checked here)
                                     producer_state={})
     names = [getattr(e, "__name__", "?") for e in evaluators]
-    assert len(names) == len(set(names)) and len(evaluators) == 23, names
+    assert len(names) == len(set(names)) and len(evaluators) == 24, names
     out = run_cycle(engine, evaluators)
     assert out["evaluator_errors"] == [] and out["evaluators"] == len(evaluators)
     # an empty runtime database raises nothing but the backup alert (no backup in tmp_path)
@@ -716,3 +716,84 @@ def test_a_few_invalid_signatures_are_not_an_alert(engine, platform_db, runtime_
     for _ in range(3):
         webhooks.record_rejection(runtime_db, webhooks.REJECTION_SIGNATURE_INVALID, now_s=T0 / 1000)
     assert P.evaluate_billing(ctx(engine, runtime_db, T0))["firing"] == 0
+
+
+# ── 19. governance violation attempts ──────────────────────────────────────────────────────────────────────
+def test_governance_bypass_attempts_alert_and_routine_m0_refusals_do_not(engine, platform_db, runtime_db):
+    """Section J: a refusal that only a bypass attempt produces raises GOVERNANCE_VIOLATION_ATTEMPT; the refusals
+    every M0 cycle produces (no order authority, not certified, failed research) never do."""
+    def gate(account, outcome, at):
+        put(runtime_db, "cati_execution_events", account_id=account, event_type="GATE", outcome=outcome,
+            recorded_at=at, detail="{}")
+
+    def evaluation(account, reason, at):
+        put(runtime_db, "cati_execution_evaluations", evaluation_id=uuid.uuid4().hex, account_id=account,
+            user_id="u-" + account, observed_at=at, stage="BOUNDARY_RESULT", reason=reason, document="{}")
+    for i in range(3):                                                   # routine under M0
+        gate(f"acct-{i}", "FAMILY_STAGE_NO_ORDER_AUTHORITY:M0", T0 - MIN)
+        evaluation(f"acct-{i}", "FAMILY_FAILED_RESEARCH", T0 - MIN)
+        evaluation(f"acct-{i}", "FAMILY_NOT_CERTIFIED", T0 - MIN)
+    assert P.evaluate_governance_violations(ctx(engine, runtime_db, T0))["firing"] == 0
+    gate("acct-1", "FAMILY_GATE_NOT_AUTHORITATIVE", T0 - MIN)
+    gate("acct-2", "FAMILY_GATE_NOT_AUTHORITATIVE", T0 - 2 * MIN)
+    evaluation("acct-1", "DECISION_TAMPERED", T0 - MIN)
+    evaluation("acct-3", "GO_LIVE_GATE:3:BUILD_DOES_NOT_PERMIT_LIVE", T0 - MIN)
+    gate("acct-9", "TEST_ADAPTER_NOT_ALLOWED", T0 - 3 * HOUR)            # outside the window
+    out = P.evaluate_governance_violations(ctx(engine, runtime_db, T0))
+    assert out["firing"] == 3
+    gate_alert = assert_raised(engine, platform_db, "GOVERNANCE_VIOLATION_ATTEMPT",
+                               {"governance": "FAMILY_GATE_NOT_AUTHORITATIVE"}, source="governance", severity="HIGH")
+    assert gate_alert["detail"]["refusals"] == 2 and gate_alert["detail"]["accounts"] == 2
+    assert "acct-1" not in json.dumps(engine.open_alerts())               # accounts are counted, never named
+    tampered = assert_raised(engine, platform_db, "GOVERNANCE_VIOLATION_ATTEMPT", {"governance": "DECISION_TAMPERED"},
+                             source="governance", severity="HIGH")
+    live = assert_raised(engine, platform_db, "GOVERNANCE_VIOLATION_ATTEMPT", {"governance": "GO_LIVE_GATE"},
+                         source="governance", severity="HIGH")
+    assert P.evaluate_governance_violations(ctx(engine, runtime_db, T0 + 2 * HOUR))["resolved"] == 3
+    for a in (gate_alert, tampered, live):
+        assert_recovered(engine, a["alert_id"], "governance")
+
+
+# ── 20. public API health ──────────────────────────────────────────────────────────────────────────────────
+def test_an_api_that_stops_answering_raises_api_outage_after_the_hold(engine, platform_db, runtime_db):
+    answers = {"http://user/health": (None, "URLError"), "http://admin/health": (200, None),
+               "http://bot/health": (503, None)}
+    probes = [("user-backend", "http://user/health"), ("admin-backend", "http://admin/health"),
+              ("bot-backend", "http://bot/health")]
+    fetch = lambda url, timeout: answers[url]  # noqa: E731
+    state = {}
+    first = P.evaluate_api_health(ctx(engine, runtime_db, T0, state=state), probes, fetch=fetch)
+    assert first["firing"] == 0 and first["held"] == 2                     # one failed probe is not an outage
+    out = P.evaluate_api_health(ctx(engine, runtime_db, T0 + 2 * MIN, state=state), probes, fetch=fetch)
+    assert out["firing"] == 2
+    user = assert_raised(engine, platform_db, "API_OUTAGE", {"api": "user-backend"}, source="api_health",
+                         severity="CRITICAL")
+    assert user["detail"] == {"api": "user-backend", "status": None, "error": "URLError"}
+    bot = assert_raised(engine, platform_db, "API_OUTAGE", {"api": "bot-backend"}, source="api_health",
+                        severity="CRITICAL")
+    answers.update({"http://user/health": (200, None), "http://bot/health": (200, None)})
+    assert P.evaluate_api_health(ctx(engine, runtime_db, T0 + 3 * MIN, state=state), probes, fetch=fetch)["resolved"] == 2
+    for a in (user, bot):
+        assert_recovered(engine, a["alert_id"], "api_health")
+
+
+def test_health_probe_configuration_is_validated():
+    assert P.parse_health_probes(["a=http://h:1/health", "b=https://x/health,c=http://y/z", ""]) == [
+        ("a", "http://h:1/health"), ("b", "https://x/health"), ("c", "http://y/z")]
+    for bad in ("nameonly", "=http://h/health", "a=ftp://h/health"):
+        with pytest.raises(ValueError):
+            P.parse_health_probes([bad])
+
+
+def test_the_deployed_ticks_probe_every_api():
+    from pathlib import Path
+    import yaml
+    root = Path(__file__).resolve().parents[4]
+    service = (root / "deploy/systemd/cosmicforge-ops-tick.service").read_text(encoding="utf-8")
+    for probe in ("user-backend=http://127.0.0.1:8000/health", "admin-backend=http://127.0.0.1:8100/health",
+                  "bot-backend=http://127.0.0.1:9000/health"):
+        assert f"--health-url {probe}" in service
+    command = yaml.safe_load((root / "deploy/staging/docker-compose.staging.yml").read_text(encoding="utf-8")
+                             )["services"]["ops-tick"]["command"]
+    probes = P.parse_health_probes([command[i + 1] for i, v in enumerate(command) if v == "--health-url"])
+    assert {name for name, _ in probes} == {"user-backend", "admin-backend", "bot-api", "bot-trading"}

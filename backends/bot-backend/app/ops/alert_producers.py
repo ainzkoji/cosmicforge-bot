@@ -796,6 +796,104 @@ def evaluate_execution_latency(ctx: ProducerContext, *, window_ms: int = 15 * MI
     return publish(ctx, "execution_latency", ("EXCESSIVE_LATENCY",), signals)
 
 
+# ── 19. governance violation attempts ─────────────────────────────────────────────────────────────────────
+#: Refusals only an attempt to get round governance produces: a gate, authority or adapter that is not the real
+#: one in production, family code that differs from its registration, a forged or altered decision, a LIVE entry
+#: reaching the go-live gate while live trading is not authorized. The refusals every M0 cycle produces
+#: (no order authority, not certified, failed research, kill switch, stale decision) are NOT in this list.
+GOVERNANCE_VIOLATION_CODES: Tuple[str, ...] = (
+    "FAMILY_GATE_NOT_AUTHORITATIVE", "SUBMISSION_GATE_NOT_AUTHORITATIVE", "GOVERNANCE_AUTHORITY_NOT_AUTHORITATIVE",
+    "ORDER_SPREADING_GATE_NOT_AUTHORITATIVE", "TEST_ADAPTER_NOT_ALLOWED", "FAMILY_RULE_HASH_MISMATCH",
+    "DECISION_TAMPERED", "DECISION_ACCOUNT_MISMATCH", "DECISION_PLAN_MISMATCH", "DECISION_FUTURE_DATED",
+    "GO_LIVE_GATE:")
+
+
+def _violation_code(reason: Any) -> Optional[str]:
+    text = str(reason or "")
+    for code in GOVERNANCE_VIOLATION_CODES:
+        if code in text:
+            return code.rstrip(":")
+    return None
+
+
+def evaluate_governance_violations(ctx: ProducerContext, *, window_ms: int = HOUR) -> Dict[str, Any]:
+    """Refusals of the execution boundary and the portfolio gate that mean someone or something tried to get
+    round research or execution governance (``GOVERNANCE_VIOLATION_CODES``), from the venue journal's GATE rows
+    (``cati_execution_events``) and the production evaluations (``cati_execution_evaluations``). One alert per
+    code; only counts leave the database (accounts are counted, never named)."""
+    now, db, signals = ctx.now(), ctx.runtime_db, []
+    since = now - window_ms
+    found: Dict[str, Dict[str, Any]] = {}
+
+    def add(code: Optional[str], account: Any, where: str) -> None:
+        if code is None:
+            return
+        entry = found.setdefault(code, {"refusals": 0, "accounts": set(), "sources": set()})
+        entry["refusals"] += 1
+        entry["accounts"].add(str(account))
+        entry["sources"].add(where)
+    for account, outcome in rows(db, "SELECT account_id, outcome FROM cati_execution_events WHERE event_type = 'GATE' "
+                                     "AND recorded_at >= ? AND outcome IS NOT NULL", (since,)):
+        add(_violation_code(outcome), account, "portfolio_gate")
+    for account, reason in rows(db, "SELECT account_id, reason FROM cati_execution_evaluations WHERE observed_at >= ? "
+                                    "AND reason IS NOT NULL", (since,)):
+        add(_violation_code(reason), account, "execution_boundary")
+    for code, entry in sorted(found.items()):
+        signals.append(Signal("GOVERNANCE_VIOLATION_ATTEMPT", {"governance": code},
+                              f"{entry['refusals']} order(s) refused with {code} in the last {window_ms // MINUTE} min",
+                              {"code": code, "refusals": entry["refusals"], "accounts": len(entry["accounts"]),
+                               "sources": sorted(entry["sources"]), "window_minutes": window_ms // MINUTE}))
+    return publish(ctx, "governance", ("GOVERNANCE_VIOLATION_ATTEMPT",), signals)
+
+
+# ── 20. public API health ─────────────────────────────────────────────────────────────────────────────────
+def _http_status(url: str, timeout_s: float) -> Tuple[Optional[int], Optional[str]]:
+    import urllib.error
+    import urllib.request
+    request = urllib.request.Request(url, headers={"User-Agent": "cosmicforge-ops-tick"})
+    try:
+        with urllib.request.urlopen(request, timeout=timeout_s) as response:  # noqa: S310 -- operator-configured URL
+            return int(response.status), None
+    except urllib.error.HTTPError as exc:
+        return int(exc.code), None
+    except Exception as exc:  # noqa: BLE001 -- refused, timed out, DNS: the API does not answer
+        return None, type(exc).__name__
+
+
+def parse_health_probes(values: Iterable[str]) -> List[Tuple[str, str]]:
+    """``name=url`` entries (``--health-url``, or ``OPS_HEALTH_PROBES`` separated by commas). Only http(s)."""
+    out: List[Tuple[str, str]] = []
+    for value in values:
+        for item in str(value or "").split(","):
+            name, sep, url = item.strip().partition("=")
+            if not item.strip():
+                continue
+            if not sep or not name.strip() or not url.strip().startswith(("http://", "https://")):
+                raise ValueError(f"health probe must be name=http(s)://host:port/path, got {item.strip()[:80]!r}")
+            out.append((name.strip(), url.strip()))
+    return out
+
+
+def evaluate_api_health(ctx: ProducerContext, probes: Sequence[Tuple[str, str]], *, timeout_s: float = 5.0,
+                        hold_ms: int = 2 * MINUTE, fetch: Optional[Callable[[str, float], Tuple[Optional[int],
+                                                                                         Optional[str]]]] = None
+                        ) -> Dict[str, Any]:
+    """Each configured API's health check (``probes``: ``(name, url)``). A probe that does not answer 200 for
+    ``hold_ms`` raises API_OUTAGE (CRITICAL) for that API; it resolves when the API answers again. The ops tick
+    runs on its own schedule, so a portal outage is reported even while trading runs normally, and it never
+    touches the order path. Only the API name and the status or error class are recorded."""
+    fetch = fetch or _http_status
+    signals = []
+    for name, url in probes:
+        status, error = fetch(url, timeout_s)
+        if status == 200:
+            continue
+        signals.append(Signal("API_OUTAGE", {"api": name},
+                              f"{name} does not answer its health check ({error or f'HTTP {status}'})",
+                              {"api": name, "status": status, "error": error}, hold_ms=hold_ms))
+    return publish(ctx, "api_health", ("API_OUTAGE",), signals)
+
+
 # ── registry ──────────────────────────────────────────────────────────────────────────────────────────────
 def runtime_producers(ctx: ProducerContext) -> List[Callable[[], Any]]:
     """The producers that read the legacy runtime database (and, for unknown outcomes, the platform database).
@@ -809,10 +907,11 @@ def runtime_producers(ctx: ProducerContext) -> List[Callable[[], Any]]:
                               evaluate_execution_uncertainty, evaluate_protection, evaluate_emergency_flattens,
                               evaluate_kill_switches, evaluate_risk_brakes, evaluate_family_certification,
                               evaluate_venue_certification, evaluate_billing, evaluate_authentication,
-                              evaluate_execution_latency)]
+                              evaluate_execution_latency, evaluate_governance_violations)]
 
 
-__all__ = ["ProducerContext", "RuntimeDatabaseProbe", "Signal", "evaluate_account_leases", "evaluate_authentication",
+__all__ = ["GOVERNANCE_VIOLATION_CODES", "ProducerContext", "RuntimeDatabaseProbe", "Signal", "evaluate_account_leases",
+           "evaluate_api_health", "evaluate_authentication", "evaluate_governance_violations", "parse_health_probes",
            "evaluate_billing", "evaluate_emergency_flattens", "evaluate_exchange_connectivity",
            "evaluate_execution_latency", "evaluate_execution_uncertainty", "evaluate_family_certification",
            "evaluate_instrument_rules", "evaluate_kill_switches", "evaluate_market_data", "evaluate_protection",
