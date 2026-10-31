@@ -117,6 +117,10 @@ _add("MAINTENANCE_BOUNDARY_UNAVAILABLE", CRITICAL, "The engine could not build i
 # ── risk gates ───────────────────────────────────────────────────────────────
 _add("USER_DAILY_LOSS_LIMIT_REACHED", BLOCKED, "Today's loss limit was reached; no new entries until tomorrow.", "No action needed; existing positions stay protected.")
 _add("ACCOUNT_DAILY_LOSS_POLICY_UNAVAILABLE", BLOCKED, "The bot's daily loss policy could not be resolved.", "Check the bot configuration.")
+# Section K1/K3: a percentage budget is resolved against the exchange account's equity.
+_add("ACCOUNT_CAPITAL_BUDGET_UNRESOLVED", BLOCKED, "The bot's percentage budget could not be worked out from the account balance, so nothing is sized.", "Retried next cycle; check that the account holds a positive balance.")
+_add("NO_EQUITY_READING", WAITING, "The engine has not read this account's balance yet, so the money figures of a percentage budget are not shown.", "No action needed; they appear after the first account read.")
+_add("NO_POSITIVE_EQUITY", BLOCKED, "The account balance is zero or negative, so a percentage budget is zero.", "Deposit funds or choose a fixed budget.")
 _add("ACCOUNT_WIDE_POSITION_OR_ORDER_ACTIVE", WAITING, "A position or order is already open on this account; one position at a time.", "No action needed.")
 _add("ACCOUNT_WIDE_ORPHAN_ORDER_ACTIVE", ATTENTION, "An open order on the account is not managed by the bot.", "Cancel manual orders on the exchange account.")
 _add("NATIVE_PROTECTION_REQUIRES_ONE_WAY_ACCOUNT", BLOCKED, "The exchange account is in hedge mode; the engine needs one-way mode.", "Switch the futures account to one-way position mode.")

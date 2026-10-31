@@ -69,8 +69,12 @@ def _emergency_token(*, role="admin", act=EMERGENCY_ACTOR_CLAIM, lifetime=60, su
 
 
 def production_settings(demo=True, live=False):
-    return Settings(_env_file=None, APP_ENV="PRODUCTION", DATABASE_ROLE="production", ENVIRONMENT_NAME="production",
-                    EXECUTION_MODE="live", DEMO_ORDER_SUBMISSION_ENABLED=demo, LIVE_ORDER_SUBMISSION_ENABLED=live)
+    state = Settings(_env_file=None, APP_ENV="PRODUCTION", DATABASE_ROLE="production", ENVIRONMENT_NAME="production",
+                     EXECUTION_MODE="live", DEMO_ORDER_SUBMISSION_ENABLED=demo, LIVE_ORDER_SUBMISSION_ENABLED=False)
+    # The production profile refuses the live flag at startup in this build (Section K4); the emergency paths are
+    # tested as if a process ran with it anyway, so it is set after validation.
+    state.LIVE_ORDER_SUBMISSION_ENABLED = live
+    return state
 
 
 FLATTEN = {"scope": "all", "account_id": None, "confirm": "FLATTEN", "reason": "incident drill"}

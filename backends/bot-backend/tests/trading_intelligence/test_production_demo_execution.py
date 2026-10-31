@@ -20,9 +20,13 @@ from shared_lib.core.production import (require_broker_mutation_permission, orde
 
 
 def demo_profile(demo=True, live=False):
-    return Settings(_env_file=None, APP_ENV="PRODUCTION", DATABASE_ROLE="production",
+    state = Settings(_env_file=None, APP_ENV="PRODUCTION", DATABASE_ROLE="production",
         ENVIRONMENT_NAME="production", EXECUTION_MODE="live",
-        DEMO_ORDER_SUBMISSION_ENABLED=demo, LIVE_ORDER_SUBMISSION_ENABLED=live)
+        DEMO_ORDER_SUBMISSION_ENABLED=demo, LIVE_ORDER_SUBMISSION_ENABLED=False)
+    # The production profile refuses the live flag at startup in this build (Section K4). These tests prove the
+    # deeper gates still refuse a live order if a process ran with it anyway, so it is set after validation.
+    state.LIVE_ORDER_SUBMISSION_ENABLED = live
+    return state
 
 
 @pytest.fixture

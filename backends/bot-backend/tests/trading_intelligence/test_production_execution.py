@@ -20,8 +20,12 @@ from app.trading_intelligence.execution.adapter import OrderState, BrokerPositio
 
 
 def profile(enabled=False):
-    return Settings(_env_file=None, APP_ENV="PRODUCTION", DATABASE_ROLE="production", ENVIRONMENT_NAME="production",
-                    EXECUTION_MODE="live", LIVE_ORDER_SUBMISSION_ENABLED=enabled)
+    state = Settings(_env_file=None, APP_ENV="PRODUCTION", DATABASE_ROLE="production", ENVIRONMENT_NAME="production",
+                     EXECUTION_MODE="live", LIVE_ORDER_SUBMISSION_ENABLED=False)
+    # The production profile refuses the live flag at startup in this build (Section K4). These tests prove the
+    # deeper gates still refuse a live order if a process ran with it anyway, so it is set after validation.
+    state.LIVE_ORDER_SUBMISSION_ENABLED = enabled
+    return state
 
 
 @pytest.fixture
