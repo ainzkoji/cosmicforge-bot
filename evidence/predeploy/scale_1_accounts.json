@@ -1,0 +1,740 @@
+{
+ "code": {
+  "branch": "main",
+  "commit": "d9010c262fa5297d3bd38541774f1a4e8259ad31",
+  "dirty_paths": [
+   "ackends/bot-backend/app/api/bot_instances.py",
+   "backends/bot-backend/app/api/golive.py",
+   "backends/bot-backend/app/api/readiness_admin.py",
+   "backends/bot-backend/app/evidence/fill_bridge.py",
+   "backends/bot-backend/app/exchange/platform_adapter/binance.py",
+   "backends/bot-backend/app/exchange/platform_adapter/bingx.py",
+   "backends/bot-backend/app/exchange/platform_adapter/bybit.py",
+   "backends/bot-backend/app/exchange/platform_adapter/certification.py",
+   "backends/bot-backend/app/exchange/platform_adapter/certification_harness.py",
+   "backends/bot-backend/app/exchange/platform_adapter/factory.py",
+   "backends/bot-backend/app/exchange/platform_adapter/reconcile.py",
+   "backends/bot-backend/app/exchange/platform_adapter/stream_credentials.py",
+   "backends/bot-backend/app/execution/entry_protection.py",
+   "backends/bot-backend/app/execution/executor.py",
+   "backends/bot-backend/app/execution/paper_executor.py",
+   "backends/bot-backend/app/golive/gate.py",
+   "backends/bot-backend/app/main.py",
+   "backends/bot-backend/app/market_data/daily_feed.py",
+   "backends/bot-backend/app/ops/alert_producers.py",
+   "backends/bot-backend/app/ops/runtime_shutdown.py",
+   "backends/bot-backend/app/ops/runtime_supervisor.py",
+   "backends/bot-backend/app/product_safety/readiness_gate.py",
+   "backends/bot-backend/app/product_safety/sizing_evidence.py",
+   "backends/bot-backend/app/risk/capital_ledger.py",
+   "backends/bot-backend/app/runner/multi_runner.py",
+   "backends/bot-backend/app/runner/runner.py",
+   "backends/bot-backend/app/runner/session_monitor.py",
+   "backends/bot-backend/app/trading_intelligence/execution/entry_permit.py",
+   "backends/bot-backend/app/trading_intelligence/integration/platform_runtime.py",
+   "backends/bot-backend/app/trading_intelligence/integration/runtime_owner.py",
+   "backends/bot-backend/app/trading_intelligence/integration/runtime_owner_loop.py",
+   "backends/bot-backend/app/trading_intelligence/pipeline/daily_trend.py",
+   "backends/bot-backend/app/trading_intelligence/pipeline/execution.py",
+   "backends/bot-backend/app/trading_intelligence/pipeline/portfolio.py",
+   "backends/bot-backend/app/trading_intelligence/pipeline/protection.py",
+   "backends/bot-backend/app/trading_intelligence/pipeline/reservations.py",
+   "backends/bot-backend/app/trading_intelligence/scale/market_entry_policy.py",
+   "backends/bot-backend/tests/deploy/test_activation_gate_register.py",
+   "backends/bot-backend/tests/deploy/test_config_profiles.py",
+   "backends/bot-backend/tests/deploy/test_live_release_static.py",
+   "backends/bot-backend/tests/exchange/_certification_rehearsal.py",
+   "backends/bot-backend/tests/exchange/_platform_adapter_wire.py",
+   "backends/bot-backend/tests/exchange/test_certification_harness.py",
+   "backends/bot-backend/tests/exchange/test_platform_adapter_contract.py",
+   "backends/bot-backend/tests/exchange/test_platform_adapter_venues.py",
+   "backends/bot-backend/tests/exchange/test_run_venue_certification_cli.py",
+   "backends/bot-backend/tests/exchange/test_venue_certification.py",
+   "backends/bot-backend/tests/legacy_postgres_modules.txt",
+   "backends/bot-backend/tests/platform_workers/_liquidity_kit.py",
+   "backends/bot-backend/tests/platform_workers/_live_release.py",
+   "backends/bot-backend/tests/platform_workers/test_account_scale.py",
+   "backends/bot-backend/tests/platform_workers/test_golive_gate.py",
+   "backends/bot-backend/tests/platform_workers/test_liquidity_at_scale.py",
+   "backends/bot-backend/tests/platform_workers/test_live_build_release.py",
+   "backends/bot-backend/tests/platform_workers/test_operations_alert_producers.py",
+   "backends/bot-backend/tests/test_cati_production_config.py",
+   "backends/bot-backend/tests/test_e02_legacy_money_exact.py",
+   "backends/bot-backend/tests/test_iofs_gate_evaluator.py",
+   "backends/bot-backend/tests/test_operator_grant_single_active.py",
+   "backends/bot-backend/tests/test_runtime_owner_readers.py"
+  ],
+  "working_tree_dirty": true
+ },
+ "evidence_class": "SYNTHETIC_FAKEVENUE_WINDOWS_WORKSTATION",
+ "host": {
+  "cpu_count": 8,
+  "machine": "AMD64",
+  "numpy": "2.4.1",
+  "platform": "Windows-11-10.0.26200-SP0",
+  "processor": "Intel64 Family 6 Model 140 Stepping 1, GenuineIntel",
+  "python": "3.12.2",
+  "sqlite": "3.43.1",
+  "sqlite_synchronous": "NORMAL (default)",
+  "statement": "Measured on the host described under 'host'. A Windows workstation measurement is not a Linux certification, and synthetic accounts are not connected customer accounts. Step 5 scale certification is not claimed.",
+  "system": "Windows"
+ },
+ "machine": {
+  "cpu_count": 8,
+  "machine": "AMD64",
+  "memory_gb": 15.8,
+  "os": "Windows-11-10.0.26200-SP0",
+  "processor": "Intel64 Family 6 Model 140 Stepping 1, GenuineIntel",
+  "python": "3.12.2"
+ },
+ "measured_at_utc": "2026-10-31T22:38:15Z",
+ "not_evidence_of": "SYNTHETIC: in-memory FakeVenue accounts, synthetic data and worker threads in one process on one Windows workstation. Not venue evidence, not exchange-demo throughput, not a Linux certification, not a hosted-staging run.",
+ "notes": [
+  "Worker processes are threads of ONE process (4 trading workers x 4 account threads); separate-process takeover is measured by scripts/worker_kill_drill.py, not here.",
+  "Lease TTL is a drill setting (5 s; production 60 s): takeover times scale with the TTL, not with N. A first run with a 1.5 s TTL showed why it must exceed the round: at 1,000 accounts a round took ~2 s on this loaded workstation, leases lapsed mid-round, the fence refused those steps and accounts moved between workers (fail-safe, but churn). fence_refused_lease_lapsed and accounts_moved_and_recovered_in_round record it.",
+  "The request budget and the REST reconciliation / user-stream ledgers live in a throwaway legacy SQLite file on every dialect; the platform database is the dialect named in the row.",
+  "tracemalloc peaks come from a separate pass (SQLite only) so that tracing does not inflate the timed stages.",
+  "Queue orders are resting limit orders that never fill, so every position keeps exactly the protection it was given; the order-identity and lost-acknowledgement properties are the same as for a market order.",
+  "Request budget: one egress address per venue and the repository's default limits and method weights (Binance VERIFIED_BY_DOC; Bybit and BingX UNVERIFIED configured envelopes). 'derived_*' fields are arithmetic on the measured window, not measurements.",
+  "FakeVenue's own user-stream spec is an auth frame for every profile, which the Binance and BingX stream profiles cannot authenticate; StreamVenue supplies each venue's real spec shape. A test-double limitation.",
+  "Other engineers' processes were running on the same workstation during the measurement: wall-clock figures include that noise."
+ ],
+ "rows": [
+  {
+   "accounts": 1,
+   "dialect": "sqlite",
+   "entry_gate": {
+    "active_slots_created": 1,
+    "production_default_policy": {
+     "by_venue": {
+      "binance": {
+       "MARKET_FALLBACK_DISABLED_BY_POLICY": 1
+      }
+     },
+     "codes": {
+      "MARKET_FALLBACK_DISABLED_BY_POLICY": 1
+     },
+     "connections_opened": 0,
+     "cpu_ms": 15.6,
+     "statements": 7,
+     "wall_ms": 7.9
+    },
+    "stale_market_data": {
+     "by_venue": {
+      "binance": {
+       "DEPTH_STALE": 1
+      }
+     },
+     "codes": {
+      "DEPTH_STALE": 1
+     },
+     "connections_opened": 0,
+     "cpu_ms": 0.0,
+     "statements": 4,
+     "wall_ms": 0.5
+    },
+    "uncalibrated_market_permitting_test_policy": {
+     "by_venue": {
+      "binance": {
+       "RESERVED": 1
+      }
+     },
+     "codes": {
+      "RESERVED": 1
+     },
+     "connections_opened": 0,
+     "cpu_ms": 0.0,
+     "statements": 14,
+     "wall_ms": 1.5
+    }
+   },
+   "failures": {
+    "database_restart": {
+     "accounts_maintained_during_outage": 0,
+     "accounts_with_duplicate_stops": 0,
+     "accounts_wrongly_protected": 0,
+     "connections_reopened": 3,
+     "elapsed_since_back_ms": 32.1,
+     "open_protection_gaps": 0,
+     "outage_s": 0.3,
+     "recovered_full_ownership_ms": 32.1,
+     "rounds_refused_during_outage": 18
+    },
+    "emergency_flatten_during_load": {
+     "accounts_flattened": 1,
+     "fence_refusals_on_flattened_accounts": 0,
+     "fence_refusals_on_other_accounts_lease_lapsed_under_load": 0,
+     "flat_after": 1,
+     "flatten_wall_ms": 37.1,
+     "orphan_stops_after": 0,
+     "other_accounts_wrongly_protected": 0,
+     "previous_holder_fence_refused_after": 1,
+     "recovered_first_by_next_owner": 1,
+     "reopened_after": 0
+    },
+    "interrupted_deployment": {
+     "accounts_recovered_first_by_new_version": 1,
+     "accounts_with_duplicate_stops": 0,
+     "accounts_wrongly_protected": 0,
+     "all_accounts_on_new_version_ms": 5035.9,
+     "assignment_history_reasons_during_stage": {
+      "DRAIN": 1,
+      "EXPIRED_TAKEOVER": 1,
+      "REASSIGNED": 1
+     },
+     "drain_phase_ms": 45.7,
+     "drained_cleanly": 2,
+     "killed_mid_round": 1,
+     "new_workers": 3,
+     "old_workers": 3,
+     "open_protection_gaps": 0,
+     "ttl_ms": 5000
+    },
+    "order_acknowledgement_lost": {
+     "duplicate_orders": 0,
+     "injected": 1,
+     "resolved_by_lookup": 1
+    },
+    "queue_consumer_crash": {
+     "all_jobs_succeeded": true,
+     "attempts_of_crashed_jobs": {
+      "2": 1
+     },
+     "claimed_by_crashed_consumer": 1,
+     "drained_after_crash_ms": 1042.7,
+     "duplicate_orders": 0,
+     "job_lease_ms": 1000,
+     "jobs": 1
+    },
+    "stale_market_data": {
+     "entries_refused": {
+      "DEPTH_STALE": 1
+     }
+    },
+    "user_stream_disconnect": {
+     "connect_step_ms": 4.0,
+     "connections_per_stream": {
+      "2": 1
+     },
+     "entries_allowed_after_reconnect": 1,
+     "entries_allowed_while_live": 1,
+     "entry_refusals_while_down": {
+      "USER_STREAM_DISCONNECTED": 1
+     },
+     "health_after_disconnect": {
+      "DISCONNECTED": 1
+     },
+     "live_after_connect": 1,
+     "live_after_reconnect": 1,
+     "note": "simulated stream clock (5 s per reconnect round); a FakeVenue test double with venue-faithful stream specs (see StreamVenue)",
+     "protection_while_down": {
+      "accounts_with_duplicate_stops": 0,
+      "accounts_wrongly_protected": 0,
+      "open_protection_gaps": 0
+     },
+     "reconnect_ms": 0.5,
+     "reconnect_rounds": 1,
+     "streams": 1
+    },
+    "worker_killed_mid_cycle": {
+     "accounts_owned_after": 1,
+     "accounts_with_duplicate_stops": 0,
+     "accounts_wrongly_protected": 0,
+     "all_accounts_owned_after": true,
+     "died_after_accounts": 0,
+     "lease_takeover_ms": 4958.4,
+     "maintained_by_survivors_meanwhile": 1,
+     "open_protection_gaps": 0,
+     "orphans_left": 0,
+     "stale_holder_mutation_refused": "ASSIGNMENT_TAKEN_OVER",
+     "ttl_ms": 5000,
+     "worker_accounts": 1
+    }
+   },
+   "lease_takeover_ms": 4958.4,
+   "maintenance": {
+    "account_cycle_latency_ms": {
+     "max": 0.112,
+     "n": 1,
+     "p50": 0.112,
+     "p95": 0.112
+    },
+    "accounts_maintained": 1,
+    "accounts_moved_and_recovered_in_round": 0,
+    "connections_opened": 0,
+    "cpu_ms": 0.0,
+    "failed": 0,
+    "fence_refused_lease_lapsed": 0,
+    "first_round": {
+     "accounts_recovered_first": 1,
+     "connections_opened": 3,
+     "cpu_ms": 0.0,
+     "fence_refused_lease_lapsed": 0,
+     "recoveries_including_rebalance_moves": 1,
+     "startup_recovery_latency_ms": {
+      "max": 0.083,
+      "n": 1,
+      "p50": 0.083,
+      "p95": 0.083
+     },
+     "statements": 71,
+     "wall_ms": 26.1
+    },
+    "maintenance_steps": 1,
+    "max_worker_round_ms": 45.1,
+    "owned": 1,
+    "owned_as_reported_by_each_claim": 1,
+    "statements": 65,
+    "wall_ms": 45.9,
+    "workers": 4
+   },
+   "notifications": {
+    "connections_opened": 0,
+    "cpu_ms": 0.0,
+    "delivered": 1,
+    "duplicate_deliveries": 0,
+    "duplicate_enqueues_coalesced": 1,
+    "enqueued": 1,
+    "statements": 17,
+    "throughput_per_s": 32.8,
+    "wall_ms": 30.5
+   },
+   "order_spreading": {
+    "accounts_requesting": 1,
+    "calibrated": false,
+    "cap_notional": "500095.000",
+    "connections_opened": 0,
+    "cpu_ms": 0.0,
+    "deferred": 0,
+    "depth_snapshots_read": 1,
+    "granted_total": "250",
+    "max_orders_in_one_slot_interval": 1,
+    "policy_max_orders_per_slot": 10,
+    "policy_version": "conservative-uncalibrated-1",
+    "reserved": 1,
+    "slot_intervals_used": 1,
+    "statements": 13,
+    "wall_ms": 1.2,
+    "within_cap": true
+   },
+   "queue": {
+    "backlog_after": {
+     "SUCCEEDED": 1
+    },
+    "connections_opened": 0,
+    "cpu_ms": 0.0,
+    "duplicate_orders": 0,
+    "intent_statuses": {
+     "ACKNOWLEDGED": 1
+    },
+    "jobs": 1,
+    "lost_acknowledgements_injected": 1,
+    "lost_acknowledgements_resolved_by_lookup": 1,
+    "outcomes": {
+     "RETRY": 1,
+     "SUCCEEDED": 1
+    },
+    "statements": 51,
+    "throughput_jobs_per_s": 28.9,
+    "venue_submits": 1,
+    "wall_ms": 34.6
+   },
+   "reconciliation_and_request_budget": {
+    "accounts": 1,
+    "by_venue": {
+     "binance": {
+      "accounts": 1,
+      "accounts_reconciled_in_one_window": 1,
+      "capacity": 1920.0,
+      "denials": {},
+      "derived_full_round_ms_one_egress_address": 60000,
+      "derived_windows_for_one_full_round": 1,
+      "limit_verification": "VERIFIED_BY_DOC",
+      "outcomes": {
+       "OK": 1
+      },
+      "reconciliation_ceiling": 1536.0,
+      "unit": "WEIGHT",
+      "used_by_priority": {
+       "RECONCILIATION": 50.0
+      },
+      "used_weight": 50.0,
+      "venue_limit": 2400.0,
+      "window_ms": 60000
+     }
+    },
+    "cpu_ms": 109.4,
+    "egress_addresses_per_venue": 1,
+    "elapsed_window_ms": 165,
+    "reconciliation_latency_completed_ms": {
+     "max": 157.151,
+     "n": 1,
+     "p50": 157.151,
+     "p95": 157.151
+    },
+    "reconciliation_latency_ms": {
+     "max": 157.151,
+     "n": 1,
+     "p50": 157.151,
+     "p95": 157.151
+    },
+    "refused_by_local_budget_latency_ms": {
+     "max": null,
+     "n": 0,
+     "p50": null,
+     "p95": null
+    },
+    "wall_ms": 165.7
+   },
+   "resources": {
+    "cpu_ms_total": 1859.4,
+    "db_connections_opened_total": 10,
+    "db_pool_peak_in_use": 5,
+    "db_pool_size": 24,
+    "rss_mb": 57.6,
+    "statements_total": 11128,
+    "tracemalloc_peak_bytes": {
+     "fleet_and_maintenance_cycle": 126761,
+     "signal_and_sizing": 6315356
+    },
+    "transactions_total": 1848
+   },
+   "shared_signal_and_sizing": {
+    "accounts_sized": 1,
+    "fingerprint_unchanged_after_fanout": true,
+    "orders_proposed": 4,
+    "shared_signal_computations": 1,
+    "shared_signal_cpu_ms": 46.9,
+    "shared_signal_ms": 31.63,
+    "sizing_cpu_ms": 0.0,
+    "sizing_errors": 0,
+    "sizing_per_account_ms": {
+     "max": 0.2148,
+     "p50": 0.2148,
+     "p95": 0.2148
+    },
+    "sizing_total_ms": 0.25
+   },
+   "ttl_ms": 5000,
+   "wall_s_total": 13.4,
+   "workers": 4
+  },
+  {
+   "accounts": 1,
+   "dialect": "postgresql",
+   "entry_gate": {
+    "active_slots_created": 1,
+    "production_default_policy": {
+     "by_venue": {
+      "binance": {
+       "MARKET_FALLBACK_DISABLED_BY_POLICY": 1
+      }
+     },
+     "codes": {
+      "MARKET_FALLBACK_DISABLED_BY_POLICY": 1
+     },
+     "connections_opened": 0,
+     "cpu_ms": 15.6,
+     "statements": 7,
+     "wall_ms": 14.9
+    },
+    "stale_market_data": {
+     "by_venue": {
+      "binance": {
+       "DEPTH_STALE": 1
+      }
+     },
+     "codes": {
+      "DEPTH_STALE": 1
+     },
+     "connections_opened": 0,
+     "cpu_ms": 0.0,
+     "statements": 4,
+     "wall_ms": 3.3
+    },
+    "uncalibrated_market_permitting_test_policy": {
+     "by_venue": {
+      "binance": {
+       "RESERVED": 1
+      }
+     },
+     "codes": {
+      "RESERVED": 1
+     },
+     "connections_opened": 0,
+     "cpu_ms": 15.6,
+     "statements": 15,
+     "wall_ms": 9.9
+    }
+   },
+   "failures": {
+    "database_restart": {
+     "accounts_maintained_during_outage": 0,
+     "accounts_with_duplicate_stops": 0,
+     "accounts_wrongly_protected": 0,
+     "connections_reopened": 3,
+     "elapsed_since_back_ms": 103.6,
+     "open_protection_gaps": 0,
+     "outage_s": 0.3,
+     "recovered_full_ownership_ms": 103.5,
+     "rounds_refused_during_outage": 18
+    },
+    "emergency_flatten_during_load": {
+     "accounts_flattened": 1,
+     "fence_refusals_on_flattened_accounts": 0,
+     "fence_refusals_on_other_accounts_lease_lapsed_under_load": 0,
+     "flat_after": 1,
+     "flatten_wall_ms": 77.6,
+     "orphan_stops_after": 0,
+     "other_accounts_wrongly_protected": 0,
+     "previous_holder_fence_refused_after": 1,
+     "recovered_first_by_next_owner": 1,
+     "reopened_after": 0
+    },
+    "interrupted_deployment": {
+     "accounts_recovered_first_by_new_version": 1,
+     "accounts_with_duplicate_stops": 0,
+     "accounts_wrongly_protected": 0,
+     "all_accounts_on_new_version_ms": 5033.8,
+     "assignment_history_reasons_during_stage": {
+      "DRAIN": 1,
+      "EXPIRED_TAKEOVER": 1,
+      "REASSIGNED": 1
+     },
+     "drain_phase_ms": 29.2,
+     "drained_cleanly": 2,
+     "killed_mid_round": 1,
+     "new_workers": 3,
+     "old_workers": 3,
+     "open_protection_gaps": 0,
+     "ttl_ms": 5000
+    },
+    "order_acknowledgement_lost": {
+     "duplicate_orders": 0,
+     "injected": 1,
+     "resolved_by_lookup": 1
+    },
+    "queue_consumer_crash": {
+     "all_jobs_succeeded": true,
+     "attempts_of_crashed_jobs": {
+      "2": 1
+     },
+     "claimed_by_crashed_consumer": 1,
+     "drained_after_crash_ms": 1009.9,
+     "duplicate_orders": 0,
+     "job_lease_ms": 1000,
+     "jobs": 1
+    },
+    "stale_market_data": {
+     "entries_refused": {
+      "DEPTH_STALE": 1
+     }
+    },
+    "user_stream_disconnect": {
+     "connect_step_ms": 2.1,
+     "connections_per_stream": {
+      "2": 1
+     },
+     "entries_allowed_after_reconnect": 1,
+     "entries_allowed_while_live": 1,
+     "entry_refusals_while_down": {
+      "USER_STREAM_DISCONNECTED": 1
+     },
+     "health_after_disconnect": {
+      "DISCONNECTED": 1
+     },
+     "live_after_connect": 1,
+     "live_after_reconnect": 1,
+     "note": "simulated stream clock (5 s per reconnect round); a FakeVenue test double with venue-faithful stream specs (see StreamVenue)",
+     "protection_while_down": {
+      "accounts_with_duplicate_stops": 0,
+      "accounts_wrongly_protected": 0,
+      "open_protection_gaps": 0
+     },
+     "reconnect_ms": 0.4,
+     "reconnect_rounds": 1,
+     "streams": 1
+    },
+    "worker_killed_mid_cycle": {
+     "accounts_owned_after": 1,
+     "accounts_with_duplicate_stops": 0,
+     "accounts_wrongly_protected": 0,
+     "all_accounts_owned_after": true,
+     "died_after_accounts": 0,
+     "lease_takeover_ms": 5022.0,
+     "maintained_by_survivors_meanwhile": 1,
+     "open_protection_gaps": 0,
+     "orphans_left": 0,
+     "stale_holder_mutation_refused": "ASSIGNMENT_TAKEN_OVER",
+     "ttl_ms": 5000,
+     "worker_accounts": 1
+    }
+   },
+   "lease_takeover_ms": 5022.0,
+   "maintenance": {
+    "account_cycle_latency_ms": {
+     "max": 22.941,
+     "n": 1,
+     "p50": 22.941,
+     "p95": 22.941
+    },
+    "accounts_maintained": 1,
+    "accounts_moved_and_recovered_in_round": 0,
+    "connections_opened": 0,
+    "cpu_ms": 31.2,
+    "failed": 0,
+    "fence_refused_lease_lapsed": 0,
+    "first_round": {
+     "accounts_recovered_first": 1,
+     "connections_opened": 3,
+     "cpu_ms": 15.6,
+     "fence_refused_lease_lapsed": 0,
+     "recoveries_including_rebalance_moves": 1,
+     "startup_recovery_latency_ms": {
+      "max": 0.109,
+      "n": 1,
+      "p50": 0.109,
+      "p95": 0.109
+     },
+     "statements": 75,
+     "wall_ms": 119.0
+    },
+    "maintenance_steps": 1,
+    "max_worker_round_ms": 33.4,
+    "owned": 1,
+    "owned_as_reported_by_each_claim": 1,
+    "statements": 69,
+    "wall_ms": 39.6,
+    "workers": 4
+   },
+   "notifications": {
+    "connections_opened": 0,
+    "cpu_ms": 0.0,
+    "delivered": 1,
+    "duplicate_deliveries": 0,
+    "duplicate_enqueues_coalesced": 1,
+    "enqueued": 1,
+    "statements": 17,
+    "throughput_per_s": 131.6,
+    "wall_ms": 7.6
+   },
+   "order_spreading": {
+    "accounts_requesting": 1,
+    "calibrated": false,
+    "cap_notional": "500095.000000000000000000",
+    "connections_opened": 0,
+    "cpu_ms": 0.0,
+    "deferred": 0,
+    "depth_snapshots_read": 1,
+    "granted_total": "250.000000000000000000",
+    "max_orders_in_one_slot_interval": 1,
+    "policy_max_orders_per_slot": 10,
+    "policy_version": "conservative-uncalibrated-1",
+    "reserved": 1,
+    "slot_intervals_used": 1,
+    "statements": 14,
+    "wall_ms": 13.3,
+    "within_cap": true
+   },
+   "queue": {
+    "backlog_after": {
+     "SUCCEEDED": 1
+    },
+    "connections_opened": 0,
+    "cpu_ms": 15.6,
+    "duplicate_orders": 0,
+    "intent_statuses": {
+     "ACKNOWLEDGED": 1
+    },
+    "jobs": 1,
+    "lost_acknowledgements_injected": 1,
+    "lost_acknowledgements_resolved_by_lookup": 1,
+    "outcomes": {
+     "RETRY": 1,
+     "SUCCEEDED": 1
+    },
+    "statements": 51,
+    "throughput_jobs_per_s": 34.7,
+    "venue_submits": 1,
+    "wall_ms": 28.8
+   },
+   "reconciliation_and_request_budget": {
+    "accounts": 1,
+    "by_venue": {
+     "binance": {
+      "accounts": 1,
+      "accounts_reconciled_in_one_window": 1,
+      "capacity": 1920.0,
+      "denials": {},
+      "derived_full_round_ms_one_egress_address": 60000,
+      "derived_windows_for_one_full_round": 1,
+      "limit_verification": "VERIFIED_BY_DOC",
+      "outcomes": {
+       "OK": 1
+      },
+      "reconciliation_ceiling": 1536.0,
+      "unit": "WEIGHT",
+      "used_by_priority": {
+       "RECONCILIATION": 50.0
+      },
+      "used_weight": 50.0,
+      "venue_limit": 2400.0,
+      "window_ms": 60000
+     }
+    },
+    "cpu_ms": 0.0,
+    "egress_addresses_per_venue": 1,
+    "elapsed_window_ms": 15,
+    "reconciliation_latency_completed_ms": {
+     "max": 2.414,
+     "n": 1,
+     "p50": 2.414,
+     "p95": 2.414
+    },
+    "reconciliation_latency_ms": {
+     "max": 2.414,
+     "n": 1,
+     "p50": 2.414,
+     "p95": 2.414
+    },
+    "refused_by_local_budget_latency_ms": {
+     "max": null,
+     "n": 0,
+     "p50": null,
+     "p95": null
+    },
+    "wall_ms": 15.6
+   },
+   "resources": {
+    "cpu_ms_total": 3734.4,
+    "db_connections_opened_total": 10,
+    "db_pool_peak_in_use": 4,
+    "db_pool_size": 24,
+    "rss_mb": 66.7,
+    "statements_total": 13394,
+    "transactions_total": 2085
+   },
+   "shared_signal_and_sizing": {
+    "accounts_sized": 1,
+    "fingerprint_unchanged_after_fanout": true,
+    "orders_proposed": 4,
+    "shared_signal_computations": 1,
+    "shared_signal_cpu_ms": 31.2,
+    "shared_signal_ms": 23.97,
+    "sizing_cpu_ms": 0.0,
+    "sizing_errors": 0,
+    "sizing_per_account_ms": {
+     "max": 0.5993,
+     "p50": 0.5993,
+     "p95": 0.5993
+    },
+    "sizing_total_ms": 0.78
+   },
+   "ttl_ms": 5000,
+   "wall_s_total": 12.7,
+   "workers": 4
+  }
+ ],
+ "schema": "cosmicforge-predeploy-account-scale-v1",
+ "script": "scripts/perf/account_scale.py"
+}
