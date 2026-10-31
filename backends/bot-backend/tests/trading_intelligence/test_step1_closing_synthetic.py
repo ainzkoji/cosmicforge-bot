@@ -130,7 +130,7 @@ def test_e_f_the_runtime_discovers_the_bot_and_the_owner_sees_the_engine_truth(w
     assert status["eligibility"]["execution_permission"] == "WAITING_SIGNAL" and status["eligibility"]["eligible_to_enter"] is False
     assert status["eligibility"]["reason"] == "No qualifying CATI decision is open right now."
     assert model.positions(world.db, instance) == [] and model.trades(world.db, instance)["total"] == 0
-    assert model.summary(world.db, instance)["equity"]["current"] == 1000.0
+    assert model.summary(world.db, instance)["equity"]["current"] == "1000"
     world.client.place_order.assert_not_called()                                                  # nothing was sent anywhere
     assert order_submission_gate("live")["enabled"] is False
 

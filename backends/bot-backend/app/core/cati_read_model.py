@@ -19,9 +19,11 @@ funding``; nothing is double counted.
 """
 from __future__ import annotations
 
+import base64
 import json
 import time
 from datetime import datetime, timedelta, timezone
+from decimal import Decimal, InvalidOperation
 from typing import Any, Dict, List, Optional
 
 from app.observability import account_recorder
@@ -75,6 +77,9 @@ def bot_status(db, instance, *, runtime_progress: Optional[Dict[str, Any]] = Non
     decision = execution.get("latest_cati_decision") or {}
     eligibility = execution.get("eligibility") or {}
     described = describe(reason)
+    uncertain = uncertain_positions(db, instance.broker_account_id)
+    kill_switch = bool(execution.get("kill_switch")) or bool((execution.get("risk_controls") or {}).get("kill_switch"))
+    eligible_to_enter = bool(eligibility.get("eligible")) and permission in ("WAITING_SIGNAL", "ORDER_ACTIVE") and not stale
     return {
         **payload,
         "engine": {
@@ -87,13 +92,17 @@ def bot_status(db, instance, *, runtime_progress: Optional[Dict[str, Any]] = Non
             "process": runtime_progress,
         },
         "eligibility": {
-            "eligible_to_enter": bool(eligibility.get("eligible")) and permission in ("WAITING_SIGNAL", "ORDER_ACTIVE") and not stale,
+            "eligible_to_enter": eligible_to_enter,
             "execution_permission": permission,
             "reason_code": reason,
             "reason": described["message"],
             "suggested_action": described["action"],
             "severity": described["severity"],
             "block_reason_before_order_gate": execution.get("block_reason_before_order_gate"),
+            "blocker_reasons": _blocker_reasons(
+                reason=None if eligible_to_enter else reason, eligibility_reason=eligibility.get("reason"),
+                before_gate=execution.get("block_reason_before_order_gate"), kill_switch=kill_switch,
+                daily_latched=bool(risk.get("loss_latched")), uncertain=bool(uncertain)),
         },
         "last_decision": {
             "decision_id": decision.get("decision_id"), "decision_time": decision.get("decision_time"),
@@ -101,8 +110,7 @@ def bot_status(db, instance, *, runtime_progress: Optional[Dict[str, Any]] = Non
             "eligible": eligibility.get("eligible"), "reason_code": eligibility.get("reason"),
             "reason": describe(eligibility.get("reason"))["message"] if eligibility.get("reason") else None,
         } if decision or eligibility else None,
-        "kill_switch": {"engaged": bool(execution.get("kill_switch")) or
-                        bool((execution.get("risk_controls") or {}).get("kill_switch"))},
+        "kill_switch": {"engaged": kill_switch},
         "daily_loss": {
             "risk_date": risk.get("risk_date"), "latched": bool(risk.get("loss_latched")),
             "loss_usdt": risk.get("daily_loss_usage"), "remaining_usdt": risk.get("remaining_daily_risk"),
@@ -110,9 +118,26 @@ def bot_status(db, instance, *, runtime_progress: Optional[Dict[str, Any]] = Non
             "unrealized_pnl": risk.get("unrealized_pnl"), "equity": risk.get("equity"),
             "source": (risk.get("daily_loss_policy") or {}).get("source"),
         } if risk else None,
-        "protection_uncertain": uncertain_positions(db, instance.broker_account_id),
+        "protection_uncertain": uncertain,
         "order_submission_gate": (document or {}).get("order_submission_gate"),
     }
+
+
+def _blocker_reasons(*, reason, eligibility_reason, before_gate, kill_switch, daily_latched, uncertain):
+    """Every reason that currently stops a new entry, each described for the customer (Section K3). Empty only
+    when nothing blocks; the single ``reason_code`` above stays for existing readers."""
+    codes = [reason, before_gate, eligibility_reason if reason else None,
+             "CATI_NEW_ENTRY_KILL_SWITCH" if kill_switch else None,
+             "USER_DAILY_LOSS_LIMIT_REACHED" if daily_latched else None,
+             "PROTECTION_STATE_UNKNOWN" if uncertain else None]
+    out, seen = [], set()
+    for code in codes:
+        if code and code not in seen and code not in ("WAITING_SIGNAL", "ORDER_ACTIVE"):
+            seen.add(code)
+            d = describe(code)
+            out.append({"code": d["code"] or code, "message": d["message"], "action": d["action"],
+                        "severity": d["severity"]})
+    return out
 
 
 # ── positions ───────────────────────────────────────────────────────────────
@@ -222,19 +247,51 @@ def _fills(db, account_id: str) -> List[Dict[str, Any]]:
         return [json.loads(r[0]) for r in c.execute("SELECT document FROM cati_production_fills WHERE account_id=?", (account_id,))]
 
 
-def _funding(db, account_id: str, symbol: Optional[str], start: Optional[int], end: Optional[int]) -> float:
+def _funding(db, account_id: str, symbol: Optional[str], start: Optional[int], end: Optional[int]) -> Decimal:
     if not symbol or start is None:
-        return 0.0
+        return Decimal(0)
     from app.trading_intelligence.integration import income_ledger
     try:
         rows = income_ledger.rows(db, account_id, start, end if end is not None else start + 400 * 86_400_000)
     except Exception:
-        return 0.0
-    return float(sum(float(r.get("income", 0) or 0) for r in rows if r.get("incomeType") == "FUNDING_FEE" and r.get("symbol") == symbol))
+        return Decimal(0)
+    return sum((_dec(r.get("income")) for r in rows if r.get("incomeType") == "FUNDING_FEE" and r.get("symbol") == symbol),
+               Decimal(0))
 
 
-def trades(db, instance, *, page: int = 1, page_size: int = 50, include_open: bool = True) -> Dict[str, Any]:
-    """Paginated trade history: one record per trade plan with recorded fills."""
+# Money in these responses is a decimal string with its asset (Section K3), computed in Decimal from the
+# exchange's own strings; nothing is rounded through a float.
+_QUOTE_ASSETS = ("FDUSD", "USDT", "USDC", "BUSD")
+_FLAT_TOLERANCE = Decimal("1e-12")
+
+
+def _dec(value: Any) -> Decimal:
+    if value is None or value == "":
+        return Decimal(0)
+    try:
+        return Decimal(str(value))
+    except (InvalidOperation, ValueError):
+        return Decimal(0)
+
+
+def _money(value: Optional[Decimal]) -> Optional[str]:
+    """A decimal string without exponent or trailing zeros; None stays None."""
+    if value is None:
+        return None
+    text = format(Decimal(value).normalize(), "f")
+    return "0" if text in ("-0", "") else text
+
+
+def _asset(symbol: Optional[str]) -> Optional[str]:
+    """The settlement (quote) asset of a linear contract, from its symbol; None when it is not recognised."""
+    for asset in _QUOTE_ASSETS:
+        if symbol and symbol.upper().endswith(asset):
+            return asset
+    return None
+
+
+def _trade_records(db, instance, *, include_open: bool) -> List[Dict[str, Any]]:
+    """Every trade of the bot (one record per trade plan with recorded fills), newest first."""
     account_id = instance.broker_account_id
     plans = _plan_index(db, account_id)
     attempts = _latest_attempts(db, account_id)
@@ -256,23 +313,25 @@ def trades(db, instance, *, page: int = 1, page_size: int = 50, include_open: bo
         entries, exits = legs["ENTRY"], legs["EXIT"]
         if not entries:
             continue
-        qty_in = sum(float(f.get("qty", 0) or 0) for f in entries)
-        qty_out = sum(float(f.get("qty", 0) or 0) for f in exits)
-        entry_avg = sum(float(f["price"]) * float(f["qty"]) for f in entries) / qty_in if qty_in else None
-        exit_avg = sum(float(f["price"]) * float(f["qty"]) for f in exits) / qty_out if qty_out else None
+        qty_in = sum((_dec(f.get("qty")) for f in entries), Decimal(0))
+        qty_out = sum((_dec(f.get("qty")) for f in exits), Decimal(0))
+        entry_avg = sum((_dec(f["price"]) * _dec(f["qty"]) for f in entries), Decimal(0)) / qty_in if qty_in else None
+        exit_avg = sum((_dec(f["price"]) * _dec(f["qty"]) for f in exits), Decimal(0)) / qty_out if qty_out else None
         symbol = entries[0].get("symbol")
         entry_time = min(int(f.get("time", 0) or 0) for f in entries)
         exit_time = max(int(f.get("time", 0) or 0) for f in exits) if exits else None
-        realized = sum(float(f.get("realizedPnl", 0) or 0) for f in entries + exits)
-        fees = sum(float(f.get("commission", 0) or 0) for f in entries + exits)
+        realized = sum((_dec(f.get("realizedPnl")) for f in entries + exits), Decimal(0))
+        fees = sum((_dec(f.get("commission")) for f in entries + exits), Decimal(0))
         funding = _funding(db, account_id, symbol, entry_time, exit_time)
-        status = attempt["status"] if attempt else ("POSITION_CLOSED" if exits and qty_out >= qty_in - 1e-9 else "UNKNOWN")
-        closed = status in CLOSED or (exits and qty_out >= qty_in - 1e-9)
+        flat = bool(exits) and qty_out >= qty_in - _FLAT_TOLERANCE
+        status = attempt["status"] if attempt else ("POSITION_CLOSED" if flat else "UNKNOWN")
+        closed = status in CLOSED or flat
         if not closed and not include_open:
             continue
         stop = plan.get("stop")
-        risk_per_unit = abs(float(entry_avg) - float(stop)) if (entry_avg is not None and stop) else None
-        r_multiple = (realized / (risk_per_unit * qty_in)) if (closed and risk_per_unit and qty_in) else None
+        risk_per_unit = abs(entry_avg - _dec(stop)) if (entry_avg is not None and stop) else None
+        r_multiple = (realized / (risk_per_unit * qty_in)).quantize(Decimal("0.000001")) \
+            if (closed and risk_per_unit and qty_in) else None
         reason_codes = tuple((attempt or {}).get("payload", {}).get("reason_codes") or ())
         exit_reason = None
         if closed:
@@ -281,27 +340,78 @@ def trades(db, instance, *, page: int = 1, page_size: int = 50, include_open: bo
         records.append({
             "trade_id": plan_id, "symbol": symbol, "side": plan.get("side") or (attempt or {}).get("payload", {}).get("side"),
             "state": "CLOSED" if closed else "OPEN", "entry_time": entry_time, "exit_time": exit_time,
-            "entry_price": entry_avg, "exit_price": exit_avg, "quantity": qty_in, "exit_quantity": qty_out,
-            "realized_pnl_gross": realized if closed else None, "fees": fees, "funding": funding,
-            "net_pnl": (realized - fees + funding) if closed else None, "exit_reason": exit_reason,
-            "r_multiple": r_multiple, "stop_price": stop, "target_price": plan.get("target"),
+            "asset": _asset(symbol),
+            "entry_price": _money(entry_avg), "exit_price": _money(exit_avg), "quantity": _money(qty_in),
+            "exit_quantity": _money(qty_out),
+            "realized_pnl_gross": _money(realized) if closed else None, "fees": _money(fees), "funding": _money(funding),
+            "net_pnl": _money(realized - fees + funding) if closed else None, "exit_reason": exit_reason,
+            "r_multiple": _money(r_multiple), "stop_price": _money(_dec(stop)) if stop else None,
+            "target_price": _money(_dec(plan["target"])) if plan.get("target") else None,
             "purpose": (entries[0].get("_execution") or {}).get("purpose"), "attempt_status": status,
+            "_sort": (exit_time or entry_time or 0, plan_id),
         })
-    records.sort(key=lambda r: (r["exit_time"] or r["entry_time"] or 0, r["trade_id"]), reverse=True)
-    page = max(1, int(page))
+    records.sort(key=lambda r: r["_sort"], reverse=True)
+    return records
+
+
+def _encode_cursor(sort_key) -> str:
+    raw = json.dumps([int(sort_key[0]), str(sort_key[1])], separators=(",", ":")).encode()
+    return base64.urlsafe_b64encode(raw).decode().rstrip("=")
+
+
+def _decode_cursor(cursor: str):
+    try:
+        raw = base64.urlsafe_b64decode(cursor + "=" * (-len(cursor) % 4))
+        key, trade_id = json.loads(raw)
+        return int(key), str(trade_id)
+    except Exception as exc:
+        raise ValueError("INVALID_CURSOR") from exc
+
+
+PNL_DEFINITION = ("realized_pnl_gross is the exchange's realized PnL of the exit fills; fees (commission) and "
+                  "funding are separate; net_pnl = realized_pnl_gross - fees + funding.")
+
+
+def trades(db, instance, *, page: int = 1, page_size: int = 50, include_open: bool = True,
+           cursor: Optional[str] = None) -> Dict[str, Any]:
+    """Trade history, newest first. Pass ``cursor`` (the previous response's ``next_cursor``) for a stable cursor
+    walk; ``page`` remains for existing callers. An unreadable cursor raises ``ValueError("INVALID_CURSOR")``."""
+    records = _trade_records(db, instance, include_open=include_open)
     size = max(1, min(int(page_size), 200))
-    start = (page - 1) * size
-    return {"total": len(records), "page": page, "page_size": size, "has_more": start + size < len(records),
-            "trades": records[start:start + size],
-            "pnl_definition": "realized_pnl_gross is the exchange's realized PnL of the exit fills; fees (commission) and "
-                              "funding are separate; net_pnl = realized_pnl_gross - fees + funding."}
+    if cursor:
+        after = _decode_cursor(cursor)
+        remaining = [r for r in records if r["_sort"] < after]
+        window, page, has_more = remaining[:size], None, len(remaining) > size
+    else:
+        page = max(1, int(page))
+        start = (page - 1) * size
+        window, has_more = records[start:start + size], start + size < len(records)
+    return {"total": len(records), "page": page, "page_size": size, "has_more": has_more,
+            "next_cursor": _encode_cursor(window[-1]["_sort"]) if has_more and window else None,
+            "trades": [{k: v for k, v in r.items() if k != "_sort"} for r in window],
+            "pnl_definition": PNL_DEFINITION}
 
 
 # ── summary ─────────────────────────────────────────────────────────────────
 
+def _window_figures(rows: List[Dict[str, Any]]) -> Dict[str, Any]:
+    nets = [_dec(t["net_pnl"]) for t in rows if t["net_pnl"] is not None]
+    return {
+        "trades": len(rows), "wins": sum(1 for n in nets if n > 0), "losses": sum(1 for n in nets if n < 0),
+        "realized_pnl_gross": _money(sum((_dec(t["realized_pnl_gross"]) for t in rows), Decimal(0))),
+        "fees": _money(sum((_dec(t["fees"]) for t in rows), Decimal(0))),
+        "funding": _money(sum((_dec(t["funding"]) for t in rows), Decimal(0))),
+        "net_pnl": _money(sum(nets, Decimal(0))),
+        "largest_win": _money(max(nets)) if any(n > 0 for n in nets) else None,
+        "largest_loss": _money(min(nets)) if any(n < 0 for n in nets) else None,
+    }
+
+
 def summary(db, instance, *, now_ms: Optional[int] = None, timezone_name: str = "UTC") -> Dict[str, Any]:
+    """Results for today, 7 days, 30 days and all time over EVERY closed trade of the bot. Figures in different
+    settlement assets are never added together: with more than one asset each window holds ``by_asset``."""
     now = _now_ms(now_ms)
-    closed = [t for t in trades(db, instance, page=1, page_size=200, include_open=False)["trades"]]
+    closed = _trade_records(db, instance, include_open=False)
     try:
         from zoneinfo import ZoneInfo
         zone = ZoneInfo(timezone_name)
@@ -312,20 +422,24 @@ def summary(db, instance, *, now_ms: Optional[int] = None, timezone_name: str = 
     document = account_document(db, instance.broker_account_id)
     figures = account_recorder.equity_from_document(document or {}) if document else None
     equity = figures["equity"] if figures else None
-    out = {"windows": {}, "pnl_definition": "realized_pnl_gross is the exchange's realized PnL; fees and funding are separate; "
-                                           "net_pnl = realized_pnl_gross - fees + funding (nothing counted twice).",
-           "equity": {"current": equity, "observed_at": document["_observed_at"] if document else None,
-                      **account_recorder.peak_and_drawdown(db, instance.broker_account_id, equity)}}
+    drawdown = account_recorder.peak_and_drawdown(db, instance.broker_account_id, equity)
+    assets = sorted({t["asset"] or "UNKNOWN" for t in closed}) or ["USDT"]
+    out = {"windows": {}, "asset": assets[0] if len(assets) == 1 else None,
+           "pnl_definition": "realized_pnl_gross is the exchange's realized PnL; fees and funding are separate; "
+                             "net_pnl = realized_pnl_gross - fees + funding (nothing counted twice).",
+           "equity": {"current": _money(_dec(equity)) if equity is not None else None, "asset": "USDT",
+                      "observed_at": document["_observed_at"] if document else None,
+                      "peak_equity": _money(_dec(drawdown["peak_equity"])) if drawdown["peak_equity"] is not None else None,
+                      "current_drawdown": _money(_dec(drawdown["current_drawdown"]))
+                      if drawdown["current_drawdown"] is not None else None,
+                      "current_drawdown_pct": drawdown["current_drawdown_pct"]}}
     for name, start in windows.items():
         rows = [t for t in closed if (t["exit_time"] or 0) >= start]
-        nets = [t["net_pnl"] for t in rows if t["net_pnl"] is not None]
-        out["windows"][name] = {
-            "trades": len(rows), "wins": sum(1 for n in nets if n > 0), "losses": sum(1 for n in nets if n < 0),
-            "realized_pnl_gross": sum(t["realized_pnl_gross"] or 0 for t in rows), "fees": sum(t["fees"] for t in rows),
-            "funding": sum(t["funding"] for t in rows), "net_pnl": sum(nets),
-            "largest_win": max(nets) if any(n > 0 for n in nets) else None,
-            "largest_loss": min(nets) if any(n < 0 for n in nets) else None,
-        }
+        if len(assets) == 1:
+            out["windows"][name] = _window_figures(rows)
+        else:
+            out["windows"][name] = {"by_asset": {a: _window_figures([t for t in rows if (t["asset"] or "UNKNOWN") == a])
+                                                 for a in assets}}
     return out
 
 
@@ -339,11 +453,15 @@ def equity(db, instance, *, since_ms: Optional[int] = None, until_ms: Optional[i
     latest = account_recorder.equity_from_document(document) if document else None
     return {
         "broker_account_id": instance.broker_account_id,
-        "points": [{"observed_at": r["observed_at"], "equity": r["equity"], "wallet": r["wallet"], "available": r["available"],
-                    "unrealized": r["unrealized"], "source": r["source"], "freshness_ms": r["freshness_ms"], "reason": r["reason"]}
+        "points": [{"observed_at": r["observed_at"], "asset": r.get("asset") or "USDT",
+                    **{k: _money(_dec(r[k])) if r[k] is not None else None
+                       for k in ("equity", "wallet", "available", "unrealized")},
+                    "source": r["source"], "freshness_ms": r["freshness_ms"], "reason": r["reason"]}
                    for r in rows],
-        "daily": account_recorder.daily(db, instance.broker_account_id),
-        "latest": {**latest, "observed_at": document["_observed_at"],
+        "daily": [{**d, **{k: _money(_dec(d[k])) for k in ("open", "high", "low", "close") if d.get(k) is not None}}
+                  for d in account_recorder.daily(db, instance.broker_account_id)],
+        "latest": {**{k: _money(_dec(v)) if v is not None else None for k, v in latest.items()}, "asset": "USDT",
+                   "observed_at": document["_observed_at"],
                    "stale": now - document["_observed_at"] > STALE_AFTER_MS} if latest else None,
         "history_available": bool(rows),
         "note": None if rows else "No equity history has been recorded for this account yet; nothing is shown as zero.",

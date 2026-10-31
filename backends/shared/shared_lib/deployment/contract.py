@@ -179,6 +179,13 @@ class DeploymentRequest(BaseModel):
     market_scope: Literal["CRYPTO_ONLY", "CRYPTO_AND_TRADFI"] = Field(
         default=DEFAULT_MARKET_SCOPE, description="Markets the deployment may trade; CRYPTO_ONLY when omitted")
 
+    @field_validator("risk_level", mode="before")
+    @classmethod
+    def _risk_level(cls, v):
+        # Section K3 spells the level "Balanced"; the stored value stays lowercase. Only the three names are
+        # accepted, in any letter case.
+        return v.strip().lower() if isinstance(v, str) else v
+
     @field_validator("schema_version")
     @classmethod
     def _version(cls, v):

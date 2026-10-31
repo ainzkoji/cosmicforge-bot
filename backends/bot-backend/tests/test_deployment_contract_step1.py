@@ -146,8 +146,9 @@ def test_deploy_persists_ownership_configuration_environment_and_consent(db):
     assert out["idempotent_replay"] is False and out["consent"]["version"] == C.CONSENT_VERSION
     assert bot["exchange"] == "BINANCE" and bot["environment"] == "DEMO" and bot["broker_account_id"] == "demo-a"
     assert bot["risk_level"] == "balanced" and bot["risk_profile_version"] == "2026-10-08.v1"
-    assert bot["budget"] == {"type": "fixed_amount", "value": "1000.0"} and bot["money"]["risk_per_trade"] == "4.00"
-    assert bot["status"] == "deploying" and bot["stopped_reason"] is None and bot["max_position_usdt"] == 200.0
+    # Section K3: money is a decimal string with its asset.
+    assert bot["budget"] == {"type": "fixed_amount", "value": "1000", "asset": "USDT"} and bot["money"]["risk_per_trade"] == "4.00"
+    assert bot["status"] == "deploying" and bot["stopped_reason"] is None and bot["max_position_usdt"] == "200"
     assert set(bot) >= {"id", "name", "exchange", "environment", "broker_account_id", "risk_level", "budget", "money",
                         "status", "stopped_reason", "created_at"}
     stored = service(db).get_bot_instance(bot["id"])
@@ -370,3 +371,35 @@ def test_stop_assumptions_count_only_stops_the_engine_would_trade(db):
     _decisions(db, [3, 5, 8] * 10)
     c = svc.preview(db, ALICE, request(advanced={}), account_state_reader=balance())
     assert c["typical_position"]["typical"]["approved"] is True and c["stop_distance_assumptions"]["decisions_outside_engine_stop_limit"] == 0
+
+
+# ── Section K3 additions ────────────────────────────────────────────────────
+
+def test_the_risk_level_is_accepted_in_any_letter_case_and_stored_lowercase():
+    assert request(risk_level="Balanced").risk_level == "balanced"
+    assert request(risk_level=" AGGRESSIVE ").risk_level == "aggressive"
+    assert request(risk_level="Balanced").fingerprint() == request(risk_level="balanced").fingerprint()
+    with pytest.raises(Exception):
+        request(risk_level="Reckless")
+
+
+def test_a_percentage_bot_shows_its_money_from_the_engines_equity_reading(db, monkeypatch):
+    from app.core import cati_read_model
+    from app.core import deployment_service
+    out = svc.deploy(db, ALICE, request(budget={"type": "percent_balance", "value": "20"}),
+                     account_state_reader=balance(), now_ms=1_000_000)
+    bot = out["bot"]
+    assert bot["budget"] == {"type": "percent_balance", "value": "20", "asset": "PERCENT"}
+    instance = service(db).get_bot_instance(bot["id"])
+    # No engine reading yet: nothing is guessed.
+    monkeypatch.setattr(cati_read_model, "account_document", lambda db, account_id: None)
+    payload = deployment_service.bot_payload(db, instance)
+    assert payload["money"] is None and payload["money_basis"] == {"source": None, "reason": "NO_EQUITY_READING"}
+    # With a reading: 20 % of 2500 = 500, sized by the shared library exactly like the preview.
+    monkeypatch.setattr(cati_read_model, "account_document",
+                        lambda db, account_id: {"_observed_at": 42, "balance": {"equity": "2500", "wallet": "2500",
+                                                                                "available": "2400"}})
+    payload = deployment_service.bot_payload(db, instance)
+    assert payload["money_basis"]["effective_budget"] == "500" and payload["money_basis"]["observed_at"] == 42
+    assert payload["money"]["risk_per_trade"] == svc.risk_levels.as_json(
+        svc.risk_levels.money_view("balanced", "500"))["risk_per_trade"]

@@ -6,6 +6,7 @@ certification broker fake, then read through ``app.core.cati_read_model`` and
 the API handlers.
 """
 import json
+from decimal import Decimal
 from types import SimpleNamespace
 from unittest.mock import Mock
 
@@ -111,19 +112,23 @@ def test_trades_and_summary_come_from_recorded_fills(measured, monkeypatch):
     closed = model.trades(m.h.db, bot, include_open=False)
     assert closed["total"] == 1
     [trade] = closed["trades"]
-    assert trade["state"] == "CLOSED" and trade["entry_price"] == pytest.approx(100.0) and trade["exit_price"] == pytest.approx(100.0)
-    assert trade["quantity"] == trade["exit_quantity"] > 0 and trade["exit_time"] >= trade["entry_time"]
-    assert trade["realized_pnl_gross"] == pytest.approx(0.0) and trade["fees"] == pytest.approx(0.0)
-    assert trade["net_pnl"] == pytest.approx(trade["realized_pnl_gross"] - trade["fees"] + trade["funding"])
-    assert trade["exit_reason"] in ("STOP_OR_TARGET", "CLOSED") and trade["r_multiple"] == pytest.approx(0.0)
+    # Money is a decimal string with its asset (Section K3).
+    assert trade["asset"] == "USDT" and all(isinstance(trade[k], str) for k in ("entry_price", "quantity", "net_pnl", "fees"))
+    assert trade["state"] == "CLOSED" and Decimal(trade["entry_price"]) == 100 and Decimal(trade["exit_price"]) == 100
+    assert trade["quantity"] == trade["exit_quantity"] and Decimal(trade["quantity"]) > 0
+    assert trade["exit_time"] >= trade["entry_time"]
+    assert Decimal(trade["realized_pnl_gross"]) == 0 and Decimal(trade["fees"]) == 0
+    assert Decimal(trade["net_pnl"]) == Decimal(trade["realized_pnl_gross"]) - Decimal(trade["fees"]) + Decimal(trade["funding"])
+    assert trade["exit_reason"] in ("STOP_OR_TARGET", "CLOSED") and Decimal(trade["r_multiple"]) == 0
     assert "net_pnl = realized_pnl_gross - fees + funding" in closed["pnl_definition"]
     paged = model.trades(m.h.db, bot, page=2, page_size=1)
     assert paged["trades"] == [] and paged["has_more"] is False
     summary = model.summary(m.h.db, bot)
     for window in ("today", "seven_days", "thirty_days", "all_time"):
-        assert summary["windows"][window]["trades"] == 1 and summary["windows"][window]["net_pnl"] == pytest.approx(0.0)
-    assert summary["equity"]["current"] == 5000.0 and summary["equity"]["peak_equity"] == 5000.0
-    assert summary["equity"]["current_drawdown"] == pytest.approx(0.0)
+        assert summary["windows"][window]["trades"] == 1 and Decimal(summary["windows"][window]["net_pnl"]) == 0
+    assert summary["asset"] == "USDT" and summary["equity"]["asset"] == "USDT"
+    assert summary["equity"]["current"] == "5000" and summary["equity"]["peak_equity"] == "5000"
+    assert Decimal(summary["equity"]["current_drawdown"]) == 0
 
 
 # ── equity history ──────────────────────────────────────────────────────────
@@ -133,7 +138,7 @@ def test_equity_history_is_recorded_hourly_and_on_fills_and_pruned_with_rollups(
     bot = protected_cycle(m, monkeypatch)
     equity = model.equity(m.h.db, bot)
     reasons = sorted(p["reason"] for p in equity["points"])
-    assert reasons == ["FILL", "HOURLY"] and equity["history_available"] and equity["latest"]["equity"] == 5000.0
+    assert reasons == ["FILL", "HOURLY"] and equity["history_available"] and equity["latest"]["equity"] == "5000"
     assert all(p["source"] == "ENGINE_CYCLE" and p["freshness_ms"] >= 0 for p in equity["points"])
     m.cycle("same_hour")                                                     # the same hour: no second hourly row
     assert len(account_recorder.series(m.h.db, m.h.account["id"])) == 2

@@ -224,9 +224,12 @@ export function formatPct(value: string | number | null | undefined): string {
     return Number.isFinite(n) ? `${String(Number(n.toFixed(4)))} %` : "—";
 }
 
-export function formatSigned(value: number | null | undefined, digits = 2): string {
-    if (value === null || value === undefined || !Number.isFinite(value)) return "—";
-    return `${value > 0 ? "+" : ""}${value.toFixed(digits)}`;
+/** Money arrives from the engine as a decimal string (Section K3); numbers are still accepted. */
+export function formatSigned(value: string | number | null | undefined, digits = 2): string {
+    if (value === null || value === undefined || value === "") return "—";
+    const n = Number(value);
+    if (!Number.isFinite(n)) return "—";
+    return `${n > 0 ? "+" : ""}${n.toFixed(digits)}`;
 }
 
 export type Tone = "ok" | "info" | "attention" | "critical" | "muted";

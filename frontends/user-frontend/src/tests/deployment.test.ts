@@ -5,7 +5,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import {
     DEPLOYMENT_SCHEMA_VERSION, ageLabel, botStatusView, buildDeploymentRequest, decimalText, formFingerprint, formatPct,
-    deploymentPrefillPath, formatUsdt, isStale, newRequestId, parseRefusal, protectionView, riskLevelFromAppetite, severityTone,
+    deploymentPrefillPath, formatSigned, formatUsdt, isStale, newRequestId, parseRefusal, protectionView, riskLevelFromAppetite, severityTone,
     typicalPositionView, validateForm,
 } from "../lib/deployment.ts";
 import type { DeploymentForm } from "../lib/deployment.ts";
@@ -159,3 +159,14 @@ test("a typical position is a figure only when the engine approved one", () => {
     assert.equal(typicalPositionView({ ...base, typical_position: null }).value, "not estimated");
 });
 
+
+test("engine money arrives as decimal strings and is formatted like numbers", () => {
+    assert.equal(formatSigned("0.5999998", 4), "+0.6000");
+    assert.equal(formatSigned("-5"), "-5.00");
+    assert.equal(formatSigned("0"), "0.00");
+    assert.equal(formatSigned(""), "—");
+    assert.equal(formatSigned(null), "—");
+    assert.equal(formatSigned("not a number"), "—");
+    assert.equal(formatSigned(2.5), "+2.50");
+    assert.equal(formatUsdt("1000"), "1,000.00 USDT");
+});

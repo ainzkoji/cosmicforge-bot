@@ -56,8 +56,13 @@ def _status(service, instance):
     return model.bot_status(service.db, instance, runtime_progress=_progress())
 
 
-def _trades(service, instance, page, page_size, include_open):
-    return model.trades(service.db, instance, page=page, page_size=page_size, include_open=include_open)
+def _trades(service, instance, page, page_size, include_open, cursor=None):
+    cursor = cursor if isinstance(cursor, str) else None  # a direct call passes the Query() default object
+    try:
+        return model.trades(service.db, instance, page=page, page_size=page_size, include_open=include_open,
+                            cursor=cursor)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
 
 
 def _equity(service, instance, since, until, limit):
@@ -81,9 +86,10 @@ def bot_positions(bot_id: str, user: dict = Depends(get_current_active_user),
 
 @router.get("/{bot_id}/trades")
 def bot_trades(bot_id: str, page: int = Query(1, ge=1), page_size: int = Query(50, ge=1, le=200), include_open: bool = Query(True),
+               cursor: Optional[str] = Query(None, max_length=512),
                user: dict = Depends(get_current_active_user), service: BotInstanceService = Depends(get_bot_instance_service),
                _perm: str = Depends(require_permission("bot:read"))):
-    return {"bot_id": bot_id, **_trades(service, _owned_bot(service, bot_id, user), page, page_size, include_open)}
+    return {"bot_id": bot_id, **_trades(service, _owned_bot(service, bot_id, user), page, page_size, include_open, cursor)}
 
 
 @router.get("/{bot_id}/summary")
@@ -123,8 +129,9 @@ def admin_bot_positions(bot_id: str, _admin: str = Depends(require_admin), servi
 
 @admin_router.get("/{bot_id}/trades")
 def admin_bot_trades(bot_id: str, page: int = Query(1, ge=1), page_size: int = Query(50, ge=1, le=200), include_open: bool = Query(True),
+                     cursor: Optional[str] = Query(None, max_length=512),
                      _admin: str = Depends(require_admin), service: BotInstanceService = Depends(get_bot_instance_service)):
-    return {"bot_id": bot_id, **_trades(service, _any_bot(service, bot_id), page, page_size, include_open)}
+    return {"bot_id": bot_id, **_trades(service, _any_bot(service, bot_id), page, page_size, include_open, cursor)}
 
 
 @admin_router.get("/{bot_id}/summary")

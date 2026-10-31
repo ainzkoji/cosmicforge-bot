@@ -23,7 +23,7 @@ import logging
 import sqlite3
 import time
 import uuid
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from typing import Any, Dict, List, Optional
 
 from shared_lib import risk_levels
@@ -455,6 +455,36 @@ def _iso_to_ms(value: Any) -> int:
         return 0
 
 
+def _decimal_str(value: Any) -> Optional[str]:
+    """A stored number as a decimal string without float noise or exponent ("1000.0" -> "1000")."""
+    if value is None or value == "":
+        return None
+    try:
+        return format(Decimal(str(value)).normalize(), "f")
+    except (InvalidOperation, ValueError):
+        return None
+
+
+def _percent_money_view(db, instance):
+    from app.core.cati_read_model import account_document
+    from app.observability import account_recorder
+    document = account_document(db, instance.broker_account_id)
+    figures = account_recorder.equity_from_document(document) if document else None
+    if not figures or figures.get("equity") is None:
+        return None, {"source": None, "reason": "NO_EQUITY_READING"}
+    equity = Decimal(str(figures["equity"]))
+    try:  # the preview's own rule (``risk_sizing.effective_budget``), so the two can never disagree
+        effective = risk_sizing.effective_budget(budget_type=instance.capital_allocation_type,
+                                                 budget_value=instance.capital_allocation, account_equity=equity)
+    except ValueError:
+        return None, {"source": "ENGINE_ACCOUNT_SNAPSHOT", "reason": "NO_POSITIVE_EQUITY",
+                      "observed_at": document.get("_observed_at")}
+    view = risk_levels.as_json(risk_levels.money_view(instance.risk_level, str(effective),
+                                                      version=instance.risk_profile_version))
+    return view, {"source": "ENGINE_ACCOUNT_SNAPSHOT", "equity": format(equity.normalize(), "f"),
+                  "effective_budget": format(effective.normalize(), "f"), "asset": "USDT", "observed_at": document.get("_observed_at")}
+
+
 def bot_payload(db, instance) -> Dict[str, Any]:
     with db.connect() as c:
         account = c.execute("SELECT broker_id, environment, label FROM broker_accounts WHERE id=?",
@@ -464,15 +494,21 @@ def bot_payload(db, instance) -> Dict[str, Any]:
     environment = normalize_environment(account["environment"] or "live").value.upper() if account else None
     risk_based = str(getattr(instance, "allocation_type", "") or "").lower() == "risk_based"
     money = None
+    money_basis = None
     budget = None
     if risk_based and instance.capital_allocation:
-        budget = {"type": instance.capital_allocation_type, "value": str(instance.capital_allocation)}
+        budget = {"type": instance.capital_allocation_type, "value": _decimal_str(instance.capital_allocation),
+                  "asset": "USDT" if instance.capital_allocation_type == "fixed_amount" else "PERCENT"}
         if instance.capital_allocation_type == "fixed_amount":
             money = risk_levels.as_json(risk_levels.money_view(instance.risk_level, str(instance.capital_allocation),
                                                                version=instance.risk_profile_version))
+        else:
+            # Section K3: a percentage budget's money view follows the account. It is computed from the engine's
+            # latest equity reading and says which reading; without one it is not guessed.
+            money, money_basis = _percent_money_view(db, instance)
     elif instance.capital_allocation:
-        budget = {"type": instance.capital_allocation_type, "value": str(instance.capital_allocation),
-                  "legacy_allocation": {"type": instance.allocation_type, "value": str(instance.allocation_value)}}
+        budget = {"type": instance.capital_allocation_type, "value": _decimal_str(instance.capital_allocation),
+                  "legacy_allocation": {"type": instance.allocation_type, "value": _decimal_str(instance.allocation_value)}}
     state = bot_status(db, instance)
     market_type = str(getattr(instance, "market_type", None) or "CRYPTO").upper()
     return {
@@ -486,7 +522,8 @@ def bot_payload(db, instance) -> Dict[str, Any]:
         "allocation_type": instance.allocation_type,
         "budget": budget,
         "money": money,
-        "max_position_usdt": getattr(instance, "max_position_usdt", None),
+        "money_basis": money_basis,
+        "max_position_usdt": _decimal_str(getattr(instance, "max_position_usdt", None)),
         # Step 7.3: the markets this bot trades. Every bot of this path is crypto-only (a traditional-market scope
         # is refused at deployment); a legacy non-crypto bot is reported as what it is, never as tradfi-enabled.
         "market_type": market_type,
