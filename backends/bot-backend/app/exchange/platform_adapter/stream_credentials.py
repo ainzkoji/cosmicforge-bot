@@ -5,7 +5,7 @@ Sources and environment limitations: docs/exchanges/EXCHANGE_OPERATIONS.md.
 """
 import hashlib
 import hmac
-from urllib.parse import urlencode
+from urllib.parse import quote, urlencode
 
 import requests
 
@@ -53,8 +53,11 @@ def specification(adapter):
     except (requests.RequestException, ValueError):
         raise C.AdapterError(C.VENUE_UNAVAILABLE, "STREAM_KEY_TRANSPORT_FAILED", venue=venue) from None
     adapter._listen_key = key
-    query = {"listenKey": key}
     if venue == C.BINANCE:
-        query["events"] = "ORDER_TRADE_UPDATE,ACCOUNT_UPDATE,listenKeyExpired,ALGO_UPDATE"
-    path = "/private/ws" if venue == C.BINANCE else "/swap-market"
-    return C.UserStreamSpec(venue, f"wss://{host}{path}?{urlencode(query)}", "LISTEN_KEY_IN_URL", 1800, 3600)
+        # doc (user-data-streams, read 2026-10-31): base wss://fstream.binance.com/private, user data at
+        # /ws/<listenKey>, every event type. The previous URL added an ``events`` filter joined with commas; the
+        # documentation joins events with "/", so the filter was not one it describes. The demo host's /private
+        # route is not documented: USER_STREAM stays a certification item there.
+        return C.UserStreamSpec(venue, f"wss://{host}/private/ws/{quote(key, safe='')}", "LISTEN_KEY_IN_URL", 1800, 3600)
+    return C.UserStreamSpec(venue, f"wss://{host}/swap-market?{urlencode({'listenKey': key})}", "LISTEN_KEY_IN_URL",
+                            1800, 3600)

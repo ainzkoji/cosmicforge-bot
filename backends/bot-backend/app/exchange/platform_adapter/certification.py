@@ -48,6 +48,9 @@ CERTIFICATION_VALIDITY_DAYS = 90
 CERTIFICATION_VALIDITY_MS = CERTIFICATION_VALIDITY_DAYS * 86_400_000
 #: a certificate stamped later than ``now`` by more than this is a clock fault, not a certificate
 CLOCK_TOLERANCE_MS = 120_000
+#: the account reference of every mocked-transport rehearsal (``certification_harness``): such a run never
+#: records CERTIFIED or FAILED, whatever register it is written to
+REHEARSAL_ACCOUNT_PREFIX = "rehearsal-"
 #: every certification order begins with this; no strategy order does
 CERTIFICATION_ORDER_PREFIX = "cert"
 
@@ -138,11 +141,19 @@ CHECK_IDS: Tuple[str, ...] = tuple(spec.check_id for spec in CATALOGUE)
 OPERATIONS: Mapping[str, Tuple[Optional[str], Tuple[str, ...]]] = {
     "ENTRY": (None, ("ENTRY_SUBMIT", "ORDER_LOOKUP", "ENTRY_FILL", "IDEMPOTENT_REPEAT")),
     "PROTECTIVE_STOP": ("native_stop_market", ("PROTECTION_CREATE", "PROTECTION_READ_BACK", "PROTECTION_GEOMETRY")),
-    "STOP_REPLACEMENT": (None, ("PROTECTION_REPLACE",)),
+    "STOP_REPLACEMENT": (None, ("PROTECTION_REPLACE",)),     # and a safe method: see _REPLACEMENT_CAPABILITIES
     "CANCEL": (None, ("CANCEL",)),
     "CLOSE": ("reduce_only", ("CLOSE_POSITION", "FLATTEN")),
     "USER_STREAM": ("user_stream", ("USER_STREAM_SPEC",)),
 }
+
+
+#: STOP_REPLACEMENT is selectable only for a venue that can move a stop without a gap (an amend in place or a
+#: second stop beside the first). For any other venue PROTECTION_REPLACE proves the refusal, which certifies
+#: that the stop that rests is kept, not that it can be moved.
+_REPLACEMENT_CAPABILITIES: Tuple[str, ...] = ("stop_amend_in_place", "multiple_stops_per_position")
+#: the PROTECTION_REPLACE method of a venue without a gap-free replacement
+NOT_POSSIBLE_SAFELY = "REPLACEMENT_NOT_POSSIBLE_SAFELY"
 
 
 def catalogue(venue: str, environment: str) -> Tuple[CheckSpec, ...]:
@@ -367,8 +378,12 @@ class CertificationRegister:
         operations = tuple(sorted(
             name for name, (capability, needed) in OPERATIONS.items()
             if (capability is None or capabilities.get(capability) is True)
+            and (name != "STOP_REPLACEMENT" or any(capabilities.get(k) is True for k in _REPLACEMENT_CAPABILITIES))
             and all(checks[check_id]["status"] == PASS for check_id in needed))) if outcome == PASSED else ()
         recorded_status = {PASSED: CERTIFIED, FAILED: FAILED}.get(outcome)
+        rehearsal = str(started["account_ref"] or "").startswith(REHEARSAL_ACCOUNT_PREFIX)
+        if rehearsal:
+            recorded_status = None      # a mocked-transport rehearsal proves the harness; it decides nothing
         expires_at = int(completed_at) + CERTIFICATION_VALIDITY_MS if outcome == PASSED else None
         orders_sent = any(action["client_order_id"] for action in actions)
         cleanup_complete = not orders_sent or checks["FINAL_ACCOUNT_STATE"]["status"] == PASS
@@ -384,6 +399,7 @@ class CertificationRegister:
                       "exchange_capabilities": dict(capabilities), "operations": list(operations),
                       "evidence_hashes": {check_id: rows[check_id]["evidence_hash"] for check_id in sorted(rows)},
                       "actions_hash": stable_hash(actions), "validity_days": CERTIFICATION_VALIDITY_DAYS,
+                      "rehearsal": rehearsal,
                       "framework_version": CERTIFICATION_FRAMEWORK_VERSION})
         return CertificationResult(run_id, started["venue"], started["environment"], outcome, recorded_status, checks,
                                    reasons, operations, expires_at, cleanup_complete)
@@ -607,6 +623,7 @@ class CertificationRunner:
         self._entry_order: Optional[C.OrderInfo] = None
         self._stop_cid = ""
         self._stop_order: Optional[C.OrderInfo] = None
+        self._unreadable_fills: List[str] = []
 
     # ------------------------------------------------------------------------------------------------ run
     def run(self) -> CertificationResult:
@@ -1093,18 +1110,46 @@ class CertificationRunner:
             self._cancel(old)
             survivor = request.client_order_id
         else:
-            method = "CANCEL_THEN_CREATE"  # the venue allows one stop: the position is unprotected in between
-            self._cancel(old)
-            request = self._stop_request(tighter)
-            self._place(request)
-            survivor = request.client_order_id
+            # Neither an amend nor a second stop: the position would be unprotected between a cancel and a
+            # create, which no part of this platform does (pipeline.protection: REPLACEMENT_NOT_POSSIBLE_SAFELY).
+            # The check proves the refusal instead: a tighter stop beside the first is refused (by the adapter
+            # before sending, or by the venue), and the first stop still rests, untouched. A venue that accepts
+            # the second stop is recorded as such (it is evidence for the capability) and the extra stop is
+            # cancelled again; the operation STOP_REPLACEMENT is never certified this way.
+            return self._replacement_refused(old, tighter, rules)
         self._stop_cid, self._stop_price = survivor, tighter
         info = self.adapter.order(self._symbol, client_order_id=survivor)
         stops = [o for o in self.adapter.open_orders(self._symbol) if o.order_type == C.STOP_MARKET]
-        evidence = {"method": method, "unprotected_between": method == "CANCEL_THEN_CREATE", "stop_price": info.stop_price,
+        evidence = {"method": method, "unprotected_between": False, "stop_price": info.stop_price,
                     "requested_stop_price": tighter, "protective_stops_open": len(stops)}
         if not info.open or not self._near(info.stop_price, tighter, rules.price_tick):
             raise _Fail("REPLACED_STOP_NOT_READ_BACK", evidence)
+        if len(stops) != 1:
+            raise _Fail("NOT_EXACTLY_ONE_PROTECTIVE_STOP", evidence)
+        return evidence
+
+    def _replacement_refused(self, old: str, tighter: float, rules: C.InstrumentRules) -> Mapping[str, Any]:
+        request = self._stop_request(tighter)
+        evidence: Dict[str, Any] = {"method": NOT_POSSIBLE_SAFELY, "unprotected_between": False,
+                                    "requested_stop_price": tighter, "kept_stop_price": self._stop_price}
+        try:
+            beside = self._place(request)
+        except C.AdapterError as error:
+            if error.uncertain:
+                raise _Fail(f"SECOND_STOP_OUTCOME_UNKNOWN:{error.code}", _error_evidence(error)) from None
+            evidence.update(second_stop="REFUSED", refused_with=error.code, **_error_evidence(error))
+        else:
+            evidence.update(second_stop="ACCEPTED_BY_VENUE", second_stop_status=beside.status)
+            if beside.open:
+                self._cancel(request.client_order_id)       # the capability says one stop: take the extra one off
+        info = self.adapter.order(self._symbol, client_order_id=old)
+        stops = [o for o in self.adapter.open_orders(self._symbol) if o.order_type == C.STOP_MARKET and o.open]
+        evidence.update(first_stop_open=info.open, first_stop_price=info.stop_price, first_stop_quantity=info.quantity,
+                        protective_stops_open=len(stops))
+        if not info.open or not self._near(info.stop_price, self._stop_price, rules.price_tick):
+            raise _Fail("FIRST_STOP_DID_NOT_SURVIVE", evidence)
+        if not info.close_position and not self._same_quantity(info.quantity, self._position_quantity):
+            raise _Fail("FIRST_STOP_QUANTITY_CHANGED", evidence)
         if len(stops) != 1:
             raise _Fail("NOT_EXACTLY_ONE_PROTECTIVE_STOP", evidence)
         return evidence
@@ -1222,7 +1267,13 @@ class CertificationRunner:
         if fresh is self.adapter or (fresh.venue, fresh.environment) != (self.adapter.venue, self.adapter.environment):
             raise _Fail("NOT_A_FRESH_ADAPTER_OF_THE_SAME_ACCOUNT")
         position = self._position(fresh)
-        stop = fresh.order(self._symbol, client_order_id=self._stop_cid)
+        # A venue that stores no client id on a stop (Bybit's position stop, BingX trigger orders) is asked by the
+        # venue order id the run persisted, as the contract tells every caller to do after a restart.
+        known = self._orders.get(self._stop_cid) or []
+        if self._require_caps().stop_client_order_id or not known:
+            stop = fresh.order(self._symbol, client_order_id=self._stop_cid)
+        else:
+            stop = fresh.order(self._symbol, venue_order_id=known[-1])
         evidence = {"position_side": position.side, "position_quantity": position.quantity, "stop_status": stop.status,
                     "stop_price": stop.stop_price}
         if position.side != C.LONG or not self._same_quantity(position.quantity, self._position_quantity):
@@ -1316,7 +1367,16 @@ class CertificationRunner:
         """Bought minus sold over the fills of this run's own orders."""
         net = 0.0
         for venue_order_id in self._own_venue_orders():
-            for fill in self.adapter.fills(self._symbol, venue_order_id=venue_order_id):
+            try:
+                fills = self.adapter.fills(self._symbol, venue_order_id=venue_order_id)
+            except C.AdapterError as error:
+                if error.code != C.UNSUPPORTED:
+                    raise
+                # a stop whose fills cannot be read by its id (a position attribute, a conditional order): in a
+                # green run it never fired; had it fired, the position would not match and the check fails
+                self._unreadable_fills.append(venue_order_id)
+                continue
+            for fill in fills:
                 net += float(fill.quantity) if fill.side == C.BUY else -float(fill.quantity)
         return net
 
@@ -1351,7 +1411,8 @@ class CertificationRunner:
         net, position = self._net_filled(), self._position()
         expected = net - self._external_reduction
         evidence = {"net_filled_by_run": net, "reduced_outside_the_run": self._external_reduction,
-                    "position_at_venue": position.signed_quantity}
+                    "position_at_venue": position.signed_quantity,
+                    "orders_without_fills_by_id": sorted(set(self._unreadable_fills))}
         if not self._same_quantity(position.signed_quantity, expected):
             raise _Fail("FILLS_DO_NOT_EXPLAIN_POSITION", evidence)
         return evidence

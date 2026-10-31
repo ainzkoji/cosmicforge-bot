@@ -35,6 +35,24 @@ raw client's ``place_protection`` and ``update_protection`` do. Consequences:
 Error codes: ``34040`` and the wording of the leverage answer are handled in the raw client; every other
 entry of ``_CODES`` comes from the venue's published error list only. Nothing was verified against the venue
 in this work.
+
+Implementation-contract audit against the V5 documentation, read 2026-10-31
+(https://bybit-exchange.github.io/docs/v5/ : guide, rate-limit, error, position, position/trading-stop,
+order/open-order, order/order-list, demo, acct-mode):
+
+* ``orderFilter`` of ``GET /v5/order/realtime``: ``Order`` and ``StopOrder`` apply to linear contracts;
+  ``tpslOrder``, ``OcoOrder`` and ``BidirectionalTpslOrder`` are spot-only. The adapter asked for ``tpslOrder``
+  on linear; it no longer does.
+* ``tradeMode`` of a position is "Deprecated, always 0" (margin mode is an account setting under UTA 2.0,
+  read from Get Account Info). The adapter used to report every position as CROSSED from it; it now reports
+  the margin mode as not known (``None``) rather than a value the venue does not state.
+* ``10009`` is "Service Restricted: access is currently unavailable for your region", not an address ban: it
+  is ``PERMISSION_DENIED``, never a wait. An address over its limit gets HTTP 403 ("access too frequent",
+  wait at least 10 minutes), which stays ``BANNED``.
+* ``110092`` / ``110093``: a trigger price on the wrong side of the current price (``STOP_WOULD_TRIGGER_IMMEDIATELY``).
+* Full-mode trading-stop: "can be used to modify the parameters of existing TP/SL orders"; "0" cancels; the
+  system cancels them when the position closes. Partial mode can only ADD orders (at most 20, 110061) and is
+  not used: demo documentation lists ``trading-stop`` as supported but says nothing about Partial mode.
 """
 from __future__ import annotations
 
@@ -58,7 +76,8 @@ _HTTP = re.compile(r"Bybit HTTP (\d{3}): (.*)", re.DOTALL)
 _RET_CODE = re.compile(r"retCode=(-?\d+) ?(.*)", re.DOTALL)
 _NOT_MODIFIED_STOP = 34040              # repo: bybit/client.py update_protection
 _NOT_MODIFIED_LEVERAGE = 110043         # doc; the raw client recognises the same answer by its "not modified" text
-_MARGIN_MODES = {0: "CROSSED", 1: "ISOLATED"}
+#: orderFilter values that apply to linear contracts (doc: tpslOrder / OcoOrder / BidirectionalTpslOrder are spot)
+_LINEAR_ORDER_FILTERS = ("Order", "StopOrder")
 
 
 class BybitAdapter(AdapterBase):
@@ -73,13 +92,15 @@ class BybitAdapter(AdapterBase):
         10010: c.PERMISSION_DENIED,                 # request address is not in the key's allow list
         10006: c.RATE_LIMITED,                      # too many visits
         10018: c.RATE_LIMITED,                      # exceeded the address rate limit
-        10009: c.BANNED,                            # address has been banned
+        10009: c.PERMISSION_DENIED,                 # doc 2026-10-31: service restricted for the caller's region
         110001: c.ORDER_NOT_FOUND,                  # order does not exist
         110004: c.INSUFFICIENT_MARGIN,              # wallet balance is insufficient
         110007: c.INSUFFICIENT_MARGIN,              # available balance is insufficient
         110012: c.INSUFFICIENT_MARGIN,              # insufficient available balance
         110017: c.REDUCE_ONLY_REJECTED,             # reduce-only rule not satisfied
         110072: c.DUPLICATE_CLIENT_ORDER_ID,        # orderLinkId is duplicate
+        110092: c.STOP_WOULD_TRIGGER_IMMEDIATELY,   # expect Rising, but trigger price <= current
+        110093: c.STOP_WOULD_TRIGGER_IMMEDIATELY,   # expect Falling, but trigger price >= current
     }
     #: doc: HTTP 403 is the venue's answer to an address over its limit (or from a place it does not serve)
     _STATUS_CODES: Mapping[int, str] = {401: c.AUTH_FAILED, 403: c.BANNED}
@@ -96,6 +117,7 @@ class BybitAdapter(AdapterBase):
         "request whose quantity is the whole open position is set as the position's stop",
         "hedge mode is not carried: orders are sent with positionIdx 0",
         "account totals are the unified account's USD-valued totals, labelled USDT as the raw client does",
+        "a position's margin mode is not reported: tradeMode is deprecated (always 0) under UTA 2.0",
         "the raw client discards response headers: retry_after_s and the used budget are never known",
         "private user stream authenticates before subscribing; demo and live use separate hosts",
     )
@@ -164,7 +186,7 @@ class BybitAdapter(AdapterBase):
                 out.append(self._position(
                     row.get("symbol"), signed, entry=row.get("avgPrice"), mark=row.get("markPrice"),
                     unrealized=row.get("unrealisedPnl"), leverage=row.get("leverage"),
-                    margin_mode=_MARGIN_MODES.get(number(row.get("tradeMode"))),
+                    margin_mode=None,       # doc: tradeMode is deprecated and always 0; not a statement
                     position_mode=None if index is None else ("ONE_WAY" if index == 0 else "HEDGE")))
         return tuple(out)
 
@@ -172,7 +194,7 @@ class BybitAdapter(AdapterBase):
         venue_symbol = self._to_venue(symbol) if symbol else None
         scope = {"symbol": venue_symbol} if venue_symbol else {"settleCoin": "USDT"}
         out: List[OrderInfo] = []
-        for order_filter in ("Order", "StopOrder", "tpslOrder"):
+        for order_filter in _LINEAR_ORDER_FILTERS:
             for row in self._pages("/v5/order/realtime", {"category": "linear", "orderFilter": order_filter, **scope}):
                 if row.get("stopOrderType") not in _POSITION_STOP_ROWS:     # reported once, from the position
                     out.append(self._row_info(row))

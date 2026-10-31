@@ -106,7 +106,7 @@ has already built for one connected account, and that account's environment (`LI
 |---|---|---|---|
 | `server_time` | `server_time()` | `server_time()` | `server_time()` |
 | `instrument_rules` | `exchange_info()`, parsed by `parse_binance_symbol` | `_instruments_page` across cursors, `parse_bybit_instrument` | transport `GET /quote/contracts`, `parse_bingx_contract` |
-| `balance` | `account()` | transport `GET /v5/account/wallet-balance` (UNIFIED, then CONTRACT) | transport `GET /user/balance` |
+| `balance` | `account()` | transport `GET /v5/account/wallet-balance` (UNIFIED, then CONTRACT) | transport `GET /openApi/swap/v3/user/balance` (section 13) |
 | `positions` | `position_risk()` | `_pages` `GET /v5/position/list` | transport `GET /user/positions`; `GET /positionSide/dual` when the rows do not state the mode |
 | `open_orders` | `open_orders()` and `get_algo_orders()` | `_pages` `GET /v5/order/realtime` (three filters) and the position list | transport `GET /trade/openOrders` |
 | `order` | `get_order`, `get_order_by_client_order_id`, then the open conditional orders | transport `GET /v5/order/realtime`, then `/v5/order/history`; the position list for a position's stop | transport `GET /trade/order` |
@@ -115,7 +115,7 @@ has already built for one connected account, and that account's environment (`LI
 | `funding` | `get_funding()` | transport `GET /v5/market/tickers` | `get_funding()` |
 | `rate_limit` | local: the used weight and the back-off the raw client kept | local: nothing is known | local: nothing is known |
 | `user_stream` | `UNSUPPORTED` | `UNSUPPORTED` | `UNSUPPORTED` |
-| `set_leverage` | `set_leverage()` | transport `POST /v5/position/set-leverage` | `set_leverage()` (one request per side) |
+| `set_leverage` | `set_leverage()` | transport `POST /v5/position/set-leverage` | transport `POST /openApi/swap/v2/trade/leverage`, `side=BOTH` (section 13) |
 | `place_order`, entry | `place_market_order()`; LIMIT by transport `POST /fapi/v1/order` | transport `POST /v5/order/create` | transport `POST /trade/order` |
 | `place_order`, stop | transport `POST /fapi/v1/algoOrder` (`closePosition`) | transport `POST /v5/position/trading-stop` (`tpslMode=Full`) | transport `POST /trade/order` (`STOP_MARKET`, quantity, `reduceOnly`) |
 | `cancel_order` | transport `DELETE /fapi/v1/order` or `DELETE /fapi/v1/algoOrder` | transport `POST /v5/order/cancel`; a position's stop is cleared with `trading-stop` and `"0"` | transport `DELETE /trade/order` |
@@ -414,3 +414,65 @@ The fake is not evidence about any venue.
 - `exchange/bingx/client.py:664`: a fee the venue did not report becomes 0.
 - `scripts/validate_demo_venue.py:33`: the default evidence directory is `docs/research/venue_validation`,
   inside the area whose content is hash-pinned.
+
+## 13. Implementation-contract audit against current documentation (2026-10-31)
+
+All documentation below was read on 2026-10-31. No exchange API was called, not even a public endpoint. Every
+statement is DOCUMENTED, not verified at a venue. Genuine venue certification of every adapter stays
+**PENDING** (`EXCHANGE_CERTIFICATION.md` section 10).
+
+Adapter versions were raised to `binance-usdm-1.2.0`, `bybit-linear-1.2.0` and `bingx-swap-1.2.0`, because a
+certification is bound to one adapter version.
+
+### 13.1 Sources
+
+| Venue | Source | Used for |
+|---|---|---|
+| Binance | official markdown of developers.binance.com (`/en/docs/products/derivatives-trading-usds-futures/*.md`, listed in `/en/docs/llms.txt`): general-info, error-code, user-data-streams, common-definition, change-log, WebSocket change notice; rendered pages New-Algo-Order and Query-Algo-Order (https://developers.binance.com/docs/derivatives/usds-margined-futures/trade/rest-api/New-Algo-Order, .../Query-Algo-Order); `binance/binance-connector-js` (generated from the documentation's OpenAPI, v39.0.2 of 2026-10-23) | signing, recvWindow, Algo Service, errors, rate limits, user stream, demo hosts |
+| Binance | FAQ https://www.binance.com/en/support/faq/detail/360039707291 (updated 2026-04-07) | 10 conditional orders per symbol |
+| Bybit | https://bybit-exchange.github.io/docs/v5/ : guide, rate-limit, error, position, position/trading-stop, position/position-mode, account/set-margin-mode, acct-mode, abandon/cross-isolate, order/create-order, order/open-order, order/order-list, order/cancel-order, order/amend-order, order/execution, market/instrument, market/risk-limit, ws/connect, websocket/private/order, demo, enum | everything Bybit |
+| BingX | docs-v3 (https://bingx-api.github.io/docs-v3/, content in https://github.com/BingX-API/docs-v3, updated 2026-10-30, read through its JS bundle); the older reference https://bingx-api.github.io/docs/ (the error renumbering of 2025-10-16); the BingX `api-ai-skills` repository (secondary: where it contradicts docs-v3, docs-v3 is used); support articles 15074354955791 and 21627055198873 | everything BingX |
+
+### 13.2 What the documentation says, per item
+
+| Item | Binance USDⓈ-M | Bybit V5 linear | BingX swap |
+|---|---|---|---|
+| Signing | HMAC-SHA256 over query string + body, `signature` last, `X-MBX-APIKEY` | HMAC-SHA256 of timestamp + key + recv_window + (query or JSON body); `X-BAPI-*` headers | HMAC-SHA256 hex over the parameters sorted by key; `X-BX-APIKEY` |
+| Timestamp | accepted if `timestamp < serverTime+1000` and `serverTime-timestamp <= recvWindow`; default 5000; -1021; -5028 at the matching engine | `server_time - recv_window <= timestamp < server_time + 1000`; default 5000; 10002 | default recvWindow 5000; within 5 s of server time; 100421 |
+| Raw clients | recvWindow 5000, query-string signing: matches | recv 5000, header signing: matches | sorted query, recvWindow not sent (the default applies): matches |
+| Instrument rules | PRICE_FILTER tickSize, LOT_SIZE / MARKET_LOT_SIZE, MIN_NOTIONAL `notional`; leverage brackets per symbol (the fixed 125 cap was removed 2026-10-09) | priceFilter.tickSize, lotSizeFilter qtyStep / minOrderQty / maxMktOrderQty / minNotionalValue, leverageFilter; cursor paging | contracts: pricePrecision, quantityPrecision, tradeMinQuantity, tradeMinUSDT, status (1 online), apiStateOpen ("true"/"false") |
+| Position mode | `dualSidePosition` boolean; reduceOnly cannot be sent in hedge mode | positionIdx 0 = one-way (the default) | `dualSidePosition` "true"/"false" text; leverage side: "In the One-way mode, only supports BOTH" |
+| Margin mode | marginType per symbol | an ACCOUNT setting under UTA 2.0; the position field `tradeMode` is "Deprecated, always 0"; the per-symbol switch-isolated endpoint is abandoned | marginType CROSSED / ISOLATED per symbol |
+| Order create | LIMIT/MARKET on /fapi/v1/order; conditional types refused there with -4120 since 2025-12-09 | create only acknowledges ("use the websocket to confirm") | clientOrderId 1-40 characters, lower-cased, "only supports LIMIT/MARKET order type" |
+| Stops | Algo Service: POST/DELETE/GET `/fapi/v1/algoOrder`, GET `/fapi/v1/openAlgoOrders` (symbol optional, a plain array); `closePosition` or `reduceOnly`+`quantity`, never both; an untriggered conditional order cannot be modified; FAQ: 10 per symbol, change log 2025-12-29: 200 across all symbols | trading-stop `tpslMode=Full` modifies the existing TP/SL; "0" cancels; the system cancels it when the position closes; Partial only adds (at most 20, 110061) | STOP_MARKET with a quantity; "The accumulative quantity of the pending stop loss orders cannot be greater than the quantity of open positions"; 110406 "A Stop Loss order already exists for this position" |
+| Order state later | Query Algo Order answers for any state (not found only when CANCELED/EXPIRED without a fill and older than 3 days, or older than 90 days); `actualOrderId` names the order a fired stop created | realtime: the recent 500 closed orders; history: 7 days, cancelled orders 24 h | GET order by orderId or clientOrderId |
+| Unknown outcome | HTTP 503 "Unknown error": the status is UNKNOWN, verify by order query; -1007 timeout; -1008 throttled is a FAILURE | 10000 server timeout, 10016 server error; no stated rule | 109500 / 110500 "retry later"; nothing says whether an order was placed; HTTP 504 "further confirmation required" |
+| Rate limits | `X-MBX-USED-WEIGHT-1M` per IP; `X-MBX-ORDER-COUNT-*` per account; 429, then 418 bans from 2 minutes to 3 days; Retry-After not documented for USDⓈ-M | 600 per 5 s per IP, HTTP 403 then wait at least 10 minutes; per-UID per-endpoint limits, 10006; `X-Bapi-Limit*` headers | UID-based limits, `X-RateLimit-Requests-Remain` / `-Expire`; 429, 418 ban; 100410 / 109429 |
+| Private stream | listen key 60 minutes, PUT extends; user data at `wss://fstream.binance.com/private/ws/<listenKey>`; unrouted URLs stopped carrying user data after 2026-04-23; a connection lives 24 h; `ALGO_UPDATE` for conditional orders | `wss://stream.bybit.com/v5/private`, demo `wss://stream-demo.bybit.com`; auth frame; ping every 20 s | listen key 1 h, PUT every 30 minutes; `wss://open-api-swap.bingx.com/swap-market?listenKey=`; VST: only a market-data host is documented |
+| Demo | REST `https://demo-fapi.binance.com`, WS `wss://demo-fstream.binance.com`; whether the Algo Service and the `/private` route exist there is NOT documented | `api-demo.bybit.com`; the supported list includes order create / amend / cancel / realtime / history, execution list, position list / set-leverage / switch-mode / trading-stop; Partial TP/SL is not mentioned; "WS Trade is not supported" | the VST host `open-api-vst.bingx.com` is printed beside every swap endpoint; no per-endpoint VST support matrix |
+
+### 13.3 Defects found and fixed (wire tests in `tests/exchange/`)
+
+| # | Venue | Defect | Fix | Test |
+|---|---|---|---|---|
+| 1 | Binance | A conditional order that was no longer open was `ORDER_NOT_FOUND`, like one never sent, so a stop whose acknowledgement was lost and that then fired could be sent again | Query Algo Order (`GET /fapi/v1/algoOrder` by algoId or clientAlgoId) after the open list; a fired stop reports the state of its `actualOrderId`, UNKNOWN while triggering | `test_binance_a_stop_whose_answer_was_lost_and_that_fired_is_found_by_query_algo_order_not_resent`, `test_a_stop_fires_and_closes_the_position[binance]` |
+| 2 | Binance | A cancelled conditional order was reported CANCELED without being read back; a cancel answer with a refusing `code` was success | the cancel is read back (UNKNOWN when the read fails); a refusing `code` is a refusal | `test_binance_a_cancelled_stop_is_read_back_and_a_refused_cancel_is_not_taken_for_success` |
+| 3 | Binance | The private-stream URL carried an `events` filter joined with commas; the documentation joins events with "/" and documents `/private/ws/<listenKey>` | the documented path, every event | `test_binance_the_private_stream_is_the_routed_private_path` |
+| 4 | Binance | -1008 (throttled, a documented failure) was an unknown outcome under HTTP 4xx; -5028 and -4120 were unmapped | -1008 RATE_LIMITED, -5028 TIMESTAMP_OUT_OF_SYNC, -4120 UNSUPPORTED (-1008 under HTTP 503 stays uncertain: the status decides first, the safe side) | `test_binance_error_codes_on_a_mutation` |
+| 5 | Bybit | `open_orders` asked for `orderFilter=tpslOrder`, a spot-only filter | Order and StopOrder only | `test_bybit_open_orders_ask_only_the_linear_order_filters` |
+| 6 | Bybit | Every position was reported CROSSED from `tradeMode`, which is deprecated and always 0 | the margin mode is not reported (None) | `test_bybit_a_hedge_mode_position_is_reported_and_not_driven` |
+| 7 | Bybit | 10009 was BANNED; it is "Service Restricted" for the region | PERMISSION_DENIED; 110092 / 110093 STOP_WOULD_TRIGGER_IMMEDIATELY | `test_bybit_error_codes_on_a_mutation` |
+| 8 | BingX | The current code for an unknown order (109421, renumbered 2025-10-16) was unmapped, so the lookup that precedes every create failed and no order could be placed | both numberings mapped; 20 docs-v3 codes added; 109500 / 110500 unknown outcome | `test_bingx_error_codes_on_a_mutation`, `test_bingx_a_server_side_failure_is_uncertain_for_a_mutation_and_unavailable_for_a_read` |
+| 9 | BingX | Leverage was set with `side=LONG` and then `SHORT`; a one-way account accepts only `BOTH` | one request, `side=BOTH`, the echoed leverage returned | `test_bingx_symbols_ids_and_entries_are_translated` |
+| 10 | BingX | The balance came from `/openApi/swap/v2/user/balance`, which the current reference does not contain | `/openApi/swap/v3/user/balance` (a list: the USDT row, or the only row) | `test_bingx_what_the_venue_did_not_report_stays_unknown` |
+| 11 | BingX | Fill rows carry no trade id; the raw client used the one-second fill time as the id, so two fills of one second were one fill | a deterministic id from order, time, quantity, price, fee, side and occurrence | `test_bingx_two_fills_of_one_second_are_two_fills` |
+| 12 | BingX (entry permit) | The certification and portfolio entry permits did not read the `clientOrderId` key BingX sends, so every BingX entry under the production order gate was refused | the key is read (`app/trading_intelligence/execution/entry_permit.py`) | `test_the_full_harness_runs_end_to_end_over_a_mocked_transport[bingx]` |
+
+Not changed, and why:
+
+* Binance `-4130` (a second closePosition stop) is no longer in the published error list; the raw client still
+  recognises it. Kept, marked UNVERIFIED.
+* Binance `-4045` (max stop orders) has no contract code; left unmapped on purpose.
+* The raw clients were not changed. Two observations for their owners: the BingX raw client's `account()` still
+  reads `/openApi/swap/v2/user/balance`, and its `set_leverage` sends LONG and SHORT.
+* Bybit's 10006 wait (`X-Bapi-Limit-Reset-Timestamp`) is read by `BudgetedHTTP`, not by the adapter.

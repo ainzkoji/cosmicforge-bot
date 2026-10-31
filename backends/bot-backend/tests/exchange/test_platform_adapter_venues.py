@@ -194,6 +194,8 @@ BINANCE_CODES = [
     (-4140, c.INSTRUMENT_NOT_TRADING), (-2022, c.REDUCE_ONLY_REJECTED), (-2021, c.STOP_WOULD_TRIGGER_IMMEDIATELY),
     (-2015, c.AUTH_FAILED), (-1003, c.RATE_LIMITED), (-1015, c.RATE_LIMITED),                               # repo
     (-1022, c.AUTH_FAILED), (-2014, c.AUTH_FAILED), (-4061, c.POSITION_MODE_MISMATCH), (-4028, c.LEVERAGE_NOT_ALLOWED),  # doc
+    (-5028, c.TIMESTAMP_OUT_OF_SYNC), (-4120, c.UNSUPPORTED), (-1008, c.RATE_LIMITED),          # doc, read 2026-10-31
+    (-4045, c.UNMAPPED_VENUE_ERROR),                     # doc "max stop order limit": no contract code says so
     (-1111, c.UNMAPPED_VENUE_ERROR), (-4999, c.UNMAPPED_VENUE_ERROR),                                       # no evidence
 ]
 
@@ -334,8 +336,11 @@ def test_binance_stops_are_conditional_orders_in_their_own_id_space(binance):
     part = adapter.place_order(stop(client_order_id="part", quantity=0.004, reduce_only=True))
     assert (part.quantity, part.reduce_only) == (0.004, True)
     adapter.cancel_order(BTC, client_order_id="part")
-    # the id of the cancelled stop cannot be reused: the venue refuses it and no open order answers for it
-    assert refused(lambda: adapter.place_order(stop(quantity=0.01, reduce_only=True))).code == c.DUPLICATE_CLIENT_ORDER_ID
+    # the id of the cancelled stop is answered by Query Algo Order: the cancelled stop comes back, nothing is sent
+    sent = len(wire.mutations())
+    again = adapter.place_order(stop(quantity=0.01, reduce_only=True))
+    assert (again.status, again.venue_order_id) == (c.CANCELED, placed.venue_order_id)
+    assert len(wire.mutations()) == sent and wire.sent("GET", "/fapi/v1/algoOrder")[-1][2] == {"clientAlgoId": "stop-1"}
     placed = adapter.place_order(stop(client_order_id="stop-3", close_position=True))
     wire.calls.clear()
     assert [o.venue_order_id for o in adapter.open_orders()] == [placed.venue_order_id]
@@ -351,6 +356,67 @@ def test_binance_stops_are_conditional_orders_in_their_own_id_space(binance):
     wire.answer_next("GET", "/fapi/v2/positionRisk", Reply(200, hedged))
     error = refused(lambda: adapter.place_order(stop(client_order_id="stop-4", quantity=0.01, reduce_only=True)))
     assert error.code == c.POSITION_MODE_MISMATCH                      # orders are sent for a one-way account
+
+
+def test_binance_a_stop_whose_answer_was_lost_and_that_fired_is_found_by_query_algo_order_not_resent(binance):
+    """Audit 2026-10-31 (doc: Query Algo Order, GET /fapi/v1/algoOrder, answers for a conditional order in any
+    state). Before, a fired stop was ORDER_NOT_FOUND like one never sent, so a lost acknowledgement led to a
+    second stop."""
+    adapter, wire = binance.adapter, binance.wire
+    adapter.place_order(market(BTC, c.BUY, 0.01, "entry-1"))
+    wire.inject("timeout_after", mutation=True)                     # the venue takes the stop; the answer is lost
+    lost = refused(lambda: adapter.place_order(stop(quantity=0.01, reduce_only=True)))
+    assert lost.uncertain and len(adapter.open_orders(BTC)) == 1
+    binance.fake.set_price(BTC, 48_900.0)                          # it fires before the caller looks it up
+    assert adapter.open_orders(BTC) == () and adapter.positions(BTC) == ()
+    found = adapter.order(BTC, client_order_id="stop-1")
+    assert (found.status, found.filled_quantity, found.average_price) == (c.FILLED, 0.01, 48_900.0)
+    assert found.venue_order_id.startswith("algo:") and found.venue_status.startswith("FINISHED/")
+    assert wire.sent("GET", "/fapi/v1/algoOrder")[-1][2] == {"clientAlgoId": "stop-1"}   # no symbol: doc
+    sent = len(wire.mutations())
+    assert adapter.place_order(stop(quantity=0.01, reduce_only=True)).status == c.FILLED
+    assert len(wire.mutations()) == sent                            # the repeat is that stop: nothing is sent
+    by_id = adapter.order(BTC, venue_order_id=found.venue_order_id)
+    assert by_id.status == c.FILLED and wire.sent("GET", "/fapi/v1/algoOrder")[-1][2] == {
+        "algoId": found.venue_order_id[len("algo:"):]}
+    # fired, but the order it created is not named yet (TRIGGERING): its state is not known, never "not found"
+    triggering = {"algoId": 77, "clientAlgoId": "stop-9", "symbol": BTC, "side": "SELL", "orderType": "STOP_MARKET",
+                  "algoStatus": "TRIGGERING", "triggerPrice": "49000", "quantity": "0.01", "reduceOnly": True,
+                  "actualOrderId": "", "updateTime": 5}
+    wire.answer_next("GET", "/fapi/v1/algoOrder", Reply(200, triggering))
+    assert adapter.order(BTC, client_order_id="stop-9").status == c.UNKNOWN
+    wire.answer_next("GET", "/fapi/v1/algoOrder", Reply(200, {**triggering, "symbol": ETH}))
+    assert refused(lambda: adapter.order(BTC, client_order_id="stop-9")).code == c.ORDER_NOT_FOUND
+    wire.answer_next("GET", "/fapi/v1/algoOrder", Reply(400, {"code": -2013, "msg": "Order does not exist."}))
+    assert refused(lambda: adapter.order(BTC, client_order_id="never")).code == c.ORDER_NOT_FOUND
+    wire.answer_next("GET", "/fapi/v1/algoOrder", Reply(500, {"code": -1001, "msg": "Internal error."}))
+    assert refused(lambda: adapter.order(BTC, client_order_id="never")).code == c.VENUE_UNAVAILABLE
+
+
+def test_binance_a_cancelled_stop_is_read_back_and_a_refused_cancel_is_not_taken_for_success(binance):
+    adapter, wire = binance.adapter, binance.wire
+    adapter.place_order(market(BTC, c.BUY, 0.01, "entry-1"))
+    placed = adapter.place_order(stop(close_position=True))
+    cancelled = adapter.cancel_order(BTC, client_order_id="stop-1")
+    assert (cancelled.status, cancelled.venue_status) == (c.CANCELED, "CANCELED")          # read back, not assumed
+    assert wire.sent("GET", "/fapi/v1/algoOrder")[-1][2] == {"algoId": placed.venue_order_id[len("algo:"):]}
+    again = adapter.place_order(stop(client_order_id="stop-2", close_position=True))
+    wire.answer_next("DELETE", "/fapi/v1/algoOrder", Reply(200, {"algoId": 1, "code": "-2011", "msg": "Unknown order"}))
+    assert refused(lambda: adapter.cancel_order(BTC, client_order_id="stop-2")).code == c.ORDER_NOT_FOUND
+    assert adapter.order(BTC, venue_order_id=again.venue_order_id).open                    # it still rests
+
+
+def test_binance_the_private_stream_is_the_routed_private_path(binance, monkeypatch):
+    """Doc (user-data-streams, WebSocket change notice, read 2026-10-31): user data is served at
+    wss://fstream.binance.com/private/ws/<listenKey>; unrouted URLs stopped carrying it after 2026-04-23. The
+    previous URL sent an ``events`` filter joined with commas, where the documentation joins events with "/"."""
+    from shared_lib.broker.environment import BrokerEnvironment as Env
+    live = build_rig(c.BINANCE, monkeypatch, environment=c.LIVE)
+    spec = live.adapter.user_stream()
+    assert spec.url == "wss://fstream.binance.com/private/ws/synthetic-private-stream-key"
+    assert (spec.auth_mode, spec.keepalive_seconds, spec.expires_after_seconds) == ("LISTEN_KEY_IN_URL", 1800, 3600)
+    assert binance.adapter.user_stream().url == "wss://demo-fstream.binance.com/private/ws/synthetic-private-stream-key"
+    assert resolve_base_url(c.BINANCE, Env.DEMO) == "https://demo-fapi.binance.com"
 
 
 def test_binance_a_list_of_conditional_orders_that_is_not_a_list_is_never_read_as_no_stops(binance):
@@ -415,10 +481,12 @@ def bybit(monkeypatch):
 #: all from the venue's published error list; none handled elsewhere in this repository
 BYBIT_CODES = [
     (10002, c.TIMESTAMP_OUT_OF_SYNC), (10003, c.AUTH_FAILED), (10004, c.AUTH_FAILED), (10005, c.PERMISSION_DENIED),
-    (10010, c.PERMISSION_DENIED), (10006, c.RATE_LIMITED), (10018, c.RATE_LIMITED), (10009, c.BANNED),
+    (10010, c.PERMISSION_DENIED), (10006, c.RATE_LIMITED), (10018, c.RATE_LIMITED),
+    (10009, c.PERMISSION_DENIED),           # doc 2026-10-31: "Service Restricted" for the region, not an address ban
+    (110092, c.STOP_WOULD_TRIGGER_IMMEDIATELY), (110093, c.STOP_WOULD_TRIGGER_IMMEDIATELY),
     (110004, c.INSUFFICIENT_MARGIN), (110007, c.INSUFFICIENT_MARGIN), (110012, c.INSUFFICIENT_MARGIN),
     (110017, c.REDUCE_ONLY_REJECTED), (110001, c.ORDER_NOT_FOUND),
-    (10001, c.UNMAPPED_VENUE_ERROR), (110094, c.UNMAPPED_VENUE_ERROR), (110092, c.UNMAPPED_VENUE_ERROR),
+    (10001, c.UNMAPPED_VENUE_ERROR), (110094, c.UNMAPPED_VENUE_ERROR), (110061, c.UNMAPPED_VENUE_ERROR),
 ]
 
 
@@ -537,6 +605,21 @@ def test_bybit_the_stop_is_the_positions_own(bybit):
     assert len(wire.mutations()) == sent
 
 
+def test_bybit_open_orders_ask_only_the_linear_order_filters(bybit):
+    """Doc (order/open-order, read 2026-10-31): Order and StopOrder apply to linear; tpslOrder, OcoOrder and
+    BidirectionalTpslOrder are spot-only. The adapter asked for tpslOrder on a linear account."""
+    adapter, wire = bybit.adapter, bybit.wire
+    adapter.place_order(market(BTC, c.BUY, 0.01, "entry-1"))
+    adapter.place_order(stop(close_position=True))
+    wire.calls.clear()
+    (listed,) = adapter.open_orders(BTC)
+    assert listed.venue_order_id == "POSITION_SL:BTCUSDT"           # the venue's StopLoss row is reported once
+    assert [q.get("orderFilter") for _, p, q in wire.calls if p == "/v5/order/realtime"] == ["Order", "StopOrder"]
+    wire.calls.clear()
+    adapter.open_orders()
+    assert {q.get("settleCoin") for _, p, q in wire.calls if p == "/v5/order/realtime"} == {"USDT"}
+
+
 def test_bybit_after_a_restart_the_stop_is_known_by_its_venue_id_and_never_overwritten(bybit):
     bybit.adapter.place_order(market(BTC, c.BUY, 0.01, "entry-1"))
     bybit.adapter.place_order(stop(close_position=True))
@@ -556,7 +639,8 @@ def test_bybit_a_hedge_mode_position_is_reported_and_not_driven(bybit):
     answer = Reply(200, {"retCode": 0, "retMsg": "OK", "result": {"list": [row], "nextPageCursor": ""}})
     bybit.wire.answer_next("GET", "/v5/position/list", answer)
     (position,) = bybit.adapter.positions(BTC)
-    assert (position.position_mode, position.margin_mode, position.side) == ("HEDGE", "ISOLATED", c.LONG)
+    # doc 2026-10-31: tradeMode is deprecated and always 0, so it states no margin mode
+    assert (position.position_mode, position.margin_mode, position.side) == ("HEDGE", None, c.LONG)
     bybit.wire.answer_next("GET", "/v5/position/list", answer)
     assert refused(lambda: bybit.adapter.place_order(stop(close_position=True))).code == c.POSITION_MODE_MISMATCH
     assert bybit.wire.mutations() == []
@@ -602,7 +686,18 @@ BINGX_CODES = [
     (100001, c.AUTH_FAILED), (100412, c.AUTH_FAILED), (100413, c.AUTH_FAILED), (100004, c.PERMISSION_DENIED),
     (100419, c.PERMISSION_DENIED), (100421, c.TIMESTAMP_OUT_OF_SYNC), (100410, c.RATE_LIMITED),
     (101204, c.INSUFFICIENT_MARGIN), (101415, c.INSTRUMENT_NOT_TRADING), (101414, c.LEVERAGE_NOT_ALLOWED),
-    (80016, c.ORDER_NOT_FOUND), (80014, c.UNMAPPED_VENUE_ERROR), (101209, c.UNMAPPED_VENUE_ERROR),
+    (80016, c.ORDER_NOT_FOUND),
+    # docs-v3 (https://bingx-api.github.io/docs-v3/), read 2026-10-31: the numbering in force since 2025-10-16
+    (109421, c.ORDER_NOT_FOUND), (109429, c.RATE_LIMITED), (109418, c.INSTRUMENT_NOT_TRADING),
+    (101481, c.DUPLICATE_CLIENT_ORDER_ID), (109201, c.DUPLICATE_CLIENT_ORDER_ID), (101290, c.REDUCE_ONLY_REJECTED),
+    (110203, c.REDUCE_ONLY_REJECTED), (101202, c.MIN_NOTIONAL), (110422, c.INVALID_QUANTITY),
+    (110425, c.INVALID_QUANTITY), (101211, c.INVALID_PRICE), (110402, c.INVALID_PRICE),
+    (110411, c.STOP_WOULD_TRIGGER_IMMEDIATELY), (110412, c.STOP_WOULD_TRIGGER_IMMEDIATELY),
+    (110413, c.STOP_WOULD_TRIGGER_IMMEDIATELY), (110414, c.STOP_WOULD_TRIGGER_IMMEDIATELY),
+    (110406, c.STOP_ALREADY_EXISTS), (110407, c.STOP_ALREADY_EXISTS),
+    (80014, c.UNMAPPED_VENUE_ERROR), (101209, c.UNMAPPED_VENUE_ERROR),
+    (109400, c.UNMAPPED_VENUE_ERROR),   # "Invalid request parameters": too many causes to name one
+    (110206, c.UNMAPPED_VENUE_ERROR),   # "The TP/SL order count has reached the limit": no contract code says so
 ]
 
 
@@ -615,10 +710,13 @@ def test_bingx_error_codes_on_a_mutation(bingx, code, expected):
 
 
 def test_bingx_table_is_exactly_what_these_tests_list():
-    assert set(BingXAdapter._CODES) == {code for code, expected in BINGX_CODES if expected != c.UNMAPPED_VENUE_ERROR}
+    tested = {code for code, expected in BINGX_CODES if expected != c.UNMAPPED_VENUE_ERROR}
+    assert set(BingXAdapter._CODES) == tested
+    # a duplicate-id refusal sends the adapter back to the lookup, never into a second send
+    assert {code for code, expected in BINGX_CODES if expected == c.DUPLICATE_CLIENT_ORDER_ID} == {101481, 109201}
 
 
-@pytest.mark.parametrize("code", [100500, 80012, 101500])
+@pytest.mark.parametrize("code", [100500, 80012, 101500, 109500, 110500])
 def test_bingx_a_server_side_failure_is_uncertain_for_a_mutation_and_unavailable_for_a_read(bingx, code):
     bingx.wire.answer_next("POST", "/trade/order", Reply(200, {"code": code, "msg": "Internal system error"}))
     assert refused(lambda: bingx.adapter.place_order(market(BTC, c.BUY, 0.01, "entry-1"))).uncertain
@@ -656,8 +754,12 @@ def test_bingx_symbols_ids_and_entries_are_translated(bingx):
     assert (wire.mutations()[-1][2]["type"], wire.mutations()[-1][2]["price"]) == ("LIMIT", "2600")
     adapter.place_order(market(BTC, c.SELL, 0.01, "close-1", reduce_only=True))
     assert wire.mutations()[-1][2]["reduceOnly"] == "true"
+    # docs-v3: "In the One-way mode, only supports BOTH" -- one request, and the leverage the venue echoes
     assert adapter.set_leverage(BTC, 7) == 7
-    assert [q["side"] for _, p, q in wire.mutations() if p.endswith("/trade/leverage")] == ["LONG", "SHORT"]
+    assert [q for _, p, q in wire.mutations() if p.endswith("/trade/leverage")] == [
+        {"symbol": "BTC-USDT", "side": "BOTH", "leverage": "7"}]
+    wire.answer_next("POST", "/trade/leverage", Reply(200, {"code": 0, "msg": "", "data": {"symbol": "BTC-USDT"}}))
+    assert refused(lambda: adapter.set_leverage(BTC, 3)).uncertain           # accepted, but not confirmed
     adapter.instrument_rules()
     assert adapter._to_venue("NCFXEUR2USDUSDT") == "NCFXEUR2USD-USDT"        # not listed: the raw client's own rule
     assert adapter._to_venue(BTC) == "BTC-USDT"
@@ -687,23 +789,52 @@ def test_bingx_a_stop_carries_its_quantity_and_no_client_id(bingx):
 
 def test_bingx_what_the_venue_did_not_report_stays_unknown(bingx):
     adapter, wire = bingx.adapter, bingx.wire
+    # docs-v3 GET /openApi/swap/v3/user/balance: a list of assets
     wallet = {"asset": "VST", "balance": "100", "equity": "101", "availableMargin": "90", "usedMargin": "11"}
-    wire.answer_next("GET", "/user/balance", Reply(200, {"code": 0, "data": {"balance": wallet}}))
+    wire.answer_next("GET", "/v3/user/balance", Reply(200, {"code": 0, "data": [wallet]}))
     assert refused(adapter.balance).code == c.MALFORMED_RESPONSE       # no unrealised profit under either spelling
-    wire.answer_next("GET", "/user/balance", Reply(200, {"code": 0, "data": {"balance": {**wallet, "unrealizedProfit": "1"}}}))
+    wire.answer_next("GET", "/v3/user/balance", Reply(200, {"code": 0, "data": [{**wallet, "unrealizedProfit": "1"}]}))
     balance = adapter.balance()
     assert (balance.margin_asset, balance.unrealized_pnl, balance.equity) == ("VST", 1.0, 101.0)
-    incomplete = {k: v for k, v in wallet.items() if k != "equity"}
-    wire.answer_next("GET", "/user/balance", Reply(200, {"code": 0, "data": {"balance": incomplete}}))
-    assert bingx.client.account()["totalMarginBalance"] == 0.0         # the raw client reports an equity of zero
-    wire.answer_next("GET", "/user/balance", Reply(200, {"code": 0, "data": {"balance": {**incomplete, "unrealisedPNL": "0"}}}))
+    usdt = {**wallet, "asset": "USDT", "unrealizedProfit": "2"}
+    wire.answer_next("GET", "/v3/user/balance", Reply(200, {"code": 0, "data": [{**wallet, "unrealizedProfit": "1",
+                                                                                   "asset": "USDC"}, usdt]}))
+    chosen = adapter.balance()
+    assert (chosen.margin_asset, chosen.unrealized_pnl) == ("USDT", 2.0)
+    for data in ([], [{**usdt, "asset": "USDC"}, {**usdt, "asset": "VST"}], {"balance": usdt}, None):
+        wire.answer_next("GET", "/v3/user/balance", Reply(200, {"code": 0, "data": data}))
+        assert refused(adapter.balance).code == c.MALFORMED_RESPONSE   # never a guessed asset or a zero balance
+    incomplete = {k: v for k, v in usdt.items() if k != "equity"}
+    wire.answer_next("GET", "/v3/user/balance", Reply(200, {"code": 0, "data": [incomplete]}))
     assert refused(adapter.balance).code == c.MALFORMED_RESPONSE
-    fill = {"tradeId": "f1", "orderId": 9, "symbol": "BTC-USDT", "side": "BUY", "qty": "0.01", "price": "50000", "time": 5}
-    wire.answer_next("GET", "/trade/allFillOrders", Reply(200, {"code": 0, "data": [fill]}))
+    # docs-v3 allFillOrders row: no trade id, ISO time, a paid fee negative
+    fill = {"filledTm": "2026-08-06T15:32:23.000Z", "volume": "0.01", "price": "50000", "amount": "500",
+            "commission": "0", "currency": "USDT", "orderId": "9", "symbol": "BTC-USDT", "side": "BUY"}
+    wire.answer_next("GET", "/trade/allFillOrders", Reply(200, {"code": 0, "data": {"fill_orders": [fill]}}))
     (unpriced,) = adapter.fills(BTC)
     assert (unpriced.fee, unpriced.fee_asset, unpriced.is_maker, unpriced.client_order_id) == (None, None, None, None)
-    wire.answer_next("GET", "/trade/allFillOrders", Reply(200, {"code": 0, "data": [{**fill, "tradeId": None}]}))
+    assert unpriced.trade_id.startswith("bx:") and unpriced.time_ms == 1786030343000
+    wire.answer_next("GET", "/trade/allFillOrders", Reply(200, {"code": 0, "data": {"fill_orders": [
+        {**fill, "filledTm": None}]}}))
     assert refused(lambda: adapter.fills(BTC)).code == c.MALFORMED_RESPONSE   # a fill that cannot be deduplicated
+
+
+def test_bingx_two_fills_of_one_second_are_two_fills(bingx):
+    """Audit 2026-10-31: the documented fill row has no trade id, and the raw client used the fill time (one
+    second) as the id, so two fills of one order in the same second were read as one."""
+    adapter, wire = bingx.adapter, bingx.wire
+    fill = {"filledTm": "2026-08-06T15:32:23.000Z", "volume": "0.01", "price": "50000", "amount": "500",
+            "commission": "-0.25", "currency": "USDT", "orderId": "9", "symbol": "BTC-USDT", "side": "BUY"}
+    rows = [fill, {**fill, "volume": "0.02"}, fill]                    # the third repeats the first exactly
+    for _ in range(2):
+        wire.answer_next("GET", "/trade/allFillOrders", Reply(200, {"code": 0, "data": {"fill_orders": rows}}))
+    first, again = adapter.fills(BTC), adapter.fills(BTC)
+    assert sorted(f.quantity for f in first) == [0.01, 0.01, 0.02] and len({f.trade_id for f in first}) == 3
+    assert [f.trade_id for f in first] == [f.trade_id for f in again]  # deterministic: the same answer, the same ids
+    assert {f.fee for f in first} == {0.25}
+    order = adapter.place_order(market(BTC, c.BUY, 0.01, "entry-1"))  # the wire's own rows: the documented shape
+    (own,) = adapter.fills(BTC, since_ms=bingx.fake.now_ms() - 60_000, venue_order_id=order.venue_order_id)
+    assert (own.quantity, own.price, own.side) == (0.01, 50_000.0, c.BUY) and own.trade_id.startswith("bx:")
 
 
 def test_bingx_an_answer_without_the_order_list_is_never_read_as_no_orders(bingx):

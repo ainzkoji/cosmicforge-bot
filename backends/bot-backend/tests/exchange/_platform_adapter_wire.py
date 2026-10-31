@@ -56,11 +56,19 @@ REFUSALS: Mapping[str, Mapping[str, int]] = {
                 c.DUPLICATE_CLIENT_ORDER_ID: -4116, c.LEVERAGE_NOT_ALLOWED: -4028},
     c.BYBIT: {c.INSUFFICIENT_MARGIN: 110007, c.ORDER_NOT_FOUND: 110001, c.REDUCE_ONLY_REJECTED: 110017,
               c.DUPLICATE_CLIENT_ORDER_ID: 110072},
-    c.BINGX: {c.INSUFFICIENT_MARGIN: 101204, c.ORDER_NOT_FOUND: 80016, c.INSTRUMENT_NOT_TRADING: 101415,
-              c.LEVERAGE_NOT_ALLOWED: 101414},
+    # BingX: the docs-v3 numbering (read 2026-10-31); 80016 is the code before the 2025-10-16 renumbering
+    c.BINGX: {c.INSUFFICIENT_MARGIN: 101204, c.ORDER_NOT_FOUND: 109421, c.INSTRUMENT_NOT_TRADING: 101415,
+              c.LEVERAGE_NOT_ALLOWED: 101414, c.DUPLICATE_CLIENT_ORDER_ID: 101481, c.REDUCE_ONLY_REJECTED: 101290,
+              c.MIN_NOTIONAL: 101202, c.INVALID_QUANTITY: 110425, c.INVALID_PRICE: 101211,
+              c.STOP_WOULD_TRIGGER_IMMEDIATELY: 110411, c.STOP_ALREADY_EXISTS: 110406},
 }
 #: a venue code no adapter maps, for every refusal without an entry above
 UNMAPPED_CODES = {c.BINANCE: -9999, c.BYBIT: 10001, c.BINGX: 80014}
+
+
+def _iso(ms: int) -> str:
+    from datetime import datetime, timezone
+    return datetime.fromtimestamp(ms / 1000, tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.") + f"{ms % 1000:03d}Z"
 
 
 def _text(value: Optional[float]) -> str:
@@ -75,6 +83,9 @@ class Reply:
         self.status_code, self._body, self.headers = status, body, dict(headers or {})
         self.text = text if text is not None else json.dumps(body)
         self.content = self.text.encode("utf-8")
+
+    def close(self) -> None:
+        """``requests.Response.close``: the fault injector closes an answer it pretends was lost."""
 
     def json(self) -> Any:
         if self._body is None:
@@ -220,6 +231,13 @@ class Wire:
 
 
 # =================================================================================================== Binance
+#: algoStatus of a conditional order in each fake state (doc: ALGO_UPDATE status list)
+_ALGO_STATUS = {c.NEW: "NEW", c.CANCELED: "CANCELED", c.EXPIRED: "EXPIRED", c.REJECTED: "REJECTED",
+                c.FILLED: "FINISHED", c.PARTIALLY_FILLED: "FINISHED"}
+#: the id of the order a fired conditional order created is the stop's id plus this
+ACTUAL_ORDER_OFFSET = 10 ** 9
+
+
 class BinanceWire(Wire):
     """Stands in for ``BinanceFuturesClient.session`` (a ``requests.Session``)."""
 
@@ -259,8 +277,8 @@ class BinanceWire(Wire):
                 self._order(o) for o in self._orders(p.get("symbol"), protective=False)],
             ("GET", "/fapi/v1/openAlgoOrders"): lambda p: [
                 self._algo(o) for o in self._orders(p.get("symbol"), protective=True)],
-            ("GET", "/fapi/v1/order"): lambda p: self._order(self._lookup(
-                p["symbol"], client_order_id=p.get("origClientOrderId"), venue_order_id=p.get("orderId"), protective=False)),
+            ("GET", "/fapi/v1/order"): self._get_order,
+            ("GET", "/fapi/v1/algoOrder"): self._query_algo,
             ("GET", "/fapi/v1/userTrades"): self._user_trades,
             ("GET", "/fapi/v1/commissionRate"): lambda p: {
                 "symbol": p["symbol"], "makerCommissionRate": _text(self.fake.fee_rates(p["symbol"]).maker),
@@ -322,9 +340,32 @@ class BinanceWire(Wire):
                 "stopPrice": _text(order.stop_price), "reduceOnly": order.reduce_only, "closePosition": order.close_position,
                 "positionSide": "BOTH", "updateTime": order.updated_at_ms}
 
+    def _get_order(self, p: Dict[str, Any]) -> Dict[str, Any]:
+        wanted = p.get("orderId")
+        if wanted and int(wanted) >= ACTUAL_ORDER_OFFSET:
+            # the order a fired conditional order created (actualOrderId): the fake keeps the stop itself as FILLED
+            stop = self._lookup(p["symbol"], venue_order_id=str(int(wanted) - ACTUAL_ORDER_OFFSET), protective=True)
+            return {**self._order(stop), "orderId": int(wanted), "type": "MARKET", "stopPrice": "0"}
+        return self._order(self._lookup(p["symbol"], client_order_id=p.get("origClientOrderId"), venue_order_id=wanted,
+                                        protective=False))
+
+    def _query_algo(self, p: Dict[str, Any]) -> Dict[str, Any]:
+        """Query Algo Order (doc): by algoId or clientAlgoId, open or not; no symbol parameter."""
+        assert ("algoId" in p) != ("clientAlgoId" in p) and "symbol" not in p, p
+        for order in self._orders(protective=True, only_open=False):
+            if (p.get("algoId") and order.venue_order_id == str(p["algoId"])) or (
+                    p.get("clientAlgoId") and order.client_order_id == p["clientAlgoId"]):
+                return self._algo(order)
+        raise AdapterError(c.ORDER_NOT_FOUND, "no such algo order", venue=self.venue)
+
     def _algo(self, order: Any) -> Dict[str, Any]:
+        """A conditional order as Query Algo Order / openAlgoOrders render it; a fired stop is FINISHED and
+        names the order it created (actualOrderId)."""
+        fired = order.status in (c.FILLED, c.PARTIALLY_FILLED)
         return {"algoId": int(order.venue_order_id), "clientAlgoId": order.client_order_id, "algoType": "CONDITIONAL",
-                "symbol": order.symbol, "side": order.side, "orderType": order.order_type, "algoStatus": "NEW",
+                "symbol": order.symbol, "side": order.side, "orderType": order.order_type,
+                "algoStatus": _ALGO_STATUS.get(order.status, "NEW"),
+                "actualOrderId": str(int(order.venue_order_id) + ACTUAL_ORDER_OFFSET) if fired else "",
                 "triggerPrice": _text(order.stop_price), "closePosition": order.close_position,
                 "reduceOnly": order.reduce_only, "quantity": _text(order.quantity) if order.quantity is not None else "0",
                 "updateTime": order.updated_at_ms}
@@ -470,9 +511,9 @@ class BybitWire(Wire):
         if p.get("orderLinkId") or p.get("orderId"):
             rows = [o for o in self._orders(symbol, protective=False, only_open=only_open)
                     if o.client_order_id == p.get("orderLinkId") or o.venue_order_id == p.get("orderId")]
-        elif p.get("orderFilter") == "tpslOrder":    # the venue's own rows for the position's stops
+        elif p.get("orderFilter") == "StopOrder":    # conditional orders: the venue's own rows for the position's stops
             rows = self._orders(symbol, protective=True)
-        elif p.get("orderFilter") == "StopOrder":
+        elif p.get("orderFilter") == "tpslOrder":    # doc: a spot-only filter; nothing of a linear account
             rows = []
         else:
             rows = self._orders(symbol, protective=False)
@@ -574,7 +615,7 @@ class BingXWire(Wire):
             ("GET", "/openApi/swap/v2/server/time"): lambda p: {
                 "serverTime": self.fake.now_ms() + self.fake.server_time_offset_ms},
             ("GET", "/openApi/swap/v2/quote/contracts"): lambda p: [self.contract_record(r) for r in self.fake._rules.values()],
-            ("GET", "/openApi/swap/v2/user/balance"): self._balance,
+            ("GET", "/openApi/swap/v3/user/balance"): self._balance,
             ("GET", "/openApi/swap/v2/user/positions"): self._positions,
             ("GET", "/openApi/swap/v1/positionSide/dual"): lambda p: {"dualSidePosition": "false"},
             ("GET", "/openApi/swap/v2/trade/openOrders"): lambda p: {"orders": [
@@ -585,8 +626,7 @@ class BingXWire(Wire):
             ("GET", "/openApi/swap/v2/user/commissionRate"): lambda p: {"commission": {
                 "makerCommissionRate": self.fake.maker_fee, "takerCommissionRate": self.fake.taker_fee}},
             ("GET", "/openApi/swap/v2/quote/premiumIndex"): self._premium_index,
-            ("POST", "/openApi/swap/v2/trade/leverage"): lambda p: {
-                "symbol": p["symbol"], "leverage": self.fake.set_leverage(self._symbol(p["symbol"]), int(p["leverage"]))},
+            ("POST", "/openApi/swap/v2/trade/leverage"): self._leverage,
             ("POST", "/openApi/swap/v2/trade/order"): self._create,
             ("DELETE", "/openApi/swap/v2/trade/order"): self._cancel,
         }
@@ -601,11 +641,20 @@ class BingXWire(Wire):
                 "size": _text(rules.quantity_step), "tradeMinQuantity": _text(rules.min_quantity),
                 "tradeMinUSDT": _text(rules.min_notional)}
 
-    def _balance(self, p: Dict[str, Any]) -> Dict[str, Any]:
+    def _balance(self, p: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """docs-v3 GET /openApi/swap/v3/user/balance: a list of assets (sample: one USDT row)."""
         balance = self.fake.balance()
-        return {"balance": {"asset": "USDT", "balance": _text(balance.wallet_balance), "equity": _text(balance.equity),
-                            "unrealisedPNL": _text(balance.unrealized_pnl), "availableMargin": _text(balance.available_balance),
-                            "usedMargin": "0", "freezedMargin": "0"}}
+        return [{"userId": "116***295", "asset": "USDT", "balance": _text(balance.wallet_balance),
+                 "equity": _text(balance.equity), "unrealizedProfit": _text(balance.unrealized_pnl),
+                 "realisedProfit": "0", "availableMargin": _text(balance.available_balance), "usedMargin": "0",
+                 "freezedMargin": "0"}]
+
+    def _leverage(self, p: Dict[str, Any]) -> Dict[str, Any]:
+        # docs-v3: "In the One-way mode, only supports BOTH" (the fake account is one-way)
+        if p["side"] != "BOTH":
+            raise AdapterError(c.UNMAPPED_VENUE_ERROR, "In the One-way mode, the 'Side' field can only be set to BOTH.",
+                               venue=self.venue)
+        return {"leverage": self.fake.set_leverage(self._symbol(p["symbol"]), int(p["leverage"])), "symbol": p["symbol"]}
 
     def _positions(self, p: Dict[str, Any]) -> List[Dict[str, Any]]:
         rows = []
@@ -614,6 +663,7 @@ class BingXWire(Wire):
             if quantity:                             # a one-way position, reported under its direction
                 rows.append({"symbol": self._venue_symbol(symbol), "positionAmt": _text(abs(quantity)),
                              "positionSide": "LONG" if quantity > 0 else "SHORT", "avgPrice": _text(entry),
+                             "markPrice": _text(float(self.fake._prices[symbol])),     # docs-v3 positions field
                              "unrealisedPNL": _text(self._unrealized(symbol)), "leverage": leverage, "marginMode": "CROSSED"})
         return rows
 
@@ -625,13 +675,17 @@ class BingXWire(Wire):
                 "clientOrderId": self._shown(order.client_order_id), "reduceOnly": "true" if order.reduce_only else "false",
                 "updateTime": order.updated_at_ms}
 
-    def _fills(self, p: Dict[str, Any]) -> List[Dict[str, Any]]:
+    def _fills(self, p: Dict[str, Any]) -> Dict[str, Any]:
+        """docs-v3 allFillOrders sample shape: ``data.fill_orders``, no trade id, ISO times, a paid fee negative."""
         assert p["tradingUnit"] == "COIN"
         fills = self.fake.fills(self._symbol(p["symbol"]), since_ms=int(p["startTs"]))
-        return [{"tradeId": f.trade_id, "orderId": int(f.venue_order_id), "symbol": self._venue_symbol(f.symbol),
-                 "side": f.side, "qty": _text(f.quantity), "price": _text(f.price), "fee": _text(-f.fee),
-                 "realizedPnl": _text(f.realized_pnl or 0.0), "time": f.time_ms}
-                for f in fills if f.time_ms <= int(p["endTs"])]
+        return {"fill_orders": [
+            {"filledTm": _iso(f.time_ms), "volume": _text(f.quantity), "price": _text(f.price),
+             "amount": _text(f.quantity * f.price), "commission": _text(-f.fee), "currency": f.fee_asset or "USDT",
+             "orderId": str(f.venue_order_id), "liquidatedPrice": "", "liquidatedMarginRatio": "",
+             "filledTime": _iso(f.time_ms), "clientOrderID": "", "symbol": self._venue_symbol(f.symbol),
+             "side": f.side, "positionSide": "BOTH", "type": "MARKET"}
+            for f in fills if f.time_ms <= int(p["endTs"])]}
 
     def _premium_index(self, p: Dict[str, Any]) -> Dict[str, Any]:
         funding = self.fake.funding(self._symbol(p["symbol"]))

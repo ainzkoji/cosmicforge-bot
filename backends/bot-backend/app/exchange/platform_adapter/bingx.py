@@ -39,12 +39,45 @@ https://bingx-api.github.io/docs/ are script-only), read 2026-10-31:
   exceeds the position). So the replacement is refused (``REPLACEMENT_NOT_POSSIBLE_SAFELY``) and the stop that
   rests stays. Step 7 of ``docs/exchanges/BINGX_ENVIRONMENT_CERTIFICATION.md`` is the check that would change it.
 
+Stop management, re-read 2026-10-31 in the current reference (docs-v3,
+https://bingx-api.github.io/docs-v3/, content in https://github.com/BingX-API/docs-v3, updated 2026-10-30):
+
+* amend: "The modify order function currently supports only LIMIT orders, and only the order quantity can be
+  modified." No other modify endpoint exists;
+* place order: "The accumulative quantity of the pending stop loss orders cannot be greater than the quantity
+  of open positions." A second full-size reduce-only stop beside the first is therefore documented as NOT
+  accepted, and 110406 ("A Stop Loss order already exists for this position") refuses a second
+  position-level stop;
+* cancelReplace: ``STOP_ON_FAILURE`` only stops the replacement when the cancel fails; nothing documents a
+  rollback when the cancel succeeds and the new order is refused (``cancelResult=true, replaceResult=false``);
+* ``clientOrderId`` "only supports LIMIT/MARKET order type".
+No documented mechanism moves a stop without a gap: the refusal stands.
+
 Error codes: none is handled anywhere in this repository. Every entry of ``_CODES`` comes from the venue's
-published error list only, and nothing was verified against the venue in this work. See
-``docs/exchanges/BINGX_ENVIRONMENT_CERTIFICATION.md`` for what an operator must confirm on a demo account.
+published error list only, and nothing was verified against the venue in this work. BingX renumbered its
+codes on 2025-10-16 (older reference, https://bingx-api.github.io/docs/: 80016 -> 109421, 80012 -> 109500,
+80014 -> 109400, 100410 -> 109429); both numberings are mapped. Before this, the venue's current code for an
+unknown order (109421) was unmapped, so the lookup that precedes every create failed and no order could be
+placed (gap 3 of ``docs/exchanges/BINGX_ENVIRONMENT_CERTIFICATION.md``).
+
+Other corrections of the 2026-10-31 audit, each from the docs-v3 reference:
+
+* leverage: ``side`` "In the One-way mode, only supports BOTH". The raw client sends LONG and then SHORT,
+  which a one-way account refuses; the adapter sends one request with ``side=BOTH`` and reads the leverage
+  the venue echoes;
+* balance: the documented endpoint is ``GET /openApi/swap/v3/user/balance``, a LIST of assets (``asset``,
+  ``balance``, ``equity``, ``unrealizedProfit``, ``availableMargin``); ``/openApi/swap/v2/user/balance``
+  appears nowhere in the current reference;
+* fills (``allFillOrders``, ``data.fill_orders``): the rows carry no trade id. The raw client then uses the
+  fill time (``filledTm``, one-second resolution) as the id, so two fills of one second were one fill to the
+  adapter. A fill without a venue trade id now gets a deterministic id from its order, time, quantity, price
+  and fee, and its position among identical rows of the same answer.
+
+See ``docs/exchanges/BINGX_ENVIRONMENT_CERTIFICATION.md`` for what an operator must confirm on a demo account.
 """
 from __future__ import annotations
 
+import hashlib
 import re
 from dataclasses import replace
 from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
@@ -82,11 +115,32 @@ class BingXAdapter(AdapterBase):
         100421: c.TIMESTAMP_OUT_OF_SYNC,            # null timestamp or timestamp mismatch
         100410: c.RATE_LIMITED,                     # rate limitation
         101204: c.INSUFFICIENT_MARGIN,              # insufficient margin
-        80016: c.ORDER_NOT_FOUND,                   # order does not exist
+        80016: c.ORDER_NOT_FOUND,                   # order does not exist (numbering before 2025-10-16)
         101415: c.INSTRUMENT_NOT_TRADING,           # the pair is suspended from opening new positions
         101414: c.LEVERAGE_NOT_ALLOWED,             # above the pair's maximum leverage
+        # docs-v3, read 2026-10-31 (the current numbering)
+        109421: c.ORDER_NOT_FOUND,                  # "The specified order does not exist"
+        109429: c.RATE_LIMITED,                     # "Too many invalid requests in a short period; temporarily restricted"
+        109418: c.INSTRUMENT_NOT_TRADING,           # "Trading pair is offline and cannot be ordered through OpenAPI"
+        101481: c.DUPLICATE_CLIENT_ORDER_ID,        # "The clientOrderID has already been used"
+        109201: c.DUPLICATE_CLIENT_ORDER_ID,        # "The same order number was submitted more than once in a short period"
+        101290: c.REDUCE_ONLY_REJECTED,             # "A Reduce Only order can only decrease an existing position"
+        110203: c.REDUCE_ONLY_REJECTED,             # "Available amount for closing is insufficient"
+        101202: c.MIN_NOTIONAL,                     # "Order value is below the contract minimum"
+        110422: c.INVALID_QUANTITY,                 # "The order size is below the minimum per-order requirement"
+        110425: c.INVALID_QUANTITY,                 # "Order size does not meet the contract precision or step size"
+        101211: c.INVALID_PRICE,                    # "Order price exceeds the allowed range"
+        110402: c.INVALID_PRICE,                    # "Order price is invalid - must be greater than the minimum price"
+        110411: c.STOP_WOULD_TRIGGER_IMMEDIATELY,   # "For long positions, the Stop Loss price should be lower than ..."
+        110412: c.STOP_WOULD_TRIGGER_IMMEDIATELY,   # "For short positions, the Stop Loss price should be greater ..."
+        110413: c.STOP_WOULD_TRIGGER_IMMEDIATELY,   # take-profit on the wrong side of the current price (long)
+        110414: c.STOP_WOULD_TRIGGER_IMMEDIATELY,   # take-profit on the wrong side of the current price (short)
+        110406: c.STOP_ALREADY_EXISTS,              # "A Stop Loss order already exists for this position"
+        110407: c.STOP_ALREADY_EXISTS,              # "A Take Profit order already exists for this position"
     }
-    _OUTCOME_UNKNOWN = frozenset({100500, 80012, 101500})   # doc: internal error, service unavailable, rpc timeout
+    #: doc: internal error, service unavailable, rpc timeout (old numbering); docs-v3 "Internal server error",
+    #: "Order system busy". The reference does not say whether an order was placed when they answer a create.
+    _OUTCOME_UNKNOWN = frozenset({100500, 80012, 101500, 109500, 110500})
     _CAPABILITIES: Mapping[str, bool] = {
         "native_stop_market": True, "native_take_profit": True, "reduce_only": True, "close_position_stop": False,
         "stop_amend_in_place": False, "multiple_stops_per_position": False, "one_way_mode": True, "hedge_mode": False,
@@ -94,13 +148,14 @@ class BingXAdapter(AdapterBase):
     _NOTES: Tuple[str, ...] = (
         "a stop is a trigger order with its own quantity and reduceOnly; close_position is not carried",
         "trigger orders are sent without a client order id: persist venue_order_id",
-        "UNVERIFIED: whether a second stop may rest beside the first; treated as not possible, so a stop is "
-        "never moved (REPLACEMENT_NOT_POSSIBLE_SAFELY): amend changes quantity only and cancelReplace can "
-        "leave the position without a stop",
+        "a stop is never moved (REPLACEMENT_NOT_POSSIBLE_SAFELY): amend changes the quantity of LIMIT orders "
+        "only, the pending stop-loss quantity may not exceed the position (doc), and cancelReplace can leave "
+        "the position without a stop",
         "UNVERIFIED: every error-code mapping and every response shape of this venue",
         "client order ids are stored lower-case by the venue; an id with capitals travels as its hash",
         "hedge mode is not carried: orders are sent with positionSide BOTH",
         "a fee of exactly 0 cannot be told from an unreported fee in the raw client's fills and is None",
+        "fill rows carry no trade id (doc): the id is derived from order, time, quantity, price and fee",
         "the raw client discards response headers: retry_after_s and the used budget are never known",
         "on the VST demo host balances are virtual (the venue names the asset itself when it reports one)",
         "live private stream is documented; the VST private-stream host remains unverified and refused",
@@ -151,8 +206,16 @@ class BingXAdapter(AdapterBase):
                            base=record.get("asset") or base, quote=record.get("currency") or quote, venue_status=state)
 
     def balance(self) -> AccountBalance:
-        data = self._ask("GET", "/openApi/swap/v2/user/balance").get("data")
-        wallet = self._mapping(data.get("balance") if isinstance(data, Mapping) else None, "balance")
+        # docs-v3: GET /openApi/swap/v3/user/balance answers a LIST of assets of the perpetual account
+        rows = self._rows(self._ask("GET", "/openApi/swap/v3/user/balance").get("data"), "balance")
+        wallets = [self._mapping(row, "balance") for row in rows]
+        named = [w for w in wallets if str(w.get("asset") or "").upper() == "USDT"]
+        if len(named) == 1:
+            wallet = named[0]
+        elif not named and len(wallets) == 1:
+            wallet = wallets[0]                     # one asset that is not USDT (the VST demo names its own)
+        else:
+            raise self._error(c.MALFORMED_RESPONSE, "balance: the venue did not report exactly one margin asset")
         unrealized = next((number(wallet.get(k)) for k in _UNREALIZED_KEYS if number(wallet.get(k)) is not None), None)
         if unrealized is None:
             raise self._error(c.MALFORMED_RESPONSE, "balance: the venue did not report unrealised profit")
@@ -205,16 +268,32 @@ class BingXAdapter(AdapterBase):
         canonical, venue_symbol = c.canonical_symbol(symbol), self._to_venue(symbol)
         found: Dict[str, FillInfo] = {}
         for start, end in self._fill_windows(since_ms):
+            seen: Dict[str, int] = {}
             for row in self._rows(self._call(self._client.user_trades, venue_symbol, start, end), "allFillOrders"):
                 row = self._mapping(row, "allFillOrders")
                 fee = positive(row.get("commission"))   # the raw client prints 0 for a fee the venue did not report
                 fill = self._fill_info(
-                    canonical, trade_id=row.get("id"), venue_order_id=row.get("orderId"), client_order_id=None,
+                    canonical, trade_id=self._trade_id(row, seen), venue_order_id=row.get("orderId"), client_order_id=None,
                     side=row.get("side"), quantity=row.get("qty"), price=row.get("price"), fee=fee,
                     fee_asset=row.get("commissionAsset") if fee is not None else None,
                     realized_pnl=number(row.get("realizedPnl")), is_maker=None, time=row.get("time"))
                 found[fill.trade_id] = fill
         return tuple(f for f in found.values() if venue_order_id is None or f.venue_order_id == str(venue_order_id))
+
+    @staticmethod
+    def _trade_id(row: Mapping[str, Any], seen: Dict[str, int]) -> Any:
+        """The venue's trade id when it gave one; otherwise an id derived from the fill itself. The raw client
+        falls back to the fill time (``filledTm``) when the row has no ``tradeId``, which the documented row
+        never has, so an id equal to the time is no id."""
+        given = row.get("id")
+        if given in (None, ""):
+            return given                            # no id and no time: the fill cannot be deduplicated
+        if str(given) != str(row.get("time")):
+            return given
+        basis = "|".join(str(row.get(k)) for k in ("orderId", "time", "qty", "price", "commission", "side"))
+        occurrence = seen.get(basis, 0)
+        seen[basis] = occurrence + 1
+        return "bx:" + hashlib.sha256(f"{basis}|{occurrence}".encode()).hexdigest()[:24]
 
     def fee_rates(self, symbol: str) -> FeeRates:
         row = self._call(self._client.get_trading_fee_rates, self._to_venue(symbol))
@@ -232,9 +311,14 @@ class BingXAdapter(AdapterBase):
 
     # ------------------------------------------------------------------------------------------ mutations
     def set_leverage(self, symbol: str, leverage: int) -> int:
-        # the raw client sets the long and the short side with one request each and keeps neither answer
-        self._call(self._client.set_leverage, self._to_venue(symbol), int(leverage), mutation=True)
-        return int(leverage)
+        # docs-v3: "In the One-way mode, only supports BOTH". The raw client sends LONG and then SHORT (hedge mode).
+        answer = self._ask("POST", "/openApi/swap/v2/trade/leverage",
+                           {"symbol": self._to_venue(symbol), "side": "BOTH", "leverage": int(leverage)})
+        data = answer.get("data")
+        accepted = number(data.get("leverage")) if isinstance(data, Mapping) else None
+        if accepted is None:
+            raise self._unconfirmed("leverage")
+        return int(accepted)
 
     def place_order(self, request: OrderRequest) -> OrderInfo:
         venue_symbol = self._to_venue(request.symbol)

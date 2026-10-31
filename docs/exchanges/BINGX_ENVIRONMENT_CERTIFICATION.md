@@ -199,7 +199,8 @@ allow, on one symbol. Each line is one action and what to record. Stop at the fi
 6. Place a `STOP_MARKET` with `reduceOnly`, the position's quantity and `positionSide=BOTH`, well below the
    market. Record whether it is accepted, the answer, and its open-order row (`reduceOnly`, `closePosition`,
    `stopPrice`, `origQty`, whether a client id appears).
-7. Place a second stop at another trigger. Record whether the venue accepts it, and whether the FIRST stop is
+7. (Replaced on 2026-10-31 by steps 7a to 7c in the section of that date at the end of this document.)
+   Place a second stop at another trigger. Record whether the venue accepts it, and whether the FIRST stop is
    still open with its own trigger and quantity afterwards (some venues trim or cancel reduce-only orders whose
    sum exceeds the position). Cancel the second one. Only both answers together would let the adapter declare
    `multiple_stops_per_position` and move a stop by create-confirm-retire (Section K1 D4); until then a stop is
@@ -235,3 +236,96 @@ selectable for certified execution, on demo as well as on live.
 ## 16 October 2026 evidence update
 
 Unauthenticated public metadata responses from LIVE and VST are recorded in `docs/implementation/evidence/step4/bingx_public_metadata.json`: both returned HTTP 200/code 0, with different contract coverage. This is not order or private-stream certification. The concrete certification harness is implemented, but no owner-scoped BingX run was performed. VST private-stream routing remains unverified and refused; certified execution remains unavailable.
+
+## 31 October 2026: documentation read, safe stop management, harness readiness
+
+Status: BingX stays **not certified (PENDING)** on demo and live. Nothing below was observed at BingX; no
+BingX endpoint was called, public or private. Sections 1, 3 and 4 above are partly superseded by this
+section: the documentation HAS now been read (it was not on 2026-10-09).
+
+### Documentation read (2026-10-31)
+
+* docs-v3, the current reference: https://bingx-api.github.io/docs-v3/ (the rendered page needs JavaScript; its
+  content was read from https://github.com/BingX-API/docs-v3, updated 2026-10-30, change log to 2026-10-30);
+* the older reference https://bingx-api.github.io/docs/ (newest entry 2026-01-22), for the error renumbering
+  of 2025-10-16 only;
+* BingX `api-ai-skills` (https://github.com/BingX-API/api-ai-skills, `skills/swap-trade/api-reference.md`):
+  secondary; it calls cancelReplace "atomic", which docs-v3 does not say, so docs-v3 is used;
+* support articles https://bingx.com/en/support/articles/15074354955791 (2026-02-03, entire vs partial
+  position TP/SL, a UI description) and https://bingx.com/en/support/articles/21627055198873 (2023-08-09).
+
+### Safe stop management (section 13): determination
+
+The question was whether a documented, testable mechanism exists to (a) amend a resting STOP_MARKET's
+trigger in place, (b) rest a second reduce-only stop beside the first for the same position, or (c) replace
+a closePosition stop without a gap.
+
+| Mechanism | What docs-v3 says | Verdict |
+|---|---|---|
+| (a) `POST /openApi/swap/v1/trade/amend` | parameters `symbol`, `orderId` or `clientOrderId`, `quantity`; "The modify order function currently supports only LIMIT orders, and only the order quantity can be modified." No other modify endpoint exists | no amend of a trigger |
+| (b) a second reduce-only stop | place order: "STOP/STOP_MARKET stop loss order: The accumulative quantity of the pending stop loss orders cannot be greater than the quantity of open positions." 110406: "A Stop Loss order already exists for this position. Cancel the existing one first." The open-order limit (200, `maxNumOrder`) and 110206 count orders, not stops per position | a second full-size stop is documented as NOT accepted |
+| (c) `POST /openApi/swap/v1/trade/cancelReplace` | `STOP_ON_FAILURE`: "If the order cancellation fails, the replacement order will not continue." Nothing documents what happens when the cancel succeeds and the new order is refused: the answer then carries `cancelResult:"true"`, `replaceResult:"false"`, and the position has no stop | not gap-free |
+| (c) `closePosition` | "closes the entire position after triggering ... Even when set to true, the current endpoint still requires quantity and stopPrice. It has a reduce-only effect and must not be used with reduceOnly." Whether a closePosition stop and a reduce-only stop count against the same cumulative quantity is not documented | not established |
+| client id on a stop | "clientOrderId only supports LIMIT/MARKET order type" | stops are identified by `orderId` only |
+
+**Determination: no documented mechanism moves a BingX stop without a gap.** The adapter keeps
+`stop_amend_in_place=False` and `multiple_stops_per_position=False`; `pipeline.protection` keeps
+`REPLACEMENT_NOT_POSSIBLE_SAFELY` (the stop that rests stays and is never widened). No change to
+`pipeline/protection.py` is needed. No application-side stop is substituted.
+
+The certification runner no longer cancels a stop before its replacement rests on such a venue. Before this
+change, `PROTECTION_REPLACE` used CANCEL_THEN_CREATE when a venue had neither an amend nor a second stop, which
+left the demo position unprotected between the two calls and would have certified `STOP_REPLACEMENT` for
+BingX. It now proves the refusal (method `REPLACEMENT_NOT_POSSIBLE_SAFELY`): a tighter stop beside the first
+is refused, the first still rests at its trigger and quantity, and `STOP_REPLACEMENT` is never among the
+certified operations of a venue without an amend or a second stop.
+
+### Step 7, replaced: what a demo run must prove before BingX could move a stop
+
+Each of these is a separate, explicit owner decision after a clean step A and steps 1 to 6 of section 5.3,
+on the VST host, at the minimum size, with a long position of quantity Q protected by stop S1 (STOP_MARKET,
+reduceOnly, quantity Q, trigger T1 below the market). Stop at the first surprise and flatten.
+
+* **7a, second reduce-only stop (expected refused).** Place S2: STOP_MARKET, reduceOnly, quantity Q, trigger
+  T2 with T1 < T2 < market. Record the HTTP status, `code` and `msg`. Then read S1 by `orderId` and the open
+  orders: S1 must still be open with trigger T1 and quantity Q, and exactly one stop must rest. If S2 was
+  accepted, record its row, cancel S2 and record that S1 survived. The certification check
+  `PROTECTION_REPLACE` does exactly this; its evidence carries `second_stop`, `refused_with`,
+  `first_stop_open`, `first_stop_price`, `first_stop_quantity` and `protective_stops_open`.
+* **7b, closePosition beside reduce-only (only if 7a was refused).** With S1 resting, place S3: STOP_MARKET,
+  `closePosition=true`, quantity Q, trigger T2 (no reduceOnly). Record the answer. If accepted, read both;
+  then cancel S1 and read S3 back: S3 must still rest at T2 and cover the position. Then place a second
+  closePosition stop at T3 and record whether 110406 refuses it. Only if S3 is accepted beside S1, survives
+  the cancel of S1, and a duplicate closePosition stop is refused, would a create-confirm-retire protocol be
+  possible (create S3, confirm, cancel S1), and only after a code change reviewed against this record.
+* **7c, cancelReplace atomicity (do not run unless the owner asks for it).** It would need a cancelReplace of
+  S1 whose new order is refused on purpose (for example a trigger above the market), and a read of S1 after
+  it. The documentation promises no rollback, so the expected result is that S1 is gone and the position is
+  unprotected. It is therefore not part of the procedure; the position must be closed at once if it is ever run.
+
+Until 7a and 7b are recorded and reviewed, nothing changes: BingX keeps REPLACEMENT_NOT_POSSIBLE_SAFELY.
+
+### Adapter corrections from the documentation (2026-10-31)
+
+See `VENUE_ADAPTER_CONTRACT.md` section 13.3, rows 8 to 12. In short: the current error numbering is mapped
+(109421 unknown order; before this no order could be placed: the lookup that precedes every create failed);
+leverage is set with `side=BOTH`; the balance is read from `/openApi/swap/v3/user/balance`; fills without a
+venue trade id get a deterministic id; the entry permit reads BingX's `clientOrderId`. Gap 3 of section 4 is
+closed in code (still unobserved at the venue); gaps 2, 7 and 8 are narrowed by documentation, not by
+observation.
+
+### Harness readiness for a BingX demo run
+
+* Command (reads only first, then orders):
+  `python scripts/run_venue_certification.py --venue bingx --execute --environment DEMO --account-id <brk_...>
+  --user-id <uuid> --operator <name> --authorization-ref <owner reference> --scope "<words>" --symbol BTCUSDT
+  --max-notional <quote units> [--allow-orders] --out-dir <outside docs/research>`.
+* Credentials: the connected DEMO account's, resolved by `resolve_broker_auth`; key `BROKER_SECRET_KEY`;
+  database `DATABASE_URL`; `DEMO_ORDER_SUBMISSION_ENABLED` must be on for `--allow-orders`. Host:
+  `https://open-api-vst.bingx.com` (the harness refuses any other).
+* Account: one-way mode (`dualSidePosition` "false"), flat with no open order on the symbol, key without
+  withdrawal permission (not inspectable on BingX: recorded by the operator).
+* `USER_STREAM_SPEC` is NOT_SUPPORTED on VST (no documented private-stream host); it is not a core check, so it
+  does not block the run, and `USER_STREAM` is never certified for VST.
+* A dry run (`--dry-run`, the default) drives the whole catalogue over a mocked transport and records nothing
+  decisive. On 2026-10-31 it passes every core check for BingX; that proves the harness, not BingX.

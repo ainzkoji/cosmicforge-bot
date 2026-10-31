@@ -57,7 +57,7 @@ from .contract import (AdapterCapabilities, AdapterError, FillInfo, InstrumentRu
                        PositionInfo, RateLimitObservation, ServerTime)
 
 ADAPTER_VERSIONS: Mapping[str, str] = {
-    c.BINANCE: "binance-usdm-1.1.0", c.BYBIT: "bybit-linear-1.1.0", c.BINGX: "bingx-swap-1.1.0"}
+    c.BINANCE: "binance-usdm-1.2.0", c.BYBIT: "bybit-linear-1.2.0", c.BINGX: "bingx-swap-1.2.0"}
 
 _WEEK_MS = 7 * 86_400_000
 #: fills(since_ms) is read in windows of one week (the longest range the three venues document for a fill

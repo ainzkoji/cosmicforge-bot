@@ -54,7 +54,10 @@ def _certification_transport_permitted(client, symbol, side, payload):
         return False
     if normalize_environment(client.broker_environment).value.upper() != permit.environment:
         return False
-    cid = payload.get("newClientOrderId") or payload.get("orderLinkId") or payload.get("clientOrderID")
+    # Binance newClientOrderId, Bybit orderLinkId, BingX clientOrderId (docs-v3 and the raw client; clientOrderID is
+    # how BingX spells it in some answers)
+    cid = (payload.get("newClientOrderId") or payload.get("orderLinkId") or payload.get("clientOrderId")
+           or payload.get("clientOrderID"))
     try:
         if not (cid == request.client_order_id and str(cid).startswith("cert")
                 and request.symbol == permit.symbol == str(symbol).upper().replace("-", "")
@@ -128,7 +131,10 @@ def _portfolio_transport_permitted(client, symbol, side, payload):
             return False
     except (AttributeError, ValueError):
         return False
-    cid = payload.get("newClientOrderId") or payload.get("orderLinkId") or payload.get("clientOrderID")
+    # Binance newClientOrderId, Bybit orderLinkId, BingX clientOrderId (docs-v3 and the raw client; clientOrderID is
+    # how BingX spells it in some answers)
+    cid = (payload.get("newClientOrderId") or payload.get("orderLinkId") or payload.get("clientOrderId")
+           or payload.get("clientOrderID"))
     quantity = payload.get("quantity", payload.get("qty"))
     try:
         size_ok = (math.isclose(float(quantity), float(row["quantity"]), rel_tol=1e-9, abs_tol=1e-12)

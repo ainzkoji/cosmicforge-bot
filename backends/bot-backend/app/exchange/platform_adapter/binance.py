@@ -36,9 +36,18 @@ stop-market reduce-only order is not limited by the reduce-only priority rules).
 against the venue by this code; a venue certification run (PROTECTION_REPLACE) is the gate.
 
 Stops carry the caller's id as ``clientAlgoId`` and live in their own id space, so their ``venue_order_id`` is
-written ``algo:<algoId>``. One limit follows from what the raw client exposes and is stated in
-``capabilities().notes``: only OPEN conditional orders can be read back. One that fired or was cancelled is
-reported as ``ORDER_NOT_FOUND``, exactly like one that never existed.
+written ``algo:<algoId>``. A stop that is no longer open is read with ``GET /fapi/v1/algoOrder`` (Query Algo
+Order, by ``algoId`` or ``clientAlgoId``), which answers for cancelled, expired, rejected, triggered and
+finished conditional orders as well (doc: not found only when CANCELED/EXPIRED without a fill and older than
+3 days, or older than 90 days). A stop that fired is reported with the state of the order it created
+(``actualOrderId``) when the venue names one, and as ``UNKNOWN`` while it is still triggering. Before this
+read existed, a stop that fired was ``ORDER_NOT_FOUND`` exactly like one that never existed, so a lost
+acknowledgement could not be told from a refusal (audit 2026-10-31).
+
+User stream (doc, read 2026-10-31): the listen key lives 60 minutes and a PUT extends it; user data is served
+under the routed path ``wss://fstream.binance.com/private`` at ``/ws/<listenKey>``; legacy unrouted URLs stopped
+carrying user data after 2026-04-23. Conditional orders report through ``ALGO_UPDATE``. Whether the demo host
+(``wss://demo-fstream.binance.com``) serves the same ``/private`` route is NOT documented.
 
 Error codes: every entry of ``_CODES`` names its evidence. ``repo`` means this repository already handles
 that code (file named); ``doc`` means the venue's published error list only. Nothing was verified against
@@ -62,6 +71,13 @@ _ALGO = "algo:"
 _PAGE = 1000
 _HTTP = re.compile(r"Binance HTTP (\d{3}): (.*)", re.DOTALL)
 _INNER_STATUS = re.compile(r"HTTP (\d{3})|\b(\d{3}) (?:Client|Server) Error")
+#: Query Algo Order: one conditional order by algoId or clientAlgoId, open or not (doc, 2025-11-06 change log)
+_ALGO_QUERY = "/fapi/v1/algoOrder"
+#: algoStatus -> contract state. TRIGGERING / TRIGGERED / FINISHED name a stop that fired: its outcome is the
+#: order it created (actualOrderId), read separately; until that is known the state is UNKNOWN.
+_ALGO_STATES = {"NEW": c.NEW, "CANCELED": c.CANCELED, "CANCELLED": c.CANCELED, "EXPIRED": c.EXPIRED,
+                "REJECTED": c.REJECTED}
+_ALGO_FIRED = ("TRIGGERING", "TRIGGERED", "FINISHED")
 #: the raw transport's stand-in for venue code -4130 (it returns this instead of raising)
 _DUPLICATE_STOP_MARKER = "DUPLICATE_4130"
 _MARGIN_MODES = {"cross": "CROSSED", "crossed": "CROSSED", "isolated": "ISOLATED"}
@@ -98,10 +114,17 @@ class BinanceAdapter(AdapterBase):
         -4130: c.STOP_ALREADY_EXISTS,               # repo: binance/client.py _signed_request
         -4061: c.POSITION_MODE_MISMATCH,            # doc: order's position side does not match the user's setting
         -4028: c.LEVERAGE_NOT_ALLOWED,              # doc: leverage is not valid
+        -5028: c.TIMESTAMP_OUT_OF_SYNC,             # doc: outside the matching engine's recvWindow (refused)
+        -1008: c.RATE_LIMITED,                      # doc (general-info, case C): throttled by system protection, a failure
+        -4120: c.UNSUPPORTED,                       # doc: order type not supported here, use the Algo endpoints
     }
+    #: -4045 MAX_STOP_ORDER_EXCEEDED ("Reach max stop order limit", doc) is left unmapped on purpose: no contract
+    #: code says "too many stops", and a wrong code is worse than an unmapped one. The documented limits
+    #: disagree (FAQ: 10 conditional orders per symbol; change log 2025-12-29: 200 across all symbols).
     #: -10xx are server and network conditions; only these are documented as a refusal of the request itself
     #: (repo: fill_resolution._DEFINITIVE_10XX). For the rest the venue does not say whether it acted.
-    _OUTCOME_UNKNOWN = frozenset(range(-1099, -999)) - {-1002, -1003, -1013, -1014, -1015, -1020, -1021, -1022, -1023}
+    _OUTCOME_UNKNOWN = frozenset(range(-1099, -999)) - {-1002, -1003, -1008, -1013, -1014, -1015, -1020, -1021, -1022,
+                                                        -1023}
     _CAPABILITIES: Mapping[str, bool] = {
         "native_stop_market": True, "native_take_profit": True, "reduce_only": True, "close_position_stop": True,
         "stop_amend_in_place": False, "multiple_stops_per_position": True, "one_way_mode": True, "hedge_mode": False,
@@ -113,10 +136,13 @@ class BinanceAdapter(AdapterBase):
         "stops with a quantity may rest beside it (doc: up to 10 conditional orders per symbol), which is the "
         "create-confirm-retire replacement. DOC-ONLY until a venue certification run confirms it",
         "an untriggered conditional order cannot be modified (doc, 2025-11-06 change log): no amend in place",
-        "a conditional order that is no longer open cannot be read back: ORDER_NOT_FOUND",
+        "a conditional order that is no longer open is read with Query Algo Order; one that fired reports the state "
+        "of the order it created (UNKNOWN while triggering)",
+        "UNVERIFIED: the -4130 refusal of a second closePosition stop is no longer in the published error list",
         "UNVERIFIED: open_orders() without a symbol lists conditional orders through a request the raw client never sends",
         "hedge mode is not carried: orders are sent for a one-way account",
-        "private user stream uses the /private/ws route; venue certification remains separately required",
+        "private user stream uses the routed /private/ws/<listenKey> path (doc); on the demo host that route is "
+        "UNVERIFIED and venue certification remains separately required",
         "the raw client itself repeats a rate-limited READ within a small bounded sleep budget; mutations never",
     )
 
@@ -345,9 +371,17 @@ class BinanceAdapter(AdapterBase):
             return found
         venue_symbol, target = self._to_venue(symbol), str(found.venue_order_id or "")
         if target.startswith(_ALGO):
-            self._call(self._client._signed_delete, "/fapi/v1/algoOrder",
-                       {"symbol": venue_symbol, "algoId": target[len(_ALGO):]}, mutation=True)
-            return replace(found, status=c.CANCELED, venue_status="CANCEL_ACCEPTED", updated_at_ms=self._now())
+            answer = self._call(self._client._signed_delete, "/fapi/v1/algoOrder",
+                                {"symbol": venue_symbol, "algoId": target[len(_ALGO):]}, mutation=True)
+            code = number(answer.get("code")) if isinstance(answer, Mapping) else None
+            if code is not None and int(code) != 200:
+                # doc: the answer carries code/msg; anything but 200 is a refusal the transport did not raise
+                raise self._fail(None, int(code), str(answer.get("msg") or ""), True)
+            # the venue acknowledges the cancel; the state is read back, not assumed (a stop may fire meanwhile)
+            return self._read_back(
+                lambda: self._algo_lookup(venue_symbol, found.symbol, algo_id=target[len(_ALGO):],
+                                          client_order_id=found.client_order_id),
+                replace(found, status=c.UNKNOWN, venue_status="CANCEL_ACKNOWLEDGED", updated_at_ms=self._now()))
         if not target.isdigit():
             raise self._error(c.MALFORMED_RESPONSE, "the venue returned an order without an id; it cannot be cancelled")
         answer = self._call(self._client._signed_delete, "/fapi/v1/order",
@@ -367,17 +401,35 @@ class BinanceAdapter(AdapterBase):
             answer = answer.get("algoOrders", answer.get("orders"))
         return self._rows(answer, "openAlgoOrders")
 
-    def _algo_info(self, row: Any, symbol: Optional[str], client_order_id: Optional[str] = None) -> OrderInfo:
-        row = self._mapping(row, "openAlgoOrders")
+    def _algo_info(self, row: Any, symbol: Optional[str], client_order_id: Optional[str] = None, *,
+                   listed_open: bool = True) -> OrderInfo:
+        row = self._mapping(row, "openAlgoOrders" if listed_open else "algoOrder")
         if row.get("algoId") in (None, ""):
             raise self._error(c.MALFORMED_RESPONSE, "a conditional order without an algoId")
+        reported = str(row.get("algoStatus") or "").upper()
+        if listed_open:
+            state = "NEW"                           # the venue lists it among its OPEN conditional orders
+        else:
+            state = _ALGO_STATES.get(reported, c.UNKNOWN)   # fired, or a state this adapter does not know
         view = {"symbol": row.get("symbol"), "side": row.get("side"), "type": row.get("type") or row.get("orderType"),
                 "stopPrice": row.get("triggerPrice") or row.get("stopPrice"), "closePosition": row.get("closePosition"),
                 "reduceOnly": row.get("reduceOnly"), "origQty": row.get("quantity"),
-                "clientOrderId": row.get("clientAlgoId"), "updateTime": row.get("updateTime"),
-                "status": "NEW"}                    # the venue lists it among its OPEN conditional orders
-        return self._order_info(view, symbol=symbol, client_order_id=client_order_id,
-                                venue_order_id=_ALGO + str(row["algoId"]), venue_status=str(row.get("algoStatus") or "OPEN"))
+                "clientOrderId": row.get("clientAlgoId"), "updateTime": row.get("updateTime"), "status": state}
+        info = self._order_info(view, symbol=symbol, client_order_id=client_order_id,
+                                venue_order_id=_ALGO + str(row["algoId"]), venue_status=reported or "OPEN")
+        if listed_open or reported not in _ALGO_FIRED:
+            return info
+        actual = str(row.get("actualOrderId") or "")
+        if not actual.isdigit():
+            return info                             # fired; the order it created is not named yet: UNKNOWN
+        try:
+            created = self._order_info(self._mapping(self._call(
+                self._client.get_order, self._to_venue(info.symbol), actual), "order"), symbol=info.symbol)
+        except AdapterError:
+            return info                             # the created order could not be read: still UNKNOWN
+        return replace(info, status=created.status, filled_quantity=created.filled_quantity,
+                       average_price=created.average_price, venue_status=f"{reported}/{created.venue_status}",
+                       updated_at_ms=max(info.updated_at_ms, created.updated_at_ms))
 
     def _algo_lookup(self, venue_symbol: str, symbol: str, *, algo_id: Optional[str] = None,
                      client_id: Optional[str] = None, client_order_id: Optional[str] = None) -> OrderInfo:
@@ -385,8 +437,14 @@ class BinanceAdapter(AdapterBase):
             if isinstance(row, Mapping) and ((algo_id is not None and str(row.get("algoId")) == algo_id)
                                              or (client_id is not None and row.get("clientAlgoId") == client_id)):
                 return self._algo_info(row, symbol, client_order_id)
-        raise self._error(c.ORDER_NOT_FOUND, "no such order and no open conditional order with this identity "
-                                             "(one that fired or was cancelled is no longer listed)")
+        # not open: Query Algo Order answers for a conditional order whatever its state (doc)
+        query = {"algoId": algo_id} if algo_id is not None else {"clientAlgoId": client_id}
+        row = self._call(self._client._signed_get, _ALGO_QUERY, query)
+        if not isinstance(row, Mapping) or row.get("algoId") in (None, ""):
+            raise self._error(c.ORDER_NOT_FOUND, "no such conditional order")
+        if c.canonical_symbol(row.get("symbol")) != c.canonical_symbol(symbol):
+            raise self._error(c.ORDER_NOT_FOUND, "that conditional order belongs to another symbol")
+        return self._algo_info(row, symbol, client_order_id, listed_open=False)
 
 
 __all__ = ["BinanceAdapter"]

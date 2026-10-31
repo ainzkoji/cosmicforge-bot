@@ -469,11 +469,13 @@ def test_a_stop_fires_and_closes_the_position(rig):
     fills = adapter.fills(BTC, since_ms=since(rig))
     assert [(f.side, f.quantity, f.price) for f in fills] == [(c.BUY, 0.01, 50_000.0), (c.SELL, 0.01, 48_900.0)]
     assert adapter.balance().wallet_balance == pytest.approx(10_000 - 0.25 - 11.0 - 0.01 * 48_900.0 * 0.0005)
-    if rig.name in (c.BINANCE, c.BYBIT):
-        # the raw clients expose only stops that rest: a fired one cannot be told from one that never existed
+    if rig.name == c.BYBIT:
+        # the position's own stop has no id at the venue: once the position is gone it cannot be read back
         assert refused(lambda: adapter.order(BTC, venue_order_id=stop.venue_order_id)).code == c.ORDER_NOT_FOUND
     else:
-        assert adapter.order(BTC, venue_order_id=stop.venue_order_id).status == c.FILLED
+        # Binance: Query Algo Order answers for a fired conditional order (FINISHED, with the order it created)
+        fired = adapter.order(BTC, venue_order_id=stop.venue_order_id)
+        assert (fired.status, fired.filled_quantity) == (c.FILLED, 0.01)
 
 
 def test_a_stop_is_cancelled_by_either_identity(rig):

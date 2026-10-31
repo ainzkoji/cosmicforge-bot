@@ -631,11 +631,10 @@ def test_without_a_fault_injector_and_a_fresh_adapter_the_run_is_incomplete_but_
 @pytest.mark.parametrize("behaviour,method,unprotected", [
     (dict(amend_in_place=True), "AMEND_IN_PLACE", False),
     (dict(multiple_stops=True), "CREATE_THEN_CANCEL", False),
-    (dict(multiple_stops=False), "CANCEL_THEN_CREATE", True),
 ])
 def test_the_stop_is_replaced_the_way_the_venue_allows_and_the_way_is_recorded(db, behaviour, method, unprotected):
     result, account, _ = run(db, **behaviour)
-    assert result.outcome == CF.PASSED
+    assert result.outcome == CF.PASSED and "STOP_REPLACEMENT" in result.operations
     checks = {c["check_id"]: json.loads(c["evidence"]) for c in CF.CertificationRegister(db).run_evidence(
         result.run_id)["checks"]}
     replaced = checks["PROTECTION_REPLACE"]
@@ -644,6 +643,30 @@ def test_the_stop_is_replaced_the_way_the_venue_allows_and_the_way_is_recorded(d
     # the first stop is on the tick grid at 5% under the entry, the second is tighter and still under the mark
     assert checks["PROTECTION_GEOMETRY"]["stop_price"] == 57_000.0 and replaced["stop_price"] == 58_500.0
     assert checks["PROTECTION_GEOMETRY"]["quantity"] == checks["PROTECTION_GEOMETRY"]["position_quantity"] == 0.004
+    assert_account_restored(account)
+
+
+def test_a_venue_without_a_safe_replacement_is_never_left_unprotected_and_never_certified_to_move_a_stop(db):
+    """Section 13 / K1 D4: a run never cancels a stop before its replacement rests. For a venue with neither an
+    amend nor a second stop (BingX) PROTECTION_REPLACE proves the refusal: the tighter stop is refused, the
+    first one still rests at its trigger and quantity, and STOP_REPLACEMENT is not a certified operation."""
+    result, account, _ = run(db, multiple_stops=False)
+    assert result.outcome == CF.PASSED and "STOP_REPLACEMENT" not in result.operations
+    assert "PROTECTIVE_STOP" in result.operations
+    checks = {c["check_id"]: json.loads(c["evidence"]) for c in CF.CertificationRegister(db).run_evidence(
+        result.run_id)["checks"]}
+    replaced = checks["PROTECTION_REPLACE"]
+    assert (replaced["method"], replaced["unprotected_between"], replaced["second_stop"]) == (
+        CF.NOT_POSSIBLE_SAFELY, False, "REFUSED")
+    assert (replaced["first_stop_open"], replaced["first_stop_price"], replaced["protective_stops_open"]) == (
+        True, 57_000.0, 1)
+    # the first stop is cancelled only after the last order of the run was placed (the close), never before
+    first = checks["PROTECTION_CREATE"]["client_order_id"]
+    assert account.mutations.index(f"cancel:{first}") > max(
+        i for i, m in enumerate(account.mutations) if m.startswith("place:"))
+    assert CF.adapter_certified(db, C.BINANCE, C.DEMO, account.now, operation="STOP_REPLACEMENT") == (
+        False, "OPERATION_NOT_CERTIFIED:STOP_REPLACEMENT")
+    assert CF.adapter_certified(db, C.BINANCE, C.DEMO, account.now, operation="PROTECTIVE_STOP") == (True, "")
     assert_account_restored(account)
 
 

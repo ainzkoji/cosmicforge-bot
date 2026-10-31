@@ -127,8 +127,9 @@ What a run does, in order: read checks; `TEST_SCOPE`; set leverage; a reduce-onl
 that the venue must refuse; a minimum-size market entry (two minimum units when an injector will reduce the
 position from outside, otherwise one); lookup; fill agreement between order, fills and position; a repeat
 of the same client order id; a reduce-only stop 5% under the entry; read-back; geometry; replacement by a
-stop 2.5% under the entry (amend in place, or create-then-cancel, or cancel-then-create, whichever the venue's
-capabilities allow, recorded as `method`); lookup of an id never sent; a resting limit order 5% under the
+stop 2.5% under the entry (amend in place or create-then-cancel, whichever the venue's capabilities allow,
+recorded as `method`; for a venue with neither, the tighter stop must be refused and the first must survive:
+method `REPLACEMENT_NOT_POSSIBLE_SAFELY`, and `STOP_REPLACEMENT` is not certified, see section 10); lookup of an id never sent; a resting limit order 5% under the
 mark, cancelled, cancelled again; the fault checks; a fresh adapter; an outside reduction; close; removal
 of the stop; flatten; reconciliation; final state.
 
@@ -237,3 +238,90 @@ For BingX, whether a safe demo environment supports the required orders is the s
 that is established the honest record is `block(BINGX, <environment>, reason=...)`, not a run.
 
 Integration update, 16 October 2026: the harness supplies the independent scoped external reduction and fresh-adapter factory. Its raw order permit must match the current DEMO run, owner authorization, pending action, account, symbol, order and quantity. It is serialized by the canonical broker-cycle lock, retains normal order flags, and has no automatic runtime trigger. See [carry-forward gates](../implementation/STEP3_STEP4_CARRY_FORWARD.md).
+
+## 10. Harness readiness for an authorised DEMO run (Section 28, 2026-10-31)
+
+**Venue certification: PENDING for binance, bybit and bingx, DEMO and LIVE.** No real run has been made. The
+register holds nothing decisive. Nothing in this section is evidence about a venue.
+
+### 10.1 The operator entry point
+
+`scripts/run_venue_certification.py` runs the harness without any code change.
+
+| Mode | Command | What it does |
+|---|---|---|
+| dry run (the default) | `python scripts/run_venue_certification.py --venue <v> --dry-run [--out-dir <dir>]` | a preflight of a real run's settings (by name only), then the WHOLE catalogue over a mocked transport in a scratch database: the real raw client, adapter, `BudgetedHTTP`, `HTTPFaultInjector`, runner, register, entry permit (production order gate on) and canonical runtime lease. No network. Records neither CERTIFIED nor FAILED |
+| real run | `python scripts/run_venue_certification.py --venue <v> --execute --environment DEMO --account-id <brk_...> --user-id <uuid> --operator <name> --authorization-ref <owner reference> --scope "<words>" --symbol BTCUSDT --max-notional <quote> [--allow-orders] [--leverage 1] [--valid-minutes 60] --out-dir <dir>` | resolves the connected DEMO account, builds an `OperatorPermit` (at most 120 minutes), takes the canonical runtime lease when orders are allowed, runs, releases the lease, writes the evidence |
+
+Refusals before anything is built: `--environment` accepts only `DEMO` (LIVE cannot be named); missing
+account, user, operator, authorisation reference, scope, notional or output directory; a preflight problem
+(below); an account whose stored environment is not DEMO or that belongs to another venue. The harness then
+refuses again: a permit that is not DEMO, a permit for another account, venue or environment, an account
+whose host is not the venue's canonical DEMO host (`ACCOUNT_IS_NOT_ON_THE_DEMO_HOST`), an expired permit, a
+mocked transport with a real account or a real transport with a rehearsal account, and orders without the
+canonical lease. The runner and the register refuse LIVE a third and fourth time.
+
+### 10.2 What a real run needs, per venue (`certification_harness.VENUE_REQUIREMENTS`)
+
+| | binance | bybit | bingx |
+|---|---|---|---|
+| REST host (only this one is accepted) | `https://demo-fapi.binance.com` | `https://api-demo.bybit.com` | `https://open-api-vst.bingx.com` |
+| Credentials | the connected DEMO account (`broker_accounts` / `broker_credentials`), resolved by `resolve_broker_auth(account_id, user_id, db)`; decrypted with `BROKER_SECRET_KEY`; database `DATABASE_URL`. Never passed on the command line, never printed | same | same |
+| Order flag | `DEMO_ORDER_SUBMISSION_ENABLED` on for `--allow-orders` (never changed by the harness) | same | same |
+| Account settings | one-way (`dualSidePosition` false); flat, no open order on the symbol; key without withdrawal permission | one-way (positionIdx 0); margin mode is an account setting (UTA 2.0) | one-way (`dualSidePosition` "false"); key permissions not inspectable: the operator records how the key was made |
+| Instrument | `BTCUSDT` by default; any canonical symbol the venue lists as TRADING | same | same (venue form `BTC-USDT`; `apiStateOpen` true) |
+| Test size | the minimum order at a price 5% under the mark; two units with the fault injector; `max_notional` must hold twice the entry (about 2 x 2 x minimum notional) | same | same |
+| Leverage | 1 (left at 1 afterwards) | 1 | 1 (`side=BOTH`) |
+| Stop | conditional (Algo Service) STOP_MARKET, reduceOnly + quantity | the position's own stop (trading-stop, Full) | STOP_MARKET, reduceOnly + quantity, no client id |
+| PROTECTION_REPLACE method | CREATE_THEN_CANCEL | AMEND_IN_PLACE | REPLACEMENT_NOT_POSSIBLE_SAFELY (proves the refusal; STOP_REPLACEMENT never certified) |
+| Private stream | `wss://demo-fstream.binance.com/private/ws/<key>`: the `/private` route on demo is NOT documented | `wss://stream-demo.bybit.com/v5/private` (documented) | none on VST: USER_STREAM_SPEC is NOT_SUPPORTED |
+| Unverified on demo | the Algo Service on the demo host; -4130; the conditional-order limit | atomicity of a Full-mode change; Partial mode (not used) | every answer and code; second stop; stop after close |
+
+### 10.3 Scenarios (unchanged catalogue, 30 checks)
+
+Read checks; test scope; leverage and one-way mode; a venue rejection (reduce-only on a flat account); entry;
+lookup by both ids; fill agreement; idempotent repeat; stop create, read-back, geometry; stop replacement
+(amend, or create-then-cancel; for a venue with neither, the refusal and the survival of the first stop);
+unknown-submission reconciliation; cancel and repeated cancel; lost acknowledgement; interrupted connection;
+injected 429; clock drift (re-signed skewed timestamps); a fresh adapter after a "restart" (finding the stop
+by the venue order id where the venue keeps no client id); an outside reduction through a separately built
+client; close; removal of the obsolete stop; flatten; reconciliation; final state.
+
+Cleanup: in `finally` the run cancels every open order of its own and closes, reduce-only, only what its own
+orders left open (the outside reduction is journalled as `EXTERNAL_REDUCE` and not counted as an own order).
+A dead process is recovered with `CertificationRunner.recover`.
+
+Pacing: the platform's own HTTP budget refuses a request before it is sent when its priority class has used
+its share (the Binance policy charges 100 units per request against 2400 per minute, so a whole run cannot fit
+in one minute). The harness waits such a local refusal out and asks again, at most 300 s per call. A venue's
+refusal (429, 418, Bybit 10006) and a ban are never retried. A real Binance run therefore takes several minutes.
+
+### 10.4 Evidence
+
+The `--out-dir` file is one JSON document (`certification_harness.evidence_document`): `mocked_transport`,
+`venue_contacted`, venue, environment, `run_id`, `outcome`, `recorded_status`, `operations`,
+`failure_reasons`, `cleanup_complete`, `checks`, `source_commit`, the permit's references, and `register`:
+every event (hash-chained), every check with its evidence and evidence hash, and every INTENT / OUTCOME
+action, exactly as the register holds them. No credential, signature, listen key or stream URL is in it.
+Write it outside `docs/research` (the script refuses that tree).
+
+### 10.5 What the mocked end-to-end run proves, and what it found
+
+`tests/exchange/test_certification_harness.py::test_the_full_harness_runs_end_to_end_over_a_mocked_transport`
+runs the catalogue for all three venues with the production order gate on: every core check passes, the
+account ends flat with nothing resting, and the scratch register still answers NOT_CERTIFIED. A rehearsal
+account (`rehearsal-` prefix) can never record CERTIFIED or FAILED in any register.
+
+It found five harness defects that would have failed or endangered a real run, all fixed:
+
+1. BingX entries were refused by the entry permit (it did not read the `clientOrderId` key BingX sends);
+2. the outside reduction was counted twice (as an own order and as an outside change), so RECONCILIATION failed;
+3. the fresh adapter looked the stop up by a client id the venue does not store (Bybit, BingX);
+4. fills were asked for by a stop id that has none (Bybit's position stop, Binance's conditional orders);
+5. the local HTTP budget refused the entry on Binance and BingX mid-run (now waited out, 10.3).
+
+And, in the runner: a venue with neither an amend nor a second stop was "replaced" by cancel-then-create,
+leaving the demo position unprotected and certifying STOP_REPLACEMENT. It now proves the refusal instead.
+
+What it does not prove: anything about Binance, Bybit or BingX. The answers behind the transport are the
+fake venue's, rendered in the shapes the documentation describes.
