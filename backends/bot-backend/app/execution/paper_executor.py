@@ -3,7 +3,10 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any
+import math
 import uuid
+
+from shared_lib.core.money_math import div, exact, f_add, f_div, f_sub, to_dec, to_float
 
 
 PAPER_ORDER_CREATED = "PAPER_ORDER_CREATED"
@@ -98,15 +101,24 @@ class PaperExecutor:
         self.slippage_bps = max(0.0, float(slippage_bps or 0.0))
         self.fee_bps = max(0.0, float(fee_bps or 0.0))
 
+    # Money is computed exactly from the decimals of its operands (shared_lib.core.money_math) and returned as
+    # the float this simulator's interface uses, rounded once. A non-finite operand keeps float semantics.
     def _apply_slippage(self, side: str, price: float) -> float:
-        bps = self.slippage_bps / 10_000.0
         side_upper = side.upper()
-        if side_upper in {"BUY", "LONG"}:
-            return price * (1.0 + bps)
-        return price * (1.0 - bps)
+        if not (math.isfinite(float(price)) and math.isfinite(self.slippage_bps)):
+            bps = self.slippage_bps / 10_000.0
+            return price * (1.0 + bps) if side_upper in {"BUY", "LONG"} else price * (1.0 - bps)
+        bps = to_dec(self.slippage_bps)
+        with exact():
+            numerator = to_dec(float(price)) * ((10_000 + bps) if side_upper in {"BUY", "LONG"} else (10_000 - bps))
+        return to_float(div(numerator, 10_000))
 
     def _fee(self, qty: float, price: float) -> float:
-        return abs(float(qty) * float(price)) * (self.fee_bps / 10_000.0)
+        if not all(math.isfinite(float(v)) for v in (qty, price, self.fee_bps)):
+            return abs(float(qty) * float(price)) * (self.fee_bps / 10_000.0)
+        with exact():
+            fee_numerator = abs(to_dec(float(qty)) * to_dec(float(price))) * to_dec(self.fee_bps)
+        return to_float(div(fee_numerator, 10_000))
 
     def seed_position(
         self,
@@ -168,7 +180,7 @@ class PaperExecutor:
         try:
             reference_price = latest_reference_price(self.client, symbol, fallback_price)
             fill_price = self._apply_slippage(side, reference_price)
-            qty = float(quantity) if quantity and quantity > 0 else float(notional_usdt) / fill_price
+            qty = float(quantity) if quantity and quantity > 0 else f_div(float(notional_usdt), fill_price)
             order_id = paper_id("order")
             position_id = paper_id("position")
             fee = self._fee(qty, fill_price)
@@ -343,12 +355,18 @@ class PaperExecutor:
             fill_price = self._apply_slippage(close_side, reference_price)
             fee = self._fee(qty, fill_price)
             entry_price = float(saved.get("entry_price") or 0.0)
-            pnl = (fill_price - entry_price) * qty if close_side == "SELL" else (entry_price - fill_price) * qty
-            new_remaining = remaining - qty
+            if all(math.isfinite(v) for v in (fill_price, entry_price, qty)):
+                # One rounding of the exact (exit - entry) x qty, not a product of a rounded difference.
+                with exact():
+                    gross = (to_dec(fill_price) - to_dec(entry_price)) * to_dec(qty)
+                pnl = to_float(gross if close_side == "SELL" else -gross)
+            else:
+                pnl = (fill_price - entry_price) * qty if close_side == "SELL" else (entry_price - fill_price) * qty
+            new_remaining = f_sub(remaining, qty)
             saved["remaining_qty"] = new_remaining
-            saved["realized_qty"] = float(saved.get("realized_qty") or 0.0) + qty
-            saved["realized_pnl"] = float(saved.get("realized_pnl") or 0.0) + pnl
-            saved["fees"] = float(saved.get("fees") or 0.0) + fee
+            saved["realized_qty"] = f_add(float(saved.get("realized_qty") or 0.0), qty)
+            saved["realized_pnl"] = f_add(float(saved.get("realized_pnl") or 0.0), pnl)
+            saved["fees"] = f_add(float(saved.get("fees") or 0.0), fee)
             saved["status"] = "PARTIALLY_CLOSED"
             order_id = paper_id("order")
             return PaperExecutionResult(

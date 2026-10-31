@@ -38,10 +38,14 @@ from contextlib import contextmanager
 from typing import Any
 
 from app.risk.capital_ledger import margin_for
+from shared_lib.core.money_math import div, f_add, f_sub, is_finite_money, mul, to_float
 
 logger = logging.getLogger(__name__)
 
-#: Quantity comparisons are float arithmetic on exchange step sizes.
+#: Quantities, PnL, fees and margin on the position row are accumulated exactly from the decimals of the stored
+#: value and the fill (``shared_lib.core.money_math``), rounded once to the REAL the row holds, so a long chain
+#: of partial fills carries no accumulated binary error. The tolerance below only absorbs a remainder that a
+#: legacy row already carries; an exact remainder of a full close is zero.
 QTY_TOLERANCE = 1e-9
 
 #: Close reasons that get their own canonical event type, because §48/§49 ask
@@ -295,6 +299,13 @@ def _entry_leverage(runner: Any, db: Any, symbol: str, decision_id: str | None,
     return _decision_leverage(db, decision_id)
 
 
+def _share(amount: float, part: float, whole: float) -> float:
+    """``amount x part / whole`` with one rounding (the margin a partial close leaves committed)."""
+    if not all(is_finite_money(v) for v in (amount, part, whole)):
+        return amount * (part / whole)
+    return to_float(div(mul(amount, part), whole))
+
+
 def project_fill(runner: Any, db: Any, kw: dict[str, Any]) -> None:
     """Derive the canonical position row and lifecycle event from one fill."""
     from app.evidence.writers import (
@@ -375,8 +386,8 @@ def project_fill(runner: Any, db: Any, kw: dict[str, Any]) -> None:
                 })
         else:
             # A second OPEN on a live position is an ADD, not a new position.
-            original = float(row["original_qty"]) + qty
-            remaining = float(row["remaining_qty"]) + qty
+            original = f_add(float(row["original_qty"]), qty)
+            remaining = f_add(float(row["remaining_qty"]), qty)
             update_position_quantities(
                 db, position_id,
                 remaining_qty=remaining, realized_qty=float(row["realized_qty"]),
@@ -387,7 +398,7 @@ def project_fill(runner: Any, db: Any, kw: dict[str, Any]) -> None:
                     "UPDATE positions SET original_qty=?, committed_margin=? "
                     "WHERE position_id=?",
                     (original,
-                     float(row["committed_margin"] or 0.0) + margin_for(qty, price, leverage),
+                     f_add(float(row["committed_margin"] or 0.0), margin_for(qty, price, leverage)),
                      position_id),
                 )
             record_position_event(
@@ -408,8 +419,8 @@ def project_fill(runner: Any, db: Any, kw: dict[str, Any]) -> None:
         )
         return
 
-    remaining = max(0.0, float(row["remaining_qty"]) - qty)
-    realized = float(row["realized_qty"]) + qty
+    remaining = max(0.0, f_sub(float(row["remaining_qty"]), qty))
+    realized = f_add(float(row["realized_qty"]), qty)
     instrument_reason = None
     try:
         from app.execution.position_reconciliation import quantity_close_reason
@@ -440,8 +451,8 @@ def project_fill(runner: Any, db: Any, kw: dict[str, Any]) -> None:
     else:
         event_type = "PARTIAL_CLOSE"
 
-    total_pnl = float(row["realized_pnl"] or 0.0) + float(realized_pnl or 0.0)
-    total_fees = float(row["fees"] or 0.0) + float(fee or 0.0)
+    total_pnl = f_add(float(row["realized_pnl"] or 0.0), float(realized_pnl or 0.0))
+    total_fees = f_add(float(row["fees"] or 0.0), float(fee or 0.0))
 
     update_position_quantities(
         db, position_id,
@@ -455,12 +466,16 @@ def project_fill(runner: Any, db: Any, kw: dict[str, Any]) -> None:
 
     # Release capital in proportion to what was closed. A final close leaves
     # the row OPEN-less, so the ledger stops counting it entirely; a partial
-    # close has to hand back exactly its share and no more.
-    original_qty = float(row["original_qty"] or 0.0)
-    opening_margin = float(row["committed_margin"] or 0.0)
+    # close has to hand back exactly its share and no more. The share is of the
+    # quantity held before this fill: the row's committed margin is what is
+    # still committed, so scaling it by remaining / ORIGINAL released the
+    # earlier legs' share again on every later partial close (0.3 closed in
+    # three legs of 0.1 left 6.67 of 30 committed for the last 0.1, not 10).
+    held_before = float(row["remaining_qty"] or 0.0)
+    committed_before = float(row["committed_margin"] or 0.0)
     released_margin = (
         0.0 if is_final
-        else opening_margin * (remaining / original_qty) if original_qty > 0
+        else _share(committed_before, remaining, held_before) if held_before > 0
         else 0.0
     )
     with db.connect() as conn:

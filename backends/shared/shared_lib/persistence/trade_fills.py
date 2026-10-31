@@ -117,8 +117,36 @@ def calculate_close_pnl(
     Returns dict with: gross_pnl, total_fees, net_pnl, r_multiple.
     For LONG:  gross_pnl = (exit - entry) * qty
     For SHORT: gross_pnl = (entry - exit) * qty
+
+    Computed exactly in Decimal from the decimals of the inputs (``shared_lib.core.money_math``) and rounded once,
+    half-even, to the reported places. A non-finite input keeps the float arithmetic (and its NaN / infinity).
     """
     side_upper = (side or "").upper()
+    from shared_lib.core.money_math import div, exact, is_finite_money, to_dec
+
+    inputs = (entry_price, exit_price, quantity, entry_fee, exit_fee, funding_fees, slippage_cost)
+    if all(is_finite_money(v) for v in inputs) and (initial_risk is None or is_finite_money(initial_risk)):
+        from decimal import ROUND_HALF_EVEN, Decimal
+
+        def places(value, digits):
+            return float(value.quantize(Decimal(1).scaleb(-digits), rounding=ROUND_HALF_EVEN))
+
+        entry_d, exit_d, qty_d = to_dec(entry_price), to_dec(exit_price), to_dec(quantity)
+        with exact():
+            gross_d = ((exit_d - entry_d) if side_upper in ("LONG", "BUY") else (entry_d - exit_d)) * qty_d
+            funding_d = to_dec(funding_fees)
+            fees_d = to_dec(entry_fee) + to_dec(exit_fee) + funding_d
+            net_d = gross_d - fees_d - to_dec(slippage_cost)
+        risk_d = to_dec(initial_risk) if initial_risk else None
+        r_d = div(net_d, risk_d) if risk_d is not None and risk_d > 0 else None
+        return {
+            "gross_pnl": places(gross_d, 8),
+            "total_fees": places(fees_d, 8),
+            "funding_fees": places(funding_d, 8),
+            "net_pnl": places(net_d, 8),
+            "r_multiple": places(r_d, 4) if r_d is not None else None,
+        }
+
     if side_upper in ("LONG", "BUY"):
         gross_pnl = (exit_price - entry_price) * quantity
     else:

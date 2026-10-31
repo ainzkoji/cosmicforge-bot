@@ -189,19 +189,20 @@ class EntryProtection:
         return [dict(row) for row in rows]
 
     def _compute_effective_exposure_conn(self, conn, bot_id: str, symbol: str) -> float:
-        row = conn.execute(
+        # Each entry's notional is chosen in SQL; the total is summed exactly in Python (shared_lib.core.money_math)
+        # and rounded once. The executor compares it against the per-symbol limit, and a SUM over REAL put two
+        # entries of 100.03 and 200.3 at 300.33000000000004, above an exactly met 300.33 limit.
+        from shared_lib.core.money_math import fsum_exact
+
+        rows = conn.execute(
             """
-            SELECT COALESCE(
-                SUM(
-                    CASE
-                        WHEN state = ? AND filled_notional IS NOT NULL AND filled_notional > 0 THEN filled_notional
-                        WHEN submitted_notional IS NOT NULL AND submitted_notional > 0 THEN submitted_notional
-                        WHEN sized_notional IS NOT NULL AND sized_notional > 0 THEN sized_notional
-                        ELSE intended_notional
-                    END
-                ),
-                0.0
-            )
+            SELECT
+                CASE
+                    WHEN state = ? AND filled_notional IS NOT NULL AND filled_notional > 0 THEN filled_notional
+                    WHEN submitted_notional IS NOT NULL AND submitted_notional > 0 THEN submitted_notional
+                    WHEN sized_notional IS NOT NULL AND sized_notional > 0 THEN sized_notional
+                    ELSE intended_notional
+                END
             FROM pending_entries
             WHERE bot_id=? AND symbol=?
               AND state IN (?, ?)
@@ -213,8 +214,8 @@ class EntryProtection:
                 EntryState.PENDING_OPEN.value,
                 EntryState.OPEN_CONFIRMED.value,
             ),
-        ).fetchone()
-        return float(row[0] if row else 0.0)
+        ).fetchall()
+        return fsum_exact(float(row[0]) for row in rows if row[0] is not None)
 
     def _append_event(
         self,

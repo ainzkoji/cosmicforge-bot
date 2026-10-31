@@ -197,13 +197,15 @@ class CapitalLedger:
 
     def _read_committed_margin(self) -> float:
         """The committed margin, or an exception. Never a substituted value."""
+        # Summed exactly in Python, not by SQL SUM over REAL: the result is compared with the portfolio margin
+        # limit, and SQLite's SUM of ten 0.1 and one 0.4 is 1.4000000000000001.
         with self.db.connect() as conn:
-            row = conn.execute(
-                "SELECT COALESCE(SUM(committed_margin), 0.0) FROM positions "
+            rows = conn.execute(
+                "SELECT committed_margin FROM positions "
                 "WHERE bot_instance_id=? AND status='OPEN'",
                 (self.bot_instance_id,),
-            ).fetchone()
-        return max(0.0, float(row[0] or 0.0))
+            ).fetchall()
+        return max(0.0, _x_sum(float(row[0]) for row in rows if row[0] is not None))
 
     def _read_open_positions(self) -> int:
         with self.db.connect() as conn:

@@ -178,13 +178,18 @@ class FillLedger:
             for row in rows)
 
     def filled_quantity(self, symbol: str, venue_order_id: str) -> float:
-        """What the ledger holds for one order: the sum a cumulative figure from the venue is compared with."""
+        """What the ledger holds for one order: the sum a cumulative figure from the venue is compared with.
+
+        Summed exactly in Python (``shared_lib.core.money_math``) and rounded once: SQL SUM over REAL makes ten
+        partial fills of 0.1 a total of 0.9999999999999999 against the venue's cumulative 1."""
+        from shared_lib.core.money_math import fsum_exact
+
         with self.db.connect() as conn:
-            row = conn.execute(
-                f"SELECT COALESCE(SUM(f.quantity), 0) FROM {STREAM_FILL_TABLE} f WHERE f.venue=? AND f.account_ref=? "
+            rows = conn.execute(
+                f"SELECT f.quantity FROM {STREAM_FILL_TABLE} f WHERE f.venue=? AND f.account_ref=? "
                 f"AND f.symbol=? AND f.venue_order_id=? AND {_EFFECTIVE}",
-                (self.venue, self.account_ref, symbol, str(venue_order_id))).fetchone()
-        return float(row[0] or 0.0)
+                (self.venue, self.account_ref, symbol, str(venue_order_id))).fetchall()
+        return fsum_exact(float(row[0]) for row in rows if row[0] is not None)
 
     def cursors(self) -> Dict[str, int]:
         with self.db.connect() as conn:

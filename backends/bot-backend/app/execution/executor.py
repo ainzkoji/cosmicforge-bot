@@ -24,6 +24,17 @@ from app.symbols.sizing import parse_usdt_map, usdt_for, size_from_budget
 from app.risk.circuit import ExchangeCircuitBreaker
 from app.execution.entry_protection import get_entry_protection  # FAIL-SAFE ENTRY LOCK
 from app.execution.paper_executor import PaperExecutor
+# Money and quantities are computed exactly from the decimals of their operands and returned as the float this
+# executor's interface uses, rounded once (E-02). Exchange steps and ticks keep their own rounding direction.
+from shared_lib.core.money_math import (
+    div as _x_div_exact,
+    exact as _x_exact,
+    f_add as _x_add,
+    f_div as _x_div,
+    f_mul as _x_mul,
+    f_sub as _x_sub,
+    floor_to_step as _x_floor_to_step,
+)
 
 
 # =============================================================================
@@ -318,11 +329,16 @@ def _decimal_attr(obj, *names: str, default: str = "0") -> Decimal:
     return Decimal(default)
 
 
-def _floor_qty_to_step(qty: float, step: Decimal) -> Decimal:
-    qty_d = Decimal(str(max(0.0, float(qty or 0.0))))
+def _floor_qty_to_step(qty: float | Decimal, step: Decimal) -> Decimal:
+    """``qty`` rounded DOWN to the lot step. A Decimal is used as is: converting an exact quotient to float first
+    can round it up across a step boundary."""
+    if isinstance(qty, Decimal):
+        qty_d = max(Decimal(0), qty) if qty.is_finite() else Decimal(0)
+    else:
+        qty_d = Decimal(str(max(0.0, float(qty or 0.0))))
     if step <= 0:
         return qty_d
-    return (qty_d / step).to_integral_value(rounding=ROUND_DOWN) * step
+    return _x_floor_to_step(qty_d, step)
 
 
 # =========================
@@ -600,7 +616,7 @@ class BinanceExecutor:
             return max_notional
 
         if allocation_type in {"percent_balance", "percent_equity", "percent"} and allocation_value > 0:
-            return max(0.0, float(current_equity or 0.0)) * allocation_value / 100.0
+            return _x_div(_x_mul(max(0.0, float(current_equity or 0.0)), allocation_value), 100.0)
 
         return max_notional
 
@@ -697,7 +713,7 @@ class BinanceExecutor:
         authorization = capital_gate.authorization if capital_gate is not None else None
         if authorization is None:
             return PreEntryCapitalReserve(
-                True, float(qty), abs(float(qty) * ref) / lev, float("inf"),
+                True, float(qty), _x_div(abs(_x_mul(float(qty), ref)), lev), float("inf"),
                 ref, ref, 0.0, "unmanaged", "no capital ledger verdict available",
             )
 
@@ -711,10 +727,10 @@ class BinanceExecutor:
         if contract_size <= 0:
             contract_size = Decimal("1")
 
-        current_margin = (Decimal(str(qty)) * Decimal(str(ref)) * contract_size) / Decimal(str(lev))
+        current_margin = _x_div_exact(Decimal(str(qty)) * Decimal(str(ref)) * contract_size, Decimal(str(lev)))
         approved_margin = Decimal(str(max(0.0, float(authorization.approved_margin or 0.0))))
         submitted_margin = (
-            Decimal(str(max(0.0, float(submitted_notional or 0.0)))) / Decimal(str(lev))
+            _x_div_exact(Decimal(str(max(0.0, float(submitted_notional or 0.0)))), Decimal(str(lev)))
             if submitted_notional and submitted_notional > 0 else current_margin
         )
         max_margin = min(approved_margin, submitted_margin)
@@ -733,11 +749,11 @@ class BinanceExecutor:
         buffer_rate = max(configured_rate, slippage_rate + (_PREFILL_TAKER_FEE_BPS / 10_000.0))
         protected_price = Decimal(str(ref)) * (Decimal("1") + Decimal(str(buffer_rate)))
 
-        safe_qty_raw = (max_margin * Decimal(str(lev))) / (protected_price * contract_size)
-        safe_qty = _floor_qty_to_step(float(safe_qty_raw), step)
+        safe_qty_raw = _x_div_exact(max_margin * Decimal(str(lev)), protected_price * contract_size)
+        safe_qty = _floor_qty_to_step(safe_qty_raw, step)
         requested_qty = _floor_qty_to_step(qty, step)
         final_qty = min(requested_qty, safe_qty)
-        estimated_margin = (final_qty * protected_price * contract_size) / Decimal(str(lev))
+        estimated_margin = _x_div_exact(final_qty * protected_price * contract_size, Decimal(str(lev)))
 
         if final_qty <= 0 or (min_qty > 0 and final_qty < min_qty):
             return PreEntryCapitalReserve(
@@ -851,9 +867,14 @@ class BinanceExecutor:
         # We must GUARANTEE that Liquidation Distance >= 2 * Stop Distance.
         # This considers exact Exchange metrics to avoid hidden ruin risk.
         if sl_price > 0.0 and price > 0.0:
-            raw_stop_distance_pct = abs(price - sl_price) / price
-            # Include expected round-trip slippage in the worst-case stop distance assumption
-            stop_distance_pct = raw_stop_distance_pct + (expected_slippage_pct * 2.0)
+            # Exact decimals (E-02): the bound below is inclusive, and the float chain made an exact 0.1
+            # denominator 0.10000000000000012, which truncated a 10x bound to 9x.
+            _price_d, _sl_d = Decimal(str(float(price))), Decimal(str(float(sl_price)))
+            _raw_stop_d = _x_div_exact(abs(_price_d - _sl_d), _price_d)
+            with _x_exact():
+                # Include expected round-trip slippage in the worst-case stop distance assumption
+                _stop_d = _raw_stop_d + 2 * Decimal(str(float(expected_slippage_pct)))
+            raw_stop_distance_pct, stop_distance_pct = float(_raw_stop_d), float(_stop_d)
             
             # Model Real Exchange parameters (Binance USDT-M Futures default worst-case bounds):
             # MMR (Maintenance Margin Rate) ~ 0.5% for general tier-2
@@ -867,8 +888,9 @@ class BinanceExecutor:
             # Invariant: (1.0 / Leverage) - 0.0061 >= 2.0 * stop_distance_pct
             # Derivation: Leverage <= 1.0 / (2.0 * stop_distance_pct + 0.0061)
             
-            denominator = (2.0 * stop_distance_pct) + 0.0061
-            max_safe_lev = int(1.0 / denominator) if denominator > 0 else lev
+            with _x_exact():
+                _denominator_d = 2 * _stop_d + Decimal("0.0061")
+            max_safe_lev = int(_x_div_exact(1, _denominator_d)) if _denominator_d > 0 else lev
             
             if max_safe_lev < 1:
                 max_safe_lev = 1
@@ -890,7 +912,10 @@ class BinanceExecutor:
         # 4. Target Notional
         # usdt is passed from executor as NOTIONAL value (trade_usdt = qty * price)
         target_notional = float(usdt)
-        actual_margin = target_notional / float(lev)
+        # The margin is handed to size_from_budget, which multiplies it by the leverage again. A float margin
+        # (1000 / 3 = 333.3333333333333) came back as 999.9999999999999 notional and lost a lot at an exact step
+        # boundary; the 50-digit quotient returns the notional exactly at size_from_budget's 28-digit precision.
+        actual_margin = _x_div_exact(Decimal(str(target_notional)), Decimal(str(float(lev))))
 
         # 5. Calculate Sizing
         # We simulate the 'filters' object for compatibility with size_from_budget if kept generic
@@ -1531,7 +1556,7 @@ class BinanceExecutor:
                 budget_usdt = capital_gate.approved_notional
 
             # ── Compute margin required for this order ──
-            margin_required = budget_usdt / max(1, effective_lev)
+            margin_required = _x_div(budget_usdt, max(1, effective_lev))
 
             # ── Rich structured log (appears before every live entry attempt) ──
             _exec_logger.info(
@@ -1620,7 +1645,7 @@ class BinanceExecutor:
             # Not entered through _execute_impl, so nothing would end it.
             ACCOUNT_RESERVATIONS.release(_reservation.token)
         if _reservation.reduced:
-            capped_notional = _reservation.reserved_margin * effective_lev
+            capped_notional = _x_mul(_reservation.reserved_margin, effective_lev)
             _exec_logger.warning(
                 f"[MARGIN_AUDIT] {symbol}: margin_required={margin_required:.2f} > "
                 f"affordable={_reservation.reserved_margin:.2f} "
@@ -1652,14 +1677,14 @@ class BinanceExecutor:
         if trade_price <= 0:
             trade_price = float(self.client.get_prices([symbol]).get(symbol, 0.0))
             
-        notional = float(qty) * trade_price
+        notional = _x_mul(float(qty), trade_price)
         expected_slippage_pct = self.estimate_slippage(notional)
-        expected_slippage_usdt = notional * expected_slippage_pct
+        expected_slippage_usdt = _x_mul(notional, expected_slippage_pct)
         
         # 🚀 Phase 3: Apply slippage assumption to sizing (Execution Cost Realism)
         # Deduct expected slippage from the usable budget before calculating final quantity
-        effective_notional = notional - expected_slippage_usdt
-        effective_qty = effective_notional / trade_price
+        effective_notional = _x_sub(notional, expected_slippage_usdt)
+        effective_qty = _x_div(effective_notional, trade_price)
         # Re-quantize to step size (we just use the original qty if it drops below min, 
         # but for true impact we should request slightly less qty to accommodate the cost)
         # For simplicity, we just clamp qty downwards if slippage is high.
@@ -1726,16 +1751,16 @@ class BinanceExecutor:
                 symbol, float(qty), reserve.qty, reserve.detail,
             )
             qty = reserve.qty
-            notional = float(qty) * trade_price
+            notional = _x_mul(float(qty), trade_price)
             expected_slippage_pct = self.estimate_slippage(notional)
-            expected_slippage_usdt = notional * expected_slippage_pct
+            expected_slippage_usdt = _x_mul(notional, expected_slippage_pct)
 
         import logging as _log
         _log.getLogger(__name__).info(
             f"[SLIPPAGE] {symbol}: Estimated market impact for {notional:.2f} USDT notional "
             f"is {expected_slippage_pct*100:.3f}% ({expected_slippage_usdt:.2f} USDT cost)"
         )
-        exact_sized_notional = float(qty) * float(trade_price or 0.0)
+        exact_sized_notional = _x_mul(float(qty), float(trade_price or 0.0))
         if _ep is not None and _ep_lock_acquired:
             _ep.mark_sized(
                 self.bot_instance_id,
@@ -1896,7 +1921,7 @@ class BinanceExecutor:
                 self.bot_instance_id,
                 symbol,
                 _ep_side,
-                submitted_notional=float(qty) * float(trade_price or 0.0),
+                submitted_notional=_x_mul(float(qty), float(trade_price or 0.0)),
                 submitted_qty=float(qty),
                 reference_price=float(trade_price or 0.0),
                 max_exposure_limit=self._configured_max_exposure(current_equity),
@@ -2115,16 +2140,16 @@ class BinanceExecutor:
             if sl_price is None or sl_price <= 0.0:
                 sl_pct = float(settings.STOP_LOSS_PCT)
                 if signal == "BUY":
-                    sl_price = entry_px * (1.0 - sl_pct)
+                    sl_price = _x_mul(entry_px, _x_sub(1.0, sl_pct))
                 else:
-                    sl_price = entry_px * (1.0 + sl_pct)
+                    sl_price = _x_mul(entry_px, _x_add(1.0, sl_pct))
                     
             if tp_price is None or tp_price <= 0.0:
                 tp_pct = float(settings.TAKE_PROFIT_PCT)
                 if signal == "BUY":
-                    tp_price = entry_px * (1.0 + tp_pct)
+                    tp_price = _x_mul(entry_px, _x_add(1.0, tp_pct))
                 else:
-                    tp_price = entry_px * (1.0 - tp_pct)
+                    tp_price = _x_mul(entry_px, _x_sub(1.0, tp_pct))
                 
             try:
                 from app.exchange.binance.filters import normalize_protection_price, _tick
@@ -2267,7 +2292,7 @@ class BinanceExecutor:
         if _ep is not None and _ep_lock_acquired:
             _filled_qty = executed_qty
             _filled_px = executed_avg
-            _filled_notional = (_filled_qty * _filled_px) if (_filled_qty > 0 and _filled_px > 0) else None
+            _filled_notional = _x_mul(_filled_qty, _filled_px) if (_filled_qty > 0 and _filled_px > 0) else None
             _ep.mark_confirmed(
                 self.bot_instance_id,
                 symbol,
@@ -2308,7 +2333,7 @@ class BinanceExecutor:
                 if _executed_margin is not None:
                     _variance = allocation_variance(
                         configured_trade_allocation=capital_gate.authorization.per_trade_allocation,
-                        pre_trade_target_margin=float(qty) * float(trade_price or 0.0) / _lev_used,
+                        pre_trade_target_margin=_x_div(_x_mul(float(qty), float(trade_price or 0.0)), _lev_used),
                         actual_committed_margin=_executed_margin,
                     )
         except Exception as _cap_ev_err:
@@ -2485,7 +2510,7 @@ class BinanceExecutor:
 
         # ── 2. Reconcile live qty from broker (broker is truth) ───────────
         if effective_mode != "live":
-            norm_qty = max(0.0, float(live_qty or 0.0) * float(tp1_fraction or 0.0))
+            norm_qty = max(0.0, _x_mul(float(live_qty or 0.0), float(tp1_fraction or 0.0)))
             paper_partial = self.paper_executor.partial_close(
                 symbol=symbol,
                 position_side=pos_side_str,
@@ -2537,7 +2562,8 @@ class BinanceExecutor:
             _log.warning(f"[TP1_PARTIAL_CLOSE] {symbol}: Could not reconcile live qty from broker: {e}")
 
         # ── 3. Qty normalisation ───────────────────────────────────────────
-        raw_tp1_qty = live_qty * tp1_fraction
+        # Exact (E-02): 70 % of 0.01 is 0.007; the float product 0.006999999999999999 floored a lot short.
+        raw_tp1_qty = _x_mul(live_qty, tp1_fraction)
         result_base["requested_tp1_qty"] = raw_tp1_qty
 
         norm_qty, norm_status = self._normalize_partial_close_qty(symbol, raw_tp1_qty)
@@ -2621,12 +2647,12 @@ class BinanceExecutor:
         try:
             post_qty_raw = self.client.get_position_amt(symbol)
             post_qty = abs(float(post_qty_raw))
-            fill_qty = max(0.0, live_qty - post_qty)
+            fill_qty = max(0.0, _x_sub(live_qty, post_qty))
             runner_qty = post_qty
         except Exception as e:
             _log.warning(f"[TP1_PARTIAL_CLOSE] {symbol}: Could not reconcile post-close qty: {e}. Estimating.")
             fill_qty = norm_qty  # Best estimate
-            runner_qty = max(0.0, live_qty - norm_qty)
+            runner_qty = max(0.0, _x_sub(live_qty, norm_qty))
 
         result_base["fill_qty"] = fill_qty
         result_base["remaining_qty"] = runner_qty
@@ -2869,13 +2895,15 @@ class BinanceExecutor:
         # Buffer = max(be_sl_distance_buffer_pct × original_SL_distance, fee_buffer)
         # The old fee-only buffer was ~$80 for BTC at $67k — too tight for normal
         # post-TP1 oscillation.  20% of the original SL distance gives real breathing room.
-        fee_buffer = entry_price * taker_fee_rate * 2.0 * fee_buffer_mult
+        # Exact decimals (E-02), rounded once per step: the stop is then rounded to the tick, and a float sum just
+        # below a tick boundary (102.00999999999999 for an exact 102.01) lost a whole tick.
+        fee_buffer = _x_mul(_x_mul(entry_price, taker_fee_rate), _x_mul(2.0, fee_buffer_mult))
 
         # Resolve initial_stop from PositionManager if available
         initial_stop = 0.0
         if pos and pos.sl.initial_stop:
             initial_stop = float(pos.sl.initial_stop)
-        sl_distance = abs(entry_price - initial_stop) if initial_stop > 0 else 0.0
+        sl_distance = abs(_x_sub(entry_price, initial_stop)) if initial_stop > 0 else 0.0
 
         if sl_distance <= 0:
             _log.warning(
@@ -2885,16 +2913,16 @@ class BinanceExecutor:
             )
             buffer = fee_buffer
         else:
-            sl_pct_buffer = sl_distance * be_sl_distance_buffer_pct
+            sl_pct_buffer = _x_mul(sl_distance, be_sl_distance_buffer_pct)
             buffer = max(sl_pct_buffer, fee_buffer)
 
         buffer_pct_of_sl = (buffer / sl_distance * 100.0) if sl_distance > 0 else 0.0
         raw_be = entry_price  # same for both sides before buffer
 
         if pos_side_str == "LONG":
-            buffered_be = entry_price + buffer
+            buffered_be = _x_add(entry_price, buffer)
         else:
-            buffered_be = entry_price - buffer
+            buffered_be = _x_sub(entry_price, buffer)
 
         result["raw_break_even_price"] = entry_price
         result["buffered_break_even_price"] = buffered_be
@@ -3127,11 +3155,11 @@ class BinanceExecutor:
                 f"This is sub-optimal. Caller should pass persisted sl/tp."
             )
             if float(pos_amt) > 0:
-                sl_price = px * (1.0 - sl_pct)
-                tp_price = px * (1.0 + tp_pct)
+                sl_price = _x_mul(px, _x_sub(1.0, sl_pct))
+                tp_price = _x_mul(px, _x_add(1.0, tp_pct))
             else:
-                sl_price = px * (1.0 + sl_pct)
-                tp_price = px * (1.0 - tp_pct)
+                sl_price = _x_mul(px, _x_add(1.0, sl_pct))
+                tp_price = _x_mul(px, _x_sub(1.0, tp_pct))
 
         _log.info(
             f"[PROTECTION CHECK] {symbol}: repair_source={repair_source} "
@@ -3653,12 +3681,13 @@ class BinanceExecutor:
                 pass  # Bad timestamp format — proceed
 
         # ── 5. Trailing stop calculation ───────────────────────────────────────
-        trail_distance = trail_atr_mult * atr
+        # Exact decimals (E-02): 0.3 - 0.1 is 0.2, not 0.19999999999999998 (a LONG stop rounds DOWN to the tick).
+        trail_distance = _x_mul(trail_atr_mult, atr)
 
         if position_side == "LONG":
-            raw_trailing = highest_since_entry - trail_distance
+            raw_trailing = _x_sub(highest_since_entry, trail_distance)
         else:
-            raw_trailing = lowest_since_entry + trail_distance
+            raw_trailing = _x_add(lowest_since_entry, trail_distance)
 
         result["raw_trailing_stop"] = raw_trailing
 
