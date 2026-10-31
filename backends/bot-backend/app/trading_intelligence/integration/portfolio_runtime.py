@@ -9,6 +9,7 @@ import os
 import time
 from dataclasses import asdict, replace
 from importlib import import_module
+from typing import Optional
 
 from app.trading_intelligence.hashing import short_id
 from app.trading_intelligence.pipeline import brakes, contracts as C, execution as X
@@ -86,14 +87,18 @@ def boundary_for(db, account, client, bot, clock):
     policy = resolve_effective_bot_policy(instance=instance, broker_environment=account["environment"].lower(), risk_params=params)
     if policy.execution_mode != "broker":
         raise ValueError("PRODUCTION_REJECTS_PAPER_BOT")
-    max_notional = [float(policy.capital_budget) * float(policy.max_leverage)]
+    # Section K1: the budget is a fixed amount, or a percentage of the account's equity. A percentage is resolved
+    # against the broker-confirmed equity each cycle (``resolve_capital_budget``), never read as an amount.
+    budget_kind = str(getattr(policy, "capital_allocation_type", None) or "fixed_amount").lower()
+    fixed_budget = budget_kind in ("fixed_amount", "fixed")
+    max_notional = [float(policy.capital_budget) * float(policy.max_leverage)] if fixed_budget else []
     for value in (policy.max_position_usdt, getattr(settings, "MAX_NOTIONAL_PER_SYMBOL", None)):
         if value is not None and float(value) > 0:
             max_notional.append(float(value))
     if policy.position_allocation_type == "fixed_amount":
         max_notional.append(float(policy.position_allocation_value))
     limits = AccountLimits.from_profile(bot["risk_level"], version=policy.risk_profile_version,
-                                        max_position_notional=min(max_notional))
+                                        max_position_notional=min(max_notional) if max_notional else None)
     limits = replace(limits, per_trade_risk=min(limits.per_trade_risk, policy.risk_per_trade),
                      max_open_risk=min(limits.max_open_risk, policy.max_open_risk_fraction or limits.max_open_risk),
                      max_positions=min(limits.max_positions, policy.max_open_positions),
@@ -110,8 +115,36 @@ def boundary_for(db, account, client, bot, clock):
         limits=limits, rules=rules,
         adapter_certification=lambda venue, env: adapter_certified(db, venue, env, clock(),
                                                                   adapter_version=adapter.adapter_version), clock=clock)
-    boundary.effective_policy, boundary.capital_budget = policy, policy.capital_budget
+    boundary.effective_policy = policy
+    if fixed_budget:
+        boundary.capital_budget, boundary.capital_budget_spec = policy.capital_budget, None
+    else:
+        # Unresolved until ``resolve_capital_budget``: nothing can be sized before the equity is known.
+        boundary.capital_budget, boundary.capital_budget_spec = None, (budget_kind, policy.capital_budget)
     return boundary
+
+
+def resolve_capital_budget(boundary, equity) -> Optional[float]:
+    """Resolve a percentage budget against the broker-confirmed ``equity`` with the shared rule
+    (``risk_sizing.effective_budget``, the same as the deployment preview and the legacy sizer), and cap the
+    position notional at budget x leverage like a fixed budget. A fixed budget is returned unchanged. An equity
+    that cannot carry the budget raises ``ACCOUNT_CAPITAL_BUDGET_UNRESOLVED``: nothing is sized from a guess."""
+    spec = getattr(boundary, "capital_budget_spec", None)
+    if spec is None:
+        return getattr(boundary, "capital_budget", None)
+    from app.trading_intelligence.execution.risk_sizing import effective_budget
+    kind, value = spec
+    try:
+        budget = float(effective_budget(budget_type=kind, budget_value=value, account_equity=equity))
+    except (ValueError, TypeError) as exc:
+        raise ValueError("ACCOUNT_CAPITAL_BUDGET_UNRESOLVED") from exc
+    policy = getattr(boundary, "effective_policy", None)
+    leverage = float(policy.max_leverage) if policy is not None else float(boundary.limits.max_leverage)
+    cap = budget * leverage
+    current = boundary.limits.max_position_notional
+    boundary.limits = replace(boundary.limits, max_position_notional=min(cap, current) if current else cap)
+    boundary.capital_budget = budget
+    return budget
 
 
 def operating_controls(db, account, client, bots, snapshot, boundary, now):
@@ -286,6 +319,8 @@ class ConnectedPortfolioRuntime:
                           reason=("PORTFOLIO_RECOVERY_REQUIRED" if recovery.status != X.BATCH_PROCESSED
                                   else "ACCOUNT_EXECUTION_OWNER_AMBIGUOUS"))
             return result
+        if getattr(boundary, "capital_budget_spec", None) is not None:
+            result["capital_budget"] = resolve_capital_budget(boundary, boundary.account_snapshot().equity)
         risk_block = None
         if settings.production:
             risk_block, risk, controls = operating_controls(self.db, account, client, active, broker_snapshot, boundary, self.clock())
