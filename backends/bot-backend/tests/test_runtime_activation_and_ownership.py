@@ -620,6 +620,7 @@ def test_every_background_job_sits_behind_the_ownership_gate():
     # and the gate must be the only thing that starts it
     assert source.count("await _startup_signal_scheduler()") == 1
     assert '@app.on_event("startup")\nasync def _startup_signal_scheduler' not in source
+    assert '@_on_startup\nasync def _startup_signal_scheduler' not in source  # the lifespan registration (F6)
 
 
 # ══════════════════════════════════════════════════════════════════════════

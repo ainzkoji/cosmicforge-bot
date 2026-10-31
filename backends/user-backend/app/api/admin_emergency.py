@@ -47,7 +47,7 @@ import httpx
 from fastapi import APIRouter, Body, Depends
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import JSONResponse, Response
-from jose import jwt
+from shared_lib.core.security.jwt_tokens import jwt  # PyJWT (F6)
 
 from app.api import proxy_utils
 from app.core import security

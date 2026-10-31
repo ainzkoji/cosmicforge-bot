@@ -471,7 +471,7 @@ def test_no_withdrawal_primitive_exists():
 # ── 2J: API + isolation ────────────────────────────────────────────────────
 
 def _token(user):
-    from jose import jwt
+    import jwt  # PyJWT (F6)
 
     from app.core.config import settings
     from app.core.security import AUDIENCE, ISSUER

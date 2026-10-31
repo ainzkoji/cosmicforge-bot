@@ -7,7 +7,7 @@ encryption helpers have been removed: they belong in user-backend /
 shared_lib.core.security.broker_security.
 """
 from typing import Optional
-from jose import jwt, JWTError
+from shared_lib.core.security.jwt_tokens import jwt, JWTError  # PyJWT (F6)
 
 from app.core.config import settings
 
@@ -20,8 +20,8 @@ AUDIENCE = "cosmicforge-services"
 # --- JWT Tokens ---
 
 import logging
-from jose import jwt, JWTError, ExpiredSignatureError
-from jose.exceptions import JWTClaimsError
+from shared_lib.core.security.jwt_tokens import jwt, JWTError, ExpiredSignatureError
+from shared_lib.core.security.jwt_tokens import JWTClaimsError
 
 logger = logging.getLogger(__name__)
 

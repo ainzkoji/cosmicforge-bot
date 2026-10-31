@@ -25,7 +25,7 @@ from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
-from jose import jwt
+import jwt  # PyJWT (F6)
 
 ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT / "backends" / "admin-backend"))

@@ -2,7 +2,8 @@ fastapi
 uvicorn
 pydantic
 pydantic-settings
-python-jose[cryptography]
+PyJWT
+cryptography
 passlib[bcrypt]
 python-multipart
 stripe

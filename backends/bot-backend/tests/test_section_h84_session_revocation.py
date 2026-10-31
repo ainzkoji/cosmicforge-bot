@@ -26,7 +26,7 @@ USER = "h84-revocation-user"
 
 
 def _token(*, sub=USER, token_type="access", role="user", tv=None, sid=None, lifetime=600, **extra) -> str:
-    from jose import jwt
+    import jwt  # PyJWT (F6)
 
     from app.core.config import settings
     from app.core.security import AUDIENCE, ISSUER
@@ -134,12 +134,12 @@ def test_the_admin_emergency_service_credential_is_not_looked_up_as_a_user(db):
     from app.core import auth
 
     service = _token(sub="admin-1", role="admin", lifetime=60, act=auth.EMERGENCY_ACTOR_CLAIM)
-    assert auth.is_service_credential(__import__("jose").jwt.get_unverified_claims(service))
+    assert auth.is_service_credential(__import__("jwt").decode(service, options={"verify_signature": False}))
     assert auth.require_admin_emergency(service) == "admin-1"
     assert auth.get_current_user_id(service) == "admin-1"
     assert _status(auth.get_current_active_user, service) == 401  # never a user
     long_lived = _token(sub="admin-1", role="admin", lifetime=600, act=auth.EMERGENCY_ACTOR_CLAIM)
-    assert not auth.is_service_credential(__import__("jose").jwt.get_unverified_claims(long_lived))
+    assert not auth.is_service_credential(__import__("jwt").decode(long_lived, options={"verify_signature": False}))
 
 
 def test_an_open_sse_stream_ends_when_its_token_is_revoked(db, monkeypatch):

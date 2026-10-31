@@ -147,7 +147,7 @@ def test_start_bot_instance_refuses_incapable_broker(migrated_db):
 # ── 2C: legacy platform-key routes require admin ───────────────────────────
 
 def _token(role: str) -> str:
-    from jose import jwt
+    import jwt  # PyJWT (F6)
 
     from app.core.config import settings
     from app.core.security import AUDIENCE, ISSUER

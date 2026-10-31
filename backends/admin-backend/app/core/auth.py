@@ -4,8 +4,8 @@ import logging
 from typing import Any
 
 from fastapi import HTTPException, status
-from jose import JWTError, jwt
-from jose.exceptions import ExpiredSignatureError, JWTClaimsError
+from shared_lib.core.security.jwt_tokens import JWTError, jwt  # PyJWT (F6)
+from shared_lib.core.security.jwt_tokens import ExpiredSignatureError, JWTClaimsError
 
 from app.core.config import settings
 from app.persistence.db import AdminDB

@@ -17,7 +17,8 @@ COPY deploy/constraints.txt deploy/constraints.txt
 COPY backends/shared backends/shared
 COPY backends/bot-backend/requirements.txt backends/bot-backend/requirements.txt
 COPY backends/user-backend/requirements.txt backends/user-backend/requirements.txt
-RUN test -n "$SERVICE" && pip install -e backends/shared \
+# pip 24.0 (bundled with the base image) carries build-time advisories; 26.2.2 audits clean.
+RUN test -n "$SERVICE" && pip install --upgrade pip==26.2.2 && pip install -e backends/shared \
  && if [ "$SERVICE" = "bot-backend" ]; then pip install -r backends/bot-backend/requirements.txt -c deploy/constraints.txt; \
     elif [ "$SERVICE" = "user-backend" ]; then pip install -r backends/user-backend/requirements.txt -c deploy/constraints.txt; \
     else pip install -r backends/user-backend/requirements.txt -r backends/bot-backend/requirements.txt -c deploy/constraints.txt; fi

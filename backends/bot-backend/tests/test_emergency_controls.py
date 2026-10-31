@@ -54,7 +54,7 @@ def api(db):
 
 def _emergency_token(*, role="admin", act=EMERGENCY_ACTOR_CLAIM, lifetime=60, sub=ADMIN, issued_ago=0, **extra):
     """A token signed like the user-backend's; defaults = what its admin emergency proxy mints."""
-    from jose import jwt
+    import jwt  # PyJWT (F6)
 
     from app.core import security
     from app.core.security import AUDIENCE, ISSUER

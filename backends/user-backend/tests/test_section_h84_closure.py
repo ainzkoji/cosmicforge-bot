@@ -26,7 +26,7 @@ import pytest
 from cryptography.fernet import Fernet
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
-from jose import jwt
+import jwt  # PyJWT (F6)
 
 from tests.test_section_h84_security import (  # noqa: F401  (ctx is a fixture)
     ADMIN_AUTH, ADMIN_EMAIL, ADMIN_ID, AUTH, EMAIL, PASSWORD, _activate_user, _admin_login, _audit_events,
@@ -41,7 +41,7 @@ ADMIN_PROBE = "/api/admin/probe"
 
 
 def _claims(token: str) -> dict:
-    return jwt.get_unverified_claims(token)
+    return jwt.decode(token, options={"verify_signature": False})
 
 
 def _revoked(response) -> bool:
@@ -534,3 +534,45 @@ def test_uvicorn_access_lines_are_redacted_and_still_formatted():
     formatted = AccessFormatter(fmt='%(client_addr)s - "%(request_line)s" %(status_code)s', use_colors=False
                                 ).format(record)
     assert secret not in formatted and "/api/v1/events/stream?token=" in formatted and "200" in formatted
+
+
+# =========================================================================== historical admin credentials (5.3)
+
+def test_operator_rotation_procedure_end_to_end(ctx, monkeypatch, capsys):
+    """The documented rotation, through the two CLIs' ``main``: password reset (from ADMIN_PASSWORD, never an
+    argument) ends every session and access token; the break-glass MFA reset with ``--issue-bootstrap`` clears
+    MFA, ends the tokens again and prints exactly one bootstrap code. No password is ever printed."""
+    import importlib.util
+    import re
+    import secrets
+
+    from tests.test_section_h84_security import ROOT
+
+    spec = importlib.util.spec_from_file_location(
+        "create_admin_rotation_test", ROOT / "backends" / "user-backend" / "scripts" / "create_admin.py")
+    create_admin = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(create_admin)
+    maintenance = _load_maintenance()
+    monkeypatch.setattr(create_admin, "_load_env", lambda: None)
+    monkeypatch.setattr(maintenance, "_load_env", lambda: None)
+    monkeypatch.setattr("shared_lib.persistence.db.DB", lambda *a, **k: ctx.db)
+
+    _make_admin(ctx)
+    before = _admin_login(_fresh_client(ctx)).json()
+    new_password = "rotated-" + secrets.token_urlsafe(16)
+    monkeypatch.setenv(create_admin.PASSWORD_ENV, new_password)
+
+    assert create_admin.main([ADMIN_EMAIL, "--reset-password"]) == 0
+    assert _revoked(_probe(ctx, before["access_token"], ADMIN_PROBE))
+    assert _admin_login(_fresh_client(ctx)).status_code == 400  # the historical password is dead
+    after = _admin_login(_fresh_client(ctx), password=new_password).json()
+    assert _probe(ctx, after["access_token"], ADMIN_PROBE).status_code == 200
+
+    capsys.readouterr()
+    assert maintenance.main(["reset-admin-mfa", ADMIN_EMAIL, "--issue-bootstrap"]) == 0
+    out = capsys.readouterr().out
+    assert len(re.findall(r"^[a-z0-9]{5}-[a-z0-9]{5}-[a-z0-9]{5}$", out, flags=re.MULTILINE)) == 1
+    assert _revoked(_probe(ctx, after["access_token"], ADMIN_PROBE))
+    assert _rows(ctx, "SELECT id FROM admin_sessions WHERE admin_id = ? AND revoked_at IS NULL", (ADMIN_ID,)) == []
+    assert len(_rows(ctx, "SELECT id FROM admin_mfa_bootstrap_codes WHERE used_at IS NULL AND revoked_at IS NULL")) == 1
+    assert new_password not in out

@@ -1,6 +1,6 @@
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
-from jose import jwt, JWTError
+from shared_lib.core.security.jwt_tokens import jwt, JWTError  # PyJWT (F6)
 from app.core.security import decode_token, decode_admin_token
 from shared_lib.core.security import token_state
 from shared_lib.persistence.db import DB

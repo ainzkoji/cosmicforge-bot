@@ -387,7 +387,7 @@ def test_account_status_is_per_account_isolated_and_secret_free(db):
 
 
 def _token(user):
-    from jose import jwt
+    import jwt  # PyJWT (F6)
 
     from app.core.config import settings
     from app.core.security import AUDIENCE, ISSUER

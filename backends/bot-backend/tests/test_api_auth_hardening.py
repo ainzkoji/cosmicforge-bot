@@ -38,7 +38,7 @@ from shared_lib.persistence.migrations import migrate
 # ── helpers ─────────────────────────────────────────────────────────────────
 
 def _token(user: str, role: str = "user") -> str:
-    from jose import jwt
+    import jwt  # PyJWT (F6)
 
     from app.core.config import settings
     from app.core.security import AUDIENCE, ISSUER

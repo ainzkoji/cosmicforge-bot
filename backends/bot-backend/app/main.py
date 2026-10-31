@@ -320,11 +320,47 @@ def _api_docs_enabled(cfg: Any) -> bool:
 
 API_DOCS_ENABLED = _api_docs_enabled(settings)
 
+# ── Application lifespan ────────────────────────────────────────────────────
+# Starlette 1.x has no ``@app.on_event``. The startup and shutdown handlers in
+# this module are registered with ``@_on_startup`` / ``@_on_shutdown`` and run
+# by ``_lifespan`` with exactly the semantics on_event had:
+#   * startup hooks run one after another, in the order they appear in this
+#     module; the first one that raises aborts startup (uvicorn refuses to
+#     serve, a TestClient used as a context manager raises) and no later hook,
+#     startup or shutdown, runs;
+#   * shutdown hooks run in registration order (not reversed); one that raises
+#     stops the ones after it.
+from contextlib import asynccontextmanager  # noqa: E402
+
+_STARTUP_HOOKS: list = []
+_SHUTDOWN_HOOKS: list = []
+
+
+def _on_startup(hook):
+    _STARTUP_HOOKS.append(hook)
+    return hook
+
+
+def _on_shutdown(hook):
+    _SHUTDOWN_HOOKS.append(hook)
+    return hook
+
+
+@asynccontextmanager
+async def _lifespan(_app):
+    for hook in list(_STARTUP_HOOKS):
+        await hook()
+    yield
+    for hook in list(_SHUTDOWN_HOOKS):
+        await hook()
+
+
 app = FastAPI(
     title="CosmicForge Bot MVP",
     docs_url="/docs" if API_DOCS_ENABLED else None,
     redoc_url="/redoc" if API_DOCS_ENABLED else None,
     openapi_url="/openapi.json" if API_DOCS_ENABLED else None,
+    lifespan=_lifespan,
 )
 
 @app.middleware("http")
@@ -485,6 +521,8 @@ app.include_router(family_governance_router)  # /api/v1/admin/governance/* (admi
 from app.api.golive import customer_router as golive_customer_router, router as golive_router  # noqa: E402
 app.include_router(golive_router)  # /api/v1/admin/golive/* (admin emergency token only; Step 6)
 app.include_router(golive_customer_router)  # /api/v1/golive/* (the customer's own token; ownership checked)
+from app.api.market_entry_policy import router as market_entry_policy_router  # noqa: E402
+app.include_router(market_entry_policy_router)  # /api/v1/admin/order-spreading/* (admin emergency token; L-08)
 
 # Register News Intelligence API router (Phase 3)
 from app.api.news_intelligence import router as news_intelligence_router
@@ -521,8 +559,6 @@ SENSITIVE_NAME_MARKERS = (
     "PRIVATE",
     "WEBHOOK",
 )
-from app.api.market_entry_policy import router as market_entry_policy_router  # noqa: E402
-app.include_router(market_entry_policy_router)  # /api/v1/admin/order-spreading/* (admin emergency token; L-08)
 # Explicit extras, masked whatever their name looks like.
 SENSITIVE_KEYS = {
     "BINANCE_API_KEY",
@@ -536,13 +572,13 @@ def _utc_now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
-@app.on_event("startup")
+@_on_startup
 async def _startup_open_runtime_session():
     """Registered first: the runner asks for this id as soon as it starts."""
     _open_runtime_session_once()
 
 
-@app.on_event("startup")
+@_on_startup
 async def _startup_validate_config():
     """Fail-fast config validation at startup."""
     try:
@@ -574,7 +610,7 @@ async def _startup_validate_config():
         raise
 
 
-@app.on_event("startup")
+@_on_startup
 async def _startup_stop_file_watcher():
     """Watch for the operator stop file and shut down gracefully when it lands.
 
@@ -624,7 +660,7 @@ async def _startup_stop_file_watcher():
     _asyncio.create_task(_watch())
 
 
-@app.on_event("startup")
+@_on_startup
 async def _startup_runtime_supervisor():
     """Supervise the trading loop itself, not merely the web server.
 
@@ -640,7 +676,7 @@ async def _startup_runtime_supervisor():
     runtime_supervisor.start()
 
 
-@app.on_event("startup")
+@_on_startup
 async def _startup_run_manager():
     from app.ops import process_role
 
@@ -681,7 +717,7 @@ async def _startup_run_manager():
         asyncio.create_task(multi_asset_alert_loop(_MaDB()))
 
 
-@app.on_event("shutdown")
+@_on_shutdown
 async def _shutdown_run_manager():
     """Fast shutdown - target ~1 second."""
     import signal
@@ -857,7 +893,7 @@ news_ingestion_worker = build_news_ingestion_worker(db=_worker_db)
 real_time_news_worker = build_real_time_news_worker(db=_worker_db)
 
 
-@app.on_event("startup")
+@_on_startup
 async def _startup_notifications():
     from app.ops import process_role
 
@@ -873,7 +909,7 @@ async def _startup_notifications():
     asyncio.create_task(real_time_news_worker.start())
 
 
-@app.on_event("shutdown")
+@_on_shutdown
 async def _shutdown_notifications():
     # Don't wait - just signal workers to stop
     notification_worker.stop()
@@ -936,7 +972,7 @@ async def _await_runtime_ownership(timeout_s: float = 90.0) -> tuple[bool, str]:
     return False, "OWNERSHIP_UNDECIDED_TIMEOUT"
 
 
-@app.on_event("startup")
+@_on_startup
 async def _startup_background_jobs():
     """Register background jobs only in the process that owns the runtime."""
     from app.ops import process_role
@@ -966,7 +1002,7 @@ async def _startup_background_jobs():
     asyncio.create_task(_when_owner())
 
 
-@app.on_event("shutdown")
+@_on_shutdown
 async def _shutdown_cati_simulation():
     task = getattr(app.state, "cati_production_task", None) or getattr(app.state, "cati_simulation_task", None)
     if task:
@@ -1049,7 +1085,7 @@ async def _startup_signal_scheduler():
     )
 
 
-@app.on_event("shutdown")
+@_on_shutdown
 async def _shutdown_signal_scheduler():
     global _signal_scheduler
     if _signal_scheduler:
@@ -1887,7 +1923,7 @@ def runner_status_endpoint():
     return runner_status()
 
 
-@app.on_event("shutdown")
+@_on_shutdown
 async def on_shutdown():
     if runner_service.running:
         runner_service.running = False

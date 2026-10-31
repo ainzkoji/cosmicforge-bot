@@ -24,11 +24,10 @@ cramjam==2.11.0
 cryptography==50.0.2
 cycler==0.12.1
 dnspython==2.9.1
-ecdsa==0.19.2
 email-validator==2.3.0
 et-xmlfile==2.0.0
 eventkit==1.0.3
-fastapi==0.128.0
+fastapi==0.136.3
 fastparquet==2026.3.0
 firebase-admin==7.1.0
 fonttools==4.62.1
@@ -92,7 +91,6 @@ pytest==9.0.3
 pytest-asyncio==1.3.0
 python-dateutil==2.9.0.post0
 python-dotenv==1.2.2
-python-jose==3.5.0
 python-multipart==0.0.31
 pytokens==0.4.1
 pyyaml==6.0.3
@@ -105,7 +103,7 @@ shap==0.51.0
 six==1.17.0
 slicer==0.0.8
 sse-starlette==3.2.0
-starlette==0.50.0
+starlette==1.3.1
 stripe==14.3.0
 ta==0.11.0
 threadpoolctl==3.6.0

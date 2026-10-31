@@ -14,7 +14,7 @@ import secrets
 import time
 import uuid
 
-from jose import jwt, JWTError
+from shared_lib.core.security.jwt_tokens import jwt, JWTError  # PyJWT (F6)
 from passlib.context import CryptContext
 from cryptography.fernet import Fernet
 import base64
@@ -165,8 +165,8 @@ def create_refresh_token(subject: Union[str, Any], expires_delta: timedelta = No
 
 
 import logging
-from jose import jwt, JWTError, ExpiredSignatureError
-from jose.exceptions import JWTClaimsError
+from shared_lib.core.security.jwt_tokens import jwt, JWTError, ExpiredSignatureError
+from shared_lib.core.security.jwt_tokens import JWTClaimsError
 
 logger = logging.getLogger(__name__)
 
