@@ -31,6 +31,8 @@ from app.core.deps import require_current_user
 from shared_lib.core.security.token_state import bump_user_token_version, read_token_version
 from shared_lib.persistence.db import DB, utc_now_iso
 from shared_lib.persistence.session_version_schema import ensure_session_version_schema
+import hashlib
+import hmac
 import logging
 import os
 import sqlite3
@@ -416,15 +418,67 @@ def _deliver_code(email: str, purpose: str, code: str) -> None:
         logger.error("[AUTH] %s email could not be queued: %s", purpose, type(exc).__name__)
 
 
+_ACCOUNT_EXISTS_SUBJECT = "Someone tried to create a CosmicForge account with your email address"
+_ACCOUNT_EXISTS_TEXT = (
+    "Someone, possibly you, just tried to create a new CosmicForge account with this email address. "
+    "You already have an account, so no new account was created and nothing has changed.\n\n"
+    "If it was you: sign in with your existing password, or use 'Forgot password' on the sign-in page "
+    "to set a new one.\n\nIf it was not you, you can ignore this email.")
+
+
+def _deliver_account_exists_notice(email: str) -> None:
+    """Tell the owner of an existing account that someone tried to register their address (L-07).
+
+    The sign-up response is the same as for a new address, so this mail is the only place the answer
+    "you already have an account" is given -- to the mailbox owner only. Fire-and-forget like
+    ``_deliver_code``: never raises, never blocks the request."""
+    if not _smtp_configured():
+        if settings.production:
+            logger.error("[AUTH] SMTP is not configured: an existing-account notice was NOT delivered.")
+        else:
+            logger.info("[AUTH] SMTP not configured (non-production): existing-account notice not sent")
+        return
+    html = "".join(f"<p>{part}</p>" for part in _ACCOUNT_EXISTS_TEXT.split("\n\n"))
+
+    def _send() -> None:
+        try:
+            _export_smtp_settings()
+            from shared_lib.notifications.channels.email import EmailChannel
+            if not EmailChannel.send(email, _ACCOUNT_EXISTS_SUBJECT, html, _ACCOUNT_EXISTS_TEXT):
+                logger.error("[AUTH] existing-account notice could not be sent")
+        except Exception as exc:
+            logger.error("[AUTH] existing-account notice failed: %s", type(exc).__name__)
+
+    try:
+        _run_in_background(_send)
+    except Exception as exc:
+        logger.error("[AUTH] existing-account notice could not be queued: %s", type(exc).__name__)
+
+
+def _decoy_user_id(email: str) -> str:
+    """A stable, meaningless id for the sign-up answer of an address that already has an account.
+
+    Stable, so two sign-ups for the same address return the same id exactly as they do for a new
+    (pending) address; derived with the service secret, so it is not the account's real id and cannot
+    be computed from the address alone."""
+    digest = hmac.new(str(settings.SECRET_KEY).encode("utf-8"), b"register-decoy:" + email.encode("utf-8"),
+                      hashlib.sha256).digest()
+    return str(uuid.UUID(bytes=digest[:16], version=4))
+
+
 # --- Registration ---
 @router.post("/register", response_model=UserResponse)
 def register(user: UserCreate, request: Request):
+    """Sign-up. Non-enumerating (L-07): a new address, an unverified one and one that already has an
+    account all get the same 200 answer, and every path spends the same password-hashing work. Only a
+    new address creates an account; for an existing account its owner is e-mailed instead."""
     email = normalize_email(user.email)
     ip = _client_ip(request)
     hashed = get_password_hash(user.password)
     db = DB()
     with db.connect() as conn:
-        # Every registration emails a code, so it shares the code limits.
+        # Every registration emails something (a code or the existing-account notice), so it shares
+        # the code limits -- for every address alike.
         if not _reserve_code_request(conn, VERIFICATION_CODE_EVENT, email, ip):
             raise HTTPException(status_code=429, detail=TOO_MANY_CODES_DETAIL)
 
@@ -434,19 +488,24 @@ def register(user: UserCreate, request: Request):
 
         uid = str(uuid.uuid4())
         now = utc_now_iso()
-        created_at = now
+
+        if existing and existing["status"] != "pending_verification":
+            # An account (active, or suspended) already holds this address. Nothing is created or
+            # changed; the answer is the one a new address gets. The real id and creation time are
+            # never returned. The pending path below compares a password, so this one does as much
+            # hashing work.
+            dummy_verify_password(user.password)
+            audit_event(conn, "registration_existing_account", user_id=existing["id"], email=email, ip=ip)
+            if existing["status"] == "active":
+                _deliver_account_exists_notice(email)
+            return _registration_answer(_decoy_user_id(email), email, now)
 
         if existing:
-            if existing["status"] != "pending_verification":
-                # Active/Verified (or suspended/deleted) user
-                raise HTTPException(status_code=400, detail="Registration failed")
-
             # Unverified account: a repeat sign-up only re-sends the code. It
             # never replaces the stored credentials -- anyone can submit a
             # sign-up for someone else's address, and whichever password is
             # stored becomes live the moment the real owner enters the code.
             uid = existing["id"]
-            created_at = existing["created_at"]
             if not verify_password(user.password, existing["hashed_password"]):
                 # Two sign-ups disagree on the password and neither has proven
                 # ownership of the mailbox: trust neither. The owner verifies
@@ -458,6 +517,8 @@ def register(user: UserCreate, request: Request):
                     )
                 audit_event(conn, "registration_conflict", user_id=uid, email=email, ip=ip)
         else:
+            # Same hashing work as the password comparison of the pending path.
+            dummy_verify_password(user.password)
             # Create new user
             conn.execute("""
                 INSERT INTO users (id, email, hashed_password, status, role, is_verified, created_at, updated_at,
@@ -506,14 +567,20 @@ def register(user: UserCreate, request: Request):
         audit_event(conn, "verification_sent", user_id=uid, email=email, ip=ip)
         _deliver_code(email, "verification", otp)
 
-        return {
-            "id": uid, 
-            "email": email, 
-            "status": "pending_verification",
-            "role": "user",
-            "is_verified": False, 
-            "created_at": created_at
-        }
+        return _registration_answer(uid, email, now)
+
+
+def _registration_answer(uid: str, email: str, created_at: str) -> dict:
+    """The one sign-up answer. ``created_at`` is always the time of this request, never the stored creation
+    time of an earlier sign-up, which would reveal that the address was already known."""
+    return {
+        "id": uid,
+        "email": email,
+        "status": "pending_verification",
+        "role": "user",
+        "is_verified": False,
+        "created_at": created_at,
+    }
 
 
 # --- Email Verification ---
@@ -524,11 +591,11 @@ def verify_email(req: VerifyEmailRequest):
     with db.connect() as conn:
         user = conn.execute("SELECT id, status, hashed_password FROM users WHERE email = ?", (email,)).fetchone()
 
-        if user and user["status"] == "active":
-            return {"message": "Email already verified"}
-
         # Only an account that is waiting for verification can be activated
-        # here (never a suspended or deleted one).
+        # here (never a suspended or deleted one). An address that is already
+        # verified gets the same generic answer as an unknown address or a
+        # wrong code (L-07): it used to answer "Email already verified" to
+        # anyone, without a code, which told them the address had an account.
         pending_id = user["id"] if user and user["status"] == "pending_verification" else None
         verification = _consume_code_attempt(conn, "email_verifications", pending_id, MAX_VERIFY_ATTEMPTS)
 

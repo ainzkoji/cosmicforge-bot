@@ -3,9 +3,14 @@ import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { useAuth } from "@/auth/AuthContext";
 import { Mail, Lock, CheckCircle, ArrowRight, ShieldCheck } from "lucide-react";
 
-import { api, type RegisterRequest } from "@/api/client";
+import { type RegisterRequest } from "@/api/client";
 import { getCurrentDocuments } from "@/api/legal";
 import { acceptancePayload, allAccepted, categoryLabel, isDraft, type LegalDocument } from "@/utils/legalDocuments";
+
+/** Shown after every sign-up: it must not say whether the address already had an account (L-07). */
+const SIGNUP_SENT_MESSAGE =
+    "Check your email. If this address is new, we've sent a verification code. " +
+    "If it already has an account, we've sent sign-in instructions instead.";
 
 const LEGAL_ROUTES: Record<string, string> = {
     TERMS_OF_SERVICE: "/terms",
@@ -84,34 +89,14 @@ export default function Register() {
                 legal_acceptances: acceptancePayload(accepted),
             };
             await register(request);
-            // On success, backend usually returns user or token.
-            // AuthContext.register typically auto-logs in or just returns.
-            // Assuming we need to verify email next:
-            navigate("/verify-email", { state: { email: formData.email } });
+            // The sign-up answer is the same whether or not the address already
+            // has an account (L-07): a new or unverified address is mailed a
+            // code, the owner of an existing account is mailed a notice instead.
+            // So the next screen says both, and never which one applies.
+            navigate("/verify-email", { state: { email: formData.email, message: SIGNUP_SENT_MESSAGE } });
         } catch (err: any) {
             console.error("Registration error:", err);
-            const errorMessage = err.message || "Registration failed. Please try again.";
-
-            // Check if error is due to existing user
-            if (errorMessage.toLowerCase().includes("already registered") || errorMessage.toLowerCase().includes("exists")) {
-                try {
-                    // Try to resend verification email
-                    await api.resendVerification(formData.email);
-                    navigate("/verify-email", {
-                        state: {
-                            email: formData.email,
-                            message: "Account exists but is unverified. A new verification code has been sent."
-                        }
-                    });
-                    return;
-                } catch (resendErr) {
-                    // If resend fails, likely user is already verified or other issue, show original error
-                    console.error("Resend failed:", resendErr);
-                    setError(errorMessage);
-                }
-            } else {
-                setError(errorMessage);
-            }
+            setError(err.message || "Registration failed. Please try again.");
         } finally {
             setIsLoading(false);
         }

@@ -50,8 +50,9 @@ OTHER_PASSWORD = "a completely different one"
 ADMIN_EMAIL = "ops@example.com"
 ADMIN_PASSWORD = "admin pass phrase for tests"
 
-# The real implementation, kept before the fixture replaces it with a recorder.
+# The real implementations, kept before the fixture replaces them with recorders.
 _REAL_DELIVER_CODE = auth._deliver_code
+_REAL_ACCOUNT_NOTICE = auth._deliver_account_exists_notice
 
 
 @pytest.fixture
@@ -77,11 +78,14 @@ def ctx(tmp_path, monkeypatch):
     monkeypatch.setattr(auth, "generate_otp", lambda: next(issued))
     sent: list[tuple[str, str, str]] = []
     monkeypatch.setattr(auth, "_deliver_code", lambda email, purpose, code: sent.append((email, purpose, code)))
+    # L-07: the notice a sign-up for an existing account mails to its owner.
+    notices: list[str] = []
+    monkeypatch.setattr(auth, "_deliver_account_exists_notice", lambda email: notices.append(email))
 
     app = FastAPI()
     app.include_router(auth.router, prefix=AUTH)
     app.include_router(admin_auth.router, prefix=ADMIN_AUTH)
-    return SimpleNamespace(client=TestClient(app), db=db, sent=sent)
+    return SimpleNamespace(client=TestClient(app), db=db, sent=sent, notices=notices)
 
 
 # --------------------------------------------------------------------------- helpers
@@ -500,13 +504,133 @@ def test_reregistering_with_another_password_cannot_take_over_the_account(ctx):
     assert _login(ctx, password="the owner's new password").status_code == 200
 
 
-def test_registering_an_active_address_is_refused(ctx):
+def _comparable(response) -> tuple:
+    """Status, headers that matter and body of a sign-up answer, minus what differs per address anyway."""
+    body = dict(response.json())
+    body.pop("email")
+    uid = body.pop("id")
+    created = datetime.fromisoformat(body.pop("created_at").replace("Z", "+00:00"))
+    assert abs((datetime.now(timezone.utc) - created).total_seconds()) < 60  # always "now"
+    assert len(uid) == 36
+    return response.status_code, response.headers.get("content-type"), tuple(sorted(body.items()))
+
+
+def test_registering_an_existing_address_answers_exactly_like_a_new_one(ctx, monkeypatch):
+    """L-07: the sign-up answer does not reveal whether the address has an account."""
+    notices = ctx.notices
     _activate(ctx)
+    real_id = _rows(ctx, "SELECT id FROM users WHERE email = ?", (EMAIL,))[0]["id"]
+    codes_before = len(ctx.sent)
 
-    response = _register(ctx, password=OTHER_PASSWORD)
+    existing = _register(ctx, password=OTHER_PASSWORD)
+    new = _register(ctx, email="newcomer@example.com", password=OTHER_PASSWORD)
 
-    assert response.status_code == 400
+    assert existing.status_code == new.status_code == 200
+    assert _comparable(existing) == _comparable(new)
+    assert existing.json()["id"] != real_id  # the real account id is never handed out
+    # No second account, nothing about the existing one changed, and its owner is told instead.
+    assert len(_rows(ctx, "SELECT id FROM users WHERE email = ?", (EMAIL,))) == 1
     assert _login(ctx).status_code == 200
+    assert _login(ctx, password=OTHER_PASSWORD).status_code == 400
+    assert notices == [EMAIL]
+    # The only code mailed was the newcomer's; the existing owner got no code to activate anything.
+    assert [s[0] for s in ctx.sent[codes_before:]] == ["newcomer@example.com"]
+    audit = _rows(ctx, "SELECT user_id FROM auth_audit_log WHERE event_type = 'registration_existing_account'")
+    assert [a["user_id"] for a in audit] == [real_id]
+
+
+def test_repeated_signups_for_an_existing_address_return_one_stable_id(ctx, monkeypatch):
+    """A new address answers the same id twice (the second sign-up re-sends its code); so must an existing one."""
+    _activate(ctx)
+    first, second = _register(ctx), _register(ctx)
+    new_first, new_second = _register(ctx, email="newcomer@example.com"), _register(ctx, email="newcomer@example.com")
+
+    assert first.json()["id"] == second.json()["id"]
+    assert new_first.json()["id"] == new_second.json()["id"]
+
+
+def test_a_suspended_address_answers_like_a_new_one_and_is_not_mailed(ctx, monkeypatch):
+    notices = ctx.notices
+    _activate(ctx)
+    _execute(ctx, "UPDATE users SET status = 'suspended' WHERE email = ?", (EMAIL,))
+
+    existing = _register(ctx, password=OTHER_PASSWORD)
+    new = _register(ctx, email="newcomer@example.com")
+
+    assert _comparable(existing) == _comparable(new)
+    assert notices == []
+    assert _rows(ctx, "SELECT status FROM users WHERE email = ?", (EMAIL,))[0]["status"] == "suspended"
+
+
+def test_signup_limits_are_the_same_for_existing_and_new_addresses(ctx, monkeypatch):
+    notices = ctx.notices
+    _activate(ctx)  # spends one code of EMAIL's window
+    _execute(ctx, "DELETE FROM auth_audit_log")  # start both addresses from an empty window
+
+    for email in (EMAIL, "newcomer@example.com"):
+        statuses = [_register(ctx, email=email).status_code for _ in range(auth.MAX_CODES_PER_EMAIL + 1)]
+        assert statuses == [200] * auth.MAX_CODES_PER_EMAIL + [429], email
+    # The existing owner cannot be mail-bombed through the sign-up form either.
+    assert notices == [EMAIL] * auth.MAX_CODES_PER_EMAIL
+
+
+def test_every_signup_path_spends_the_same_password_hashing_work(ctx, monkeypatch):
+    """Timing: one hash and one comparison whether the address is new, unverified or already an account."""
+    _activate(ctx)
+    assert _register(ctx, email="pending@example.com").status_code == 200
+    security.dummy_verify_password("prime the dummy hash")
+
+    real = security.pwd_context
+    calls: list = []
+
+    class Counting:
+        def hash(self, *args, **kwargs):
+            calls.append("hash")
+            return real.hash(*args, **kwargs)
+
+        def verify(self, *args, **kwargs):
+            calls.append("verify")
+            return real.verify(*args, **kwargs)
+
+    monkeypatch.setattr(security, "pwd_context", Counting())
+    work = {}
+    for label, email in (("existing", EMAIL), ("pending", "pending@example.com"), ("new", "fresh@example.com")):
+        calls.clear()
+        assert _register(ctx, email=email, password=PASSWORD).status_code == 200
+        work[label] = sorted(calls)
+    assert work["existing"] == work["pending"] == work["new"] == ["hash", "verify"]
+
+
+def test_verify_email_for_a_verified_address_gives_the_generic_answer(ctx):
+    """It used to say "Email already verified" to anyone, without a code."""
+    _activate(ctx)
+    code = ctx.sent[-1][2]
+
+    verified = _verify(ctx, code)
+    unknown = _verify(ctx, code, email="nobody@example.com")
+    wrong = _verify(ctx, _wrong(code))
+
+    assert verified.status_code == unknown.status_code == wrong.status_code == 400
+    assert verified.json() == unknown.json() == wrong.json() == {"detail": auth.CODE_FAILED_DETAIL}
+    assert _login(ctx).status_code == 200  # the account itself is untouched
+
+
+def test_account_exists_notice_is_mailed_in_the_background_and_never_raises(monkeypatch, caplog):
+    calls = _capture_email(monkeypatch)
+    queued: list = []
+    monkeypatch.setattr(auth, "_run_in_background", lambda fn: queued.append(fn))
+
+    _REAL_ACCOUNT_NOTICE(EMAIL)
+    assert calls == [] and len(queued) == 1  # nothing is sent on the request path
+    queued[0]()
+    assert [c.recipient for c in calls] == [EMAIL]
+    assert "already have an account" in calls[0].text and "Forgot password" in calls[0].text
+
+    calls_failing = _capture_email(monkeypatch, result=RuntimeError("smtp down"))
+    monkeypatch.setattr(auth, "_run_in_background", lambda fn: fn())
+    caplog.set_level(logging.ERROR)
+    _REAL_ACCOUNT_NOTICE(EMAIL)  # a delivery failure is logged, never raised
+    assert len(calls_failing) == 1 and "notice failed" in caplog.text
 
 
 def test_verification_cannot_reactivate_a_suspended_account(ctx):
