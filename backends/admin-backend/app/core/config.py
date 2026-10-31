@@ -91,6 +91,8 @@ class Settings(ProductionSettings):
     DATABASE_URL: str = "sqlite:///../shared/shared_lib/persistence/cosmicforge.db"
     SECRET_KEY: str = "changeme_in_production_secret_key"
     ALGORITHM: str = "HS256"
+    # Admin TOTP is mandatory in production whatever this says (Section J); elsewhere it decides, off when unset.
+    ADMIN_MFA_REQUIRED: bool | None = None
     ADMIN_CORS_ORIGINS: str = (
         "http://localhost:4173,http://127.0.0.1:4173,"
         "http://localhost:5173,http://127.0.0.1:5173"

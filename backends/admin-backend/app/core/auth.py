@@ -66,7 +66,27 @@ def get_active_admin_from_token(token: str, db: AdminDB) -> dict[str, Any]:
             detail={"code": "TOKEN_REVOKED", "message": "Session ended. Sign in again."},
             headers={"WWW-Authenticate": "Bearer"},
         )
+    # Section J: the user backend's admin MFA policy, applied here too. A session of an admin who has not
+    # enrolled (e.g. one opened before the policy was on) is refused, as by the user backend's admin routes.
+    if admin_mfa_required() and not (admin.get("mfa_enabled") and admin.get("mfa_secret")):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={"code": "MFA_ENROLLMENT_REQUIRED", "message": "Admin MFA enrolment is required"},
+        )
     return admin
+
+
+def admin_mfa_required() -> bool:
+    """Always in production (an explicit ``ADMIN_MFA_REQUIRED=false`` is ignored there); elsewhere the setting,
+    off when unset."""
+    explicit = getattr(settings, "ADMIN_MFA_REQUIRED", None)
+    if bool(getattr(settings, "production", True)):
+        if explicit is False or str(explicit).strip().lower() in ("false", "0", "no", "off"):
+            logger.warning("ADMIN_MFA_REQUIRED=false is ignored in production; admin MFA stays mandatory")
+        return True
+    if explicit is None or explicit == "":
+        return False
+    return explicit is True or str(explicit).strip().lower() in ("true", "1", "yes", "on")
 
 
 def sanitize_admin_identity(admin: dict[str, Any]) -> dict[str, Any]:

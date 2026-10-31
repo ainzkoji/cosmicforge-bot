@@ -106,3 +106,41 @@ def test_a_database_without_the_new_columns_reads_as_version_zero(tmp_path):
     assert get_active_admin_from_token(_token(), db)["id"] == ADMIN
     assert _refused(_token(tv=1), db) == 401
     assert _refused(_token(tv=0, sid="s1"), db) == 401  # a chain the database cannot have issued: fail closed
+
+
+# ── Section J: the admin MFA policy applies here too ────────────────────────────────────────────────────────
+
+def _mfa_columns(db: AdminDB, *, enrolled: bool) -> None:
+    _execute(db, "ALTER TABLE admins ADD COLUMN mfa_enabled INTEGER DEFAULT 0")
+    _execute(db, "ALTER TABLE admins ADD COLUMN mfa_secret TEXT")
+    if enrolled:
+        _execute(db, "UPDATE admins SET mfa_enabled = 1, mfa_secret = 'encrypted' WHERE id = ?", (ADMIN,))
+
+
+def test_production_refuses_an_admin_who_has_not_enrolled_mfa(tmp_path, monkeypatch):
+    db = _db(tmp_path)
+    _mfa_columns(db, enrolled=False)
+    monkeypatch.setattr(settings, "APP_ENV", "PRODUCTION")
+    for explicit in (None, False):                           # production cannot switch the policy off
+        monkeypatch.setattr(settings, "ADMIN_MFA_REQUIRED", explicit)
+        with pytest.raises(HTTPException) as caught:
+            get_active_admin_from_token(_token(tv=0), db)
+        assert caught.value.status_code == 403 and caught.value.detail["code"] == "MFA_ENROLLMENT_REQUIRED"
+
+
+def test_an_enrolled_admin_is_accepted_in_production(tmp_path, monkeypatch):
+    db = _db(tmp_path)
+    _mfa_columns(db, enrolled=True)
+    monkeypatch.setattr(settings, "APP_ENV", "PRODUCTION")
+    assert get_active_admin_from_token(_token(tv=0), db)["id"] == ADMIN
+
+
+def test_outside_production_the_setting_decides(tmp_path, monkeypatch):
+    db = _db(tmp_path)
+    _mfa_columns(db, enrolled=False)
+    monkeypatch.setattr(settings, "APP_ENV", "TEST")
+    monkeypatch.setattr(settings, "ADMIN_MFA_REQUIRED", None)
+    assert get_active_admin_from_token(_token(tv=0), db)["id"] == ADMIN
+    monkeypatch.setattr(settings, "ADMIN_MFA_REQUIRED", True)
+    with pytest.raises(HTTPException):
+        get_active_admin_from_token(_token(tv=0), db)

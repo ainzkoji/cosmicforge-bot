@@ -359,8 +359,13 @@ def test_admin_mfa_required_defaults_to_the_production_profile(monkeypatch):
     assert sc.admin_mfa_required() is False
     monkeypatch.setattr(settings, "APP_ENV", "PRODUCTION")
     assert sc.admin_mfa_required() is True
+    # Section J: production cannot switch admin MFA off; outside production the explicit setting decides.
     monkeypatch.setattr(settings, "ADMIN_MFA_REQUIRED", False)
-    assert sc.admin_mfa_required() is False  # explicit setting wins
+    assert sc.admin_mfa_required() is True
+    monkeypatch.setattr(settings, "APP_ENV", "TEST")
+    assert sc.admin_mfa_required() is False
+    monkeypatch.setattr(settings, "ADMIN_MFA_REQUIRED", True)
+    assert sc.admin_mfa_required() is True
 
 
 def test_disabling_mfa_needs_a_current_totp_code_and_is_audited(ctx):

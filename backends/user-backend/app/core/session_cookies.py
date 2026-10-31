@@ -67,10 +67,15 @@ def bearer_compat() -> bool:
 
 
 def admin_mfa_required() -> bool:
+    """Whether admin TOTP is mandatory. Always in production: an explicit ``ADMIN_MFA_REQUIRED=false`` there is
+    ignored with a warning (like ``AUTH_COOKIE_SECURE``), so a configuration change cannot switch it off. The
+    break-glass path for a lost authenticator is ``scripts/security_maintenance.py reset-admin-mfa``."""
     explicit = getattr(settings, "ADMIN_MFA_REQUIRED", None)
-    if explicit is None:
-        return _production()
-    return bool(explicit)
+    if _production():
+        if explicit is False:
+            logger.warning("[AUTH] ADMIN_MFA_REQUIRED=false is ignored in production; admin MFA stays mandatory")
+        return True
+    return bool(explicit) if explicit is not None else False
 
 
 def cookie_secure() -> bool:
