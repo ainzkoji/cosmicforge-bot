@@ -145,6 +145,11 @@ class DB:
                     path = _rel
                 logging.getLogger(__name__).info(f"[DB INIT] Resolved DATABASE_URL: {path}")
             else:
+                if os.environ.get("APP_ENV", "").strip().upper() == "PRODUCTION":
+                    # Section K4: a production process names its database. Falling back to a file nobody chose
+                    # would run the platform on an empty or stale database.
+                    raise RuntimeError("DATABASE_URL_REQUIRED_IN_PRODUCTION: DATABASE_URL is missing or is not a "
+                                       "sqlite:/// or postgresql:// URL; refusing the legacy data/bot.db fallback")
                 # Priority 2: legacy fallback — 4-level root traversal
                 base_dir = os.path.dirname(os.path.abspath(__file__))
                 root_dir = os.path.abspath(os.path.join(base_dir, "../../../../"))

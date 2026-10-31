@@ -936,3 +936,18 @@ def test_the_schema_applies_on_a_fully_migrated_database_and_again(tmp_path):
         names = {r[1] for r in first if r[0] == "table"}
     assert set(OWN_TABLES) <= names and "venue_instruments" in names and "broker_credentials" in names
     assert {s.status for s in CF.certification_matrix(database, NOW).values()} == {CF.NOT_CERTIFIED}
+
+
+def test_no_certified_event_can_claim_more_than_ninety_days(db):
+    """Section K4 (CERTIFICATION_MAX_AGE_DAYS): the register refuses a CERTIFIED event whose validity exceeds
+    90 days after the run completed, or that names no completion or expiry; nothing is appended."""
+    register = CF.CertificationRegister(db)
+    common = dict(venue=C.BINANCE, environment=C.DEMO, event_type=CF.CERTIFIED, operator_ref="ops", recorded_at=1,
+                  status=CF.CERTIFIED, run_id="run-x")
+    with db.connect() as conn:
+        before = conn.execute(f"SELECT COUNT(*) FROM {S.CERT_EVENT_TABLE}").fetchone()[0]
+    for completed, expires in ((1_000, 1_000 + 91 * DAY), (1_000, None), (None, 1_000 + DAY)):
+        with pytest.raises(CF.CertificationRefused, match="CERTIFICATION_VALIDITY_EXCEEDED"):
+            register._append(completed_at=completed, expires_at=expires, **common)
+    with db.connect() as conn:
+        assert conn.execute(f"SELECT COUNT(*) FROM {S.CERT_EVENT_TABLE}").fetchone()[0] == before

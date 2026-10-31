@@ -278,6 +278,10 @@ class CertificationRegister:
             raise CertificationRefused("OPERATOR_REQUIRED")
         if status == CERTIFIED and environment == C.LIVE:
             raise CertificationRefused("LIVE_CERTIFICATION_NOT_PERMITTED_IN_THIS_BUILD")
+        if status == CERTIFIED and (completed_at is None or expires_at is None
+                                    or int(expires_at) > int(completed_at) + CERTIFICATION_VALIDITY_MS):
+            # Section K4: evidence is valid for CERTIFICATION_VALIDITY_DAYS after the run completed, never longer.
+            raise CertificationRefused("CERTIFICATION_VALIDITY_EXCEEDED")
         values: Dict[str, Any] = dict(
             venue=venue, environment=environment, event_type=event_type, status=status, run_id=run_id,
             adapter_version=adapter_version, contract_version=contract_version, operator_ref=str(operator_ref),
@@ -480,7 +484,9 @@ class CertificationRegister:
             expired = "CONTRACT_VERSION_CHANGED"
         elif adapter_version is not None and adapter_version != decisive["adapter_version"]:
             expired = "ADAPTER_VERSION_MISMATCH"
-        elif int(now_ms) >= int(decisive["expires_at"]):
+        elif decisive["expires_at"] is None or int(now_ms) >= min(
+                int(decisive["expires_at"]), int(decisive["completed_at"]) + CERTIFICATION_VALIDITY_MS):
+            # The stored expiry is never trusted beyond the validity period of the run's completion.
             expired = f"CERTIFICATION_OLDER_THAN_{CERTIFICATION_VALIDITY_DAYS}_DAYS"
         if expired is not None:
             return CertificationStatus(venue, environment, EXPIRED, expired, **common)

@@ -55,6 +55,8 @@ EMERGENCY_TTL_MS = 180_000
 PLATFORM_DATABASE_REQUIRED = "ASSIGNED_MODE_REQUIRES_PLATFORM_DATABASE"
 PLATFORM_DATABASE_UNAVAILABLE = "PLATFORM_DATABASE_UNAVAILABLE"
 MODE_INVALID = "BROKER_CYCLE_ASSIGNMENT_MODE_INVALID"
+FENCE_MARGIN_INVALID = "BROKER_ASSIGNMENT_FENCE_MARGIN_MUST_BE_BELOW_TTL"
+POOL_SIZE_INVALID = "PLATFORM_DB_POOL_SIZE_INVALID"
 RECOVERY_COMPLETE = "COMPLETE"
 
 
@@ -355,9 +357,20 @@ def configure(*, env: Optional[Mapping[str, str]] = None, settings_obj: Any = No
         return install(BrokerCycleAssignments.refusing(ASSIGNED, PLATFORM_DATABASE_REQUIRED))
     ttl = int(getattr(settings_obj, "BROKER_ASSIGNMENT_TTL_MS", DEFAULT_TTL_MS) or DEFAULT_TTL_MS)
     margin = int(getattr(settings_obj, "BROKER_ASSIGNMENT_FENCE_MARGIN_MS", DEFAULT_MARGIN_MS) or DEFAULT_MARGIN_MS)
+    if not 0 <= margin < ttl:
+        logger.error("[BROKER_ASSIGNMENT] fence margin %d ms is not below the %d ms assignment TTL: no account work",
+                     margin, ttl)
+        return install(BrokerCycleAssignments.refusing(mode, FENCE_MARGIN_INVALID))
+    try:
+        pool_size = int(env.get("PLATFORM_DB_POOL_SIZE", 4))
+        if not 1 <= pool_size <= 64:
+            raise ValueError(pool_size)
+    except (TypeError, ValueError):
+        logger.error("[BROKER_ASSIGNMENT] PLATFORM_DB_POOL_SIZE must be an integer from 1 to 64: no account work")
+        return install(BrokerCycleAssignments.refusing(mode, POOL_SIZE_INVALID))
     try:
         from shared_lib.persistence.sql import Database
-        layer = BrokerCycleAssignments(Database(url, pool_size=int(env.get("PLATFORM_DB_POOL_SIZE", 4))), mode=mode,
+        layer = BrokerCycleAssignments(Database(url, pool_size=pool_size), mode=mode,
                                        ttl_ms=ttl, margin_ms=margin, build_version=build_version)
     except Exception as exc:  # noqa: BLE001 -- configured but unusable: the assignment table cannot decide
         logger.error("[BROKER_ASSIGNMENT] platform database unusable (%s): no account work", type(exc).__name__)

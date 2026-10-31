@@ -62,3 +62,15 @@ def test_production_refuses_a_weak_broker_credential_key(monkeypatch):
     monkeypatch.setenv("APP_ENV", "TEST")
     monkeypatch.setenv("BROKER_SECRET_KEY", "short")             # development keeps working
     assert bs.decrypt_credentials(bs.encrypt_credentials({"api_key": "k"}))["api_key"] == "k"
+
+
+def test_production_never_falls_back_to_an_unnamed_database(monkeypatch):
+    """Section K4: without a usable DATABASE_URL a production process refuses to open data/bot.db."""
+    import pytest
+    from shared_lib.persistence import db as dbmod
+    monkeypatch.setattr("dotenv.load_dotenv", lambda *a, **k: False)
+    monkeypatch.setenv("APP_ENV", "PRODUCTION")
+    for value in ("", "mysql://somewhere/db", "bot.db"):
+        monkeypatch.setenv("DATABASE_URL", value)
+        with pytest.raises(RuntimeError, match="DATABASE_URL_REQUIRED_IN_PRODUCTION"):
+            dbmod.DB()

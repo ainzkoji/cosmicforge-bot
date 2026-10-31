@@ -48,8 +48,9 @@ CONDITION_IDS = (
     "LIVE_BETA_ENROLLMENT_CURRENT",
 )
 #: This build refuses LIVE venue certification (certification.py: LIVE_CERTIFICATION_NOT_PERMITTED_IN_THIS_BUILD)
-#: and caps families at M6. Changing that is a separate, reviewed release -- never a setting.
-BUILD_PERMITS_LIVE = False
+#: and caps families at M6. Changing that is a separate, reviewed release -- never a setting. One source for the
+#: gate and the production profile (which refuses LIVE_ORDER_SUBMISSION_ENABLED=true while it is False).
+from shared_lib.core.production import BUILD_PERMITS_LIVE  # noqa: E402
 VALID_RISK_LEVELS = ("conservative", "balanced", "aggressive")
 
 

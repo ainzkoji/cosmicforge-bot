@@ -11,6 +11,10 @@ from pydantic import model_validator
 from pydantic_settings import BaseSettings
 
 FROZEN_STRATEGY = "RESIDUAL_MOMENTUM_PORTFOLIO_TOP1"
+#: Whether this build may trade real money. A reviewed code constant, never a setting: the go-live gate
+#: (``app.golive.gate``) reads it, and the production profile refuses LIVE_ORDER_SUBMISSION_ENABLED=true while
+#: it is False. Changing it is a separate, reviewed release.
+BUILD_PERMITS_LIVE = False
 ACTIVE_FLAGS = (
     "BROKER_DISCOVERY_ENABLED", "BALANCE_SYNC_ENABLED", "POSITION_SYNC_ENABLED",
     "ORDER_SYNC_ENABLED", "RECONCILIATION_ENABLED", "RISK_ENGINE_ENABLED",
@@ -72,6 +76,10 @@ class ProductionSettings(BaseSettings):
                 errors.append(f"{key} must be false in production")
         if getattr(self, "ADAPTIVE_DAILY_RISK_ENABLED", True) is not True:
             errors.append("ADAPTIVE_DAILY_RISK_ENABLED must remain true")
+        if self.LIVE_ORDER_SUBMISSION_ENABLED and not BUILD_PERMITS_LIVE:
+            # Section K4: an unsupported, unsafe combination is refused at startup, not only at the order gates.
+            errors.append("LIVE_ORDER_SUBMISSION_ENABLED must be false: this build does not permit live trading "
+                          "(BUILD_PERMITS_LIVE=False)")
         if errors:
             raise ValueError("PRODUCTION_PROFILE_CONFLICT: " + "; ".join(errors))
         return self

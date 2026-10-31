@@ -105,9 +105,10 @@ class Settings(ProductionSettings):
     BROKER_CYCLE_ASSIGNMENT_MODE: str = "owner"
     #: How long an account assignment lives unless renewed (database clock). A
     #: killed worker's accounts are taken over within this plus one cycle.
-    BROKER_ASSIGNMENT_TTL_MS: int = 60_000
-    #: Lease that must remain after every fence check before a venue mutation.
-    BROKER_ASSIGNMENT_FENCE_MARGIN_MS: int = 15_000
+    BROKER_ASSIGNMENT_TTL_MS: int = Field(default=60_000, gt=0)
+    #: Lease that must remain after every fence check before a venue mutation (below the TTL; checked when the
+    #: assignment layer is built, BROKER_ASSIGNMENT_FENCE_MARGIN_MUST_BE_BELOW_TTL).
+    BROKER_ASSIGNMENT_FENCE_MARGIN_MS: int = Field(default=15_000, ge=0)
 
     # Trading Configuration
     EXECUTION_MODE: str = "live"
@@ -148,6 +149,8 @@ class Settings(ProductionSettings):
     DAILY_MAX_LOSS_USDT: float = 50.0
     MIN_NOTIONAL_USDT: float = 5.0
     DEFAULT_INTERVAL: str = "15m"
+    #: Not read by any runtime path (Section K4). The engine's cadence is each family's decision schedule (DAILY_TREND:
+    #: the daily close, ``due_key``), and maintenance runs on its own ticks. Kept so an existing .env still loads.
     SIGNAL_INTERVAL: str = "15m"
     HIGHER_TIMEFRAME_INTERVAL: str = "1h"
     EXECUTION_MONITOR_INTERVAL: str = "1m"

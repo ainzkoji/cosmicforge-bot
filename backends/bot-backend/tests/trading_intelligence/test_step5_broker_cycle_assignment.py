@@ -796,3 +796,32 @@ def test_the_job_runner_runs_after_the_cycle_with_this_workers_fences(rig, monke
     assert account_fence.fence_for(rig.account) is None     # not this process's installed layer
     a.drain()
     assert a._job_runner[1].stopping                        # drain stops the job runner
+
+
+def test_invalid_lease_settings_refuse_with_their_own_reason(monkeypatch, tmp_path):
+    """Section K4 (WORKER_LEASE_SECONDS): the assignment TTL must be positive and the fence margin below it; the
+    pool size is an integer from 1 to 64. A bad value is refused with its own code, never reported as a database
+    failure and never replaced silently."""
+    from types import SimpleNamespace
+    from pydantic import ValidationError
+    from app.core.config import Settings
+    monkeypatch.delenv("PROCESS_ROLE", raising=False)
+    url = f"sqlite:///{(tmp_path / 'p.db').as_posix()}"
+    try:
+        for ttl, margin in ((60_000, 60_000), (10_000, 20_000)):
+            settings = SimpleNamespace(BROKER_CYCLE_ASSIGNMENT_MODE="owner", BROKER_ASSIGNMENT_TTL_MS=ttl,
+                                       BROKER_ASSIGNMENT_FENCE_MARGIN_MS=margin)
+            layer = broker_assignment.configure(env={"PLATFORM_DATABASE_URL": url}, settings_obj=settings)
+            assert layer.refused == broker_assignment.FENCE_MARGIN_INVALID and not layer.enforced
+        settings = SimpleNamespace(BROKER_CYCLE_ASSIGNMENT_MODE="owner", BROKER_ASSIGNMENT_TTL_MS=60_000,
+                                   BROKER_ASSIGNMENT_FENCE_MARGIN_MS=15_000)
+        for pool in ("four", "0", "500"):
+            layer = broker_assignment.configure(env={"PLATFORM_DATABASE_URL": url, "PLATFORM_DB_POOL_SIZE": pool},
+                                                settings_obj=settings)
+            assert layer.refused == broker_assignment.POOL_SIZE_INVALID
+    finally:
+        broker_assignment.install(None)
+    for bad in ({"BROKER_ASSIGNMENT_TTL_MS": 0}, {"BROKER_ASSIGNMENT_TTL_MS": -5},
+                {"BROKER_ASSIGNMENT_FENCE_MARGIN_MS": -1}):
+        with pytest.raises(ValidationError):
+            Settings(_env_file=None, APP_ENV="TEST", **bad)

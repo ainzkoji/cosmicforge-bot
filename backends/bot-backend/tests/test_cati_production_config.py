@@ -44,7 +44,17 @@ def test_submission_permission_independent_of_live_mode():
     assert s.production and s.EXECUTION_MODE == "live"
     assert s.LIVE_ORDER_SUBMISSION_ENABLED is False
     assert s.validate_safety()[0]
-    assert production(LIVE_ORDER_SUBMISSION_ENABLED=True).CATI_MODE == "LIVE"
+    # Section K4: this build does not permit live trading, so the live submission flag is refused at startup.
+    with pytest.raises(ValidationError, match="LIVE_ORDER_SUBMISSION_ENABLED must be false"):
+        production(LIVE_ORDER_SUBMISSION_ENABLED=True)
+
+
+def test_the_gate_and_the_profile_read_one_build_constant(monkeypatch):
+    from app.golive import gate
+    from shared_lib.core import production as P
+    assert gate.BUILD_PERMITS_LIVE is P.BUILD_PERMITS_LIVE is False
+    monkeypatch.setattr(P, "BUILD_PERMITS_LIVE", True)               # a different, reviewed build
+    assert production(LIVE_ORDER_SUBMISSION_ENABLED=True).LIVE_ORDER_SUBMISSION_ENABLED is True
 
 
 @pytest.mark.parametrize("broker,path", [
