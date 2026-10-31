@@ -41,8 +41,8 @@ from typing import Any, Callable, Dict, List, Mapping, Optional, Sequence, Tuple
 
 from shared_lib.operations.alerting import (  # noqa: F401  (re-exported API)
     ACKNOWLEDGED, CATEGORIES, CRITICAL, DEFAULT_DEDUP_WINDOW_MS, ESCALATION_MINUTES, HIGH, LOW, MEDIUM, OPEN, RESOLVED,
-    SEVERITIES, AlertEngine, AlertError, AlertMessage, AlertSink, CallableSink, CategoryPolicy, RaiseResult,
-    fingerprint, pseudonym)
+    SEVERITIES, AlertEngine, AlertError, AlertMessage, AlertSink, CallableSink, CategoryPolicy, DeliveryReceipt,
+    ProviderRejected, RaiseResult, fingerprint, pseudonym)
 from shared_lib.operations.oncall import OPERATIONS_OWNER_REQUIRED, ROTATIONS, OncallDirectory  # noqa: F401
 from shared_lib.operations.tick_lease import TICK_ERROR, TICK_OK, TickLease
 from shared_lib.persistence.sql import Database
@@ -80,15 +80,18 @@ class NotifyChannelsSink:
     def configured(self) -> bool:
         return bool(self._module.configured_channels(self._config))
 
-    def send_text(self, subject: str, text: str) -> None:
+    def send_text(self, subject: str, text: str) -> DeliveryReceipt:
+        """Every configured channel, or raise. A channel counts only when its provider ACCEPTED the message
+        (``notify_failure.py`` checks the answer: 2xx with ``ok: false``, every SMTP recipient refused, ... fail)."""
         if not self.configured():
             raise RuntimeError("NO_ALERT_CHANNEL_CONFIGURED")
         delivered, failed = self._module.deliver(self._config, subject, text)
         if failed or not delivered:
-            raise RuntimeError(f"ALERT_CHANNELS_FAILED:{','.join(failed) or 'none_delivered'}")
+            raise ProviderRejected(f"ALERT_CHANNELS_FAILED:{','.join(failed) or 'none_delivered'}")
+        return DeliveryReceipt(accepted=len(delivered), rejected=0, provider_reference=",".join(delivered))
 
-    def send(self, message: AlertMessage) -> None:
-        self.send_text(message.subject(), message.text())
+    def send(self, message: AlertMessage) -> DeliveryReceipt:
+        return self.send_text(message.subject(), message.text())
 
 
 class JobQueueSink:
@@ -323,6 +326,8 @@ def evaluate_backup_age(engine: AlertEngine, backup_dir: Path, *, max_age_hours:
 #: time, the last OK run carried forward). A failed run therefore leaves a durable marker even when it wrote no
 #: backup and no manifest.
 BACKUP_STATUS_FILE, OFFSITE_STATUS_FILE = "backup-status.json", "offsite-status.json"
+#: Written by ``scripts/backup_platform_db.py`` (scheduled ``pg_dump`` of the platform PostgreSQL database).
+PLATFORM_STATUS_FILE = "platform-backup-status.json"
 
 
 def _status_marker(path: Path) -> Optional[Dict[str, Any]]:
@@ -377,6 +382,99 @@ def evaluate_backup_status(engine: AlertEngine, backup_dir: Path, *, offsite_max
     return out
 
 
+def evaluate_alert_delivery(engine: AlertEngine, db: Database, *, failing_attempts: int = 2,
+                            overdue_ms: int = 15 * 60_000, now_ms: Optional[int] = None) -> List[Evaluation]:
+    """Alert deliveries that keep failing BEFORE they are abandoned (abandonment raises ALERT_DELIVERY_FAILURE by
+    itself, after every retry -- close to an hour): per sink, deliveries in RETRY after ``failing_attempts`` attempts,
+    and deliveries more than ``overdue_ms`` past their due time (a backlog the tick cannot clear -- it delivers at
+    most 50 per run -- or deliveries left behind by ticks that did not finish). Resolves when they go through.
+    The alert goes to every sink, so a second channel still reaches a human when the first is the one failing."""
+    now = _db_now(db, now_ms)
+    with db.transaction(write=False) as conn:
+        # The delivery-failure alert's own deliveries are not counted: they would keep it firing by themselves.
+        own = ("JOIN ops_alerts a ON a.alert_id = d.alert_id AND a.category <> 'ALERT_DELIVERY_FAILURE'")
+        retrying = conn.all(f"SELECT d.sink, COUNT(*), MAX(d.attempts) FROM ops_alert_deliveries d {own} WHERE "
+                            "d.status='RETRY' AND d.attempts >= ? GROUP BY d.sink ORDER BY d.sink", (int(failing_attempts),))
+        overdue = conn.all(f"SELECT d.sink, COUNT(*), MIN(d.next_attempt_at) FROM ops_alert_deliveries d {own} WHERE "
+                           "d.status IN ('PENDING','RETRY') AND d.next_attempt_at < ? GROUP BY d.sink ORDER BY d.sink",
+                           (now - overdue_ms,))
+    signals: Dict[str, Evaluation] = {}
+    for sink, n, attempts in retrying:
+        signals[f"retry:{sink}"] = Evaluation(
+            "ALERT_DELIVERY_FAILURE", {"sink": sink, "kind": "retrying"}, True,
+            f"{int(n)} alert delivery(ies) through {sink} keep failing (up to {int(attempts)} attempts so far)",
+            {"sink": sink, "deliveries": int(n), "max_attempts_so_far": int(attempts)})
+    for sink, n, oldest in overdue:
+        signals[f"overdue:{sink}"] = Evaluation(
+            "ALERT_DELIVERY_FAILURE", {"sink": sink, "kind": "overdue"}, True,
+            f"{int(n)} alert delivery(ies) through {sink} are more than {overdue_ms // 60_000} min overdue",
+            {"sink": sink, "deliveries": int(n), "overdue_ms": now - int(oldest)})
+    out = [_apply(engine, ev, "alert_delivery", now_ms) for ev in signals.values()]
+    keep = {fingerprint(ev.category, ev.key) for ev in signals.values()}
+    engine.resolve_absent(("ALERT_DELIVERY_FAILURE",), source="alert_delivery", keep=keep,
+                          actor="evaluator:alert_delivery", now_ms=now_ms)
+    return out
+
+
+#: The operations tick is expected every minute; after this long without a finished tick, alerts went unevaluated.
+DEFAULT_TICK_MAX_AGE_MS = 5 * 60_000
+TICK_STALE = "OPERATIONS_TICK_STALE"
+
+
+def check_tick(db: Database, *, max_age_ms: int = DEFAULT_TICK_MAX_AGE_MS, name: Optional[str] = None,
+               now_ms: Optional[int] = None) -> Dict[str, Any]:
+    """The dead-man check of the operations tick, run by something OTHER than the tick
+    (``python -m app.ops.alerting --check-tick``: the ``cosmicforge-ops-deadman`` timer, the ``ops-tick`` container's
+    healthcheck). Read-only. Verdict: OK; STALE (the last finished tick is older than ``max_age_ms``); NEVER_RAN;
+    ERROR (the last tick could not even run its cycle)."""
+    from shared_lib.operations.tick_lease import DEFAULT_TICK
+    status = TickLease(db, owner="ops-tick-deadman-check", name=name or DEFAULT_TICK).status(now_ms=now_ms)
+    age = status.get("last_tick_age_ms")
+    if age is None:
+        verdict = "NEVER_RAN"
+    elif int(age) > int(max_age_ms):
+        verdict = "STALE"
+    elif status.get("last_tick_outcome") == TICK_ERROR:
+        verdict = "ERROR"
+    else:
+        verdict = "OK"
+    return {"verdict": verdict, "last_tick_age_ms": age, "bound_ms": int(max_age_ms),
+            "last_tick_outcome": status.get("last_tick_outcome"), "last_tick_owner": status.get("last_tick_owner"),
+            "lease_held": bool(status.get("held")), "takeovers": status.get("takeovers")}
+
+
+def evaluate_tick_gap(engine: AlertEngine, *, previous_finished_at: Optional[int], now: int,
+                      bound_ms: int = DEFAULT_TICK_MAX_AGE_MS, now_ms: Optional[int] = None) -> Evaluation:
+    """Run by the tick itself, first: the previous tick finished more than ``bound_ms`` ago, so for that long
+    nothing was evaluated, escalated or delivered. Raised (and delivered) by this tick, resolved -- with a RECOVERED
+    notice -- by the next one. It cannot report a tick that is still dead: that is ``check_tick``'s job."""
+    gap = None if previous_finished_at is None else int(now) - int(previous_finished_at)
+    ev = Evaluation(TICK_STALE, "ops_tick:gap", gap is not None and gap > bound_ms,
+                    f"The operations tick did not run for {(gap or 0) // 60_000} min: alerts were not evaluated, "
+                    "escalated or delivered in that time", {"gap_ms": gap, "bound_ms": bound_ms})
+    return _apply(engine, ev, "ops_tick", now_ms)
+
+
+def evaluate_platform_backup_status(engine: AlertEngine, backup_dir: Path, *, max_age_hours: float = 36.0,
+                                    now_ms: Optional[int] = None) -> List[Evaluation]:
+    """The scheduled platform-database dump (``platform-backup-status.json``): the last run failed, or no run has
+    succeeded for ``max_age_hours``. Silent until the first run is recorded (a deployment whose platform database
+    is not PostgreSQL never schedules it)."""
+    now = int(now_ms if now_ms is not None else time.time() * 1000)
+    marker = _status_marker(Path(backup_dir) / PLATFORM_STATUS_FILE)
+    m = marker or {}
+    detail = {k: m.get(k) for k in ("outcome", "exit_code", "finished_at", "message", "last_ok_at", "file")}
+    run = Evaluation("BACKUP_FAILURE", "backup:platform_run", marker is not None and m.get("outcome") != "OK",
+                     f"The last platform database dump failed (exit {m.get('exit_code')})", detail)
+    last_ok = _iso_to_ms(m.get("last_ok_at"))
+    age_h = None if last_ok is None else round((now - last_ok) / 3_600_000, 2)
+    stale = marker is not None and (last_ok is None or age_h > max_age_hours)
+    age = Evaluation("BACKUP_FAILURE", "backup:platform_age", stale,
+                     "No verified platform database dump " + ("was ever made" if last_ok is None else f"for {age_h} h"),
+                     {"last_ok_at": m.get("last_ok_at"), "age_hours": age_h, "bound_hours": max_age_hours})
+    return [_apply(engine, run, "platform_backup_status", now_ms), _apply(engine, age, "platform_backup_status", now_ms)]
+
+
 def run_cycle(engine: AlertEngine, evaluators: Sequence[Callable[[], Any]] = (), *,
               now_ms: Optional[int] = None) -> Dict[str, Any]:
     """One operations tick: run evaluators (each isolated), escalate overdue alerts, deliver what is due. A failing
@@ -415,6 +513,7 @@ def default_evaluators(engine: AlertEngine, db: Database, *, backup_dir: Optiona
         named(lambda: evaluate_queue_backlog(engine, queue), "evaluate_queue_backlog"),
         named(lambda: evaluate_worker_heartbeats(engine, db), "evaluate_worker_heartbeats"),
         named(lambda: evaluate_lease_takeovers(engine, db), "evaluate_lease_takeovers"),
+        named(lambda: evaluate_alert_delivery(engine, db), "evaluate_alert_delivery"),
     ]
     if runtime_db_path is not None:
         evaluators.append(named(lambda: evaluate_database(engine, P.RuntimeDatabaseProbe(runtime_db_path),
@@ -422,6 +521,8 @@ def default_evaluators(engine: AlertEngine, db: Database, *, backup_dir: Optiona
     if backup_dir is not None:
         evaluators.append(named(lambda: evaluate_backup_age(engine, Path(backup_dir)), "evaluate_backup_age"))
         evaluators.append(named(lambda: evaluate_backup_status(engine, Path(backup_dir)), "evaluate_backup_status"))
+        evaluators.append(named(lambda: evaluate_platform_backup_status(engine, Path(backup_dir)),
+                                "evaluate_platform_backup_status"))
     for p in disk_paths:
         evaluators.append(named(lambda p=p: evaluate_disk_growth(engine, Path(p), state=state), "evaluate_disk_growth"))
     shared_state = producer_state if producer_state is not None else {}
@@ -446,12 +547,23 @@ def _summary(out: Mapping[str, Any]) -> Dict[str, Any]:
 
 def run_tick(engine: AlertEngine, lease: TickLease,
              build_evaluators: Callable[[Dict[str, Any], Dict[str, DiskSample]], Sequence[Callable[[], Any]]], *,
-             min_interval_ms: int = 0, release: bool = False, now_ms: Optional[int] = None) -> Dict[str, Any]:
+             min_interval_ms: int = 0, release: bool = False, now_ms: Optional[int] = None,
+             tick_gap_bound_ms: Optional[int] = DEFAULT_TICK_MAX_AGE_MS) -> Dict[str, Any]:
     """Take the tick lease, run one cycle, record its time/result/state under the fencing token. Never raises for
-    a failing evaluator, sink or recording: the result says what happened (``ran``, ``lease``, ``recorded``)."""
+    a failing evaluator, sink or recording: the result says what happened (``ran``, ``lease``, ``recorded``).
+    First, the tick's own gap (``evaluate_tick_gap``): a long pause since the previous tick is itself an alert."""
     grant = lease.acquire(min_interval_ms=min_interval_ms)
     if not grant.acquired:
         return {"ran": False, "reason": grant.reason, "holder": grant.holder, "lease_expires_at": grant.expires_at}
+    gap: Dict[str, Any] = {}
+    if tick_gap_bound_ms:
+        try:
+            ev = evaluate_tick_gap(engine, previous_finished_at=grant.last_tick_finished_at,
+                                   now=int(grant.now_ms or 0),      # both times on the lease (database) clock
+                                   bound_ms=int(tick_gap_bound_ms), now_ms=now_ms)
+            gap = {"gap_ms": ev.detail.get("gap_ms"), "firing": ev.firing}
+        except Exception as exc:  # noqa: BLE001 -- the cycle runs anyway
+            gap = {"error": type(exc).__name__}
     state = dict(grant.state or {})
     disk = {k: DiskSample(int(v[0]), int(v[1])) for k, v in (state.get("disk") or {}).items()
             if isinstance(v, (list, tuple)) and len(v) == 2}
@@ -472,6 +584,7 @@ def run_tick(engine: AlertEngine, lease: TickLease,
             lease.release(grant.token)
     except Exception as exc:  # noqa: BLE001
         logger.error("operations tick result not recorded: %s", type(exc).__name__)
+    out["tick_gap"] = gap
     out.update({"ran": True, "outcome": outcome,
                 "lease": {"owner": lease.owner, "token": grant.token, "grant": grant.reason,
                           "takeover": grant.takeover, "recorded": recorded}})
@@ -545,7 +658,14 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     ap.add_argument("--lease-ttl", type=float, help="seconds a silent owner keeps the lease (default 3 x interval, "
                                                      "at least 180)")
     ap.add_argument("--max-ticks", type=int, help=argparse.SUPPRESS)       # tests: stop the loop after N ticks
+    ap.add_argument("--check-tick", action="store_true",
+                    help="dead-man check only: exit 0 when the last tick finished within --max-tick-age, 3 when it is "
+                         "stale, never ran or failed, 1 when the platform database cannot be read")
+    ap.add_argument("--max-tick-age", type=float, default=DEFAULT_TICK_MAX_AGE_MS / 1000,
+                    help="seconds (default 300)")
     a = ap.parse_args(argv)
+    if a.check_tick:
+        return _check_tick_cli(a)
     if a.interval < 5:
         print(json.dumps({"ok": False, "error": "--interval must be at least 5 seconds"}))
         return 1
@@ -597,6 +717,31 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         return 2 if (out.get("health") or {}).get("status") == "CRITICAL" else (1 if out.get("error") else 0)
     finally:
         db.close()
+
+
+def _check_tick_cli(a) -> int:
+    if a.dotenv:
+        try:
+            import dotenv
+            dotenv.load_dotenv(a.dotenv, override=False)
+        except Exception as exc:  # noqa: BLE001
+            print(json.dumps({"ok": False, "error": f"dotenv: {type(exc).__name__}"}))
+            return 1
+    try:
+        db = Database.from_env(pool_size=1)
+    except Exception as exc:  # noqa: BLE001
+        print(json.dumps({"ok": False, "verdict": "UNKNOWN", "error": type(exc).__name__}))
+        return 1
+    try:
+        out = check_tick(db, max_age_ms=int(a.max_tick_age * 1000))
+    except Exception as exc:  # noqa: BLE001 -- e.g. the platform database is down: a failure, alerted by the unit
+        print(json.dumps({"ok": False, "verdict": "UNKNOWN", "error": type(exc).__name__}))
+        return 1
+    finally:
+        db.close()
+    out["ok"] = out["verdict"] == "OK"
+    print(json.dumps(out, default=str))
+    return 0 if out["ok"] else 3
 
 
 def run_loop(engine: AlertEngine, lease: TickLease, build, *, interval_s: float = 60.0,

@@ -24,7 +24,8 @@ Lifecycle of an alert::
 * **Delivery** goes through pluggable ``AlertSink`` objects (the notify_failure channels, a NOTIFICATION job on
   the platform JobQueue, ...). Each (alert, reason, level, sink) is one ``ops_alert_deliveries`` row with an
   idempotency key; a failing send is retried with backoff and, after ``max_attempts``, ABANDONED -- which itself
-  raises ``ALERT_DELIVERY_FAILURE``.
+  raises ``ALERT_DELIVERY_FAILURE``. A provider that answers but accepts nothing (a ``DeliveryReceipt`` with
+  ``accepted=0``, or ``False``) is a failed attempt, never a delivery.
 * **Event log**: every transition, delivery outcome and escalation is appended to ``ops_alert_events``
   (append-only in the database). Actors are recorded for acknowledge/resolve. A repeat signal is counted in
   ``occurrences`` every time; the log records the first repeat after each notification (``DEDUPLICATED``), so an
@@ -131,7 +132,9 @@ CATEGORIES: Dict[str, CategoryPolicy] = dict([
     _p(OPERATIONS_OWNER_REQUIRED, CRITICAL, "operations-owner", None,
        "An alert was routed to a rotation that has no assigned person."),
     _p("ALERT_DELIVERY_FAILURE", HIGH, "operations-owner", NOTIFICATIONS,
-       "An alert could not be delivered through a channel after every retry."),
+       "An alert could not be delivered through a channel after every retry, or deliveries keep failing."),
+    _p("OPERATIONS_TICK_STALE", CRITICAL, "operations-owner", NOTIFICATIONS,
+       "The operations tick (alert evaluation, escalation, delivery) did not run within its bound."),
 ])
 
 #: Minutes after first seen (unacknowledged) at which an alert escalates to level 1, then level 2.
@@ -147,7 +150,7 @@ RECOVERED = "RECOVERED"
 
 #: Never silenced by a maintenance window: a position at risk, or the alerting system's own failure.
 UNSUPPRESSIBLE = frozenset({"UNPROTECTED_POSITION", "EXCHANGE_EXECUTION_UNCERTAINTY", OPERATIONS_OWNER_REQUIRED,
-                            "ALERT_DELIVERY_FAILURE"})
+                            "ALERT_DELIVERY_FAILURE", "OPERATIONS_TICK_STALE"})
 MAX_SUPPRESSION_MS = 24 * 3_600_000
 
 _EMAIL = re.compile(r"\b[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}\b")
@@ -195,11 +198,46 @@ class AlertMessage:
         return "\n".join(lines)
 
 
+@dataclass(frozen=True)
+class DeliveryReceipt:
+    """What a provider said about one send. A sink MAY return one: ``accepted`` is how many recipients or channels
+    the provider actually took (an HTTP 200 whose body says ``ok: false``, an SMTP server that refused every
+    recipient, a webhook that answered but accepted nothing: ``accepted=0``). ``accepted <= 0`` is a FAILED
+    attempt (retried, then abandoned), never a delivery."""
+    accepted: int
+    rejected: int = 0
+    provider_reference: Optional[str] = None
+    note: str = ""
+
+
+class ProviderRejected(RuntimeError):
+    """The provider answered but accepted nothing (a silent rejection)."""
+
+
+def interpret_send_result(result: Any) -> Dict[str, Any]:
+    """The engine's reading of what ``AlertSink.send`` returned. ``None`` (the original contract: raise on failure)
+    and ``True`` are a delivery; ``False`` and a receipt with nothing accepted are a silent rejection and raise
+    ``ProviderRejected``. Returns what is logged with the delivery."""
+    if result is None or result is True:
+        return {}
+    if result is False:
+        raise ProviderRejected("PROVIDER_REJECTED: the sink reported nothing delivered")
+    if isinstance(result, DeliveryReceipt):
+        if int(result.accepted) <= 0:
+            raise ProviderRejected(f"PROVIDER_REJECTED: accepted=0 rejected={int(result.rejected)} {result.note}"[:300])
+        out: Dict[str, Any] = {"accepted": int(result.accepted), "rejected": int(result.rejected)}
+        if result.provider_reference:
+            out["provider_reference"] = str(result.provider_reference)[:120]
+        return out
+    raise ProviderRejected(f"PROVIDER_RESULT_UNRECOGNISED:{type(result).__name__}")
+
+
 class AlertSink(Protocol):
     name: str
 
-    def send(self, message: AlertMessage) -> None:
-        """Deliver or raise. A raise is retried with backoff."""
+    def send(self, message: AlertMessage) -> Optional[DeliveryReceipt]:
+        """Deliver or raise. A raise is retried with backoff. May return a ``DeliveryReceipt``: one with nothing
+        accepted counts as a failed attempt (``interpret_send_result``)."""
 
 
 class CallableSink:
@@ -207,8 +245,8 @@ class CallableSink:
         self.name = name
         self._fn = fn
 
-    def send(self, message: AlertMessage) -> None:
-        self._fn(message)
+    def send(self, message: AlertMessage) -> Any:
+        return self._fn(message)
 
 
 @dataclass
@@ -587,17 +625,17 @@ class AlertEngine:
         return escalated
 
     # ── delivery ──────────────────────────────────────────────────────────────────────────────────────
-    def _send(self, sink: AlertSink, message: AlertMessage) -> None:
+    def _send(self, sink: AlertSink, message: AlertMessage) -> Dict[str, Any]:
         """Call the sink; give up waiting after ``send_timeout_s`` (the call is left to finish on its own daemon
-        thread and the attempt counts as failed -- delivery is at-least-once, never stalled)."""
+        thread and the attempt counts as failed -- delivery is at-least-once, never stalled). What the sink
+        returned is checked (``interpret_send_result``): a provider that answered but accepted nothing raises."""
         if not self.send_timeout_s or self.send_timeout_s <= 0:
-            sink.send(message)
-            return
-        box: Dict[str, BaseException] = {}
+            return interpret_send_result(sink.send(message))
+        box: Dict[str, Any] = {}
 
         def call() -> None:
             try:
-                sink.send(message)
+                box["result"] = sink.send(message)
             except BaseException as exc:  # noqa: BLE001 -- handed to the caller
                 box["error"] = exc
 
@@ -608,6 +646,7 @@ class AlertEngine:
             raise TimeoutError(f"SINK_TIMEOUT:{sink.name} did not answer within {self.send_timeout_s:g}s")
         if "error" in box:
             raise box["error"]
+        return interpret_send_result(box.get("result"))
 
     def deliver_pending(self, *, now_ms: Optional[int] = None, limit: int = 50) -> Dict[str, int]:
         by_name = {s.name: s for s in self.sinks}
@@ -631,6 +670,7 @@ class AlertEngine:
                              "ON a.alert_id = d.alert_id WHERE d.delivery_id=?", (delivery_id,))
             sink = by_name.get(d[3])
             error: Optional[str] = None
+            receipt: Dict[str, Any] = {}
             try:
                 # cleaned again on the way out: whatever wrote the row, a channel never receives a credential
                 message = AlertMessage(alert_id=d[0], category=d[7], severity=d[8], title=_clean_text(d[9])[:300],
@@ -639,7 +679,7 @@ class AlertEngine:
                                        targets=json.loads(d[4]), delivery_id=delivery_id, occurrences=int(d[13]))
                 if sink is None:
                     raise RuntimeError(f"SINK_NOT_CONFIGURED:{d[3]}")
-                self._send(sink, message)       # no transaction open while a channel is called
+                receipt = self._send(sink, message)   # no transaction open while a channel is called
             except Exception as exc:  # noqa: BLE001 -- every failure is retried or abandoned, never lost
                 error = _clean_text(f"{type(exc).__name__}: {exc}")[:500]
             attempts = int(d[5]) + 1
@@ -648,7 +688,7 @@ class AlertEngine:
                     conn.execute("UPDATE ops_alert_deliveries SET status='SENT', attempts=?, sent_at=?, updated_at=?, "
                                  "last_error=NULL WHERE delivery_id=?", (attempts, now, now, delivery_id))
                     self._event(conn, d[0], "DELIVERY_SUCCEEDED", "system", now, level=int(d[2]),
-                                detail={"sink": d[3], "delivery_id": delivery_id, "attempts": attempts})
+                                detail={"sink": d[3], "delivery_id": delivery_id, "attempts": attempts, **receipt})
                     stats["sent"] += 1
                 elif attempts >= int(d[6]):
                     conn.execute("UPDATE ops_alert_deliveries SET status='ABANDONED', attempts=?, last_error=?, "

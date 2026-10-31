@@ -32,6 +32,11 @@ configured -- the failure is logged to stderr (the journal) and must not turn
 the alert unit itself into a failed unit. ``--test`` exits 1 when no channel
 is configured or any configured channel fails, so the operator sees it. 2 is a
 usage error. Every network call has a 10 second timeout. Standard library only.
+
+A channel counts as delivered only when the provider ACCEPTED the message: a
+2xx answer whose JSON body says ``"ok": false`` (Slack-style webhooks,
+Telegram), a Telegram answer that is not ``"ok": true``, or an SMTP server that
+refused every recipient is a failed channel, not a delivery.
 """
 from __future__ import annotations
 
@@ -194,25 +199,46 @@ def fit(message: str, limit: int) -> str:
     return "\n".join([*head, marker, *tail])[:limit]
 
 
-def _post_json(url: str, payload: dict) -> None:
+class ProviderRejected(RuntimeError):
+    """The provider answered (often 2xx) but did not accept the message."""
+
+
+def _post_json(url: str, payload: dict) -> tuple[int, str]:
     request = urllib.request.Request(
         url, data=json.dumps(payload).encode("utf-8"), method="POST",
         # Some webhook hosts refuse the default Python-urllib agent.
         headers={"Content-Type": "application/json", "User-Agent": "cosmicforge-alert/1"})
     with urllib.request.urlopen(request, timeout=TIMEOUT_SECONDS) as response:
-        response.read()
+        body = response.read()
+        return int(getattr(response, "status", 200) or 200), body.decode("utf-8", errors="replace")
+
+
+def _json_body(body: str):
+    try:
+        return json.loads(body) if body and body.strip()[:1] in "{[" else None
+    except ValueError:
+        return None
 
 
 def send_webhook(config: dict[str, str], subject: str, message: str) -> None:
     text = fit(message, WEBHOOK_MAX_CHARS)
-    _post_json(config["ALERT_WEBHOOK_URL"], {"text": text, "content": text})
+    status, body = _post_json(config["ALERT_WEBHOOK_URL"], {"text": text, "content": text})
+    data = _json_body(body)
+    # Slack-compatible APIs answer 200 with {"ok": false, "error": ...} when they drop the message.
+    if not 200 <= status < 300 or (isinstance(data, dict) and data.get("ok") is False):
+        error = data.get("error") if isinstance(data, dict) else None
+        raise ProviderRejected(f"webhook answered {status} without accepting the message ({str(error)[:80]})")
 
 
 def send_telegram(config: dict[str, str], subject: str, message: str) -> None:
     token = urllib.parse.quote(config["ALERT_TELEGRAM_BOT_TOKEN"], safe=":")
-    _post_json(f"https://api.telegram.org/bot{token}/sendMessage",
-               {"chat_id": config["ALERT_TELEGRAM_CHAT_ID"], "text": fit(message, TELEGRAM_MAX_CHARS),
-                "disable_web_page_preview": True})
+    status, body = _post_json(f"https://api.telegram.org/bot{token}/sendMessage",
+                              {"chat_id": config["ALERT_TELEGRAM_CHAT_ID"], "text": fit(message, TELEGRAM_MAX_CHARS),
+                               "disable_web_page_preview": True})
+    data = _json_body(body)
+    if not (isinstance(data, dict) and data.get("ok") is True):
+        description = data.get("description") if isinstance(data, dict) else None
+        raise ProviderRejected(f"telegram answered {status} without ok=true ({str(description)[:80]})")
 
 
 def send_email(config: dict[str, str], subject: str, message: str) -> None:
@@ -235,7 +261,11 @@ def send_email(config: dict[str, str], subject: str, message: str) -> None:
             server.starttls(context=context)       # as the application's mailer does
         if user and password:
             server.login(user, password)
-        server.send_message(mail, to_addrs=recipients)
+        refused = server.send_message(mail, to_addrs=recipients) or {}
+    if recipients and len(refused) >= len(recipients):
+        raise ProviderRejected(f"the SMTP server refused all {len(recipients)} recipient(s)")
+    if refused:
+        log(f"channel=email {len(refused)} of {len(recipients)} recipient(s) refused; the others were accepted")
 
 
 def configured_channels(config: dict[str, str]) -> list[tuple[str, object]]:

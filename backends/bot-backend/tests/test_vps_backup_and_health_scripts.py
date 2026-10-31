@@ -253,7 +253,9 @@ class _Response:
         return False
 
     def read(self):
-        return b"ok"
+        # What Telegram answers when it accepted a message (a Slack-style webhook accepts this shape too);
+        # notify_failure.py counts a channel as delivered only when the provider accepted the message.
+        return b'{"ok": true}'
 
 
 @pytest.fixture

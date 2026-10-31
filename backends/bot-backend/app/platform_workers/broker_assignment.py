@@ -341,8 +341,10 @@ class BrokerCycleAssignments:
         key = (id(legacy_db), self.worker_id)
         if self._job_runner is None or self._job_runner[0] != key:
             fence = self.job_fence(assignment_fence(self.assignments, self.worker_id))
+            # Notifications (external providers) on a background thread: the broker loop calls this runner
+            # between two cycles and must never wait for a slow or dead provider before the next cycle.
             self._job_runner = (key, RuntimeJobRunner(legacy_db, self.assignments.db, worker_id=self.worker_id,
-                                                      fence_for_account=fence))
+                                                      fence_for_account=fence, notifications_in_background=True))
         return self._job_runner[1]
 
     def owned_accounts(self) -> List[Tuple[str, str]]:

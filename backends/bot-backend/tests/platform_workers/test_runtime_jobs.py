@@ -730,3 +730,56 @@ def test_drain_hands_back_claimed_jobs_that_have_not_started(world):
             assert row["status"] == "RETRY" and row["attempts"] == 0     # due now, no attempt spent
     assert runner.run_once() == [] and runner.schedule([(ACCOUNT, TENANT)]) == {"enqueued": 0, "errors": []}
     assert set(jobs) == set(results)
+
+
+# ═══════════════════════════════════════════════════ NOTIFICATION off the broker loop (31 October 2026)
+def test_in_the_trading_loop_a_hanging_provider_never_holds_up_the_other_jobs(world):
+    """The broker cycle's runner (``notifications_in_background``): NOTIFICATION jobs run on one background thread,
+    so a provider hanging up to its timeout delays neither the other categories nor the next broker cycle."""
+    h, platform, services, _, wid = world
+    release, entered = threading.Event(), threading.Event()
+
+    def send_text(subject, text):
+        entered.set()
+        release.wait(30)                                                # a dead webhook, up to its timeout
+        services.ops_sent.append((subject, text))
+    services.ops_channels = lambda: __import__("types").SimpleNamespace(send_text=send_text)
+    runner = platform.runner(h.db, services, wid, notifications_in_background=True)
+    q = JobQueue(platform.db)
+    note = _ops_job(q)[0]
+    order = _order_job(platform, h)
+    started = time.monotonic()
+    results = dict(runner.run_once())
+    assert time.monotonic() - started < 10 and note not in results     # the loop did not wait for the provider
+    assert results.get(order) in ("SUCCEEDED", "RETRY", "DEAD")          # the order job ran inline as before
+    assert entered.wait(10)                                             # the notification is being sent ...
+    again = time.monotonic()
+    runner.run_once()                                                   # ... and a second batch is not stacked
+    assert time.monotonic() - again < 10
+    assert runner.notification_thread is not None and runner.notification_thread.is_alive()
+    release.set()
+    runner.notification_thread.join(30)
+    assert dict(runner.last_notification_results) == {note: "SUCCEEDED"}
+    assert services.ops_sent == [("Worker outage", "worker w1 silent")]  # delivered once
+
+
+def test_background_notification_failures_still_retry_through_the_queue(world):
+    h, platform, services, _, wid = world
+    runner = platform.runner(h.db, services, wid, notifications_in_background=True)
+    job = _ops_job(JobQueue(platform.db))[0]
+    services.ops_failures = 1
+    runner.run_once()
+    runner.notification_thread.join(30)
+    assert dict(runner.last_notification_results) == {job: "RETRY"}
+    platform.due_now()
+    runner.run_once()
+    runner.notification_thread.join(30)
+    assert dict(runner.last_notification_results) == {job: "SUCCEEDED"} and len(services.ops_sent) == 1
+
+
+def test_the_broker_cycle_runner_sends_notifications_in_the_background(platform_db):
+    from app.platform_workers.broker_assignment import ASSIGNED, BrokerCycleAssignments
+    layer = BrokerCycleAssignments(platform_db, mode=ASSIGNED, ttl_ms=30_000, margin_ms=5_000, worker_id="w-bg")
+    layer.register()
+    runner = layer.job_runner(object())
+    assert runner.notification_processor is not None and NOTIFICATION not in runner.processor.handlers

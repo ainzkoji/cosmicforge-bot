@@ -643,12 +643,18 @@ def production_handlers(legacy_db: Any, platform_db: Database, *, worker_id: str
 class RuntimeJobRunner:
     """Runs the production handlers for one worker. ``run_once`` claims due jobs (highest priority first) and
     runs them with no transaction open; ``schedule`` enqueues the work that is due (idempotent, safe to call
-    every loop iteration from every worker); ``request_stop`` drains."""
+    every loop iteration from every worker); ``request_stop`` drains.
+
+    ``notifications_in_background``: NOTIFICATION jobs (operator alert channels, customer e-mail / Telegram /
+    push) call external providers that may hang up to their timeouts. In the trading process the runner is
+    called from the broker loop, between two broker cycles: there, those jobs run on one background thread
+    (``notification_thread``), so a slow or dead provider never delays the next cycle's protection work. Every
+    other category runs inline as before. The broker cycle's runner (``BrokerCycleAssignments.job_runner``) sets it."""
 
     def __init__(self, legacy_db: Any, platform_db: Database, *, worker_id: str,
                  fence_for_account: Callable[[str], Optional[tuple]], services: Optional[RuntimeServices] = None,
                  lease_ms: int = DEFAULT_JOB_LEASE_MS, max_processing_ms: Optional[int] = DEFAULT_MAX_PROCESSING_MS,
-                 categories: Optional[Sequence[str]] = None) -> None:
+                 categories: Optional[Sequence[str]] = None, notifications_in_background: bool = False) -> None:
         _require_trading_process()
         if not worker_id:
             raise ValueError("RUNTIME_JOBS_WORKER_ID_REQUIRED")
@@ -667,7 +673,16 @@ class RuntimeJobRunner:
             handlers = {c: h for c, h in handlers.items() if c in set(categories)}
         self.handlers = handlers
         self._stop = threading.Event()
-        self.processor = JobProcessor(self.queue, worker_id, handlers, should_stop=self._stop.is_set,
+        self.notification_processor: Optional[JobProcessor] = None
+        self.notification_thread: Optional[threading.Thread] = None
+        self.last_notification_results: list = []
+        self._notification_lock = threading.Lock()
+        inline = dict(handlers)
+        if notifications_in_background and NOTIFICATION in inline:
+            self.notification_processor = JobProcessor(self.queue, worker_id, {NOTIFICATION: inline.pop(NOTIFICATION)},
+                                                       should_stop=self._stop.is_set,
+                                                       max_processing_ms=max_processing_ms)
+        self.processor = JobProcessor(self.queue, worker_id, inline, should_stop=self._stop.is_set,
                                       max_processing_ms=max_processing_ms)
 
     @property
@@ -677,7 +692,26 @@ class RuntimeJobRunner:
     def run_once(self, limit: int = 10) -> list:
         if self._stop.is_set():
             return []
-        return self.processor.run_once(limit=limit)
+        self._kick_notifications(limit)
+        return self.processor.run_once(limit=limit) if self.processor.handlers else []
+
+    def _kick_notifications(self, limit: int) -> None:
+        """Start one background batch of NOTIFICATION jobs unless one is still running (never more than one
+        thread: a hanging provider holds at most that thread, and the next batch waits for it)."""
+        if self.notification_processor is None:
+            return
+        with self._notification_lock:
+            if self.notification_thread is not None and self.notification_thread.is_alive():
+                return
+
+            def deliver() -> None:
+                try:
+                    self.last_notification_results = self.notification_processor.run_once(limit=limit)
+                except Exception as exc:  # noqa: BLE001 -- the jobs stay claimable; the next batch retries
+                    logger.warning("runtime notification batch failed: %s", type(exc).__name__)
+            self.notification_thread = threading.Thread(target=deliver, name="runtime-jobs-notifications",
+                                                        daemon=True)
+            self.notification_thread.start()
 
     def request_stop(self) -> None:
         self._stop.set()

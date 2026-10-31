@@ -50,6 +50,9 @@ class Grant:
     previous_owner: Optional[str] = None
     now_ms: Optional[int] = None
     state: Dict[str, Any] = field(default_factory=dict)
+    #: When the previous tick (any owner) finished, database clock; None before the first. The tick's dead-man
+    #: check (``app.ops.alerting``) compares it with ``now_ms``: a long gap means alerts went unevaluated.
+    last_tick_finished_at: Optional[int] = None
 
 
 def _json(value: Optional[str]) -> Dict[str, Any]:
@@ -91,14 +94,15 @@ class TickLease:
                              "AND owner=? AND fencing_token=?", (now, expires, now, self.name, self.owner,
                                                                  row["fencing_token"]))
                 return Grant(True, int(row["fencing_token"]), "RENEWED", self.owner, expires, now_ms=now,
-                             state=_json(row["state"]))
+                             state=_json(row["state"]),
+                             last_tick_finished_at=None if last is None else int(last))
             takeover = row["owner"] is not None and row["released_at"] is None      # expired, never released
             token = int(row["fencing_token"]) + 1
             conn.execute("UPDATE ops_tick_leases SET owner=?, fencing_token=?, acquired_at=?, renewed_at=?, "
                          "expires_at=?, released_at=NULL, takeovers=takeovers+?, updated_at=? WHERE tick_name=?",
                          (self.owner, token, now, now, expires, 1 if takeover else 0, now, self.name))
         return Grant(True, token, "TAKEN_OVER" if takeover else "ACQUIRED", self.owner, expires, takeover,
-                     row["owner"], now, _json(row["state"]))
+                     row["owner"], now, _json(row["state"]), None if last is None else int(last))
 
     def renew(self, token: int, *, now_ms: Optional[int] = None) -> bool:
         with self.db.transaction() as conn:

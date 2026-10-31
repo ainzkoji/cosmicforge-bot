@@ -144,7 +144,7 @@ def test_every_producer_runs_against_the_real_runtime_schema_without_error(engin
                                     runtime_db=runtime_db, runtime_db_path=runtime_db.path,  # host: not checked here)
                                     producer_state={})
     names = [getattr(e, "__name__", "?") for e in evaluators]
-    assert len(names) == len(set(names)) and len(evaluators) == 24, names
+    assert len(names) == len(set(names)) and len(evaluators) == 26, names      # 24 + alert delivery + platform dump status
     out = run_cycle(engine, evaluators)
     assert out["evaluator_errors"] == [] and out["evaluators"] == len(evaluators)
     # an empty runtime database raises nothing but the backup alert (no backup in tmp_path)
