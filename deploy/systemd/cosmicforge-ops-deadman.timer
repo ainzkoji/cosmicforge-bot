@@ -1,0 +1,17 @@
+# Runs cosmicforge-ops-deadman.service every 5 minutes (is the operations tick still finishing its ticks?).
+#
+# Install:  sudo cp deploy/systemd/cosmicforge-ops-deadman.* /etc/systemd/system/
+#           sudo systemctl daemon-reload && sudo systemctl enable --now cosmicforge-ops-deadman.timer
+# Planned maintenance that stops the tick: stop this timer too, or accept the page it sends.
+
+[Unit]
+Description=CosmicForge operations tick dead-man check, every 5 minutes
+
+[Timer]
+# After boot, give the tick (OnBootSec=2min) time to finish its first run.
+OnBootSec=10min
+OnUnitActiveSec=5min
+AccuracySec=30s
+
+[Install]
+WantedBy=timers.target

@@ -188,6 +188,14 @@ services:
     stop_signal: SIGTERM
     stop_grace_period: 90s
     deploy: {replicas: 1}
+    # Dead-man: unhealthy when no tick (of any replica) finished in the last 5 minutes, or the last one could not
+    # run its cycle (ops_tick_leases in the platform database). The container staying "running" proves nothing.
+    healthcheck:
+      test: ["CMD", "python", "-m", "app.ops.alerting", "--check-tick", "--max-tick-age", "300"]
+      interval: 60s
+      timeout: 30s
+      retries: 3
+      start_period: 180s
 
 secrets:
   postgres_password:

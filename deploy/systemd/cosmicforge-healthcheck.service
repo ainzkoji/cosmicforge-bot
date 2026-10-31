@@ -39,7 +39,11 @@ TimeoutStartSec=60
 UMask=0077
 NoNewPrivileges=true
 PrivateTmp=true
-ProtectSystem=full
+# The check only reads (HTTP to 127.0.0.1, disk usage): the whole file system is read-only for it and it holds no
+# capability. Python's bytecode cache is not written (PYTHONDONTWRITEBYTECODE).
+Environment=PYTHONDONTWRITEBYTECODE=1
+ProtectSystem=strict
+CapabilityBoundingSet=
 ProtectHome=true
 ProtectKernelTunables=true
 ProtectKernelModules=true

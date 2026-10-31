@@ -1,0 +1,54 @@
+# Dead-man check of the operations tick (master plan Section J follow-up). Triggered every 5 minutes by
+# cosmicforge-ops-deadman.timer.
+#
+# The operations tick evaluates every alert, escalates and delivers. When the tick itself stops (its timer
+# disabled, the unit failing before it can alert, the platform database refusing it, a hung loop), nothing else
+# would say so. This unit asks the platform database when the last tick FINISHED (ops_tick_leases) and fails when
+# that is older than --max-tick-age (default 300 s), the tick never ran, or its last run could not run its cycle.
+# A failure goes out through OnFailure= -> cosmicforge-alert@ -> scripts/notify_failure.py: a delivery path that
+# does not depend on the tick.
+#
+# Exit 0: a tick finished recently. Exit 3: STALE / NEVER_RAN / ERROR (the unit fails, the alert is sent).
+# Exit 1: the platform database cannot be read (the unit fails, the alert is sent).
+#
+# Install:  sudo cp deploy/systemd/cosmicforge-ops-deadman.* /etc/systemd/system/
+#           sudo systemctl daemon-reload && sudo systemctl enable --now cosmicforge-ops-deadman.timer
+# Run once: sudo systemctl start cosmicforge-ops-deadman && journalctl -u cosmicforge-ops-deadman -n 5 --no-pager
+#
+# A check on the SAME host cannot report that the host is gone: the external uptime monitor is still required
+# (docs/operations/ALERTING.md, "Dead-man").
+
+[Unit]
+Description=CosmicForge operations tick dead-man check
+Documentation=file:///opt/cosmicforge/cosmicforge-bot/docs/operations/ALERTING.md
+Wants=network-online.target
+After=network-online.target
+OnFailure=cosmicforge-alert@%n.service
+
+[Service]
+Type=oneshot
+User=cosmicforge
+Group=cosmicforge
+WorkingDirectory=/opt/cosmicforge/cosmicforge-bot/backends/bot-backend
+Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONUTF8=1
+Environment=PYTHONDONTWRITEBYTECODE=1
+ExecStart=/opt/cosmicforge/cosmicforge-bot/backends/venv/bin/python -u -X utf8 -m app.ops.alerting --check-tick \
+    --dotenv /opt/cosmicforge/cosmicforge-bot/backends/bot-backend/.env --max-tick-age 300
+TimeoutStartSec=60
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+# Read-only everywhere: the check only reads the platform database. A SQLite platform database (not the production
+# layout, which is PostgreSQL) needs its directory writable for the -shm file of a WAL reader; "-" makes the path
+# optional.
+ProtectSystem=strict
+ReadWritePaths=-/var/lib/cosmicforge
+CapabilityBoundingSet=
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+SyslogIdentifier=cosmicforge-ops-deadman

@@ -1,0 +1,18 @@
+# Runs cosmicforge-platform-db-backup.service once a day.
+#
+# Install:  sudo cp deploy/systemd/cosmicforge-platform-db-backup.* /etc/systemd/system/
+#           sudo systemctl daemon-reload && sudo systemctl enable --now cosmicforge-platform-db-backup.timer
+# Inspect:  systemctl list-timers cosmicforge-platform-db-backup.timer
+
+[Unit]
+Description=CosmicForge platform database backup, daily
+
+[Timer]
+# Half an hour after the runtime database backup, so the two never compete for the disk.
+OnCalendar=*-*-* 04:00:00 UTC
+RandomizedDelaySec=10min
+# A host that was off at the time runs the backup when it comes back.
+Persistent=true
+
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,47 @@
+# Scheduled, verified pg_dump of the PLATFORM PostgreSQL database (assignments, durable jobs and order intents,
+# order budgets, launch records, alerting state). Triggered by cosmicforge-platform-db-backup.timer.
+# The runtime SQLite database has its own unit (cosmicforge-db-backup.service); deploy/staging/deploy.sh still
+# dumps the platform database before every staging deploy.
+#
+# scripts/backup_platform_db.py reads PLATFORM_DATABASE_URL from the backend .env, passes the password to pg_dump
+# through its environment (never the command line), verifies the dump with pg_restore --list, writes a manifest and
+# /var/backups/cosmicforge/platform-backup-status.json (the operations tick raises BACKUP_FAILURE from it), and keeps
+# the newest 14 dumps. Needs the PostgreSQL client tools (pg_dump, pg_restore) of the server's major version.
+#
+# Run by hand:  sudo systemctl start cosmicforge-platform-db-backup && journalctl -u cosmicforge-platform-db-backup -n 20
+
+[Unit]
+Description=CosmicForge platform database backup (pg_dump)
+Documentation=file:///opt/cosmicforge/cosmicforge-bot/docs/operations/BACKUP_AND_RESTORE.md
+Wants=network-online.target
+After=network-online.target
+# Any non-zero exit (no source, dump failed, verification failed, retention) alerts.
+OnFailure=cosmicforge-alert@%n.service
+
+[Service]
+Type=oneshot
+User=cosmicforge
+Group=cosmicforge
+WorkingDirectory=/opt/cosmicforge/cosmicforge-bot
+Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONDONTWRITEBYTECODE=1
+ExecStart=/opt/cosmicforge/cosmicforge-bot/backends/venv/bin/python -u scripts/backup_platform_db.py \
+    --dotenv /opt/cosmicforge/cosmicforge-bot/backends/bot-backend/.env \
+    --output-dir /var/backups/cosmicforge --keep 14
+Nice=10
+IOSchedulingClass=idle
+TimeoutStartSec=3h
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+# The only path it writes is the backup directory (the dump, its manifest, the status marker).
+ProtectSystem=strict
+ReadWritePaths=/var/backups/cosmicforge
+CapabilityBoundingSet=
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+SyslogIdentifier=cosmicforge-platform-db-backup

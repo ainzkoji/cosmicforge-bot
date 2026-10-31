@@ -328,6 +328,14 @@ jobs:
       working-directory: deploy/staging
       run: |
         test "$(docker compose -f docker-compose.staging.yml exec -T bot-api curl -s -o /dev/null -w '%{http_code}' -X POST http://127.0.0.1:8000/api/v1/admin/emergency/flatten)" = 409
+    - name: Operations tick dead-man check in the image (never ran -> 3; one tick -> 0)
+      working-directory: deploy/staging
+      run: |
+        rc=0; docker compose -f docker-compose.staging.yml run --rm --no-deps -T ops-tick python -m app.ops.alerting --check-tick || rc=$?
+        test "$rc" = 3
+        rc=0; docker compose -f docker-compose.staging.yml run --rm --no-deps -T ops-tick python -m app.ops.alerting --no-runtime-db --alerts-env /dev/null || rc=$?
+        test "$rc" = 0 -o "$rc" = 2
+        docker compose -f docker-compose.staging.yml run --rm --no-deps -T ops-tick python -m app.ops.alerting --check-tick
     - name: Stack logs on failure
       if: failure()
       working-directory: deploy/staging
