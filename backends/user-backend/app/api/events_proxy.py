@@ -21,10 +21,22 @@ logger = logging.getLogger(__name__)
 from app.api.proxy_utils import BOT_BACKEND_BASE_URL as BOT_BACKEND_URL  # one source: the BOT_BACKEND_URL environment variable (Step 1.7)
 
 
+def upstream_headers(token: str, last_event_id_header: Optional[str], last_event_id_query: Optional[str]) -> dict:
+    """Headers for the engine's stream. A reconnecting EventSource sends ``Last-Event-ID`` (Section K3); it is
+    forwarded so the engine replays what the browser missed. An oversized value is dropped, never truncated."""
+    headers = {"Authorization": f"Bearer {token}"}
+    resume = last_event_id_header or last_event_id_query
+    if resume and len(resume) <= 128:
+        headers["Last-Event-ID"] = resume
+    return headers
+
+
 @router.get("/stream")
 async def stream_events(
     request: Request,
-    token: Optional[str] = Query(None, description="DEPRECATED: JWT access token in the URL (legacy clients)")
+    token: Optional[str] = Query(None, description="DEPRECATED: JWT access token in the URL (legacy clients)"),
+    last_event_id: Optional[str] = Query(None, max_length=128,
+                                         description="Resume after this event id (same as the Last-Event-ID header)"),
 ):
     """
     Proxy SSE stream from bot-backend.
@@ -60,7 +72,7 @@ async def stream_events(
 
     try:
         # Convert query param token to Authorization header for bot-backend
-        headers = {"Authorization": f"Bearer {token}"}
+        headers = upstream_headers(token, request.headers.get("last-event-id"), last_event_id)
         
         # Create streaming connection to bot-backend
         async def event_stream():

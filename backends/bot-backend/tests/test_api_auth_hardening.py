@@ -1151,7 +1151,8 @@ def test_sse_stream_only_delivers_the_subscribers_own_events(events_api):
     assert [m["event"] for m in alice_stream[1:]] == ["TP1_HIT"]
     # Payload format is unchanged.
     data = json.loads(alice_stream[1]["data"])
-    assert set(data) == {"event_id", "trade_id", "symbol", "ts", "payload"}
+    # Section K3: the original keys plus the top-level identity fields.
+    assert set(data) == {"event_id", "trade_id", "symbol", "ts", "payload", "event_type", "timestamp", "user_id", "bot_id", "broker_account_id", "environment"}
     assert data["payload"] == {"bot_instance_id": "bot-alice", "fill_price": 333.0}
     assert "111.0" not in json.dumps(alice_stream) and "222.0" not in json.dumps(alice_stream)
 

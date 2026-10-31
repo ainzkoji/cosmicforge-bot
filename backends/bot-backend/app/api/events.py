@@ -15,7 +15,7 @@ The owner is resolved from the event itself (``user_id``), or from the bot
 it names, looked up in the database through a small cache. The payload sent
 to the client is unchanged.
 """
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Header, Query
 from sse_starlette.sse import EventSourceResponse
 import json
 import asyncio
@@ -23,6 +23,7 @@ import logging
 import threading
 import time
 import uuid
+from collections import OrderedDict
 from typing import Any, AsyncGenerator, Dict, Optional, Tuple
 
 from app.core.auth import get_current_user_id, oauth2_scheme
@@ -172,45 +173,134 @@ def _token_still_current(token: str):
     return check
 
 
-async def _event_stream(user_id: str, is_admin: bool, still_authorised=None) -> AsyncGenerator:
-    """Generate SSE events from the broadcaster for ONE subscriber (tenant-filtered).
+#: The durable record (``user_events``) is tailed this often, so an event written by another process (the
+#: trading process under PROCESS_ROLE split) reaches an API-process subscriber. The look-back absorbs writers
+#: whose clock or commit lands slightly behind the cursor; delivery is at-least-once, deduplicated by event id.
+DURABLE_POLL_SECONDS = 2.0
+DURABLE_LOOKBACK_MS = 60_000
+REPLAY_LIMIT = 500
+_SENT_MEMORY = 4096
 
-    ``still_authorised`` (sync callable) is re-evaluated every
-    ``SSE_REAUTH_SECONDS``; when it turns False the stream sends an
-    ``auth_revoked`` event and ends."""
+
+def _frame_from_row(row: Dict[str, Any]) -> Dict[str, Any]:
+    """An SSE frame for one durable customer event (Section K3 envelope; ``id`` enables Last-Event-ID)."""
+    payload = row.get("payload") or {}
+    return {"id": row["event_id"], "event": row["event_type"], "data": json.dumps({
+        "event_id": row["event_id"], "event_type": row["event_type"], "timestamp": row["at"],
+        "user_id": row["user_id"], "bot_id": row.get("bot_id"), "broker_account_id": row.get("broker_account_id"),
+        "environment": row.get("environment"), "trade_id": payload.get("trade_plan_id"), "symbol": payload.get("symbol"),
+        "ts": row["at"], "payload": payload}, default=str)}
+
+
+def _frame_from_event(event: Any) -> Dict[str, Any]:
+    payload = event.payload if isinstance(event.payload, dict) else {}
+    return {"id": event.event_id, "event": event.event_type.value, "data": json.dumps({
+        "event_id": event.event_id, "event_type": event.event_type.value,
+        "timestamp": payload.get("at", event.ts), "user_id": payload.get("user_id") or resolve_event_owner(event),
+        "bot_id": payload.get("bot_id") or payload.get("bot_instance_id"),
+        "broker_account_id": payload.get("broker_account_id"), "environment": payload.get("environment"),
+        "trade_id": event.trade_id, "symbol": event.symbol, "ts": event.ts, "payload": payload}, default=str)}
+
+
+def _durable_since(user_id: str, is_admin: bool, after_at: int, limit: int):
+    from app.observability import user_events
+    return user_events.since(DB(), user_id=None if is_admin else user_id, after_at=after_at, limit=limit)
+
+
+def _replay_start(user_id: str, is_admin: bool, last_event_id: Optional[str]) -> Optional[int]:
+    """Where a reconnect resumes: just after ``last_event_id`` when the caller may see it, else None."""
+    if not last_event_id:
+        return None
+    from app.observability import user_events
+    try:
+        return user_events.position_of(DB(), last_event_id, user_id=None if is_admin else user_id)
+    except Exception:
+        logger.warning("[SSE] replay position lookup failed; streaming from now")
+        return None
+
+
+async def _event_stream(user_id: str, is_admin: bool, still_authorised=None, last_event_id: Optional[str] = None,
+                        poll_seconds: Optional[float] = None) -> AsyncGenerator:
+    """Generate SSE events for ONE subscriber (tenant-filtered).
+
+    Live events come from the in-process broadcaster; customer events are also tailed from the durable
+    ``user_events`` record, so a reconnect with ``Last-Event-ID`` replays what was missed and an event recorded
+    by another process is still delivered. ``still_authorised`` (sync callable) is re-evaluated every
+    ``SSE_REAUTH_SECONDS``; when it turns False the stream sends an ``auth_revoked`` event and ends."""
+    poll_seconds = DURABLE_POLL_SECONDS if poll_seconds is None else poll_seconds
     # Unique per connection: a second tab from the same user must not
     # replace (and later unsubscribe) the first one's listener.
     listener_id = f"sse_{user_id}_{uuid.uuid4().hex[:12]}"
-    
+
     # Subscribe to analytics-relevant events only
     _, queue = get_event_broadcaster().subscribe(
         listener_id=listener_id,
         event_filter=ANALYTICS_EVENTS
     )
-    
+    sent: "OrderedDict[str, None]" = OrderedDict()
+
+    def remember(event_id: str) -> bool:
+        """True the first time ``event_id`` is seen on this connection."""
+        if not event_id or event_id in sent:
+            return False
+        sent[event_id] = None
+        if len(sent) > _SENT_MEMORY:
+            sent.popitem(last=False)
+        return True
+
+    # A fresh connection streams what happens from now on; a reconnect resumes after its Last-Event-ID.
+    floor = cursor = int(time.time() * 1000)
     try:
         # Send initial connection confirmation
         yield {
             "event": "connected",
             "data": json.dumps({"status": "connected", "user_id": user_id})
         }
-        
+        start = await asyncio.to_thread(_replay_start, user_id, is_admin, last_event_id)
+        if last_event_id:
+            remember(last_event_id)
+        if start is not None:
+            floor = cursor = start
+            try:
+                rows = await asyncio.to_thread(_durable_since, user_id, is_admin, start, REPLAY_LIMIT)
+            except Exception:
+                logger.warning("[SSE] replay read failed; streaming from now", exc_info=True)
+                rows = []
+            for row in rows:
+                cursor = max(cursor, int(row["at"]))
+                if remember(row["event_id"]):
+                    yield _frame_from_row(row)
+
         # Stream events as they arrive
         last_sent = time.monotonic()
         last_auth_check = time.monotonic()
+        last_poll = float("-inf")       # the first iteration reads the durable record at once
         while True:
             if still_authorised is not None and time.monotonic() - last_auth_check >= SSE_REAUTH_SECONDS:
                 last_auth_check = time.monotonic()
                 if not await asyncio.to_thread(still_authorised):
                     yield {"event": "auth_revoked", "data": json.dumps({"message": "Session ended"})}
                     return
-            # Wait for event from queue (with timeout for keepalive)
+            if time.monotonic() - last_poll >= poll_seconds:
+                last_poll = time.monotonic()
+                try:
+                    rows = await asyncio.to_thread(_durable_since, user_id, is_admin,
+                                                   max(floor, cursor - DURABLE_LOOKBACK_MS), REPLAY_LIMIT)
+                except Exception:
+                    logger.debug("[SSE] durable tail read failed", exc_info=True)
+                    rows = []
+                for row in rows:
+                    cursor = max(cursor, int(row["at"]))
+                    if remember(row["event_id"]):
+                        last_sent = time.monotonic()
+                        yield _frame_from_row(row)
+            # Wait for event from queue (with timeout for keepalive and the durable tail)
             try:
-                event = await asyncio.wait_for(queue.get(), timeout=10.0)
+                event = await asyncio.wait_for(queue.get(), timeout=min(10.0, poll_seconds))
 
                 # Tenant isolation: only the owner (or an admin) receives
                 # the event; ownerless events go to admins only.
-                if not event_visible_to(event, user_id, is_admin):
+                if not event_visible_to(event, user_id, is_admin) or not remember(event.event_id):
                     # Other tenants' events must not starve this
                     # subscriber's keepalive.
                     if time.monotonic() - last_sent >= 10.0:
@@ -221,25 +311,16 @@ async def _event_stream(user_id: str, is_admin: bool, still_authorised=None) -> 
                     continue
 
                 last_sent = time.monotonic()
-                # Send SSE formatted message
-                yield {
-                    "event": event.event_type.value,
-                    "data": json.dumps({
-                        "event_id": event.event_id,
-                        "trade_id": event.trade_id,
-                        "symbol": event.symbol,
-                        "ts": event.ts,
-                        "payload": event.payload
-                    })
-                }
-                
+                yield _frame_from_event(event)
+
             except asyncio.TimeoutError:
-                # Send keepalive comment to prevent connection timeout
-                last_sent = time.monotonic()
-                yield {
-                    "comment": "keepalive"
-                }
-                
+                if time.monotonic() - last_sent >= 10.0:
+                    # Send keepalive comment to prevent connection timeout
+                    last_sent = time.monotonic()
+                    yield {
+                        "comment": "keepalive"
+                    }
+
     except asyncio.CancelledError:
         # Client disconnected
         pass
@@ -253,6 +334,8 @@ async def stream_events(
     user_id: str = Depends(get_current_user_id),
     is_admin: bool = Depends(_caller_is_admin),
     token: str = Depends(oauth2_scheme),
+    last_event_id_header: Optional[str] = Header(None, alias="Last-Event-ID", max_length=128),
+    last_event_id: Optional[str] = Query(None, max_length=128),
 ):
     """
     Server-Sent Events stream for real-time analytics updates.
@@ -276,10 +359,18 @@ async def stream_events(
     - `TP1_HIT`: Take profit 1 hit
     - `ADD_FILLED`: Add to position filled
     
-    **Auto-reconnect**: Browser EventSource API handles reconnection automatically.
+    **Customer events** (Section K3): ENTRY_FILLED, EXIT_FILLED, POSITION_UNPROTECTED, BOT_PAUSED,
+    BOT_RESUMED, BOT_STOPPED, DAILY_LOSS_PAUSE, ENTRY_BLOCKED. Each frame carries ``id`` (the event id) and
+    ``event_id``, ``event_type``, ``timestamp``, ``user_id``, ``bot_id``, ``broker_account_id``,
+    ``environment`` and ``payload``.
+
+    **Auto-reconnect**: EventSource reconnects with ``Last-Event-ID``; the events recorded after that id are
+    replayed (at most 500, owner-scoped), then the stream continues. ``?last_event_id=`` does the same for a
+    proxy that cannot forward the header.
     """
     
-    return EventSourceResponse(_event_stream(user_id, is_admin, _token_still_current(token)))
+    resume = last_event_id_header or last_event_id
+    return EventSourceResponse(_event_stream(user_id, is_admin, _token_still_current(token), last_event_id=resume))
 
 
 @router.get("/stream/health")

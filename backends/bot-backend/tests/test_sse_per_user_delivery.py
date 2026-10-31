@@ -172,8 +172,9 @@ def test_owner_keys_are_additive_and_existing_payload_keys_unchanged(events_api,
     assert set(owned["ADD_FILLED"]["payload"]) - owner_keys == {"trade_id", "add_price", "add_qty", "add_count"}
     assert set(owned["POSITION_CLOSED"]["payload"]) - owner_keys == {
         "trade_id", "exit_price", "exit_reason", "realized_pnl", "r_multiple", "duration_minutes"}
-    # The SSE envelope is unchanged too.
-    assert set(owned["POSITION_CLOSED"]) == {"event_id", "trade_id", "symbol", "ts", "payload"}
+    # The original envelope keys are kept; Section K3 adds the top-level identity fields.
+    assert set(owned["POSITION_CLOSED"]) == {"event_id", "trade_id", "symbol", "ts", "payload", "event_type", "timestamp", "user_id", "bot_id", "broker_account_id", "environment"}
+    assert owned["POSITION_CLOSED"]["user_id"] == ALICE
 
 
 def test_trade_without_owner_emits_no_owner_keys(tracker):

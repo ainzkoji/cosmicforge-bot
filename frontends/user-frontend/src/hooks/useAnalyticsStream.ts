@@ -75,12 +75,12 @@ export function useAnalyticsStream() {
             queryClient.invalidateQueries({ queryKey: ['analytics-overview'] });
         });
 
-        // Connection error
-        eventSource.onerror = (error) => {
-            console.error('[Analytics Stream] Error:', error);
-            eventSource.close();
-            // EventSource auto-reconnects, but we close to prevent spam
+        // Connection error: EventSource reconnects by itself and resumes with Last-Event-ID (Section K3);
+        // closing here would defeat that. A refused (401) connection is not retried by the browser.
+        eventSource.onerror = () => {
+            console.warn('[Analytics Stream] Connection interrupted; the browser reconnects');
         };
+        eventSource.addEventListener('auth_revoked', () => eventSource.close());
 
         // Cleanup on unmount
         return () => {

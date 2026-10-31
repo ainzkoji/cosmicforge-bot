@@ -373,6 +373,37 @@ def recent(db, *, user_id: str, bot_id: Optional[str] = None, limit: int = 50) -
     return rows
 
 
+def position_of(db, event_id: str, *, user_id: Optional[str]) -> Optional[int]:
+    """The ``at`` of ``event_id`` when the caller may see it (its owner, or ``user_id=None`` for an admin); None
+    when the event is unknown or belongs to someone else (a replay then starts from now, revealing nothing)."""
+    with db.connect() as c:
+        if not c.execute("SELECT 1 FROM sqlite_master WHERE name=?", (EVENTS_TABLE,)).fetchone():
+            return None
+        sql, args = f"SELECT at FROM {EVENTS_TABLE} WHERE event_id=?", [str(event_id)]
+        if user_id is not None:
+            sql += " AND user_id=?"
+            args.append(str(user_id))
+        row = c.execute(sql, args).fetchone()
+    return int(row[0]) if row else None
+
+
+def since(db, *, user_id: Optional[str], after_at: int, limit: int = 200) -> List[Dict[str, Any]]:
+    """Events with ``at >= after_at``, oldest first: the user's own, or every user's for ``user_id=None``
+    (administrators). The SSE stream replays and tails the durable record with it, so an event recorded by
+    another process still reaches the subscriber."""
+    with db.connect() as c:
+        if not c.execute("SELECT 1 FROM sqlite_master WHERE name=?", (EVENTS_TABLE,)).fetchone():
+            return []
+        sql, args = f"SELECT * FROM {EVENTS_TABLE} WHERE at>=?", [int(after_at)]
+        if user_id is not None:
+            sql += " AND user_id=?"
+            args.append(str(user_id))
+        rows = [dict(r) for r in c.execute(sql + " ORDER BY at, event_id LIMIT ?", (*args, int(limit)))]
+    for r in rows:
+        r["payload"] = json.loads(r.pop("payload_json") or "{}")
+    return rows
+
+
 def outbox(db, *, event_ids: Optional[Iterable[str]] = None, status: Optional[str] = None) -> List[Dict[str, Any]]:
     with db.connect() as c:
         if not c.execute("SELECT 1 FROM sqlite_master WHERE name=?", (OUTBOX_TABLE,)).fetchone():

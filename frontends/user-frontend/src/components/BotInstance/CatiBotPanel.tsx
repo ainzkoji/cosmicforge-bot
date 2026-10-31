@@ -9,6 +9,7 @@ import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { AlertTriangle, Loader2, ShieldAlert, ShieldCheck } from "lucide-react";
 import { api } from "@/api/client";
+import { useBotEventStream } from "@/hooks/useBotEventStream";
 import { ageLabel, botStatusView, formatSigned, formatUsdt, protectionView, severityTone } from "@/lib/deployment";
 import type { Tone } from "@/lib/deployment";
 
@@ -54,12 +55,14 @@ function time(ms: number | null | undefined): string {
     return ms ? new Date(ms).toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }) : "—";
 }
 
-function pnlClass(value: number | null | undefined): string {
-    if (value === null || value === undefined || value === 0) return "text-gray-300";
-    return value > 0 ? "text-green-400" : "text-red-400";
+function pnlClass(value: string | number | null | undefined): string {
+    const n = value === null || value === undefined || value === "" ? 0 : Number(value);
+    if (!Number.isFinite(n) || n === 0) return "text-gray-300";
+    return n > 0 ? "text-green-400" : "text-red-400";
 }
 
 export function CatiBotPanel({ botId }: { botId: string }) {
+    useBotEventStream(botId);
     const [now, setNow] = useState(() => Date.now());
     useEffect(() => {
         const timer = window.setInterval(() => setNow(Date.now()), 5000);
