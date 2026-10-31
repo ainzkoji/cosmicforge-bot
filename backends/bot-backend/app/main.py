@@ -521,6 +521,8 @@ SENSITIVE_NAME_MARKERS = (
     "PRIVATE",
     "WEBHOOK",
 )
+from app.api.market_entry_policy import router as market_entry_policy_router  # noqa: E402
+app.include_router(market_entry_policy_router)  # /api/v1/admin/order-spreading/* (admin emergency token; L-08)
 # Explicit extras, masked whatever their name looks like.
 SENSITIVE_KEYS = {
     "BINANCE_API_KEY",

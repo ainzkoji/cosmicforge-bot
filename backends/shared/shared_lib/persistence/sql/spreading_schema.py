@@ -19,18 +19,30 @@ tables and indexes) and reversible by dropping what it created.
                                here calibrates a policy; a calibrated policy still needs an owner approval
                                reference (``platform_symbol_budgets`` CHECK).
 
+``platform_market_entry_policy_events`` (61, master plan L-08) the governed single-account market-entry policy
+                               ledger: append-only (triggers refuse UPDATE and DELETE on both dialects), hash-chained
+                               (``prev_hash`` -> ``hash``), one ``POLICY_RECORDED`` and at most one ``POLICY_REVOKED``
+                               per ``policy_id``. The schema itself refuses a record without an approval reference,
+                               a record that claims calibration (``calibrated = 0`` only) and any scope other than
+                               ``SINGLE_ACCOUNT``. Written only by ``scale.market_entry_policy`` through the operator
+                               interface; no code path writes a record of its own accord.
+
 Money, prices, quantities and basis points are exact decimals (``{MONEY}``), written with ``decimal_in``.
 """
 from __future__ import annotations
 
 from typing import List
 
+from .launch_schema import _drop_with_functions, _with_append_only
 from .migrations import Migration
 from .platform_schema import render
 
 DECISION_OUTCOMES = ("RESERVED", "REFUSED")
 SETTLED_STATES = ("FILLED", "RELEASED", "EXPIRED")
 OBSERVATION_SOURCES = ("ENTRY_ATTEMPT", "SHADOW")
+MARKET_POLICY_EVENT_TYPES = ("POLICY_RECORDED", "POLICY_REVOKED")
+MARKET_POLICY_SCOPES = ("SINGLE_ACCOUNT",)
+MARKET_POLICY_ENVIRONMENTS = ("DEMO", "LIVE")
 
 
 def _in(*values: str) -> str:
@@ -64,8 +76,26 @@ V60 = [
     "CREATE INDEX ix_platform_spread_observations_symbol ON platform_spread_observations (venue, symbol, side, recorded_at)",
 ]
 
+V61 = [
+    "CREATE TABLE platform_market_entry_policy_events (seq {ID}, event_id TEXT NOT NULL UNIQUE, "
+    f"event_type TEXT NOT NULL CHECK (event_type IN {_in(*MARKET_POLICY_EVENT_TYPES)}), policy_id TEXT NOT NULL, "
+    "venue TEXT NOT NULL, symbol TEXT NOT NULL, "
+    f"environment TEXT NOT NULL CHECK (environment IN {_in(*MARKET_POLICY_ENVIRONMENTS)}), account_id TEXT, "
+    f"scope TEXT NOT NULL CHECK (scope IN {_in(*MARKET_POLICY_SCOPES)}), "
+    "calibrated INTEGER NOT NULL DEFAULT 0 CHECK (calibrated = 0), approval_ref TEXT, reason TEXT NOT NULL, "
+    "actor_ref TEXT NOT NULL, terms {JSON} NOT NULL, recorded_at {BIGINT} NOT NULL, prev_hash TEXT NOT NULL, "
+    "hash TEXT NOT NULL UNIQUE, UNIQUE (policy_id, event_type), "
+    "CHECK (event_type <> 'POLICY_RECORDED' OR (approval_ref IS NOT NULL AND LENGTH(TRIM(approval_ref)) >= 3)), "
+    "CHECK (LENGTH(TRIM(reason)) >= 3), CHECK (LENGTH(TRIM(actor_ref)) > 0))",
+    "CREATE INDEX ix_platform_market_entry_policy_scope ON platform_market_entry_policy_events "
+    "(venue, symbol, environment, seq)",
+]
+
 MIGRATIONS: List[Migration] = [
     Migration(60, "order_spreading_boundary_integration", render(V60),
               down=("DROP TABLE IF EXISTS platform_spread_observations",
                     "DROP TABLE IF EXISTS platform_spread_decisions")),
+    Migration(61, "single_account_market_entry_policy",
+              _with_append_only(V61, ["platform_market_entry_policy_events"]),
+              down=_drop_with_functions("platform_market_entry_policy_events")),
 ]

@@ -850,7 +850,10 @@ class CATIExecutionBoundary:
         try:
             grant = gate.reserve(plan, client=getattr(getattr(self.adapter, "executor", None), "client", None),
                                  adapter=self.adapter, quantity=tp["quantity"], notional=req.notional,
-                                 attempt_id=attempt_id, client_order_id=client_order_id, tick=self._tick_size(plan))
+                                 attempt_id=attempt_id, client_order_id=client_order_id, tick=self._tick_size(plan),
+                                 # L-08: a governed market entry is validated at the executable price
+                                 stop_price=req.stop_price, equity=req.current_equity,
+                                 max_slippage_bps=req.max_slippage_bps)
         except SpreadRefused as exc:
             log_stage(component="boundary.order_spreading", status="REFUSED", reason_codes=(exc.code,),
                       cycle_id=plan.cycle_id, user_id=plan.user_id, broker_account_id=plan.broker_account_id,

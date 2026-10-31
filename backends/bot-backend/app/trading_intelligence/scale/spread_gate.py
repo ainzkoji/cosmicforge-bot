@@ -16,6 +16,28 @@ What ``reserve`` requires, in order (the first failure is the refusal code; noth
    refused ``MARKET_FALLBACK_DISABLED_BY_POLICY``; otherwise walking the current book for the risk-approved
    quantity must stay inside the worst permitted price (``MARKET_WALK_EXCEEDS_WORST_PRICE`` /
    ``DEPTH_INSUFFICIENT_FOR_QUANTITY``);
+
+   4a. (L-08) when the constructor policy refuses market entries -- the production default does -- a MARKET entry
+   may still proceed under a governed single-account policy record (``market_entry_policy``), and then only when
+   ALL of these hold, in this order, each refusing with its own code: the record resolves for this venue / symbol /
+   environment / account (``MARKET_FALLBACK_DISABLED_BY_POLICY`` when none was ever recorded -- the default, as
+   before -- ``MARKET_POLICY_UNAVAILABLE``, ``MARKET_POLICY_LEDGER_INTEGRITY_FAILED``, ``MARKET_POLICY_REVOKED``,
+   ``MARKET_POLICY_EXPIRED``, ``MARKET_POLICY_ENVIRONMENT_NOT_PERMITTED`` (LIVE in this build),
+   ``MARKET_POLICY_ACCOUNT_SCOPE_MISMATCH``, ``MARKET_POLICY_TERMS_INVALID``); the same book passes the record's own
+   (equal or tighter) depth terms (``DEPTH_STALE`` / ``DEPTH_CROSSED`` / ``DEPTH_INSUFFICIENT_LEVELS``); the
+   quoted spread is inside the record's bound (``MARKET_SPREAD_UNKNOWN`` / ``MARKET_SPREAD_EXCESSIVE``); the account
+   is an ACTIVE registered platform account of this tenant on this venue and environment
+   (``PLATFORM_ACCOUNT_NOT_REGISTERED`` / ``PLATFORM_ACCOUNT_TENANT_MISMATCH`` /
+   ``MARKET_POLICY_ACCOUNT_NOT_ELIGIBLE``); the market walk (as 4); the predicted slippage of the walk is inside
+   the record's band and the plan's own bound (``MARKET_PREDICTED_SLIPPAGE_EXCEEDS_BOUND``); at the WORST walked
+   price the stop is on the protective side, at most 15 % away, and the risk-approved quantity risks at most
+   0.40 % of equity (``EXECUTABLE_PRICE_RISK_UNVERIFIABLE`` / ``EXECUTABLE_STOP_GEOMETRY_INVALID`` /
+   ``EXECUTABLE_STOP_DISTANCE_EXCEEDED`` / ``EXECUTABLE_PRICE_RISK_EXCEEDED`` -- refused, never resized); and a
+   joined budget was opened under this same record (``MARKET_POLICY_BUDGET_MISMATCH``). The record is never
+   calibrated, so 5 still refuses a second account. Everything the boundary checks before this gate (family
+   certification and promotion, kill switches, adapter certification, environment and go-live gate, instrument
+   filters, capital, hard risk, the account fence, native reduce-only protection) and after it (the claim, the
+   raw submission permit) is unchanged;
 5. the shared budget of (venue, venue symbol, shared signal, side) -- opened or joined -- and a RESERVED slot
    for the FULL risk-approved notional of this account, in one transaction (``PlatformOrderBudget.reserve_for``):
    ``PLATFORM_ACCOUNT_NOT_REGISTERED``, ``PLATFORM_ACCOUNT_TENANT_MISMATCH``, ``BUDGET_EXPIRED``,
@@ -27,7 +49,9 @@ What ``reserve`` requires, in order (the first failure is the refusal code; noth
 Calibration status: the default policy is ``CONSERVATIVE_DEFAULT`` (``calibrated=False``, no impact
 coefficients). Nothing here sets ``calibrated``; a calibrated policy needs an owner ``approval_ref`` (enforced by
 ``SpreadPolicy`` and by the schema) that no code creates. Until then a single account may proceed under the
-conservative cap and a second account on the same venue/symbol/side is refused.
+conservative cap and a second account on the same venue/symbol/side is refused. A governed market-entry record
+(4a) is recorded only by an operator through ``/api/v1/admin/order-spreading`` with an owner approval reference;
+none exists in this repository, so every production MARKET entry is still refused.
 
 Slot lifecycle, tied to the durable attempt (``platform_spread_decisions`` links slot <-> attempt)::
 
@@ -252,9 +276,12 @@ class PlatformSpreadGate:
 
     # ── reservation ─────────────────────────────────────────────────────────────────────────────────────
     def reserve(self, plan: Any, *, client: Any, adapter: Any, quantity: Any, notional: Any, attempt_id: str,
-                client_order_id: Optional[str] = None, tick: Any = None) -> SpreadGrant:
+                client_order_id: Optional[str] = None, tick: Any = None, stop_price: Any = None, equity: Any = None,
+                max_slippage_bps: Any = None) -> SpreadGrant:
         """A RESERVED slot covering the full ``notional`` of this ENTRY, or ``SpreadRefused`` (holding nothing).
-        ``quantity`` / ``notional`` are the risk-approved size; they are never changed here."""
+        ``quantity`` / ``notional`` are the risk-approved size; they are never changed here. ``stop_price``,
+        ``equity`` and the plan's ``max_slippage_bps`` are what a governed market entry (L-08) is validated
+        against at the executable price; without them such an entry is refused."""
         side = entry_side(plan)
         venue, symbol = str(plan.venue), str(plan.instrument_key.venue_symbol).upper()
         account, tenant = str(plan.broker_account_id), (str(plan.user_id) if plan.user_id else None)
@@ -281,23 +308,45 @@ class PlatformSpreadGate:
                 ctx["depth_hash"] = None
                 raise SpreadRefused(exc.code, str(exc))
             ctx["depth_hash"] = depth.digest
+            policy, governed = self.policy, None
+            if style == MARKET and not self.policy.allow_market_fallback:
+                # L-08: the constructor policy refuses market entries. Only an approved, recorded, active
+                # single-account policy for this venue / symbol / environment can permit one; none recorded is the
+                # same refusal as before (MARKET_FALLBACK_DISABLED_BY_POLICY). The record is never calibrated.
+                governed = self._governed_policy(db, venue, symbol, ctx["environment"], account)
+                policy = governed.spread_policy()
+                ctx["policy_version"] = policy.policy_version
+                try:   # the record's own (equal or tighter) depth terms, on the same book and database time
+                    cap = aggregate_cap(depth, side, policy, now_ms=now)
+                except DepthRefused as exc:
+                    raise SpreadRefused(exc.code, str(exc))
 
             def market_walk(worst):
-                ok, why = market_fallback_permitted(depth, side, qty, worst, policy=self.policy, now_ms=now)
+                ok, why = market_fallback_permitted(depth, side, qty, worst, policy=policy, now_ms=now)
                 if not ok:
                     raise SpreadRefused(why)
 
             if style == MARKET:  # refused before any budget is opened
+                if governed is not None:
+                    _spread_within(depth, governed.terms.max_spread_bps,
+                                   getattr(getattr(plan, "execution_preferences", None), "max_spread_bps", None))
+                    self._account_eligible(db, account, tenant, venue, ctx["environment"])
                 market_walk(cap.worst_price)
-            budget = PlatformOrderBudget(db, self.policy)
+                if governed is not None:
+                    _executable_market_entry(depth, side, qty, cap, policy, stop_price=stop_price, equity=equity,
+                                             plan_slippage_bps=max_slippage_bps)
+            budget = PlatformOrderBudget(db, policy)
             try:
                 budget_id = budget.open_budget(venue=venue, symbol=symbol, signal_id=signal, side=side, depth=depth)
             except (DepthRefused, BudgetRefused) as exc:
                 raise SpreadRefused(exc.code, str(exc))
             with db.transaction(write=False) as conn:
-                stored = conn.one("SELECT worst_price, calibrated FROM platform_symbol_budgets WHERE budget_id=?",
-                                  (budget_id,))
-            stored_worst, calibrated = decimal_out(stored[0]), bool(int(stored[1])) and self.policy.calibrated
+                stored = conn.one("SELECT worst_price, calibrated, policy_version FROM platform_symbol_budgets "
+                                  "WHERE budget_id=?", (budget_id,))
+            stored_worst, calibrated = decimal_out(stored[0]), bool(int(stored[1])) and policy.calibrated
+            if governed is not None and stored[2] != policy.policy_version:
+                # a budget opened under another (revoked, expired or superseded) policy is never joined
+                raise SpreadRefused(MARKET_POLICY_BUDGET_MISMATCH, str(stored[2]))
             tighter = stored_worst < cap.worst_price if side == BUY else stored_worst > cap.worst_price
             if style == MARKET and tighter:
                 market_walk(stored_worst)  # a joined budget's committed band is tighter than the book read now
@@ -311,7 +360,7 @@ class PlatformSpreadGate:
                     "order_style, depth_hash, created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,'RESERVED',NULL,?,?,?,?,?,?,?,?,?)",
                     (decision_id, venue, symbol, side, signal, account, tenant, ctx["environment"], attempt_id,
                      plan.trade_plan_id, client_order_id, budget_id, slot.slot_id, decimal_in(want),
-                     decimal_in(slot.granted), 1 if calibrated else 0, self.policy.policy_version, style, depth.digest,
+                     decimal_in(slot.granted), 1 if calibrated else 0, policy.policy_version, style, depth.digest,
                      at))
 
             try:
@@ -324,7 +373,7 @@ class PlatformSpreadGate:
                 raise SpreadRefused(PARTIAL_GRANT_CODE)
             _metric("RESERVED", "RESERVED")
             return SpreadGrant(decision_id, budget_id, slot.slot_id, account, tenant, signal, venue, symbol, side, qty,
-                               want, calibrated, self.policy.policy_version, style, depth, cap,
+                               want, calibrated, policy.policy_version, style, depth, cap,
                                now - depth.observed_at_ms, now)
         except SpreadRefused as exc:
             _metric("REFUSED", exc.code)
@@ -349,10 +398,40 @@ class PlatformSpreadGate:
                     (uuid.uuid4().hex, ctx["venue"], ctx["symbol"], ctx["side"], ctx["signal_id"], ctx["account_id"],
                      ctx["tenant_id"], ctx["environment"], ctx["execution_attempt_id"], ctx["trade_plan_id"],
                      ctx["client_order_id"], code, decimal_in(ctx["requested_notional"]),
-                     1 if self.policy.calibrated else 0, self.policy.policy_version, ctx["order_style"],
-                     ctx.get("depth_hash"), conn.now_ms()))
+                     1 if self.policy.calibrated else 0, ctx.get("policy_version") or self.policy.policy_version,
+                     ctx["order_style"], ctx.get("depth_hash"), conn.now_ms()))
         except Exception as exc:
             logger.warning("order spreading refusal not recorded: %s", type(exc).__name__)
+
+    # ── the governed single-account market-entry policy (L-08) ─────────────────────────────────────────────
+    @staticmethod
+    def _governed_policy(db: Database, venue: str, symbol: str, environment: str, account: str):
+        """The active approved record for this scope (``market_entry_policy.MarketEntryPolicyLedger.resolve``) or
+        ``SpreadRefused`` with its code. Read from the same platform database as the budget, at each reservation:
+        a revocation applies to the very next entry."""
+        from .market_entry_policy import MarketEntryPolicyLedger, MarketPolicyError
+        try:
+            record, _ = MarketEntryPolicyLedger(db).resolve(venue=venue, symbol=symbol, environment=environment,
+                                                            account_id=account)
+        except MarketPolicyError as exc:
+            raise SpreadRefused(exc.code, exc.detail)
+        return record
+
+    @staticmethod
+    def _account_eligible(db: Database, account: str, tenant: Optional[str], venue: str, environment: str) -> None:
+        """A governed market entry is for an ACTIVE registered platform account of this tenant, on this venue and
+        environment. (``reserve_for`` checks registration and tenant again inside its own transaction.)"""
+        with db.transaction(write=False) as conn:
+            row = conn.one("SELECT tenant_id, venue, environment, state FROM platform_accounts WHERE account_id=?",
+                           (account,))
+        if row is None:
+            raise SpreadRefused(ACCOUNT_NOT_REGISTERED_CODE)
+        if row[0] != tenant:
+            raise SpreadRefused(ACCOUNT_TENANT_MISMATCH_CODE)
+        if str(row[3]) != "ACTIVE" or str(row[1]).upper() != venue.upper() or \
+                str(row[2]).upper() != environment.upper():
+            raise SpreadRefused(MARKET_POLICY_ACCOUNT_NOT_ELIGIBLE,
+                                f"state={row[3]} venue={row[1]} environment={row[2]}")
 
     # ── lifecycle ───────────────────────────────────────────────────────────────────────────────────────
     def mark_submitted(self, grant: SpreadGrant) -> None:
@@ -462,6 +541,79 @@ class PlatformSpreadGate:
 
 
 PARTIAL_GRANT_CODE = "PLATFORM_SYMBOL_BUDGET_PARTIAL_GRANT"
+ACCOUNT_NOT_REGISTERED_CODE = "PLATFORM_ACCOUNT_NOT_REGISTERED"
+ACCOUNT_TENANT_MISMATCH_CODE = "PLATFORM_ACCOUNT_TENANT_MISMATCH"
+
+#: refusal codes of a governed market entry (L-08), after the record itself resolved
+MARKET_SPREAD_UNKNOWN = "MARKET_SPREAD_UNKNOWN"
+MARKET_SPREAD_EXCESSIVE = "MARKET_SPREAD_EXCESSIVE"
+MARKET_POLICY_ACCOUNT_NOT_ELIGIBLE = "MARKET_POLICY_ACCOUNT_NOT_ELIGIBLE"
+MARKET_PREDICTED_SLIPPAGE_EXCEEDS_BOUND = "MARKET_PREDICTED_SLIPPAGE_EXCEEDS_BOUND"
+EXECUTABLE_PRICE_RISK_UNVERIFIABLE = "EXECUTABLE_PRICE_RISK_UNVERIFIABLE"
+EXECUTABLE_STOP_GEOMETRY_INVALID = "EXECUTABLE_STOP_GEOMETRY_INVALID"
+EXECUTABLE_STOP_DISTANCE_EXCEEDED = "EXECUTABLE_STOP_DISTANCE_EXCEEDED"
+EXECUTABLE_PRICE_RISK_EXCEEDED = "EXECUTABLE_PRICE_RISK_EXCEEDED"
+MARKET_POLICY_BUDGET_MISMATCH = "MARKET_POLICY_BUDGET_MISMATCH"
+
+
+def _spread_within(depth: DepthSnapshot, max_spread_bps: Decimal, plan_spread_bps: Any = None) -> None:
+    """The quoted spread (best ask - best bid over the mid) must be inside the record's bound and the plan's own."""
+    if not depth.bids or not depth.asks:
+        raise SpreadRefused(MARKET_SPREAD_UNKNOWN)
+    bound, own = max_spread_bps, _dec(plan_spread_bps)
+    if own is not None and own > 0:
+        bound = min(bound, own)
+    bid, ask = depth.bids[0][0], depth.asks[0][0]
+    spread = _bps(ask - bid, (ask + bid) / 2)
+    if spread > bound:
+        raise SpreadRefused(MARKET_SPREAD_EXCESSIVE, f"{spread} bps > {bound} bps")
+
+
+def worst_walked_price(depth: DepthSnapshot, side: str, quantity: Decimal) -> Optional[Decimal]:
+    """The price of the LAST visible level a market order for ``quantity`` would reach, or ``None`` when the
+    visible book does not hold that much."""
+    left = Decimal(quantity)
+    for p, q in (depth.asks if side == BUY else depth.bids):
+        left -= q
+        if left <= 0:
+            return p
+    return None
+
+
+def _executable_market_entry(depth: DepthSnapshot, side: str, qty: Decimal, cap: CapDecision, policy: SpreadPolicy,
+                             *, stop_price: Any, equity: Any, plan_slippage_bps: Any) -> None:
+    """A governed market entry at the price the book says it would ACTUALLY get. Refused -- never resized --
+    when the predicted slippage of the walk exceeds the record's band or the plan's own bound, or when, at the
+    WORST walked price, the stop is on the wrong side, further than the 15 % entry-stop ceiling
+    (``risk_sizing.MAX_STOP_DISTANCE``) or the risk of the risk-approved quantity exceeds the 0.40 % per-trade
+    ceiling of equity (``risk_levels.SYSTEM_PER_TRADE_RISK_CEILING_PCT``). Visible-book walk only: hidden liquidity
+    and the book's reaction are unknown to it."""
+    from app.trading_intelligence.execution.risk_sizing import MAX_STOP_DISTANCE
+    from shared_lib.risk_levels import SYSTEM_PER_TRADE_RISK_CEILING_PCT
+
+    vwap, worst = walk_book(depth, side, qty), worst_walked_price(depth, side, qty)
+    if vwap is None or worst is None:  # market_fallback_permitted already refused this; kept fail-closed
+        raise SpreadRefused("DEPTH_INSUFFICIENT_FOR_QUANTITY")
+    sign = Decimal(1) if side == BUY else Decimal(-1)
+    predicted = _bps(sign * (vwap - cap.reference_price), cap.reference_price)
+    bound = policy.max_slippage_bps
+    plan_bound = _dec(plan_slippage_bps)
+    if plan_bound is not None and plan_bound > 0:
+        bound = min(bound, plan_bound)
+    if predicted > bound:
+        raise SpreadRefused(MARKET_PREDICTED_SLIPPAGE_EXCEEDS_BOUND, f"{predicted} bps > {bound} bps")
+    stop, eq = _dec(stop_price), _dec(equity)
+    if stop is None or stop <= 0 or eq is None or eq <= 0:
+        raise SpreadRefused(EXECUTABLE_PRICE_RISK_UNVERIFIABLE, "stop price and equity are required")
+    if (side == BUY and stop >= worst) or (side == SELL and stop <= worst):
+        raise SpreadRefused(EXECUTABLE_STOP_GEOMETRY_INVALID, f"stop {stop} vs worst walked price {worst}")
+    distance = abs(worst - stop) / worst
+    if distance > MAX_STOP_DISTANCE:
+        raise SpreadRefused(EXECUTABLE_STOP_DISTANCE_EXCEEDED, f"{distance} > {MAX_STOP_DISTANCE}")
+    risk = qty * abs(worst - stop) / eq
+    if risk > SYSTEM_PER_TRADE_RISK_CEILING_PCT / Decimal(100):
+        raise SpreadRefused(EXECUTABLE_PRICE_RISK_EXCEEDED,
+                            f"{risk} of equity > {SYSTEM_PER_TRADE_RISK_CEILING_PCT} %")
 
 
 def _metric(outcome: str, code: str) -> None:
