@@ -1,6 +1,7 @@
 """The daily bar feed: the market-data provider that follows the exchange day by day (Section H, Steps 3.1, 3.12).
 
-    python -m app.market_data.daily_feed update [--max-requests N]     fetch what is missing (public data only)
+    python -m app.trading_intelligence.pipeline feed-update [--max-requests N]   fetch what is missing (public data
+                                                                                  only, shared request budget)
     python -m app.market_data.daily_feed status                        what the feed holds and how fresh it is
 
 ``DailyBarFeed`` is the ``DailyBars`` provider of the platform cycle driver (``pipeline.market_data``). It keeps
@@ -1034,18 +1035,20 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     upd.add_argument("--workers", type=int, default=8)
     sub.add_parser("status")
     args = parser.parse_args(argv)
+    if args.command == "update":
+        # An update reads exchange metadata from the trading API host, so it must share the platform request
+        # budget with the order path. This module may not import that budget (it stays free of the order path),
+        # so the update runs from the pipeline command line, which builds the feed with the budgeted getter.
+        print("refused: run 'python -m app.trading_intelligence.pipeline feed-update [--max-requests N] "
+              "[--workers N]', which shares the platform request budget", file=sys.stderr)
+        return 2
     from shared_lib.persistence.cati_platform_schema import ensure_cati_platform_schema
     from shared_lib.persistence.db import DB
 
     db = DB()
     ensure_cati_platform_schema(db)
-    if args.command == "status":
-        print(json.dumps(DailyBarFeed(db).status(), indent=1, sort_keys=True, default=str))
-        return 0
-    policy = FeedPolicy() if args.max_requests is None else FeedPolicy(max_requests_per_update=args.max_requests)
-    summary = default_daily_bars(db, policy=policy, workers=args.workers).update()
-    print(json.dumps(summary, indent=1, sort_keys=True, default=str))
-    return 0 if summary["status"] == COMPLETED else 1
+    print(json.dumps(DailyBarFeed(db).status(), indent=1, sort_keys=True, default=str))
+    return 0
 
 
 __all__ = ["FEED_VERSION", "DEFAULT_FIRST_DAY", "FeedUnavailable", "Fetched", "DailyFetcher", "FeedPolicy",

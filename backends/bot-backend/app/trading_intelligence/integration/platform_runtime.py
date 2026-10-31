@@ -61,15 +61,27 @@ class ShadowScheduler:
         if self.driver is None:
             self._initialize()
         now = self.clock()
-        results = self.driver.run_due(now)
-        # Bounded batches, never VACUUM. Each archive is verified before its rows are removed.
-        if not self.stop.is_set() and self.owns_runtime(self.db) and (
-                self.last_retention is None or now - self.last_retention >= 86_400_000):
+        try:
+            return self.driver.run_due(now)
+        finally:
+            # Retention does not depend on the cycles: a failing cycle must not let the tables grow unbounded.
+            self._retain(now)
+
+    def _retain(self, now):
+        """Bounded batches, never VACUUM. Each archive is verified before its rows are removed. At most once a day;
+        a failure is logged and retried on the next tick, and never hides the cycle's own result or error."""
+        if self.stop.is_set() or not self.owns_runtime(self.db):
+            return
+        if self.last_retention is not None and now - self.last_retention < 86_400_000:
+            return
+        try:
             from app.trading_intelligence.pipeline.retention import run_all
             run_all(self.db, archive_dir=Path(self.db.path).parent / "cati_archives",
                     now_ms=now, max_rows=500, max_batches=1)
-            self.last_retention = now
-        return results
+        except Exception:
+            logger.exception("[CATI_SHADOW] retention failed; retried on the next tick")
+            return
+        self.last_retention = now
 
     def request_stop(self):
         self.stop.set()

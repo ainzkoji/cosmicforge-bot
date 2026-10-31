@@ -4,6 +4,11 @@
     python -m app.trading_intelligence.pipeline register      record the code-defined families (idempotent)
     python -m app.trading_intelligence.pipeline verify        integrity of the governance log and of the registry
     python -m app.trading_intelligence.pipeline run-due       run the shadow cycles that are due (daily bar feed)
+    python -m app.trading_intelligence.pipeline feed-update   bring the daily bar feed up to date (public data only)
+    python -m app.trading_intelligence.pipeline feed-status   what the feed holds and how fresh it is
+
+``feed-update`` reads exchange metadata from the trading API host through the shared platform request budget
+(``budgeted_archive_get``), so a refresh cannot spend the request weight the order path needs.
 
 What is deliberately NOT here: any command that approves, rejects or revokes a promotion, switches a kill
 switch, or records evidence. Those are decisions of an authenticated operator and exist only behind the
@@ -52,6 +57,21 @@ def status(db: Any) -> Dict[str, Any]:
             "shadow_comparisons": comparisons}
 
 
+def _feed(db: Any, args: Any) -> int:
+    from app.market_data.daily_feed import COMPLETED as FEED_COMPLETED
+    from app.market_data.daily_feed import DailyBarFeed, FeedPolicy, default_daily_bars
+
+    if args.command == "feed-status":
+        print(json.dumps(DailyBarFeed(db).status(), indent=1, sort_keys=True, default=str))
+        return 0
+    from app.trading_intelligence.integration.platform_runtime import budgeted_archive_get
+
+    policy = FeedPolicy() if args.max_requests is None else FeedPolicy(max_requests_per_update=args.max_requests)
+    summary = default_daily_bars(db, http_get=budgeted_archive_get(db), policy=policy, workers=args.workers).update()
+    print(json.dumps(summary, indent=1, sort_keys=True, default=str))
+    return 0 if summary["status"] == FEED_COMPLETED else 1
+
+
 def main(argv: Any = None) -> int:
     parser = argparse.ArgumentParser(prog="python -m app.trading_intelligence.pipeline", description=__doc__.splitlines()[0])
     sub = parser.add_subparsers(dest="command", required=True)
@@ -62,8 +82,14 @@ def main(argv: Any = None) -> int:
     run.add_argument("--model-equity", type=float, default=None,
                      help="equity of the platform's model accounts (default: the evaluator's initial equity)")
     run.add_argument("--no-connected-accounts", action="store_true", help="model accounts only")
+    feed = sub.add_parser("feed-update")
+    feed.add_argument("--max-requests", type=int, default=None, help="bound of this run, in requests of the source")
+    feed.add_argument("--workers", type=int, default=8)
+    sub.add_parser("feed-status")
     args = parser.parse_args(argv)
     db = _db()
+    if args.command in ("feed-update", "feed-status"):
+        return _feed(db, args)
     if args.command == "status":
         print(json.dumps(status(db), indent=1, sort_keys=True, default=str))
         return 0

@@ -9,10 +9,9 @@ from pathlib import Path
 
 APP = Path(__file__).resolve().parents[2] / "app"
 
-# The daily_feed operator CLI (``python -m app.market_data.daily_feed update``) is the one remaining unbudgeted
-# caller. It is in a file that carries someone else's uncommitted change, so it is recorded, not edited:
-# docs/implementation/MASTER_PLAN_I_L_COMPLIANCE.md, "Uncommitted change".
-KNOWN_UNBUDGETED = {("market_data/daily_feed.py", "main")}
+# No exception is left: the daily_feed operator CLI no longer builds a feed for an update; the update runs from
+# ``python -m app.trading_intelligence.pipeline feed-update``, which passes the budgeted getter.
+KNOWN_UNBUDGETED = set()
 
 
 def _calls():
@@ -32,7 +31,7 @@ def test_runtime_feeds_pass_the_budgeted_getter():
         found.append((rel, fn))
         if not any(k.arg == "http_get" for k in call.keywords) and (rel, fn) not in KNOWN_UNBUDGETED:
             unbudgeted.append(f"{rel}:{call.lineno} in {fn}()")
-    assert len(found) >= 3, found  # portfolio runtime, shadow comparison job, pipeline CLI
+    assert len(found) >= 4, found  # portfolio runtime, shadow comparison job, pipeline run-due and feed-update
     assert not unbudgeted, f"daily feed built without the shared request budget: {unbudgeted}"
 
 
@@ -52,3 +51,30 @@ def test_shadow_comparison_source_uses_the_budget(monkeypatch, tmp_path):
     except Exception:
         pass  # the registry and accounts are not under test; the feed is built first
     assert seen.get("http_get") is marker
+
+
+def test_the_daily_feed_cli_refuses_an_unbudgeted_update(monkeypatch, capsys):
+    from app.market_data import daily_feed
+
+    monkeypatch.setattr(daily_feed, "default_daily_bars", lambda *a, **kw: (_ for _ in ()).throw(AssertionError("built")))
+    assert daily_feed.main(["update", "--max-requests", "3"]) == 2
+    assert "pipeline feed-update" in capsys.readouterr().err
+
+
+def test_the_pipeline_feed_update_uses_the_shared_budget(monkeypatch, capsys):
+    from app.market_data import daily_feed
+    from app.trading_intelligence.integration import platform_runtime
+    from app.trading_intelligence.pipeline import __main__ as cli
+
+    marker, seen = object(), {}
+
+    class Feed:
+        def update(self):
+            return {"status": daily_feed.COMPLETED}
+
+    monkeypatch.setattr(cli, "_db", lambda: "isolated-db")
+    monkeypatch.setattr(platform_runtime, "budgeted_archive_get", lambda db: seen.setdefault("budget_db", db) and marker)
+    monkeypatch.setattr(daily_feed, "default_daily_bars", lambda db, **kw: seen.update(kw, db=db) or Feed())
+    assert cli.main(["feed-update", "--max-requests", "7", "--workers", "2"]) == 0
+    assert seen["http_get"] is marker and seen["budget_db"] == seen["db"] == "isolated-db"
+    assert seen["policy"].max_requests_per_update == 7 and seen["workers"] == 2
