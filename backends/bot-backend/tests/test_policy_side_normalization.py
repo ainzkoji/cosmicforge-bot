@@ -6,22 +6,30 @@ into PolicyContext while PolicyEngine compares against "BUY"/"SELL", so
 max-open-position, R:R and ATR noise-floor / ATR risk-cap gates never ran --
 for V2 and for the CATI TradePlan path alike.
 
-These tests drive the REAL TradingOrchestrator (real SafetyEngine, real
-PolicyEngine) and prove each gate now fires. A control that disables the
-normalization reproduces the old bypass, so the tests would have caught it.
+The scalar V2 entry (``process_trading_opportunity``) is retired; the ONE
+entry into hard risk is ``TradingOrchestrator.process_trade_plan`` (a real,
+hash-verified Section 18 TradePlan -> ``_evaluate_hard_risk`` -> real
+SafetyEngine + real PolicyEngine). These tests drive that path and prove each
+gate fires on it.
 """
 from __future__ import annotations
 
+import dataclasses
+import sys
+from pathlib import Path
+
 import pytest
 
-from app.core.trading_orchestrator import TradingOrchestrator
 from app.models.unified_trading import Side
 from app.policy import policy_engine as pe
 from app.policy.policy_engine import (
     InvalidPolicySignal, PolicyContext, ReasonCode, normalize_policy_signal, normalize_trade_side,
 )
-from app.risk.system_limits import UserConfigurableLimits
-from app.strategy.strategy_framework import BaseStrategy, Signal, StrategyOutput
+from app.strategy.strategy_framework import Signal
+
+_TI = Path(__file__).resolve().parent / "trading_intelligence"
+if str(_TI) not in sys.path:
+    sys.path.append(str(_TI))
 
 
 @pytest.fixture(scope="module", autouse=True)
@@ -30,38 +38,6 @@ def _migrated():
     from shared_lib.persistence.migrations import migrate
 
     migrate(DB())
-
-
-class _Fixed(BaseStrategy):
-    """A deterministic strategy: fixed signal / stop / TP / ATR."""
-
-    name = "fixed_test_strategy"
-
-    def __init__(self, signal=Signal.BUY, stop=0.02, tp=0.044, atr=2.0):
-        self._out = StrategyOutput(signal=signal, confidence=0.8, suggested_stop_distance=stop,
-                                   take_profit_distance=tp, reason="test", indicators={"atr": atr},
-                                   meta={"session_reason_code": "CRYPTO_SESSION_24_7_BYPASS"})
-
-    def analyze(self, **_kw):
-        return self._out
-
-
-def _orch(strategy, *, fixed=120.0):
-    return TradingOrchestrator(
-        "cfg_side", UserConfigurableLimits(requested_leverage={"BTCUSDT": 5}, allowed_symbols=["BTCUSDT"],
-                                           use_fixed_size=True, fixed_size_usdt=fixed),
-        "fixed_test_strategy", "binance", strategy_instance=strategy)
-
-
-def _run(orch, *, equity=50_000.0, open_positions=0, max_open_positions=5, **kw):
-    return orch.process_trading_opportunity(
-        symbol="BTCUSDT", klines=[], current_price=100.0, current_equity=equity, margin_used=0.0,
-        margin_available=equity, open_positions=open_positions, client=None, max_open_positions=max_open_positions,
-        **kw)
-
-
-def _code(result):
-    return result["details"].get("reason_code")
 
 
 # ============================== normalization ==============================
@@ -93,54 +69,136 @@ def test_non_directional_signals_stay_canonical():
     assert PolicyContext(symbol="X", signal="close").signal == "CLOSE"
 
 
-# ============================== real orchestrator gates ==============================
+# ============================== real orchestrator gates (TradePlan path) ==============================
+# The harness plan: LONG BTCUSDT, entry 100, structural invalidation 95 (5 % stop),
+# first target 110 (R:R 2.0); a 120 USDT fixed margin.
+@pytest.fixture
+def h(tmp_path):
+    from _exec import Harness
+
+    return Harness(tmp_path)
+
+
+def _mirrored_short(plan):
+    """The harness plan mirrored around 100 to a SHORT (stop 105, targets below), re-hashed through
+    ``TradePlan.build`` so it passes the Section 20.3 integrity check like any real plan."""
+    from app.trading_intelligence.contracts.trade_plan import TradePlan
+
+    defaults = {k: f.default for k, f in TradePlan.__dataclass_fields__.items() if f.default is not dataclasses.MISSING}
+    fields = {k: getattr(plan, k) for k in TradePlan.__dataclass_fields__
+              if k not in TradePlan._NON_ANALYTICAL and not (k in defaults and getattr(plan, k) == defaults[k])}
+    zone = plan.allowed_entry_zone
+    fields.update(
+        side="SHORT", structural_invalidation_price=200.0 - plan.structural_invalidation_price,
+        allowed_entry_zone=dataclasses.replace(zone, minimum_price=200.0 - zone.maximum_price,
+                                               maximum_price=200.0 - zone.minimum_price),
+        target_zones=tuple(dataclasses.replace(z, price_low=200.0 - z.price_high, price_high=200.0 - z.price_low)
+                           for z in plan.target_zones))
+    return TradePlan.build(**fields)
+
+
+def _run(h, plan=None, *, equity=50_000.0, open_positions=0, atr=2.0, **kw):
+    from app.trading_intelligence.contracts.system_health import BrokerHealthContext
+    from app.trading_intelligence.trade_plan.validation import MarketReference
+
+    plan = plan or h.plan
+    return h.orch.process_trade_plan(
+        plan, now_ms=h.now, market_reference=MarketReference(100.0, h.now - 100, 1.0),
+        broker_health=BrokerHealthContext(plan.broker_account_id, plan.venue, plan.environment, "HEALTHY", h.now, "t"),
+        reservation_state=h.reservations.get(plan.portfolio_reservation_id),
+        venue_capabilities=h.kw["evaluated"].venue_observation.execution_capabilities, klines=[],
+        current_equity=equity, margin_used=0.0, margin_available=equity, open_positions=open_positions, atr=atr,
+        **kw)
+
+
+def _code(result):
+    return result["details"].get("reason_code")
+
+
+def _blocked_by(result, code):
+    """Blocked by THIS PolicyEngine gate, with the CATI risk evidence naming it."""
+    return (result["decision"] == "blocked" and _code(result) == code
+            and result["risk_decision"].approved is False and code in result["risk_decision"].reason_codes)
+
+
 def _spy(monkeypatch, orch):
     seen = []
     real = orch.policy_engine.evaluate
 
     def evaluate(ctx):
-        seen.append(ctx.signal)
-        return real(ctx)
+        decision = real(ctx)
+        seen.append((ctx, decision))
+        return decision
 
     monkeypatch.setattr(orch.policy_engine, "evaluate", evaluate)
     return seen
 
 
-def test_v2_path_reaches_policy_engine_with_canonical_side(monkeypatch):
-    for signal, expected in ((Signal.BUY, "BUY"), (Signal.SELL, "SELL")):
-        orch = _orch(_Fixed(signal))
-        seen = _spy(monkeypatch, orch)
-        assert _run(orch)["decision"] == "execute"
-        assert seen == [expected]
+def test_plan_path_reaches_policy_engine_with_canonical_side(h, monkeypatch):
+    long_plan, short_plan = h.plan, _mirrored_short(h.plan)
+    assert (long_plan.side, short_plan.side) == ("LONG", "SHORT")
+    for plan, expected in ((long_plan, "BUY"), (short_plan, "SELL")):
+        seen = _spy(monkeypatch, h.orch)
+        res = _run(h, plan)
+        assert res["decision"] == "execute", res["reason"]
+        assert [ctx.signal for ctx, _ in seen] == [expected]
+        assert res["trade_params"]["side"] == expected
 
 
-def test_max_open_position_gate_now_fires_on_the_real_path():
+def test_max_open_position_gate_now_fires_on_the_real_path(h):
     """Before the fix this exact call was APPROVED (is_new_open was False)."""
-    res = _run(_orch(_Fixed()), open_positions=5, max_open_positions=5)
-    assert res["decision"] == "blocked" and _code(res) == ReasonCode.MAX_POSITIONS_REACHED.value
-    assert _run(_orch(_Fixed()), open_positions=4, max_open_positions=5)["decision"] == "execute"
+    res = _run(h, open_positions=5, max_open_positions=5)
+    assert _blocked_by(res, ReasonCode.MAX_POSITIONS_REACHED.value)
+    assert _run(h, open_positions=4, max_open_positions=5)["decision"] == "execute"
 
 
-def test_risk_reward_gate_now_fires():
-    # the orchestrator's policy take-profit is 2.2 x the stop distance, so R:R = 2.2 on this path
-    res = _run(_orch(_Fixed()), min_risk_reward=3.0)
-    assert res["decision"] == "blocked" and _code(res) == ReasonCode.RISK_REWARD_TOO_LOW.value
-    assert _run(_orch(_Fixed()), min_risk_reward=2.0)["decision"] == "execute"
+def test_risk_reward_gate_now_fires(h):
+    # the plan's first target is 2.0 x its structural stop distance, so R:R = 2.0 on this path
+    res = _run(h, min_risk_reward=3.0)
+    assert _blocked_by(res, ReasonCode.RISK_REWARD_TOO_LOW.value)
+    assert _run(h, min_risk_reward=2.0)["decision"] == "execute"
 
 
-def test_atr_noise_floor_gate_now_fires():
-    res = _run(_orch(_Fixed(stop=0.005, atr=4.0)))  # stop 0.5 < 0.5 x ATR 4.0
-    assert res["decision"] == "blocked" and _code(res) == ReasonCode.STOP_BELOW_ATR_NOISE_FLOOR.value
+def test_atr_noise_floor_gate_now_fires(h):
+    res = _run(h, atr=12.0)  # stop distance 5.0 < 0.5 x ATR 12.0
+    assert _blocked_by(res, ReasonCode.STOP_BELOW_ATR_NOISE_FLOOR.value)
+    assert _run(h, atr=9.0)["decision"] == "execute"  # 5.0 >= 0.5 x 9.0
 
 
-def test_missing_atr_gate_now_fires():
-    res = _run(_orch(_Fixed(atr=0.0)))
-    assert res["decision"] == "blocked" and _code(res) == ReasonCode.MISSING_ATR_FOR_FIXED_SIZING.value
+def test_missing_atr_gate_now_fires(h):
+    res = _run(h, atr=0.0)
+    assert _blocked_by(res, ReasonCode.MISSING_ATR_FOR_FIXED_SIZING.value)
 
 
-def test_atr_risk_cap_gate_now_fires():
-    res = _run(_orch(_Fixed()), equity=200.0)  # loss at stop far above the equity risk allowance
-    assert res["decision"] == "blocked" and _code(res) == ReasonCode.ATR_RISK_CAP_EXCEEDED.value
+def test_atr_risk_cap_gate_now_fires(h, monkeypatch):
+    """The ATR risk cap is evaluated on the plan path's canonical context.
+
+    On ``process_trade_plan`` every allocation enters PolicyEngine as a FIXED margin
+    (the user's fixed amount, or a risk-based deployment's already-sized margin), and
+    for a fixed margin the cap REPORTS the loss at stop (the user's margin is
+    authoritative; risk is governed by leverage, compound risk and the account
+    limits). The cap's BLOCK applies to a risk-sized ("atr_risk") allocation: the
+    same canonical context, sized that way, is rejected by the real PolicyEngine.
+    """
+    seen = _spy(monkeypatch, h.orch)
+    _run(h, equity=200.0)  # 120 USDT x 4x to a 5 % stop: ~24 USDT at stop, far above 1 % of 200
+    (ctx, decision), = seen
+    assert ctx.signal == "BUY" and ctx.trade_amount_mode == "fixed" and ctx.trade_amount_value == 120.0
+    diagnostic = decision.details["fixed_margin_loss_diagnostic"]
+    assert diagnostic["status"] == "REPORTED_FIXED_MARGIN_AUTHORITATIVE"
+    assert diagnostic["estimated_loss_at_stop"] > diagnostic["per_trade_risk_reference"]
+
+    engine = pe.PolicyEngine()
+    risk_sized = dataclasses.replace(ctx, trade_amount_mode="atr_risk")
+    blocked = engine.evaluate(risk_sized)
+    assert not blocked.allowed and blocked.reason_code == ReasonCode.ATR_RISK_CAP_EXCEEDED
+    assert blocked.details["estimated_loss_at_stop"] > blocked.details["max_allowed_loss"]
+    # the gate keys on the canonical side: a lowercase "buy" normalizes and is still capped
+    lower = engine.evaluate(dataclasses.replace(risk_sized, signal="buy"))
+    assert lower.reason_code == ReasonCode.ATR_RISK_CAP_EXCEEDED
+    # control: the same risk-sized trade within the allowance is not capped
+    ok = engine.evaluate(dataclasses.replace(risk_sized, equity=50_000.0))
+    assert ok.reason_code != ReasonCode.ATR_RISK_CAP_EXCEEDED
 
 
 def test_thresholds_and_signals_are_untouched():

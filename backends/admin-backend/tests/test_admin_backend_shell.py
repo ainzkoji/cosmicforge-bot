@@ -27,6 +27,18 @@ from shared_lib.persistence.admin_analytics import ensure_admin_analytics_snapsh
 def _create_admin_db(tmp_path: Path) -> AdminDB:
     db_path = tmp_path / "admin_backend_shell.db"
     today = datetime.now(timezone.utc).date().isoformat()
+    # Event / news rows are dated relative to NOW: the endpoints read now-relative
+    # windows (upcoming events in the next N days, reactions in the last N days,
+    # news in the last N hours), so fixed calendar dates turn into time bombs.
+    _now = datetime.now(timezone.utc).replace(microsecond=0)
+    event_at = (_now + timedelta(days=3)).isoformat()            # an upcoming event, a few days ahead
+    event_synced_at = (_now - timedelta(hours=1)).isoformat()
+    reaction_at = (_now - timedelta(hours=3)).isoformat()        # a market reaction a few hours back
+    snapshot_at = (_now - timedelta(hours=3, minutes=5)).isoformat()
+    news_at = (_now - timedelta(hours=2)).isoformat()            # news a few hours back
+    news_ingested_at = (_now - timedelta(hours=2, seconds=-5)).isoformat()
+    news_signal_at = (_now - timedelta(hours=2, minutes=-1)).isoformat()
+    news_reaction_at = (_now - timedelta(hours=1)).isoformat()
     conn = sqlite3.connect(db_path)
     conn.execute(
         """
@@ -778,15 +790,15 @@ def _create_admin_db(tmp_path: Path) -> AdminDB:
         """
     )
     conn.execute(
-        """
+        f"""
         INSERT INTO economic_events (
             event_id, title, event_type, country_currency, impact_level,
             scheduled_utc, forecast_val, previous_val, source, created_at, updated_at
         )
         VALUES (
             'ev-1', 'US CPI', 'INFLATION', 'USD', 'HIGH',
-            '2026-05-25T12:30:00+00:00', 0.3, 0.2, 'forex_factory',
-            '2026-05-01T00:00:00+00:00', '2026-05-01T00:00:00+00:00'
+            '{event_at}', 0.3, 0.2, 'forex_factory',
+            '{event_synced_at}', '{event_synced_at}'
         )
         """
     )
@@ -849,15 +861,15 @@ def _create_admin_db(tmp_path: Path) -> AdminDB:
         """
     )
     conn.execute(
-        """
+        f"""
         INSERT INTO market_event_reactions (
             event_id, symbol, exchange, event_time_utc,
             reaction_type, data_quality, created_at, updated_at
         )
         VALUES (
-            'ev-1', 'BTCUSDT', 'binance_futures', '2026-05-24T12:30:00+00:00',
+            'ev-1', 'BTCUSDT', 'binance_futures', '{reaction_at}',
             'TREND_CONTINUATION', 'COMPLETE',
-            '2026-05-24T12:30:00+00:00', '2026-05-24T12:30:00+00:00'
+            '{reaction_at}', '{reaction_at}'
         )
         """
     )
@@ -884,15 +896,15 @@ def _create_admin_db(tmp_path: Path) -> AdminDB:
         """
     )
     conn.execute(
-        """
+        f"""
         INSERT INTO event_market_snapshots (
             event_id, symbol, exchange, timestamp_utc, window_label,
             price, source, created_at
         )
         VALUES (
             'ev-1', 'BTCUSDT', 'binance_futures',
-            '2026-05-24T12:25:00+00:00', 'PRE_5M',
-            65000, 'internal', '2026-05-24T12:25:00+00:00'
+            '{snapshot_at}', 'PRE_5M',
+            65000, 'internal', '{snapshot_at}'
         )
         """
     )
@@ -919,15 +931,15 @@ def _create_admin_db(tmp_path: Path) -> AdminDB:
         """
     )
     conn.execute(
-        """
+        f"""
         INSERT INTO raw_news_items (
             provider, source_name, title, published_utc, ingested_utc,
             latency_seconds, is_duplicate, created_at
         )
         VALUES (
             'rss', 'CoinDesk', 'BTC hits 65k',
-            '2026-05-24T10:00:00+00:00', '2026-05-24T10:00:05+00:00',
-            5.0, 0, '2026-05-24T10:00:05+00:00'
+            '{news_at}', '{news_ingested_at}',
+            5.0, 0, '{news_ingested_at}'
         )
         """
     )
@@ -961,7 +973,7 @@ def _create_admin_db(tmp_path: Path) -> AdminDB:
         """
     )
     conn.execute(
-        """
+        f"""
         INSERT INTO news_clusters (
             canonical_title, summary, first_seen_utc, last_seen_utc,
             source_count, provider_count, spam_score, is_valid_signal,
@@ -969,9 +981,9 @@ def _create_admin_db(tmp_path: Path) -> AdminDB:
         )
         VALUES (
             'BTC hits 65k', 'Bitcoin reached 65000',
-            '2026-05-24T10:00:00+00:00', '2026-05-24T10:00:05+00:00',
+            '{news_at}', '{news_ingested_at}',
             1, 1, 0.1, 1, 'HIGH_CONFIDENCE',
-            '2026-05-24T10:00:00+00:00', '2026-05-24T10:00:00+00:00'
+            '{news_at}', '{news_at}'
         )
         """
     )
@@ -1002,9 +1014,9 @@ def _create_admin_db(tmp_path: Path) -> AdminDB:
         """
     )
     conn.execute(
-        """
+        f"""
         INSERT INTO news_narratives (cluster_id, narrative_type, narrative_confidence, severity_level, created_at)
-        VALUES (1, 'BULLISH', 0.8, 'MEDIUM', '2026-05-24T10:00:00+00:00')
+        VALUES (1, 'BULLISH', 0.8, 'MEDIUM', '{news_at}')
         """
     )
     conn.execute(
@@ -1033,7 +1045,7 @@ def _create_admin_db(tmp_path: Path) -> AdminDB:
         """
     )
     conn.execute(
-        """
+        f"""
         INSERT INTO news_intelligence_signals (
             cluster_id, symbol, signal_type, confidence_score, spam_score,
             is_valid_signal, data_quality_status,
@@ -1041,7 +1053,7 @@ def _create_admin_db(tmp_path: Path) -> AdminDB:
         )
         VALUES (
             1, 'BTCUSDT', 'BULLISH', 0.8, 0.1, 1, 'HIGH_CONFIDENCE',
-            0, 1, '2026-05-24T10:01:00+00:00'
+            0, 1, '{news_signal_at}'
         )
         """
     )
@@ -1062,12 +1074,12 @@ def _create_admin_db(tmp_path: Path) -> AdminDB:
         """
     )
     conn.execute(
-        """
+        f"""
         INSERT INTO news_market_reactions (
             cluster_id, symbol, sentiment_accuracy, is_false_signal,
             impact_score, signal_effectiveness_score, reaction_latency_category, created_at
         )
-        VALUES (1, 'BTCUSDT', 'CORRECT', 0, 0.7, 0.8, 'FAST', '2026-05-24T11:00:00+00:00')
+        VALUES (1, 'BTCUSDT', 'CORRECT', 0, 0.7, 0.8, 'FAST', '{news_reaction_at}')
         """
     )
     conn.execute(

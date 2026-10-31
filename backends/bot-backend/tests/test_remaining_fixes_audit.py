@@ -98,8 +98,10 @@ class TestConfigD:
         assert settings.DEFAULT_INTERVAL == "15m"
 
     def test_strategy_master_ensemble(self):
+        # The configured strategy is the frozen CATI strategy; master_ensemble is retired.
         from app.core.config import settings
-        assert settings.STRATEGY_NAME == "master_ensemble"
+        from shared_lib.core.production import FROZEN_STRATEGY
+        assert settings.STRATEGY_NAME == FROZEN_STRATEGY
 
     def test_trade_usdt_50(self):
         from app.core.config import settings

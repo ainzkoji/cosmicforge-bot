@@ -1,5 +1,6 @@
 import sqlite3
 import sys
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
@@ -15,6 +16,17 @@ from shared_lib.persistence.db import DB  # noqa: E402
 from app.admin_ml.service import MLAdminService, settings as ml_settings  # noqa: E402
 from app.api.admin_ml import get_ml_admin_service, router as admin_ml_router  # noqa: E402
 from app.core.deps import require_admin  # noqa: E402
+
+
+# ML rows are dated relative to NOW (two days back, inside every 30-day
+# activity / drift window): the service reads now-relative windows, so fixed
+# calendar dates turn into time bombs.
+_ML_DAY = (datetime.now(timezone.utc) - timedelta(days=2)).date().isoformat()
+
+
+def _ts(hhmmss: str) -> str:
+    """An ISO-8601 UTC timestamp at ``hhmmss`` on the fixture's ML day."""
+    return f"{_ML_DAY}T{hhmmss}+00:00"
 
 
 def _create_ml_test_db(db_path: Path) -> None:
@@ -146,8 +158,9 @@ def _create_ml_test_db(db_path: Path) -> None:
         conn.execute(
             """
             INSERT INTO runs (run_id, started_at, mode, interval_seconds, max_symbols, status)
-            VALUES ('run-1', '2026-04-22T12:00:00+00:00', 'live', 60, 20, 'running')
-            """
+            VALUES ('run-1', ?, 'live', 60, 20, 'running')
+            """,
+            (_ts("12:00:00"),),
         )
 
         conn.executemany(
@@ -158,11 +171,11 @@ def _create_ml_test_db(db_path: Path) -> None:
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             [
-                ("run-1", "cycle-open-1", "trace-1", "BTCUSDT", "LONG", "OPEN", 1.0, 100.0, None, "2026-04-22T12:01:00+00:00", "default", "pos-1", "bot-1", 95.0),
-                ("run-1", "cycle-close-1", None, "BTCUSDT", "LONG", "CLOSE", 1.0, 110.0, 10.0, "2026-04-22T12:10:00+00:00", "default", "pos-1", "bot-1", None),
-                ("run-1", "cycle-open-2", "trace-2", "ETHUSDT", "SHORT", "OPEN", 2.0, 50.0, None, "2026-04-22T12:02:00+00:00", "default", "pos-2", "bot-1", 55.0),
-                ("run-1", "cycle-close-2", None, "ETHUSDT", "SHORT", "CLOSE", 2.0, 55.0, None, "2026-04-22T12:11:00+00:00", "default", "pos-2", "bot-1", None),
-                ("run-1", "cycle-open-3", "trace-3", "XRPUSDT", "LONG", "OPEN", 5.0, 2.0, None, "2026-04-22T12:03:00+00:00", "default", "pos-3", "bot-1", 1.8),
+                ("run-1", "cycle-open-1", "trace-1", "BTCUSDT", "LONG", "OPEN", 1.0, 100.0, None, _ts("12:01:00"), "default", "pos-1", "bot-1", 95.0),
+                ("run-1", "cycle-close-1", None, "BTCUSDT", "LONG", "CLOSE", 1.0, 110.0, 10.0, _ts("12:10:00"), "default", "pos-1", "bot-1", None),
+                ("run-1", "cycle-open-2", "trace-2", "ETHUSDT", "SHORT", "OPEN", 2.0, 50.0, None, _ts("12:02:00"), "default", "pos-2", "bot-1", 55.0),
+                ("run-1", "cycle-close-2", None, "ETHUSDT", "SHORT", "CLOSE", 2.0, 55.0, None, _ts("12:11:00"), "default", "pos-2", "bot-1", None),
+                ("run-1", "cycle-open-3", "trace-3", "XRPUSDT", "LONG", "OPEN", 5.0, 2.0, None, _ts("12:03:00"), "default", "pos-3", "bot-1", 1.8),
             ],
         )
 
@@ -180,19 +193,19 @@ def _create_ml_test_db(db_path: Path) -> None:
             """,
             [
                 (
-                    "trace-1", "run-1", "cycle-open-1", "BTCUSDT", "15m", "2026-04-22T12:00:59+00:00",
+                    "trace-1", "run-1", "cycle-open-1", "BTCUSDT", "15m", _ts("12:00:59"),
                     "STRONG_TREND", 0.88, "BUY", 0.81, "robust_ensemble", 24.1, 1.5, 0.12,
                     0.8, 0.45, 0.9, 0.1, 0.7, 4, 0, 1.2, 0.35, 1, 3.0, 100.0, 100.1,
                     "entry_quality_v1.1_20260322", 0.3, 0.82, "ALLOW", 95.0, 110.0, "pos-1",
                 ),
                 (
-                    "trace-2", "run-1", "cycle-open-2", "ETHUSDT", "15m", "2026-04-22T12:01:59+00:00",
+                    "trace-2", "run-1", "cycle-open-2", "ETHUSDT", "15m", _ts("12:01:59"),
                     "WEAK_TREND", 0.66, "SELL", 0.58, "robust_ensemble", None, 1.9, -0.08,
                     0.6, 0.31, 0.2, 0.8, 0.55, 4, 1, 1.5, 0.4, 2, 2.4, 50.0, 50.1,
                     "entry_quality_v1.1_20260322", 0.3, 0.18, "BLOCK", 55.0, 45.0, "pos-2",
                 ),
                 (
-                    "trace-3", "run-1", "cycle-open-3", "XRPUSDT", "15m", "2026-04-22T12:02:59+00:00",
+                    "trace-3", "run-1", "cycle-open-3", "XRPUSDT", "15m", _ts("12:02:59"),
                     "RANGE", 0.71, "BUY", 0.62, "robust_ensemble", 18.0, 1.3, 0.05,
                     0.42, 0.27, 0.7, 0.2, 0.5, 3, 0, 1.1, 0.32, 1, 2.0, 2.0, 2.01,
                     "entry_quality_v1.1_20260322", 0.3, 0.24, "SHADOW", 1.8, 2.3, "pos-3",
@@ -213,14 +226,14 @@ def _create_ml_test_db(db_path: Path) -> None:
                 (
                     "shadow-1", "bot-1", "trace-2", "ETHUSDT", "SHORT", "WEAK_TREND", "robust_ensemble",
                     0.58, 0.3, -0.12, 0.18, "BLOCK", "ml_floor", "ML_BLOCKED", "low_score",
-                    "2026-04-22T12:01:59+00:00", 50.0, 55.0, 45.0, "2026-04-22T14:01:59+00:00",
-                    "EVALUATED", "2026-04-22T12:01:59+00:00", "2026-04-22T14:01:59+00:00",
+                    _ts("12:01:59"), 50.0, 55.0, 45.0, _ts("14:01:59"),
+                    "EVALUATED", _ts("12:01:59"), _ts("14:01:59"),
                 ),
                 (
                     "shadow-2", "bot-1", "trace-3", "XRPUSDT", "LONG", "RANGE", "robust_ensemble",
                     0.62, 0.3, -0.06, 0.24, "SHADOW", "shadow_only", "THRESHOLD_BLOCKED", "shadow_eval",
-                    "2026-04-22T12:02:59+00:00", 2.0, 1.8, 2.3, "2026-04-22T14:02:59+00:00",
-                    "EVALUATED", "2026-04-22T12:02:59+00:00", "2026-04-22T14:02:59+00:00",
+                    _ts("12:02:59"), 2.0, 1.8, 2.3, _ts("14:02:59"),
+                    "EVALUATED", _ts("12:02:59"), _ts("14:02:59"),
                 ),
             ],
         )
@@ -234,12 +247,12 @@ def _create_ml_test_db(db_path: Path) -> None:
             """,
             [
                 (
-                    "shadow-outcome-1", "shadow-1", "SL_HIT", "2026-04-22T13:00:00+00:00", 55.0,
-                    -10.0, -20.0, -10.0, 0.5, -1.2, 4, 58.0, "{}", "2026-04-22T13:00:00+00:00", "2026-04-22T13:00:00+00:00",
+                    "shadow-outcome-1", "shadow-1", "SL_HIT", _ts("13:00:00"), 55.0,
+                    -10.0, -20.0, -10.0, 0.5, -1.2, 4, 58.0, "{}", _ts("13:00:00"), _ts("13:00:00"),
                 ),
                 (
-                    "shadow-outcome-2", "shadow-2", "TP_HIT", "2026-04-22T13:30:00+00:00", 2.3,
-                    0.3, 15.0, 0.3, 0.6, -0.2, 6, 87.0, "{}", "2026-04-22T13:30:00+00:00", "2026-04-22T13:30:00+00:00",
+                    "shadow-outcome-2", "shadow-2", "TP_HIT", _ts("13:30:00"), 2.3,
+                    0.3, 15.0, 0.3, 0.6, -0.2, 6, 87.0, "{}", _ts("13:30:00"), _ts("13:30:00"),
                 ),
             ],
         )
@@ -350,7 +363,7 @@ def test_overview_and_routes_return_expected_shapes(ml_service):
     assert overview["current_model_version"] == "entry_quality_v1.1_20260322"
     assert overview["current_threshold"] == 0.3
     assert overview["current_hard_block_floor"] == 0.1
-    assert overview["last_bot_restart_time"] == "2026-04-22T12:00:00+00:00"
+    assert overview["last_bot_restart_time"] == _ts("12:00:00")
     assert overview["current_ml_status"] == "not_ready"
 
     assert summary["ml_mode"] == "shadow"

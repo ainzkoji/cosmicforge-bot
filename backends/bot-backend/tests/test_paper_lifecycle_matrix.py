@@ -369,14 +369,27 @@ def test_j_runner_persists_tp1_with_distinct_bot_and_run_identifiers():
 
 
 def test_j_both_tp1_call_sites_persist_through_the_shared_helper():
-    """The step_symbol site used to update memory only, losing the fill."""
+    """The step_symbol site used to update memory only, losing the fill.
+
+    Commit 6e0b42c (CATI sole runtime authority) removed the second, legacy
+    strategy-path TP1 site on purpose. ONE TP1 call site remains, and it must
+    persist its executed fill through the shared ``_persist_tp1_outcome`` helper
+    -- never update memory only."""
     import inspect
 
     from app.runner.runner import PaperRunner
 
     source = inspect.getsource(PaperRunner)
-    assert source.count("self._persist_tp1_outcome(") == 2
-    assert source.count("execute_tp1_partial_close(") == 2
+    assert source.count("execute_tp1_partial_close(") == 1
+    assert source.count("self._persist_tp1_outcome(") == 1
+    site = source.index("execute_tp1_partial_close(")
+    persist = source.index("self._persist_tp1_outcome(")
+    assert site < persist
+    # the persist call belongs to this site (before the next method) and is handed the site's own result
+    block = source[site:source.index("\n    def ", site)]
+    assert "self._persist_tp1_outcome(" in block
+    call = block[block.index("self._persist_tp1_outcome("):]
+    assert "tp1_result=tp1_result" in call[:call.index(")")]
 
 
 # ── Test K — Quantity accounting invariant ───────────────────────────────────

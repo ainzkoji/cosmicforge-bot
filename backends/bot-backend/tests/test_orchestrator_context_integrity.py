@@ -1,65 +1,49 @@
+"""The orchestrator hands hard risk the ACTUAL per-bot risk state, and its
+KYC / live-readiness inputs fail closed.
+
+The scalar strategy entry (``process_trading_opportunity``) is retired: the
+one entry into hard risk is ``process_trade_plan`` (a real Section 18
+TradePlan -> ``_evaluate_hard_risk``). These tests drive that path with the
+real orchestrator and capture what Layer A (SafetyEngine.check_pre_trade) and
+PolicyEngine receive.
+"""
 from __future__ import annotations
 
-import json
+import sys
+from pathlib import Path
 from types import SimpleNamespace
 
+import pytest
+
 from app.core.trading_orchestrator import TradingOrchestrator
-from app.risk.system_limits import RiskLevel
-from app.strategy.strategy_framework import Signal, StrategyOutput
+
+_TI = Path(__file__).resolve().parent / "trading_intelligence"
+if str(_TI) not in sys.path:
+    sys.path.append(str(_TI))
 
 
-class _Strategy:
-    def __init__(self, signal: Signal):
-        self.signal = signal
+@pytest.fixture
+def h(tmp_path):
+    from _exec import Harness
 
-    def analyze(self, **kwargs):
-        return StrategyOutput(
-            signal=self.signal,
-            confidence=0.81,
-            suggested_stop_distance=0.02,
-            take_profit_distance=0.044,
-            reason="synthetic_reason",
-            indicators={"atr": 10.0},
-            meta={"session_reason_code": "CRYPTO_SESSION_24_7_BYPASS", "effective_threshold": 0.7},
-        )
-
-    @staticmethod
-    def validate_output(output):
-        return True
+    return Harness(tmp_path)
 
 
-def _orchestrator(signal: Signal):
-    orchestrator = TradingOrchestrator.__new__(TradingOrchestrator)
-    orchestrator.config_id = "cfg-test"
-    orchestrator.strategy_id = "master_ensemble"
-    orchestrator.broker_id = "binance"
-    orchestrator.strategy = _Strategy(signal)
-    orchestrator._stop_loss_cooldowns = {}
-    orchestrator._current_regimes = {}
-    orchestrator.market_analyzer = SimpleNamespace()
-    orchestrator.broker_monitor = SimpleNamespace()
-    orchestrator.validated_config = SimpleNamespace(
-        allowed_symbols=["BTCUSDT"],
-        requested_leverage={"BTCUSDT": 3.0},
-        paper_mode=True,
-        capital_allocation_pct=1.0,
-        risk_level=RiskLevel.LOW,
-        use_fixed_size=False,
-        fixed_size_usdt=None,
-        max_trades_per_day=20,
-        max_open_positions=5,
-    )
-    orchestrator.config_validator = SimpleNamespace(get_risk_per_trade_limit=lambda risk: 0.01)
-    orchestrator.safety = SimpleNamespace(
-        config=SimpleNamespace( fallback_max_leverage=2.0),
-        check_daily_activity_fallback=lambda config_id: {"should_activate": False},
-    )
-    orchestrator.record_decision = lambda **kwargs: None
-    return orchestrator
+def _run(h, *, equity=1_000.0, margin_used=0.0, open_positions=0, **kw):
+    from app.trading_intelligence.contracts.system_health import BrokerHealthContext
+    from app.trading_intelligence.trade_plan.validation import MarketReference
+
+    plan = h.plan
+    return h.orch.process_trade_plan(
+        plan, now_ms=h.now, market_reference=MarketReference(100.0, h.now - 100, 1.0),
+        broker_health=BrokerHealthContext(plan.broker_account_id, plan.venue, plan.environment, "HEALTHY", h.now, "t"),
+        reservation_state=h.reservations.get(plan.portfolio_reservation_id),
+        venue_capabilities=h.kw["evaluated"].venue_observation.execution_capabilities, klines=[],
+        current_equity=equity, margin_used=margin_used, margin_available=equity - margin_used,
+        open_positions=open_positions, atr=2.0, **kw)
 
 
-def test_policy_context_receives_actual_per_bot_risk_state():
-    orchestrator = _orchestrator(Signal.BUY)
+def test_policy_context_receives_actual_per_bot_risk_state(h, monkeypatch):
     captured = {}
 
     def check_pre_trade(**kwargs):
@@ -68,48 +52,30 @@ def test_policy_context_receives_actual_per_bot_risk_state():
 
     def evaluate(context):
         captured["policy"] = context
-        return SimpleNamespace(
-            allowed=False,
-            reason="stop after capture",
-            reason_code=SimpleNamespace(value="TEST_CAPTURE"),
-        )
+        return SimpleNamespace(allowed=False, reason="stop after capture",
+                               reason_code=SimpleNamespace(value="TEST_CAPTURE"))
 
-    orchestrator.safety.check_pre_trade = check_pre_trade
-    orchestrator.policy_engine = SimpleNamespace(evaluate=evaluate)
+    monkeypatch.setattr(h.orch.safety, "check_pre_trade", check_pre_trade)
+    monkeypatch.setattr(h.orch.policy_engine, "evaluate", evaluate)
 
-    result = orchestrator.process_trading_opportunity(
-        symbol="BTCUSDT",
-        klines=[],
-        current_price=50_000.0,
-        current_equity=1_234.0,
-        margin_used=12.0,
-        margin_available=1_222.0,
-        open_positions=2,
-        client=None,
-        user_id="user-1",
-        bot_instance_id="bot-1",
-        broker_account_id="broker-1",
-        market_type="CRYPTO",
-        execution_mode="paper",
-        user_kyc_approved=True,
-        live_readiness_approved=True,
-        daily_realized_pnl=-17.5,
-        daily_trade_count=4,
-        kill_switch=True,
-        max_daily_loss=55.0,
-        max_daily_trades=8,
-        max_open_positions=3,
-        weekly_drawdown_pct=2.5,
-        monthly_drawdown_pct=4.5,
-        max_weekly_drawdown_pct=8.0,
-        max_monthly_drawdown_pct=12.0,
-        min_risk_reward=2.0,
+    result = _run(
+        h, equity=1_234.0, margin_used=12.0, open_positions=2,
+        market_type="CRYPTO", execution_mode="paper",
+        user_kyc_approved=True, live_readiness_approved=True,
+        daily_realized_pnl=-17.5, daily_trade_count=4, kill_switch=True,
+        max_daily_loss=55.0, max_daily_trades=8, max_open_positions=3,
+        weekly_drawdown_pct=2.5, monthly_drawdown_pct=4.5,
+        max_weekly_drawdown_pct=8.0, max_monthly_drawdown_pct=12.0, min_risk_reward=2.0,
     )
 
     ctx = captured["policy"]
     assert result["decision"] == "blocked"
-    assert ctx.user_id == "user-1"
+    assert result["risk_decision"].approved is False and "TEST_CAPTURE" in result["risk_decision"].reason_codes
+    assert h.client.place_order.call_count == 0
+    # the tenant comes from the TradePlan itself, never from caller kwargs
+    assert ctx.user_id == h.plan.user_id
     assert ctx.equity == 1_234.0
+    assert ctx.margin_used == 12.0
     assert ctx.open_positions_count == 2
     assert ctx.daily_realized_pnl == -17.5
     assert ctx.daily_trade_count == 4
@@ -122,73 +88,62 @@ def test_policy_context_receives_actual_per_bot_risk_state():
     assert ctx.max_weekly_drawdown_pct == 8.0
     assert ctx.max_monthly_drawdown_pct == 12.0
     assert ctx.min_risk_reward == 2.0
+    assert captured["pretrade"]["open_positions"] == 2
+    assert captured["pretrade"]["current_equity"] == 1_234.0
     assert captured["pretrade"]["user_kyc_approved"] is True
     assert captured["pretrade"]["live_readiness_approved"] is True
 
 
-def test_kyc_and_live_readiness_default_fail_closed_for_live_config():
-    orchestrator = _orchestrator(Signal.BUY)
-    orchestrator.validated_config.paper_mode = False
+def test_kyc_and_live_readiness_default_fail_closed_for_live_config(h, monkeypatch):
+    h.orch.validated_config.paper_mode = False
     captured = {}
 
     def check_pre_trade(**kwargs):
         captured.update(kwargs)
-        return SimpleNamespace(
-            allowed=False,
-            details={},
-            message="blocked",
-            block_reason=SimpleNamespace(value="live_readiness_requirements_not_met"),
-        )
+        return SimpleNamespace(allowed=False, details={}, message="blocked",
+                               block_reason=SimpleNamespace(value="live_readiness_requirements_not_met"))
 
-    orchestrator.safety.check_pre_trade = check_pre_trade
-    orchestrator.process_trading_opportunity(
-        symbol="BTCUSDT",
-        klines=[],
-        current_price=50_000.0,
-        current_equity=1_000.0,
-        margin_used=0.0,
-        margin_available=1_000.0,
-        open_positions=0,
-        client=None,
-    )
+    monkeypatch.setattr(h.orch.safety, "check_pre_trade", check_pre_trade)
+    result = _run(h)  # no KYC / readiness inputs supplied at all
 
+    assert captured["is_live_mode"] is True
     assert captured["user_kyc_approved"] is False
     assert captured["live_readiness_approved"] is False
+    assert result["decision"] == "blocked"
+    assert result["details"]["reason_code"] == "live_readiness_requirements_not_met"
+    assert result["risk_decision"].approved is False
+    assert h.client.place_order.call_count == 0
 
 
 def test_strategy_hold_records_risk_as_not_evaluated():
-    orchestrator = _orchestrator(Signal.HOLD)
-    recorded = {}
-    orchestrator.record_decision = lambda **kwargs: recorded.update(kwargs)
+    """The retired scalar entry is a fail-closed stub: it never calls the
+    strategy, never evaluates risk, never records an executable decision and
+    never attempts execution -- whatever the strategy would have said."""
+
+    class _Strategy:
+        def analyze(self, **_kw):
+            raise AssertionError("the retired scalar entry must not call strategy.analyze")
+
+    def _never(**_kw):
+        raise AssertionError("the retired scalar entry must not reach hard risk")
+
+    recorded = []
+    orchestrator = TradingOrchestrator.__new__(TradingOrchestrator)
+    orchestrator.strategy = _Strategy()
+    orchestrator.safety = SimpleNamespace(check_pre_trade=_never, check_daily_activity_fallback=_never)
+    orchestrator.policy_engine = SimpleNamespace(evaluate=lambda _ctx: _never())
+    orchestrator.record_decision = lambda **kwargs: recorded.append(kwargs)
 
     result = orchestrator.process_trading_opportunity(
-        symbol="BTCUSDT",
-        klines=[],
-        current_price=50_000.0,
-        current_equity=1_000.0,
-        margin_used=0.0,
-        margin_available=1_000.0,
-        open_positions=0,
-        client=None,
-        run_id="run-1",
-        cycle_id="cycle-1",
-        trace_id="trace-1",
-        timeframe="15m",
-        user_id="user-1",
-        bot_instance_id="bot-1",
-        broker_account_id="broker-1",
-        market_type="CRYPTO",
+        symbol="BTCUSDT", klines=[], current_price=50_000.0, current_equity=1_000.0, margin_used=0.0,
+        margin_available=1_000.0, open_positions=0, client=None, run_id="run-1", cycle_id="cycle-1",
+        trace_id="trace-1", timeframe="15m", user_id="user-1", bot_instance_id="bot-1",
+        broker_account_id="broker-1", market_type="CRYPTO", user_kyc_approved=True, live_readiness_approved=True,
     )
 
-    risk = json.loads(recorded["risk_gate_decision_json"])
-    assert result["decision"] == "hold"
-    assert risk["risk_evaluated"] is False
-    assert risk["risk_allowed"] is None
-    assert risk["session_status"] == "CRYPTO_SESSION_24_7_BYPASS"
-    assert risk["bot_instance_id"] == "bot-1"
-    assert risk["user_id"] == "user-1"
-    assert risk["broker_account_id"] == "broker-1"
-    assert risk["run_id"] == "run-1"
-    assert risk["cycle_id"] == "cycle-1"
-    assert risk["trace_id"] == "trace-1"
-
+    assert result["decision"] == "blocked"
+    assert result["reason"] == "LEGACY_SCALAR_ENTRY_PATH_REMOVED"
+    assert result["details"]["execution_attempted"] is False
+    assert result["details"]["authority_owner"] == "NONE"
+    assert "trade_params" not in result
+    assert recorded == []

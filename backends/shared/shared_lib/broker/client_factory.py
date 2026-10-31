@@ -41,6 +41,10 @@ def build_client_from_auth(auth: BrokerAuth, *, http=None) -> Any:
         registered client builder.
     """
     from shared_lib.core.production import require_execution_account
+    if auth.broker_type.lower() not in ("binance", "bybit", "bingx"):
+        raise BrokerResolverError(BrokerResolverError.REASON_AUTH_FAILED,
+                                  f"No client builder registered for broker_type={auth.broker_type!r}",
+                                  account_id=auth.account_id)
     require_execution_account(auth.environment, auth.broker_type.lower(), auth.base_url)
     broker = auth.broker_type.lower()
     if http is None and getattr(auth, "database", None) is None:

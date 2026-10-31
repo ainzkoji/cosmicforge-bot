@@ -179,16 +179,10 @@ class TestSmaCrossUserBotBlock:
         runner = self._make_runner_with_strategy("master_ensemble")
         assert runner._strategy_name == "master_ensemble"
 
-    def test_runner_source_contains_b7_guard(self):
-        """runner.py must contain the B-7 sma_cross guard for user-context bots."""
-        import os
-        path = os.path.join(
-            os.path.dirname(__file__), "..", "app", "runner", "runner.py"
-        )
-        with open(path, encoding="utf-8", errors="replace") as f:
-            src = f.read()
-        assert "STRATEGY_REJECTED_SMA_CROSS_UNSAFE_FOR_USER_BOT" in src
-        assert "_UNSAFE_STRATEGY_ALIASES" in src
+    # The runner-source B-7 guard check is retired: the runner binds CATI for every
+    # configured name (sma_cross and its aliases included), covered by
+    # tests/trading_intelligence/test_cati_sole_runtime.py::
+    # test_historical_configuration_never_constructs_an_old_strategy.
 
     def test_warning_emitted_when_sma_cross_blocked(self):
         """A warning must be logged when sma_cross is blocked."""

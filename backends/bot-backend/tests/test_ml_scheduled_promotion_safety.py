@@ -105,11 +105,61 @@ def test_the_default_is_no_promotion_authority():
 
 
 def test_the_scheduler_never_grants_promotion_authority():
+    """The runtime scheduler never registers the retrain pipeline at all (V2 ML
+    jobs are not runtime scheduled), so it can never run it -- let alone with
+    ``operator_approved_promotion``."""
     from app import main as main_module
 
-    source = inspect.getsource(main_module._startup_signal_scheduler)
-    assert "retrain_entry_model_if_ready" in source
+    source = inspect.getsource(main_module)
+    assert "retrain_entry_model_if_ready" not in source
     assert "operator_approved_promotion" not in source
+    for production in (False, True):
+        jobs = _registered_jobs(production=production)
+        assert jobs, "the scheduler still registers its non-ML jobs"
+        for job in jobs:
+            assert job["fn"] is not retrain_entry_model_if_ready
+            assert getattr(job["fn"], "__module__", "") != retrain_pipeline.__name__
+            assert "retrain" not in str(job["kwargs"].get("id", ""))
+            assert "operator_approved_promotion" not in job["kwargs"].get("kwargs", {})
+
+
+def _registered_jobs(*, production: bool = False, **settings_overrides):
+    """The jobs ``app.main._startup_signal_scheduler`` registers, on a mocked
+    APScheduler. Runs on a private event loop: never ``asyncio.run`` and never
+    ``set_event_loop(None)`` (both clear the current loop, which
+    ib_insync/eventkit need when ``app.main`` is imported)."""
+    import asyncio
+    from contextlib import ExitStack
+    from unittest.mock import PropertyMock
+
+    from apscheduler.schedulers.asyncio import AsyncIOScheduler
+
+    try:
+        asyncio.get_event_loop()
+    except RuntimeError:  # a previous test cleared it: give the eventkit import a loop
+        asyncio.set_event_loop(asyncio.new_event_loop())
+    import app.main as main_mod
+
+    scheduler = MagicMock(spec=AsyncIOScheduler)
+    jobs = []
+    scheduler.add_job.side_effect = lambda fn, trigger=None, **kwargs: jobs.append(
+        {"fn": fn, "trigger": trigger, "kwargs": kwargs}
+    )
+    original = main_mod._signal_scheduler
+    main_mod._signal_scheduler = None
+    loop = asyncio.new_event_loop()
+    try:
+        with ExitStack() as stack:
+            stack.enter_context(patch("apscheduler.schedulers.asyncio.AsyncIOScheduler", return_value=scheduler))
+            stack.enter_context(patch.object(type(main_mod.settings), "production", new_callable=PropertyMock,
+                                             return_value=production))
+            for name, value in settings_overrides.items():
+                stack.enter_context(patch.object(main_mod.settings, name, value))
+            loop.run_until_complete(main_mod._startup_signal_scheduler())
+    finally:
+        main_mod._signal_scheduler = original
+        loop.close()
+    return jobs
 
 
 def test_the_pipeline_never_writes_env_or_enables_ml():

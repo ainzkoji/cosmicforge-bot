@@ -378,52 +378,17 @@ class TestMinimumTradeAmount:
 # ═══════════════════════════════════════════════════════════════════════════
 
 class TestStrategyDefault:
+    # build_strategy's legacy name fallbacks (empty / unknown / sma_cross in paper or
+    # live) are retired: every name binds CATI and no strategy class is constructed.
+    # Covered by tests/trading_intelligence/test_cati_sole_runtime.py::
+    # test_historical_configuration_never_constructs_an_old_strategy.
     def test_strategy_name_is_master_ensemble_in_config(self):
+        # The configured strategy is the frozen CATI strategy; master_ensemble is retired.
         from app.core.config import settings
-        assert settings.STRATEGY_NAME == "master_ensemble", (
-            f"STRATEGY_NAME must be master_ensemble, got {settings.STRATEGY_NAME}"
+        from shared_lib.core.production import FROZEN_STRATEGY
+        assert settings.STRATEGY_NAME == FROZEN_STRATEGY, (
+            f"STRATEGY_NAME must be {FROZEN_STRATEGY}, got {settings.STRATEGY_NAME}"
         )
-
-    def test_empty_name_falls_back_to_master_ensemble(self):
-        from app.strategy.loader import build_strategy
-        mock_client = MagicMock()
-        with patch("app.strategy.loader.get_strategy_class") as mock_get:
-            mock_cls = MagicMock(return_value=MagicMock())
-            mock_get.return_value = mock_cls
-            build_strategy(name="", client=mock_client, interval="15m")
-            # First call should be with master_ensemble
-            first_call_name = mock_get.call_args_list[0][0][0]
-            assert first_call_name == "master_ensemble"
-
-    def test_sma_cross_rejected_in_live_mode(self):
-        from app.strategy.loader import build_strategy
-        mock_client = MagicMock()
-
-        with patch("app.strategy.loader.os.getenv", return_value="live"), \
-             patch("app.strategy.loader.get_strategy_class") as mock_get:
-            mock_cls = MagicMock(return_value=MagicMock())
-            mock_get.return_value = mock_cls
-            build_strategy(name="sma_cross", client=mock_client, interval="15m")
-            # Must have been redirected to master_ensemble
-            first_call_name = mock_get.call_args_list[0][0][0]
-            assert first_call_name == "master_ensemble", (
-                f"sma_cross should be redirected to master_ensemble in live mode, got {first_call_name}"
-            )
-
-    def test_sma_cross_allowed_in_paper_mode_with_warning(self):
-        """sma_cross is allowed in paper mode but must log a warning."""
-        from app.strategy.loader import build_strategy
-        mock_client = MagicMock()
-
-        with patch("app.strategy.loader.os.getenv", return_value="paper"), \
-             patch("app.strategy.loader.get_strategy_class") as mock_get, \
-             patch("app.strategy.loader.logger") as mock_logger:
-            mock_cls = MagicMock(return_value=MagicMock())
-            mock_get.return_value = mock_cls
-            build_strategy(name="sma_cross", client=mock_client, interval="15m")
-            # Should log a warning
-            warning_calls = [str(c) for c in mock_logger.warning.call_args_list]
-            assert any("TEST_ONLY" in w or "sma_cross" in w for w in warning_calls)
 
     def test_sma_cross_in_live_mode_fails_startup_check(self):
         from app.core.safety_startup import run_startup_safety_check
@@ -439,19 +404,3 @@ class TestStrategyDefault:
         strat_check = next(c for c in report.checks if c.name == "STRATEGY_NAME")
         assert strat_check.passed
 
-    def test_unknown_strategy_falls_back_to_master_ensemble(self):
-        from app.strategy.loader import build_strategy
-        mock_client = MagicMock()
-
-        call_order = []
-
-        def mock_get(name):
-            call_order.append(name)
-            if name == "master_ensemble":
-                return MagicMock(return_value=MagicMock())
-            return None  # Unknown strategy
-
-        with patch("app.strategy.loader.os.getenv", return_value="paper"), \
-             patch("app.strategy.loader.get_strategy_class", side_effect=mock_get):
-            build_strategy(name="nonexistent_strategy", client=mock_client, interval="15m")
-            assert "master_ensemble" in call_order

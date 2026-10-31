@@ -261,11 +261,32 @@ def test_pipeline_catches_exceptions_and_writes_report(tmp_path):
 
 
 def test_monthly_scheduler_registration_is_safe_and_correct():
+    """Retired on purpose: the V2 monthly retrain is NOT runtime scheduled (CATI
+    is the only engine), in production or not. It stays a manual tool."""
+    for production in (False, True):
+        jobs = _registered_jobs(production=production)
+        assert any(job["kwargs"].get("id") == "signal_expiry" for job in jobs)
+        assert not any(job["kwargs"].get("id") == "ml_monthly_retrain" for job in jobs)
+        assert not any(job["fn"] is retrain_entry_model_if_ready for job in jobs)
+
+
+def _registered_jobs(*, production: bool = False, **settings_overrides):
+    """The jobs ``app.main._startup_signal_scheduler`` registers, on a mocked
+    APScheduler. Runs on a private event loop: never ``asyncio.run`` and never
+    ``set_event_loop(None)`` (both clear the current loop, which
+    ib_insync/eventkit need when ``app.main`` is imported)."""
+    import asyncio
+    from contextlib import ExitStack
+    from unittest.mock import PropertyMock
+
     from apscheduler.schedulers.asyncio import AsyncIOScheduler
+
+    try:
+        asyncio.get_event_loop()
+    except RuntimeError:  # a previous test cleared it: give the eventkit import a loop
+        asyncio.set_event_loop(asyncio.new_event_loop())
     import app.main as main_mod
 
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
     scheduler = MagicMock(spec=AsyncIOScheduler)
     jobs = []
     scheduler.add_job.side_effect = lambda fn, trigger=None, **kwargs: jobs.append(
@@ -273,16 +294,16 @@ def test_monthly_scheduler_registration_is_safe_and_correct():
     )
     original = main_mod._signal_scheduler
     main_mod._signal_scheduler = None
+    loop = asyncio.new_event_loop()
     try:
-        with patch("apscheduler.schedulers.asyncio.AsyncIOScheduler", return_value=scheduler):
+        with ExitStack() as stack:
+            stack.enter_context(patch("apscheduler.schedulers.asyncio.AsyncIOScheduler", return_value=scheduler))
+            stack.enter_context(patch.object(type(main_mod.settings), "production", new_callable=PropertyMock,
+                                             return_value=production))
+            for name, value in settings_overrides.items():
+                stack.enter_context(patch.object(main_mod.settings, name, value))
             loop.run_until_complete(main_mod._startup_signal_scheduler())
     finally:
         main_mod._signal_scheduler = original
         loop.close()
-        asyncio.set_event_loop(None)
-    job = next(job for job in jobs if job["kwargs"].get("id") == "ml_monthly_retrain")
-    assert job["trigger"] == "cron"
-    assert job["kwargs"]["day"] == 1
-    assert job["kwargs"]["hour"] == 3
-    assert job["kwargs"]["minute"] == 0
-    assert job["kwargs"]["max_instances"] == 1
+    return jobs

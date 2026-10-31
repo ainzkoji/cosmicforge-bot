@@ -31,11 +31,17 @@ def test_no_phase_scope_health_or_flag_can_grant_legacy_authority(phase, monkeyp
 
 
 def test_historical_configuration_never_constructs_an_old_strategy():
-    for old_name in ('master_ensemble', 'robust_ensemble', 'sma_cross', 'unknown', 'cati'):
-        binding = build_strategy(name=old_name, client=None, interval='15m')
-        assert binding.strategy_id == 'cati'
-        with pytest.raises(RuntimeError, match='REMOVED'):
-            binding.get_signal('BTCUSDT')
+    # Every historical / unsafe / empty / unknown name, with or without stored
+    # params: the loader constructs no strategy class at all (so no fallback,
+    # no params retry, no swallowed constructor TypeError) -- only the binding.
+    for old_name in ('master_ensemble', 'robust_ensemble', 'sma_cross', 'sma-cross', 'sma cross', '',
+                     'unknown', 'nonexistent_strategy', 'cati'):
+        for params_json in (None, '{"fast": 5}', '{"unknown_param": 3}'):
+            binding = build_strategy(name=old_name, client=None, interval='15m', params_json=params_json)
+            assert type(binding).__name__ == 'CatiRuntimeBinding'
+            assert binding.strategy_id == 'cati'
+            with pytest.raises(RuntimeError, match='REMOVED'):
+                binding.get_signal('BTCUSDT')
     assert [s.name for s in list_strategies()] == ['cati']
     assert get_strategy_class('master_ensemble') is None
 

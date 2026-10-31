@@ -592,24 +592,31 @@ def _klines(n: int = 120):
 
 class TestOneAuthority:
     def test_19_external_signals_use_the_same_engine_and_policy(self, tmp_path):
-        assert isinstance(gate_module._default_engine(), AdaptiveEntryThresholdEngine)
+        """External signals have NO independent entry authority: CATI is the only
+        engine that originates entries, so an external candidate -- even a strong
+        one, with a production policy, a stable regime and a valid kline history --
+        is always refused as advisory-only. No threshold engine runs for it and no
+        threshold decision is recorded on its behalf."""
         db = DB(str(tmp_path / "external.db"))
         migrate(db)
+
+        def _never(*_a, **_k):
+            raise AssertionError("an advisory external signal must not reach a threshold engine or persist")
+
         result = gate_module.evaluate_external_candidate(
-            db=db, symbol="BTCUSDT", side="BUY", confidence=0.70, klines=_klines(),
+            db=db, symbol="BTCUSDT", side="BUY", confidence=0.99, klines=_klines(),
             timeframe="15m", source="TRADINGVIEW", bot_instance_id="bot_external_1_1",
+            engine=SimpleNamespace(evaluate=_never), persist=_never,
             policy_resolver=lambda **_: production_policy(),
             regime_classifier_factory=lambda: SimpleNamespace(classify_stable=lambda h, l, c: SimpleNamespace(
                 regime=MarketRegime.WEAK_TREND, regime_confidence=0.9, atr_percent=0.5,
                 compression_ratio=0.2)),
         )
-        decision = result.threshold_decision
-        assert decision.threshold_engine_version == ENGINE_VERSION
-        assert decision.base_threshold == pytest.approx(0.30)
-        assert decision.policy_hash == production_policy().policy_hash
-        assert result.passed is True
-        rows = load_threshold_decisions(db, bot_instance_id="bot_external_1_1")
-        assert [r["threshold_engine_version"] for r in rows] == [ENGINE_VERSION]
+        assert result.passed is False
+        assert result.reason == "CATI_ONLY_ENGINE_EXTERNAL_SIGNAL_ADVISORY_ONLY"
+        assert result.threshold_decision is None and result.threshold_decision_id is None
+        assert result.persisted is False
+        assert load_threshold_decisions(db, bot_instance_id="bot_external_1_1") == []
 
     def test_20_exactly_one_threshold_engine_and_no_second_ensemble_gate(self):
         engines = set()

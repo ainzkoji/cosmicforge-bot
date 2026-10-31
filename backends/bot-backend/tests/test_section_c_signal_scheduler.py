@@ -29,6 +29,16 @@ def _make_temp_db():
     return db, path
 
 
+def _run_coro(coro):
+    """Run a coroutine on a PRIVATE event loop. Never ``asyncio.run``: it clears
+    the current loop, which ib_insync/eventkit (imported by ``app.main``) need."""
+    loop = asyncio.new_event_loop()
+    try:
+        return loop.run_until_complete(coro)
+    finally:
+        loop.close()
+
+
 def _cleanup_db(path: str) -> None:
     try:
         os.unlink(path)
@@ -89,7 +99,7 @@ class TestSignalSchedulerStartup:
             original = main_mod._signal_scheduler
             main_mod._signal_scheduler = None  # ensure clean state
             try:
-                asyncio.run(main_mod._startup_signal_scheduler())
+                _run_coro(main_mod._startup_signal_scheduler())
             finally:
                 # Clean up so we don't pollute other tests
                 if main_mod._signal_scheduler:
@@ -99,19 +109,29 @@ class TestSignalSchedulerStartup:
         return mock_scheduler, jobs_added
 
     def test_scheduler_registers_generation_jobs_for_each_configured_time(self):
+        """Retired on purpose: CATI observes on closed-candle epochs in the
+        runner, so NO legacy signal-generation job is registered for any of the
+        configured times -- and nothing registered calls the retired generator."""
+        from app.signals import crypto_signal_engine
         from app.signals.signal_scheduler_config import SIGNAL_GENERATION_TIMES_UTC
+        assert SIGNAL_GENERATION_TIMES_UTC  # the configured times still exist ...
         mock_scheduler, jobs = self._run_startup()
-        gen_job_ids = [j["kwargs"].get("id", "") for j in jobs if j["kwargs"].get("id", "").startswith("signal_gen_")]
-        assert len(gen_job_ids) == len(SIGNAL_GENERATION_TIMES_UTC), (
-            f"Expected {len(SIGNAL_GENERATION_TIMES_UTC)} generation jobs, got {len(gen_job_ids)}"
-        )
+        # ... but none of them is scheduled
+        assert not [j for j in jobs if str(j["kwargs"].get("id", "")).startswith("signal_gen_")]
+        for j in jobs:
+            assert getattr(j["fn"], "__module__", "") != crypto_signal_engine.__name__
+            assert j["fn"] is not crypto_signal_engine.generate_crypto_signals
 
     def test_scheduler_job_ids_are_stable(self):
-        from app.signals.signal_scheduler_config import SIGNAL_GENERATION_TIMES_UTC
+        """The registered job ids are a stable, known set with no generation job:
+        the 5-minute expiry job (always) and, outside production, the paper
+        validation monitor."""
         mock_scheduler, jobs = self._run_startup()
-        expected_ids = {f"signal_gen_{t.replace(':', '')}" for t in SIGNAL_GENERATION_TIMES_UTC}
-        actual_ids = {j["kwargs"].get("id") for j in jobs if j["kwargs"].get("id", "").startswith("signal_gen_")}
-        assert actual_ids == expected_ids
+        ids = [j["kwargs"].get("id") for j in jobs]
+        assert len(ids) == len(set(ids))
+        assert "signal_expiry" in ids
+        assert set(ids) <= {"signal_expiry", "daily_paper_validation_monitor"}
+        assert not any(str(i).startswith("signal_gen_") for i in ids)
 
     def test_scheduler_generation_jobs_use_utc(self):
         mock_scheduler, jobs = self._run_startup()
@@ -171,7 +191,7 @@ class TestSignalSchedulerStartup:
         sentinel = MagicMock()
         main_mod._signal_scheduler = sentinel
         try:
-            asyncio.run(main_mod._startup_signal_scheduler())
+            _run_coro(main_mod._startup_signal_scheduler())
             # start() must NOT have been called on the sentinel
             sentinel.start.assert_not_called()
         finally:
@@ -184,7 +204,7 @@ class TestSignalSchedulerStartup:
         sentinel = MagicMock()
         main_mod._signal_scheduler = sentinel
         try:
-            asyncio.run(main_mod._shutdown_signal_scheduler())
+            _run_coro(main_mod._shutdown_signal_scheduler())
             sentinel.shutdown.assert_called_once_with(wait=False)
             assert main_mod._signal_scheduler is None
         finally:
@@ -254,11 +274,30 @@ class TestSignalEngineLimitEnforcement:
         assert summary["published"] <= 10
 
     def test_engine_can_publish_more_than_5_signals(self):
-        """The old limit was 5; the new limit allows up to 10."""
+        """Retired on purpose: the legacy generator is BLOCKED (CATI is the only
+        engine). With capacity for 10 publications and 12 symbols it still scans
+        nothing, touches no repository and publishes nothing."""
         engine, repo = self._make_engine(published_per_scan=10, max_active=20)
+        engine.scan_symbol = MagicMock(side_effect=AssertionError("the retired generator must not scan"))
         summary = engine.generate_crypto_signals()
-        # With 12 symbols and 1 signal each, published should reach 10 (the cap)
-        assert summary["published"] == 10
+        assert summary["status"] == "BLOCKED"
+        assert summary["reason"] == "CATI_ONLY_ENGINE_LEGACY_SIGNAL_GENERATOR_RETIRED"
+        assert summary["published"] == 0 and summary["signals_created"] == 0 and summary["scanned_symbols"] == 0
+        engine.scan_symbol.assert_not_called()
+        assert [c for c in repo.mock_calls if not c[0].startswith("__")] == []  # no repository access
+
+    def test_module_entrypoint_is_retired_too(self):
+        """The scheduler/API entrypoint is BLOCKED as well, before it builds an
+        engine or a market-data client."""
+        from app.signals import crypto_signal_engine
+
+        with patch.object(crypto_signal_engine, "CryptoSignalEngine",
+                          side_effect=AssertionError("the retired entrypoint must not build an engine")):
+            summary = crypto_signal_engine.generate_crypto_signals(
+                scheduled_time_utc="07:00", scheduler_source="test")
+        assert summary["status"] == "BLOCKED"
+        assert summary["reason"] == "CATI_ONLY_ENGINE_LEGACY_SIGNAL_GENERATOR_RETIRED"
+        assert summary["published"] == 0
 
     def test_engine_does_not_exceed_max_published_per_scan(self):
         engine, repo = self._make_engine(published_per_scan=10, max_active=20)
@@ -290,9 +329,14 @@ class TestSignalEngineLimitEnforcement:
         assert engine.max_active_signals == DEFAULT_MAX_ACTIVE_SIGNALS
 
     def test_skipped_counters_populated_on_active_limit(self):
+        """Retired on purpose: the BLOCKED generator never reaches the active-limit
+        check, so it consults no counts and reports zeroed counters."""
         engine, repo = self._make_engine(published_per_scan=10, max_active=20, active_now=20)
         summary = engine.generate_crypto_signals()
-        assert summary["skipped_active_limit"] > 0
+        assert summary["status"] == "BLOCKED"
+        assert summary["reason"] == "CATI_ONLY_ENGINE_LEGACY_SIGNAL_GENERATOR_RETIRED"
+        assert summary["skipped_active_limit"] == 0 and summary["skipped_published_limit"] == 0
+        repo.count_active_signals.assert_not_called()
 
     def test_skipped_counters_populated_on_published_limit(self):
         engine, repo = self._make_engine(published_per_scan=3, max_active=100)

@@ -80,11 +80,19 @@ def test_nightly_job_accepts_fresh_output_when_builder_does_not_exit(tmp_path):
     assert result["finished_at"]
 
 
-def _registered_jobs(enabled: bool):
+def _registered_jobs(enabled: bool, *, production: bool = False):
+    """The jobs ``app.main._startup_signal_scheduler`` registers, on a mocked
+    APScheduler. Runs on a private event loop: never ``asyncio.run`` and never
+    ``set_event_loop(None)`` (both clear the current loop, which
+    ib_insync/eventkit need when ``app.main`` is imported)."""
+    from unittest.mock import PropertyMock
+
     from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
+    try:
+        asyncio.get_event_loop()
+    except RuntimeError:  # a previous test cleared it: give the eventkit import a loop
+        asyncio.set_event_loop(asyncio.new_event_loop())
     import app.main as main_mod
 
     scheduler = MagicMock(spec=AsyncIOScheduler)
@@ -94,27 +102,29 @@ def _registered_jobs(enabled: bool):
     )
     original = main_mod._signal_scheduler
     main_mod._signal_scheduler = None
+    loop = asyncio.new_event_loop()
     try:
         with patch("apscheduler.schedulers.asyncio.AsyncIOScheduler", return_value=scheduler), \
+             patch.object(type(main_mod.settings), "production", new_callable=PropertyMock,
+                          return_value=production), \
              patch.object(main_mod.settings, "ORGANIC_DATASET_NIGHTLY_ENABLED", enabled), \
              patch.object(main_mod.settings, "ORGANIC_DATASET_NIGHTLY_TIME_UTC", "02:00"):
             loop.run_until_complete(main_mod._startup_signal_scheduler())
     finally:
-        if main_mod._signal_scheduler:
-            main_mod._signal_scheduler.shutdown(wait=False)
         main_mod._signal_scheduler = original
         loop.close()
-        asyncio.set_event_loop(None)
     return jobs
 
 
 def test_scheduler_registers_nightly_job_at_0200_utc_when_enabled():
-    jobs = _registered_jobs(True)
-    job = next(job for job in jobs if job["kwargs"].get("id") == "organic_dataset_nightly")
-    assert job["trigger"] == "cron"
-    assert job["kwargs"]["hour"] == 2
-    assert job["kwargs"]["minute"] == 0
-    assert job["kwargs"]["max_instances"] == 1
+    """Retired on purpose: the V2 organic-dataset build is NOT runtime scheduled,
+    even with ORGANIC_DATASET_NIGHTLY_ENABLED=True, in production or not. The
+    builder stays a manual / historical tool (tested below)."""
+    for production in (False, True):
+        jobs = _registered_jobs(True, production=production)
+        assert any(job["kwargs"].get("id") == "signal_expiry" for job in jobs)
+        assert not any(job["kwargs"].get("id") == "organic_dataset_nightly" for job in jobs)
+        assert not any(job["fn"] is run_nightly_organic_dataset_build for job in jobs)
 
 
 def test_scheduler_does_not_register_nightly_job_when_disabled():
