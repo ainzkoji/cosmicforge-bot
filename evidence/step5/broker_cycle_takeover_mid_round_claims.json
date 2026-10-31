@@ -1,0 +1,98 @@
+{
+ "process_drill": {
+  "postgresql": {
+   "account_steps": 163,
+   "accounts": 40,
+   "bound_ms": 8915,
+   "checks": {
+    "drain_hands_over_faster_than_ttl": true,
+    "every_killed_account_taken_over": true,
+    "killed_worker_silent_after_kill": true,
+    "never_two_workers_on_one_account": true,
+    "successor_recovers_first": true,
+    "takeover_within_ttl_plus_loop_interval": true
+   },
+   "cut_steps_of_killed_worker": 1,
+   "dialect": "postgresql",
+   "drain_releases": 20,
+   "drain_to_full_ownership_ms": 229,
+   "fair_split_and_recovered_s": 3.4369999999180436,
+   "kill_command_ms": 750,
+   "kill_issued_to_full_ownership_ms": 3813,
+   "kill_to_all_recovered_by_successor_ms": 5516,
+   "kill_to_full_ownership_ms": 3063,
+   "killed_worker_steps_after_kill": 0,
+   "limits": "Separate OS processes on one workstation running the real production broker-cycle code over flat fake DEMO accounts (no order surface; venue-mutation fencing under kill is proven in-process on the real execution path by tests/trading_intelligence/test_step5_broker_cycle_assignment.py). Not a hosted staging run, not venue latency, not a Linux certification.",
+   "loop_interval_ms": 200,
+   "overlapping_steps": [],
+   "passed": true,
+   "schema": "cosmicforge-broker-cycle-kill-drill-v1",
+   "split": {
+    "A": 20,
+    "B": 20
+   },
+   "started_at_utc": "2026-10-31T11:40:56Z",
+   "step_read_pause_ms": 60,
+   "successor_cycle_ms_around_takeover": 4915,
+   "successor_started_s": 1.031999999890104,
+   "takeover_claim_ms_after_kill": {
+    "max": 3009,
+    "min": 2448
+   },
+   "takeover_claim_ms_after_kill_issued": {
+    "max": 3749,
+    "min": 3188
+   },
+   "takeover_claim_ms_after_killed_worker_last_heartbeat": 4035,
+   "takeovers": 20,
+   "ttl_ms": 3000
+  },
+  "sqlite": {
+   "account_steps": 164,
+   "accounts": 40,
+   "bound_ms": 8532,
+   "checks": {
+    "drain_hands_over_faster_than_ttl": true,
+    "every_killed_account_taken_over": true,
+    "killed_worker_silent_after_kill": true,
+    "never_two_workers_on_one_account": true,
+    "successor_recovers_first": true,
+    "takeover_within_ttl_plus_loop_interval": true
+   },
+   "cut_steps_of_killed_worker": 1,
+   "dialect": "sqlite",
+   "drain_releases": 20,
+   "drain_to_full_ownership_ms": 248,
+   "fair_split_and_recovered_s": 3.547000000020489,
+   "kill_command_ms": 703,
+   "kill_issued_to_full_ownership_ms": 3718,
+   "kill_to_all_recovered_by_successor_ms": 5047,
+   "kill_to_full_ownership_ms": 3015,
+   "killed_worker_steps_after_kill": 0,
+   "limits": "Separate OS processes on one workstation running the real production broker-cycle code over flat fake DEMO accounts (no order surface; venue-mutation fencing under kill is proven in-process on the real execution path by tests/trading_intelligence/test_step5_broker_cycle_assignment.py). Not a hosted staging run, not venue latency, not a Linux certification.",
+   "loop_interval_ms": 200,
+   "overlapping_steps": [],
+   "passed": true,
+   "schema": "cosmicforge-broker-cycle-kill-drill-v1",
+   "split": {
+    "A": 20,
+    "B": 20
+   },
+   "started_at_utc": "2026-10-31T11:40:35Z",
+   "step_read_pause_ms": 60,
+   "successor_cycle_ms_around_takeover": 4532,
+   "successor_started_s": 0.9060000001918525,
+   "takeover_claim_ms_after_kill": {
+    "max": 2962,
+    "min": 2275
+   },
+   "takeover_claim_ms_after_kill_issued": {
+    "max": 3665,
+    "min": 2978
+   },
+   "takeover_claim_ms_after_killed_worker_last_heartbeat": 4006,
+   "takeovers": 20,
+   "ttl_ms": 3000
+  }
+ }
+}

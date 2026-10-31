@@ -94,6 +94,13 @@ class BrokerCycleAssignments:
         self._renewed_at = 0.0
         self._job_runner: Optional[Tuple[Any, Any]] = None
         self.last_round: Dict[str, Any] = {}
+        #: Between two accounts of a round, at most this often: is an account free (an expired claim of a dead
+        #: worker, a released one)? If so, claim it now and add it to the round in progress, instead of waiting
+        #: for the next round. A sixth of the TTL (production: 10 s of a 60 s TTL).
+        self.claim_poll_ms = max(1, int(ttl_ms) // 6)
+        self._claim_polled_at = 0.0
+        self._round: Optional[List[Mapping[str, Any]]] = None
+        self._round_accounts: Dict[str, Mapping[str, Any]] = {}
 
     @classmethod
     def refusing(cls, mode: str, reason: str) -> "BrokerCycleAssignments":
@@ -147,19 +154,68 @@ class BrokerCycleAssignments:
                  for a in accounts])
             claimed = self.assignments.claim(self.worker_id, take_all_free=self.mode == OWNER)
             self.owned = {a.account_id: a for a in claimed}
-            self._renewed_at = time.monotonic()
+            self._renewed_at = self._claim_polled_at = time.monotonic()
             self.last_round = {"owned": len(self.owned), "recovering": sum(a.needs_recovery for a in claimed),
                                "removed": list(report["removed"]), "refused": list(report["refused"]),
-                               "takeovers": [a.account_id for a in claimed if a.kind == "TAKEOVER"]}
+                               "takeovers": [a.account_id for a in claimed if a.kind == "TAKEOVER"],
+                               "claimed_mid_round": []}
             if report["refused"]:
                 logger.error("[BROKER_ASSIGNMENT] accounts refused by the registry (tenant changed): %s",
                              report["refused"])
-            return [a for a in accounts if str(a["id"]) in self.owned]
+            # The round's list GROWS: ``keepalive`` (called before each account step) appends accounts claimed
+            # between two accounts, so the loop iterating this list processes them -- recovery first -- in this round.
+            self._round_accounts = {str(a["id"]): a for a in accounts}
+            self._round = [a for a in accounts if str(a["id"]) in self.owned]
+            return self._round
+
+    def _claim_between_accounts(self) -> None:
+        """Claim free accounts (an expired claim of a dead worker, a released one) at a safe point between two
+        account steps, and append them to the round in progress. Fencing is unchanged: ``claim`` takes only rows
+        that are released or expired on the database clock, under the row's own condition, with a new fencing
+        token; the new assignment needs recovery before any entry. Opportunistic: a failure here is logged and
+        the next round claims as before -- it never fails the account step that follows."""
+        from app.ops.runtime_shutdown import stop_requested
+        with self._lock:
+            if self._draining or self._round is None or stop_requested():
+                return
+            try:
+                if not self.assignments.has_free():
+                    return
+                claimed = self.assignments.claim(self.worker_id, take_all_free=self.mode == OWNER)
+            except Exception as exc:  # noqa: BLE001 -- the round goes on with what it holds
+                logger.warning("[BROKER_ASSIGNMENT] claim between accounts failed (%s)", type(exc).__name__)
+                return
+            self._renewed_at = time.monotonic()           # claim renewed every live claim too
+            held = {a.account_id for a in claimed}
+            for lost in set(self.owned) - held:
+                self.owned.pop(lost, None)
+            queued = {str(a["id"]) for a in self._round}
+            for a in claimed:
+                current = self.owned.get(a.account_id)
+                if current is not None and int(current.fencing_token) == int(a.fencing_token):
+                    continue                                # already held: keep the round's own record of it
+                self.owned[a.account_id] = a
+                account = self._round_accounts.get(a.account_id)
+                if account is not None and a.account_id not in queued:
+                    self._round.append(account)
+                    queued.add(a.account_id)
+                self.last_round.setdefault("claimed_mid_round", []).append(a.account_id)
+                if a.kind == "TAKEOVER":
+                    self.last_round.setdefault("takeovers", []).append(a.account_id)
+                logger.info("[BROKER_ASSIGNMENT] %s claimed between accounts (%s, token %d)", a.account_id, a.kind,
+                            int(a.fencing_token))
 
     def keepalive(self) -> None:
         """Renew every owned claim once a third of the TTL has passed since the last renewal (a long round must
-        not let the claims of its last accounts expire before their turn)."""
-        if not self.enforced or self.worker_id is None or not self.owned:
+        not let the claims of its last accounts expire before their turn), and -- at most every ``claim_poll_ms``
+        -- claim accounts that became free since the round began (``_claim_between_accounts``): a dead worker's
+        accounts are taken over once its claims expire, not at the start of the next round."""
+        if not self.enforced or self.worker_id is None:
+            return
+        if self._round is not None and time.monotonic() - self._claim_polled_at >= self.claim_poll_ms / 1000.0:
+            self._claim_polled_at = time.monotonic()
+            self._claim_between_accounts()
+        if not self.owned:
             return
         if time.monotonic() - self._renewed_at < self.ttl_ms / 3000.0:
             return

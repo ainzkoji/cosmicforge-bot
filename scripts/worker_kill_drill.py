@@ -212,10 +212,17 @@ def run_broker_cycle(url: str, *, accounts: int, ttl_ms: int, workdir: Path, slo
         out["split"] = {w: list(owned.values()).count(w) for w in ("A", "B")}
         a_accounts = {k for k, v in owned.items() if v == "A"}
         time.sleep(1.5)                                   # A is inside an account step (each first read pauses)
+        # Two clocks for the kill: when it was ISSUED (taskkill /T /F can take seconds on Windows) and when the
+        # process was confirmed gone. Takeover is measured from both; "steps after the kill" from the second.
+        kill_issued_ms = db_now()
+        kill_started = time.monotonic()
         hard_kill(a)
         killed_ms = db_now()
+        out["kill_command_ms"] = round((time.monotonic() - kill_started) * 1000)
         took = wait_until(lambda: set(owners(db)) == set(ids) and set(owners(db).values()) == {"B"}, 6 * ttl_ms / 1000)
         out["kill_to_full_ownership_ms"] = round(took * 1000) if took is not None else None
+        out["kill_issued_to_full_ownership_ms"] = (out["kill_to_full_ownership_ms"] + out["kill_command_ms"]
+                                                   if took is not None else None)
         rec = wait_until(lambda: set(recovered()) == set(ids) and set(recovered().values()) == {"B"}, 60)
         out["kill_to_all_recovered_by_successor_ms"] = round((took + rec) * 1000) if None not in (took, rec) else None
         with db.transaction(write=False) as conn:
@@ -223,6 +230,14 @@ def run_broker_cycle(url: str, *, accounts: int, ttl_ms: int, workdir: Path, slo
                               "AND from_worker='A' AND to_worker='B'")
         out["takeover_claim_ms_after_kill"] = {"max": max((int(t) - killed_ms for _, t in claims), default=None),
                                                "min": min((int(t) - killed_ms for _, t in claims), default=None)}
+        out["takeover_claim_ms_after_kill_issued"] = {
+            "max": max((int(t) - kill_issued_ms for _, t in claims), default=None),
+            "min": min((int(t) - kill_issued_ms for _, t in claims), default=None)}
+        with db.transaction(write=False) as conn:
+            # The killed worker's last heartbeat (it renews its claims with it): its claims ran out one TTL later.
+            a_heartbeat = conn.scalar("SELECT heartbeat_at FROM platform_workers WHERE worker_id='A'")
+        out["takeover_claim_ms_after_killed_worker_last_heartbeat"] = (
+            max(int(t) for _, t in claims) - int(a_heartbeat) if claims and a_heartbeat is not None else None)
         out["takeovers"] = len(claims)
         c = spawn_broker(url, legacy, "C", ttl_ms, workdir, slow_ms=slow_ms)
         c_log = workdir / "steps_C.jsonl"
@@ -319,6 +334,9 @@ def main(argv=None) -> int:
         out.parent.mkdir(parents=True, exist_ok=True)
         out.write_text(json.dumps(existing, indent=1, sort_keys=True) + "\n", encoding="utf-8")
         print(json.dumps({k: result.get(k) for k in ("dialect", "takeover_claim_ms_after_kill",
+                                                     "takeover_claim_ms_after_kill_issued",
+                                                     "takeover_claim_ms_after_killed_worker_last_heartbeat",
+                                                     "kill_issued_to_full_ownership_ms", "kill_command_ms",
                                                      "kill_to_all_recovered_by_successor_ms",
                                                      "drain_to_full_ownership_ms", "checks", "passed")}, indent=1))
         return 0 if result["passed"] else 1

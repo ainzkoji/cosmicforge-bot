@@ -93,6 +93,39 @@ class WorkerAssignments:
         self.db = db
         self.ttl_ms = int(ttl_ms)
         self.worker_liveness_ms = int(worker_liveness_ms)
+        #: Workers this process took an EXPIRED claim from, with the heartbeat they had then. Such a worker stopped
+        #: renewing (dead, or stalled past its TTL); it is not live capacity until it heartbeats again. Process-local:
+        #: it only keeps this process's fair share from handing the taken accounts back (REBALANCE) while the dead
+        #: worker's last heartbeat is still inside ``worker_liveness_ms``.
+        self._lapsed: dict = {}
+
+    def _live_workers(self, conn: Connection, now: int, caller: str) -> int:
+        """Live capacity for the fair share: ACTIVE workers with a heartbeat inside ``worker_liveness_ms``, minus
+        workers that LAPSED -- they hold a claim that expired without renewal (a live worker renews its claims
+        before they run out), or this process took one of their expired claims and they have not heartbeated
+        since. The caller always counts. Only the fair share depends on this; which account may be taken never
+        does (``claim`` takes only released or expired rows, under the row's own condition)."""
+        rows = conn.all("SELECT worker_id, heartbeat_at FROM platform_workers WHERE state='ACTIVE' AND heartbeat_at > ?",
+                        (now - self.worker_liveness_ms,))
+        expired_holders = {r[0] for r in conn.all(
+            "SELECT DISTINCT worker_id FROM platform_account_assignments WHERE released_at IS NULL AND expires_at <= ? "
+            "AND worker_id IS NOT NULL", (now,))}
+        heartbeats = {wid: int(hb) for wid, hb in rows}
+        for wid in list(self._lapsed):
+            if wid not in heartbeats or heartbeats[wid] > self._lapsed[wid]:
+                self._lapsed.pop(wid, None)          # it heartbeated again (alive), or it is no longer counted at all
+        live = sum(1 for wid in heartbeats
+                   if wid == caller or (wid not in expired_holders and wid not in self._lapsed))
+        return max(live, 1)
+
+    def has_free(self) -> bool:
+        """Is any ACTIVE account free to claim right now (never claimed, released, or expired)? A read only: the
+        broker cycle asks this between accounts and claims only when it is true."""
+        with self.db.transaction(write=False) as conn:
+            return conn.one(
+                "SELECT a.account_id FROM platform_accounts a LEFT JOIN platform_account_assignments s "
+                "ON s.account_id = a.account_id WHERE a.state='ACTIVE' AND (s.account_id IS NULL OR "
+                "s.released_at IS NOT NULL OR s.expires_at <= ?) LIMIT 1", (conn.now_ms(),)) is not None
 
     # ── workers ────────────────────────────────────────────────────────────────────────────────────────
     def register_worker(self, worker_id: Optional[str] = None, *, role: str = "trading",
@@ -158,12 +191,11 @@ class WorkerAssignments:
             result = [Assignment(a, t, worker_id, tok, exp, RENEWED, rec != tok) for a, t, tok, exp, rec in owned]
             if state != "ACTIVE":
                 return result
+            heartbeats = dict(conn.all("SELECT worker_id, heartbeat_at FROM platform_workers WHERE state='ACTIVE'"))
             if take_all_free:
                 room: Optional[int] = None if max_new is None else int(max_new)
             else:
-                live_workers = int(conn.scalar(
-                    "SELECT COUNT(*) FROM platform_workers WHERE state='ACTIVE' AND heartbeat_at > ?",
-                    (now - self.worker_liveness_ms,)) or 1)
+                live_workers = self._live_workers(conn, now, worker_id)
                 active_accounts = int(conn.scalar("SELECT COUNT(*) FROM platform_accounts WHERE state='ACTIVE'") or 0)
                 share = math.ceil(active_accounts / max(live_workers, 1))
                 room = share - len(owned)
@@ -196,6 +228,8 @@ class WorkerAssignments:
                     "VALUES (?,?,?,?,?,?)",
                     (account_id, previous, worker_id, new_token,
                      "EXPIRED_TAKEOVER" if kind == TAKEOVER else ("REASSIGNED" if previous else "INITIAL"), now))
+                if kind == TAKEOVER and previous != worker_id and previous in heartbeats:
+                    self._lapsed[previous] = int(heartbeats[previous])
                 result.append(Assignment(account_id, tenant_id, worker_id, new_token, expires, kind, True,
                                          previous if kind == TAKEOVER else None))
             return result
@@ -212,9 +246,8 @@ class WorkerAssignments:
         """Accounts above this worker's fair share (after another worker joined): release them at a safe point."""
         with self.db.transaction(write=False) as conn:
             now = conn.now_ms()
-            live = int(conn.scalar("SELECT COUNT(*) FROM platform_workers WHERE state='ACTIVE' AND heartbeat_at > ?",
-                                   (now - self.worker_liveness_ms,)) or 1)
-            active = int(conn.scalar("SELECT COUNT(*) FROM platform_accounts WHERE state='ACTIVE'") or 0)
+            live = self._live_workers(conn, now, worker_id)
+            active =int(conn.scalar("SELECT COUNT(*) FROM platform_accounts WHERE state='ACTIVE'") or 0)
             owned = [r[0] for r in self._owned_on(conn, worker_id, now)]
         share = math.ceil(active / max(live, 1))
         return owned[share:] if len(owned) > share else []
