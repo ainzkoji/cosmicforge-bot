@@ -53,7 +53,12 @@ def test_retention_runs_when_the_cycle_raises_and_the_error_still_propagates(tmp
     assert runs == [10 * DAY, 10 * DAY + DAY // 2 + DAY]
 
 
-def test_a_retention_failure_never_hides_the_cycle_result_and_is_retried(tmp_path, monkeypatch, caplog):
+def test_a_retention_failure_never_hides_the_cycle_result_and_is_retried(tmp_path, monkeypatch):
+    # The logger is patched rather than read through caplog: other tests in a full run change log propagation.
+    from app.trading_intelligence.integration import platform_runtime
+
+    logged = []
+    monkeypatch.setattr(platform_runtime.logger, "exception", lambda msg, *a: logged.append(msg % a if a else msg))
     attempts = []
 
     def failing(db, **kw):
@@ -65,7 +70,7 @@ def test_a_retention_failure_never_hides_the_cycle_result_and_is_retried(tmp_pat
     now = [5 * DAY]
     s = scheduler(tmp_path, Driver(), lambda: now[0])
     assert s.tick() == ["result"]
-    assert s.last_retention is None and "retention failed" in caplog.text
+    assert s.last_retention is None and any("retention failed" in m for m in logged)
     now[0] += 30_000
     assert s.tick() == ["result"]                    # retried on the next tick, not a day later
     assert attempts == [5 * DAY, 5 * DAY + 30_000] and s.last_retention == 5 * DAY + 30_000
