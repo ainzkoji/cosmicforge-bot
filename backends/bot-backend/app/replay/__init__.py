@@ -12,19 +12,16 @@ higher-timeframe candle, no future close. That guarantee is enforced by
 construction in :mod:`app.replay.historical_provider` rather than by
 convention, because look-ahead is the one bug that makes a backtest confidently
 wrong instead of merely inaccurate.
+
+Section I Batch 7 retired the legacy replay session (``engine.py``, which drove the
+V2 ``PaperRunner``) and its fill models (``fill_models.py``): nothing in production
+imported them, and CATI replays through its own certification path
+(``app.trading_intelligence.research.certification.replay``). What remains here is
+shared with that path: the causal historical provider, the canonical cost model and
+the replay identity.
 """
 
 from app.replay.cost_model import BINANCE_FUTURES_STANDARD, CostModel
-from app.replay.fill_models import (
-    Fill,
-    FillModel,
-    IntrabarPolicy,
-    IntrabarUnresolved,
-    fill_entry,
-    fill_limit,
-    fill_stop,
-    resolve_exit,
-)
 from app.replay.historical_provider import (
     HistoricalClock,
     HistoricalMarketDataProvider,
@@ -36,18 +33,10 @@ from app.replay.identity import ReplayIdentity, dataset_hash
 __all__ = [
     "BINANCE_FUTURES_STANDARD",
     "CostModel",
-    "Fill",
-    "FillModel",
     "HistoricalClock",
     "HistoricalMarketDataProvider",
-    "IntrabarPolicy",
-    "IntrabarUnresolved",
     "ReplayDataError",
     "ReplayIdentity",
     "ReplayMarketClient",
     "dataset_hash",
-    "fill_entry",
-    "fill_limit",
-    "fill_stop",
-    "resolve_exit",
 ]

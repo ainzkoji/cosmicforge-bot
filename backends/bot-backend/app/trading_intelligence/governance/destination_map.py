@@ -81,10 +81,12 @@ RESPONSIBILITY_MAP: Mapping[str, Tuple[Tuple[str, ...], str, str]] = {
     "multi_runner.multi_bot": (("app/runner/multi_runner.py",), INTEGRATED,
                                "multi-bot runtime; account-wide portfolio evaluated via cycle_shadow per bot"),
     "orchestrator.hard_risk_entry": (("app/core/trading_orchestrator.py",), INTEGRATED, "process_trade_plan"),
-    "market_snapshot": (("app/runner/market_snapshot.py",), INTEGRATED, "immutable MarketSnapshot input"),
+    "market_snapshot": (("app/market_data/market_snapshot.py",), INTEGRATED, "immutable MarketSnapshot input"),
     "exchange.interface": (("app/exchange/interface.py",), INTEGRATED, "broker-neutral exchange contract"),
-    "replay.engine": (("app/replay/engine.py", "app/replay/historical_provider.py"), INTEGRATED,
-                      "causal historical provider reused by the library builder and certification"),
+    # Section I Batch 7: the legacy replay session (app/replay/engine.py, which drove the V2 PaperRunner) was
+    # retired; the responsibility this entry names -- the causal historical provider -- is unchanged.
+    "replay.historical_provider": (("app/replay/historical_provider.py",), INTEGRATED,
+                                   "causal historical provider reused by the library builder and certification"),
     "research.dataset": (("app/research/dataset.py",), INTEGRATED, "partitions, purge/embargo, holdout guard"),
     "evidence.writers": (("app/evidence/writers.py",), INTEGRATED, "V2 evidence writers; CATI uses evidence/stores"),
     "execution.position_manager": (("app/execution/position_manager.py",), INTEGRATED,

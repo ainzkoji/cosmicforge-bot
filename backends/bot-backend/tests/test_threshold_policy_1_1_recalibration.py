@@ -23,7 +23,6 @@ from types import SimpleNamespace
 
 import pytest
 
-from app.decision import external_signal_gate as gate_module
 from app.strategy import master_ensemble as ensemble_module
 from app.strategy.master_ensemble import HTF_STRENGTH_SATURATION, MasterEnsembleStrategy
 from app.strategy.regime import MarketRegime, calculate_atr_percent
@@ -594,28 +593,32 @@ class TestOneAuthority:
     def test_19_external_signals_use_the_same_engine_and_policy(self, tmp_path):
         """External signals have NO independent entry authority: CATI is the only
         engine that originates entries, so an external candidate -- even a strong
-        one, with a production policy, a stable regime and a valid kline history --
-        is always refused as advisory-only. No threshold engine runs for it and no
-        threshold decision is recorded on its behalf."""
+        one -- is always refused as advisory-only where it arrives
+        (PaperRunner.process_external_signal_candidate). No threshold engine runs
+        for it and no threshold decision is recorded on its behalf. (The always-refusing
+        compatibility gate app/decision/external_signal_gate.py was removed in
+        Section I Batch 7; nothing imported it.)"""
+        from unittest.mock import MagicMock
+
+        from app.runner.runner import PaperRunner
+
         db = DB(str(tmp_path / "external.db"))
         migrate(db)
+        runner = object.__new__(PaperRunner)
+        runner.db = db
+        runner.context = None
+        runner.policy_engine = MagicMock()
+        runner.orchestrator = MagicMock()
+        runner._execute_signal_with_evidence = MagicMock()
 
-        def _never(*_a, **_k):
-            raise AssertionError("an advisory external signal must not reach a threshold engine or persist")
-
-        result = gate_module.evaluate_external_candidate(
-            db=db, symbol="BTCUSDT", side="BUY", confidence=0.99, klines=_klines(),
-            timeframe="15m", source="TRADINGVIEW", bot_instance_id="bot_external_1_1",
-            engine=SimpleNamespace(evaluate=_never), persist=_never,
-            policy_resolver=lambda **_: production_policy(),
-            regime_classifier_factory=lambda: SimpleNamespace(classify_stable=lambda h, l, c: SimpleNamespace(
-                regime=MarketRegime.WEAK_TREND, regime_confidence=0.9, atr_percent=0.5,
-                compression_ratio=0.2)),
-        )
-        assert result.passed is False
-        assert result.reason == "CATI_ONLY_ENGINE_EXTERNAL_SIGNAL_ADVISORY_ONLY"
-        assert result.threshold_decision is None and result.threshold_decision_id is None
-        assert result.persisted is False
+        result = runner.process_external_signal_candidate({
+            "source": "TRADINGVIEW", "queue_id": "q19", "symbol": "BTCUSDT", "action": "BUY",
+            "confidence": 0.99, "klines": _klines(),
+        })
+        assert result["status"] == "BLOCKED" and result["executed"] is False
+        assert result["reason"] == "EXTERNAL_SIGNAL_ADVISORY_ONLY_CATI_DISPATCH_REQUIRED"
+        assert runner.policy_engine.mock_calls == [] and runner.orchestrator.mock_calls == []
+        runner._execute_signal_with_evidence.assert_not_called()
         assert load_threshold_decisions(db, bot_instance_id="bot_external_1_1") == []
 
     def test_20_exactly_one_threshold_engine_and_no_second_ensemble_gate(self):

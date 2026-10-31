@@ -26,7 +26,7 @@ from app.trading_intelligence.versions import DATA_MANIFEST_SCHEMA_VERSION, MARK
 
 
 def _row_value(row: Any, index: int, *keys: str) -> Any:
-    """Mirrors app.runner.market_snapshot._value's row-access convention
+    """Mirrors app.market_data.market_snapshot._value's row-access convention
     (index-based Binance kline arrays, with a dict-keyed fallback) so CATI
     reads exactly the same row shape the live snapshot already validated."""
     if isinstance(row, dict):
@@ -148,7 +148,7 @@ def build_data_manifest(
 
 
 def evaluate_market_state(
-    snapshot: Any,  # app.runner.market_snapshot.MarketSnapshot
+    snapshot: Any,  # app.market_data.market_snapshot.MarketSnapshot
     *,
     venue: str,
     source: str,

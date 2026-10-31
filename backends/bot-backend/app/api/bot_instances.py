@@ -131,7 +131,7 @@ def get_effective_policy(
     db = service.db
     with db.connect() as conn:
         row = conn.execute("SELECT environment FROM broker_accounts WHERE id=?", (instance.broker_account_id,)).fetchone()
-    from app.runner.effective_policy import EffectivePolicyError, resolve_effective_bot_policy
+    from app.policy.effective_policy import EffectivePolicyError, resolve_effective_bot_policy
     try:
         policy = resolve_effective_bot_policy(
             instance=instance,
@@ -346,7 +346,7 @@ def update_bot_instance(
     if unknown:
         raise HTTPException(status_code=422, detail=f"Fields not editable here: {unknown}")
     from dataclasses import replace
-    from app.runner.effective_policy import EffectivePolicyError, resolve_effective_bot_policy
+    from app.policy.effective_policy import EffectivePolicyError, resolve_effective_bot_policy
     try:
         if payload.get("daily_loss_limit_pct") is not None:
             from app.risk.system_limits import validate_daily_loss_limit_pct

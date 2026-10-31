@@ -15,7 +15,7 @@ router = APIRouter(prefix="/api/v1/admin", tags=["Readiness Admin"])
 
 def _current_policy_hash(db: DB, bot_id: str) -> str:
     from app.core.bot_instance_service import BotInstanceService
-    from app.runner.effective_policy import resolve_effective_bot_policy
+    from app.policy.effective_policy import resolve_effective_bot_policy
     service = BotInstanceService(db)
     instance = service.get_bot_instance(bot_id)
     if instance is None:

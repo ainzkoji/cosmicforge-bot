@@ -25,7 +25,7 @@ from bisect import bisect_right
 from dataclasses import dataclass, field
 from typing import Any, Iterator, Mapping, Sequence
 
-from app.runner.market_snapshot import MarketSnapshot
+from app.market_data.market_snapshot import MarketSnapshot
 
 logger = logging.getLogger(__name__)
 

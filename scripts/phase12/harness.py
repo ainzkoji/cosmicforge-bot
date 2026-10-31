@@ -139,7 +139,7 @@ def build_runner(db, client, *, run_id: str | None = None, controlled: bool = Tr
     """Construct the real PaperRunner for the validation bot."""
     from app.core.bot_instance_service import BotInstanceService
     from app.runner.bot_context import BotRunContext
-    from app.runner.effective_policy import resolve_effective_bot_policy
+    from app.policy.effective_policy import resolve_effective_bot_policy
     from app.runner.runner import PaperRunner
 
     service = BotInstanceService(db)
