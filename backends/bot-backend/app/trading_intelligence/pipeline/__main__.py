@@ -82,6 +82,7 @@ def main(argv: Any = None) -> int:
     if args.command == "run-due":
         from app.market_data.daily_feed import default_daily_bars
         from app.trading_intelligence.families.daily_trend import spec
+        from app.trading_intelligence.integration.platform_runtime import budgeted_archive_get
 
         from .accounts import CombinedAccounts, ConnectedAccounts, ModelAccounts
         from .driver import COMPLETED, PlatformCycleDriver
@@ -90,7 +91,8 @@ def main(argv: Any = None) -> int:
         sources: List[Any] = [ModelAccounts(initial_equity=equity)]
         if not args.no_connected_accounts:
             sources.append(ConnectedAccounts(db))
-        driver = PlatformCycleDriver(db, accounts=CombinedAccounts(*sources), data={"1d": default_daily_bars(db)},
+        bars = default_daily_bars(db, http_get=budgeted_archive_get(db))
+        driver = PlatformCycleDriver(db, accounts=CombinedAccounts(*sources), data={"1d": bars},
                                      registry=registry, owner="pipeline-cli", compare_models=True)
         results = driver.run_due(int(time.time() * 1000))
         print(json.dumps([{"family_id": r.family_id, "cycle_key": r.cycle_key, "mode": r.mode, "status": r.status,

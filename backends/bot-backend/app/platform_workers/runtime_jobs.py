@@ -243,10 +243,11 @@ class RuntimeServices:
         if self._shadow is None:
             from app.market_data.daily_feed import default_daily_bars
             from app.trading_intelligence.families.daily_trend import spec
+            from app.trading_intelligence.integration.platform_runtime import budgeted_archive_get
             from app.trading_intelligence.pipeline.accounts import ModelAccounts
             from app.trading_intelligence.pipeline.family_registry import FamilyRegistry
-            self._shadow = ShadowSource(registry=FamilyRegistry(self.legacy_db),
-                                        data={"1d": default_daily_bars(self.legacy_db)},
+            bars = default_daily_bars(self.legacy_db, http_get=budgeted_archive_get(self.legacy_db))
+            self._shadow = ShadowSource(registry=FamilyRegistry(self.legacy_db), data={"1d": bars},
                                         accounts=ModelAccounts(initial_equity=spec.INTERPRETATION["initial_equity_usdt"]))
         return self._shadow
 
