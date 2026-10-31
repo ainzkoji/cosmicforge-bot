@@ -685,3 +685,34 @@ def test_secret_shaped_values_in_producer_detail_never_reach_a_sink(engine, plat
             assert secret not in text, secret
     stored = json.dumps(engine.open_alerts())
     assert key_value not in stored and bearer not in stored and email not in stored
+
+
+def test_rejected_webhook_deliveries_raise_billing_alerts(engine, platform_db, runtime_db):
+    """Section J: the API counts rejected deliveries per minute (shared_lib.billing.webhooks.record_rejection);
+    a missing secret alerts at once, invalid signatures alert as a burst. No request data is stored."""
+    from shared_lib.billing import webhooks
+    now_s = T0 / 1000
+    for i in range(12):
+        assert webhooks.record_rejection(runtime_db, webhooks.REJECTION_SIGNATURE_INVALID, now_s=now_s - 60 * (i % 3))
+    assert webhooks.record_rejection(runtime_db, webhooks.REJECTION_NOT_CONFIGURED, now_s=now_s - 30)
+    with runtime_db.connect() as conn:
+        assert conn.execute("SELECT COUNT(*), SUM(count) FROM billing_webhook_rejections").fetchone()[:] == (4, 13)
+        assert {r[1] for r in conn.execute("PRAGMA table_info(billing_webhook_rejections)")} == {
+            "bucket_start", "reason", "count", "last_at"}
+    P.evaluate_billing(ctx(engine, runtime_db, T0))
+    forged = assert_raised(engine, platform_db, "BILLING_WEBHOOK_FAILURE", "billing:signature_rejections",
+                           source="billing", severity="HIGH")
+    assert forged["detail"]["rejected_deliveries"] == 12
+    missing = assert_raised(engine, platform_db, "BILLING_WEBHOOK_FAILURE", "billing:webhook_not_configured",
+                            source="billing", severity="HIGH")
+    # An hour later the window is empty and both recover.
+    P.evaluate_billing(ctx(engine, runtime_db, T0 + 2 * HOUR))
+    for a in (forged, missing):
+        assert_recovered(engine, a["alert_id"], "billing")
+
+
+def test_a_few_invalid_signatures_are_not_an_alert(engine, platform_db, runtime_db):
+    from shared_lib.billing import webhooks
+    for _ in range(3):
+        webhooks.record_rejection(runtime_db, webhooks.REJECTION_SIGNATURE_INVALID, now_s=T0 / 1000)
+    assert P.evaluate_billing(ctx(engine, runtime_db, T0))["firing"] == 0

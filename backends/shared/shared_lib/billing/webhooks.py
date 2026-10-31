@@ -85,6 +85,47 @@ class WebhookPayloadError(Exception):
 # Signature
 # ---------------------------------------------------------------------------
 
+REJECTION_SIGNATURE_INVALID = "SIGNATURE_INVALID"
+REJECTION_NOT_CONFIGURED = "NOT_CONFIGURED"
+REJECTION_REASONS = (REJECTION_SIGNATURE_INVALID, REJECTION_NOT_CONFIGURED)
+
+
+def rejection_bucket(now_s: Optional[float] = None) -> str:
+    """The minute a rejection is counted in (UTC, ``YYYY-MM-DDTHH:MM:00``)."""
+    return time.strftime("%Y-%m-%dT%H:%M:00", time.gmtime(time.time() if now_s is None else now_s))
+
+
+def record_rejection(db, reason: str, *, now_s: Optional[float] = None) -> bool:
+    """Count one rejected webhook delivery for the operations alerts (Section J). Only the minute and the
+    reason are stored. Never raises: the 400 / 503 answer does not depend on it."""
+    if reason not in REJECTION_REASONS:
+        reason = REJECTION_SIGNATURE_INVALID
+    bucket = rejection_bucket(now_s)
+    stamp = datetime.fromtimestamp(time.time() if now_s is None else now_s, tz=timezone.utc).isoformat()
+    try:
+        with db.connect() as conn:
+            def bump() -> int:
+                return conn.execute("UPDATE billing_webhook_rejections SET count = count + 1, last_at = ? "
+                                    "WHERE bucket_start = ? AND reason = ?", (stamp, bucket, reason)).rowcount
+            try:
+                updated = bump()
+            except sqlite3.OperationalError as exc:
+                if "no such table" not in str(exc).lower():
+                    raise
+                from shared_lib.billing.schema import ensure_billing_launch_schema
+                ensure_billing_launch_schema(conn)
+                updated = bump()
+            if not updated:
+                inserted = conn.execute("INSERT OR IGNORE INTO billing_webhook_rejections (bucket_start, reason, count, "
+                                        "last_at) VALUES (?, ?, 1, ?)", (bucket, reason, stamp)).rowcount
+                if not inserted:      # a concurrent request created the row first
+                    bump()
+        return True
+    except Exception:
+        log.warning("billing webhook rejection could not be counted", exc_info=True)
+        return False
+
+
 def compute_signature(payload: bytes, secret: str, timestamp: int) -> str:
     """``hex(hmac_sha256(secret, "<timestamp>.<payload>"))`` -- Stripe's ``v1`` scheme."""
     signed = str(int(timestamp)).encode("ascii") + b"." + payload

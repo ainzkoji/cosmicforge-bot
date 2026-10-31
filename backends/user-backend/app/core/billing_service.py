@@ -699,6 +699,14 @@ def create_checkout_session(user_id: str, plan_id: str, email: Optional[str] = N
     return result
 
 
+def record_webhook_rejection(reason: str) -> bool:
+    """Count a rejected webhook delivery (minute and reason only) for the operations alerts. Never raises."""
+    try:
+        return billing_webhooks.record_rejection(_db(), reason)
+    except Exception:
+        return False
+
+
 def handle_stripe_webhook(payload: bytes, signature_header: Optional[str]) -> Dict[str, str]:
     """Verify and apply one Stripe webhook delivery.
 

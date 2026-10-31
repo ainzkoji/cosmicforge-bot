@@ -112,6 +112,19 @@ def ensure_billing_launch_schema(conn) -> None:
     * ``billing_audit_log``: append-only record of every billing state change.
     """
     _add_column_if_missing(conn, "subscriptions", "billing_hold", "TEXT")
+    # Section J: rejected webhook deliveries, counted per minute and reason. Nothing of the request is kept
+    # (its event id is unauthenticated), so a forged flood adds at most one row per minute and reason.
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS billing_webhook_rejections (
+            bucket_start TEXT NOT NULL,
+            reason TEXT NOT NULL,
+            count INTEGER NOT NULL DEFAULT 0,
+            last_at TEXT NOT NULL,
+            PRIMARY KEY (bucket_start, reason)
+        )
+        """
+    )
     _add_column_if_missing(conn, "invoices", "provider_charge_id", "TEXT")
     _add_column_if_missing(conn, "invoices", "provider_payment_intent_id", "TEXT")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_invoices_provider_charge ON invoices(provider_charge_id)")

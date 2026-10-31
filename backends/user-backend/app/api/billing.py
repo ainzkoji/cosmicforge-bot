@@ -91,9 +91,11 @@ async def billing_webhook(request: Request):
         result = await run_in_threadpool(billing_service.handle_stripe_webhook, payload, signature)
     except WebhookNotConfiguredError:
         log.error("billing webhook rejected: STRIPE_WEBHOOK_SECRET is not configured")
+        await run_in_threadpool(billing_service.record_webhook_rejection, "NOT_CONFIGURED")
         raise HTTPException(status_code=503, detail="Billing webhook is not configured.")
     except WebhookSignatureError as e:
         log.warning("billing webhook rejected: %s", e)
+        await run_in_threadpool(billing_service.record_webhook_rejection, "SIGNATURE_INVALID")
         raise HTTPException(status_code=400, detail="Invalid webhook signature.")
     except WebhookPayloadError as e:
         raise HTTPException(status_code=400, detail=f"Invalid webhook payload: {e}")

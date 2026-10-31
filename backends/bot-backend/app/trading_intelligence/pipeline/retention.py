@@ -180,6 +180,7 @@ _BY_CLASS: Tuple[Tuple[str, Tuple[str, ...]], ...] = (
         "admin_mfa_bootstrap_codes",    # Step 8.4 F9: one-time admin MFA enrolment codes (hashed)
         "legal_documents", "ops_alert_suppressions", "ops_oncall_members", "ops_oncall_rotations",
         "support_ticket_events",
+        "billing_webhook_rejections",   # Section J: rejected webhook deliveries, counted per minute (no request data)
         "support_ticket_messages", "support_tickets",
         "admin_roles", "admin_sessions", "admins", "affiliate_settings", "aml_alerts", "auth_audit_log", "auth_sessions",
         "bot_instances", "broker_accounts", "broker_auto_trading", "broker_credentials", "broker_credentials_v2",

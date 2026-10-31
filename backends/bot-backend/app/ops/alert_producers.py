@@ -646,11 +646,29 @@ def evaluate_venue_certification(ctx: ProducerContext, *, warn_before_ms: int = 
 
 # ── 16. billing failures ──────────────────────────────────────────────────────────────────────────────────
 def evaluate_billing(ctx: ProducerContext, *, window_ms: int = DAY, unprocessed_after_ms: int = 10 * MINUTE,
-                     payment_failure_burst: int = 5) -> Dict[str, Any]:
+                     payment_failure_burst: int = 5, rejection_window_ms: int = HOUR,
+                     signature_rejection_burst: int = 10) -> Dict[str, Any]:
     """Billing provider events that could not be matched to a customer, events stored but never processed,
-    refunds/disputes awaiting an operator decision, and a burst of failed payments (``billing_events``,
-    ``billing_payment_reviews``). Rejected webhook signatures are not stored durably (only logged by the API)."""
+    refunds/disputes awaiting an operator decision, a burst of failed payments (``billing_events``,
+    ``billing_payment_reviews``), and rejected webhook deliveries (``billing_webhook_rejections``, counted per
+    minute by the API): any delivery refused because the webhook secret is missing, or a burst of invalid
+    signatures (a misconfigured secret, or someone forging deliveries)."""
     now, db, signals = ctx.now(), ctx.runtime_db, []
+    cutoff = time.strftime("%Y-%m-%dT%H:%M:00", time.gmtime((now - rejection_window_ms) / 1000))
+    rejected = dict(rows(db, "SELECT reason, SUM(count) FROM billing_webhook_rejections WHERE bucket_start >= ? "
+                             "GROUP BY reason", (cutoff,)))
+    minutes = rejection_window_ms // MINUTE
+    if int(rejected.get("NOT_CONFIGURED") or 0):
+        signals.append(Signal("BILLING_WEBHOOK_FAILURE", "billing:webhook_not_configured",
+                              f"{int(rejected['NOT_CONFIGURED'])} webhook delivery(ies) refused in the last {minutes} min: "
+                              "STRIPE_WEBHOOK_SECRET is not configured",
+                              {"rejected_deliveries": int(rejected["NOT_CONFIGURED"]), "window_minutes": minutes}))
+    if int(rejected.get("SIGNATURE_INVALID") or 0) >= signature_rejection_burst:
+        signals.append(Signal("BILLING_WEBHOOK_FAILURE", "billing:signature_rejections",
+                              f"{int(rejected['SIGNATURE_INVALID'])} webhook deliveries with an invalid signature in the "
+                              f"last {minutes} min",
+                              {"rejected_deliveries": int(rejected["SIGNATURE_INVALID"]), "window_minutes": minutes,
+                               "threshold": signature_rejection_burst}))
     since = ms_iso(now - window_ms)
     unmatched = rows(db, "SELECT result, COUNT(*) FROM billing_events WHERE result LIKE 'unmatched:%' AND created_at >= ? "
                          "AND event_type NOT LIKE 'internal.%' GROUP BY result", (since,))

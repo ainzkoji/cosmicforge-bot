@@ -445,3 +445,31 @@ def test_plans_endpoint_is_public_and_consistent(tmp_path, monkeypatch):
     plans = {p["id"]: p for p in res.json()["plans"]}
     assert plans["plan_free"]["limits"] == {"max_bots": 1, "max_brokers": 1, "live_trading": False, "api_access": False}
     assert plans["plan_pro"]["limits"]["max_brokers"] == 3
+
+
+def test_rejected_deliveries_are_counted_for_the_operators_without_any_request_data(tmp_path, monkeypatch):
+    """Section J: every rejected delivery is counted per minute and reason (the API answer is unchanged), so the
+    operations alerts can see a missing secret or a burst of forged deliveries. The body never reaches the table."""
+    ctx = _make(tmp_path / "bad", monkeypatch)
+    ctx.logout()
+    payload = json.dumps(_checkout_event()).encode()
+    for signature in (None, _sign(payload, secret="whsec_wrong"), "t=1,v1=00"):
+        assert _post_webhook(ctx, payload, signature).status_code == 400
+    with ctx.db.connect() as c:
+        rows = [tuple(r) for r in c.execute("SELECT reason, count FROM billing_webhook_rejections")]
+        dump = repr([tuple(r) for r in c.execute("SELECT * FROM billing_webhook_rejections")])
+    assert sum(n for reason, n in rows if reason == "SIGNATURE_INVALID") == 3 and ctx.event_count() == 0
+    assert "cs_" not in dump and "user-1" not in dump and "whsec" not in dump
+
+    ctx = _make(tmp_path / "unset", monkeypatch, STRIPE_WEBHOOK_SECRET="")
+    assert _post_webhook(ctx, payload, _sign(payload)).status_code == 503
+    with ctx.db.connect() as c:
+        assert c.execute("SELECT SUM(count) FROM billing_webhook_rejections WHERE reason='NOT_CONFIGURED'").fetchone()[0] == 1
+
+
+def test_a_counter_failure_never_changes_the_answer(tmp_path, monkeypatch):
+    ctx = _make(tmp_path, monkeypatch)
+    monkeypatch.setattr(billing_service.billing_webhooks, "record_rejection",
+                        lambda *a, **k: (_ for _ in ()).throw(RuntimeError("database down")))
+    payload = json.dumps(_checkout_event()).encode()
+    assert _post_webhook(ctx, payload, "t=1,v1=00").status_code == 400
