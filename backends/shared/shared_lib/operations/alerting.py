@@ -102,6 +102,8 @@ CATEGORIES: Dict[str, CategoryPolicy] = dict([
        "An account or venue lost its exchange connection (account reads failing, user stream down, venue ban)."),
     _p("RISK_BRAKE_ACTIVATED", MEDIUM, "trading-operations", None,
        "An account risk brake engaged (daily-loss pause, drawdown halve; drawdown stop / equity exhausted: HIGH)."),
+    _p("REPEATED_SIZING_REFUSALS", MEDIUM, "trading-operations", None,
+       "An account's trades keep being refused by sizing (durable CATI risk decisions of family SIZING)."),
     _p("WORKER_OUTAGE", CRITICAL, "platform-infrastructure", TRADING_ENGINE,
        "A platform worker stopped heartbeating."),
     _p("LEASE_TAKEOVER_FAILURE", CRITICAL, "platform-infrastructure", TRADING_ENGINE,

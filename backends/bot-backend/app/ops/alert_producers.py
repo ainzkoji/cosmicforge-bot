@@ -846,6 +846,46 @@ def evaluate_governance_violations(ctx: ProducerContext, *, window_ms: int = HOU
     return publish(ctx, "governance", ("GOVERNANCE_VIOLATION_ATTEMPT",), signals)
 
 
+# ── 19b. repeated sizing refusals (E-03) ──────────────────────────────────────────────────────────────────
+REPEATED_SIZING_REFUSALS = "REPEATED_SIZING_REFUSALS"
+
+
+def evaluate_sizing_refusals(ctx: ProducerContext, *, window_ms: int = DAY, threshold: int = 3) -> Dict[str, Any]:
+    """An account whose trades sizing refused at least ``threshold`` times in the last ``window_ms``: the durable
+    RiskDecisions REJECTED with family SIZING (``cati_risk_decisions``, the same evidence the user-capital readiness
+    gate counts), each counted once by its id. One alert per account (raw id only in ``account_ref``); it resolves
+    when the window no longer holds ``threshold`` refusals."""
+    from app.product_safety.sizing_evidence import read_sizing_refusals
+    signals: List[Signal] = []
+    if ctx.runtime_db is not None:
+        now = ctx.now()
+        with ctx.runtime_db.connect() as conn:
+            _, refusals = read_sizing_refusals(conn, since_ms=now - int(window_ms))
+        per_account: Dict[str, List[Any]] = {}
+        for r in refusals:
+            per_account.setdefault(r.broker_account_id, []).append(r)
+        for account, items in sorted(per_account.items()):
+            if len(items) < int(threshold):
+                continue
+            reasons: Dict[str, int] = {}
+            for r in items:
+                for code in r.reason_codes or ("UNSPECIFIED",):
+                    key = _short(code, 60)
+                    reasons[key] = reasons.get(key, 0) + 1
+            top = sorted(reasons.items(), key=lambda kv: (-kv[1], kv[0]))[:5]
+            ref = pseudonym(account)
+            signals.append(Signal(
+                REPEATED_SIZING_REFUSALS, {"account": account},
+                f"{len(items)} sizing refusals in the last {window_ms // HOUR} h ({ref})",
+                {"account": ref, "refusals": len(items), "bots": len({r.bot_instance_id for r in items}),
+                 "reasons": dict(top), "stages": sorted({r.stage or "UNKNOWN" for r in items}),
+                 "families": sorted({r.setup_family or "UNRECORDED" for r in items}),
+                 "window_hours": window_ms // HOUR, "threshold": int(threshold),
+                 "last_refusal_age_ms": now - max(r.decision_time for r in items)},
+                account_ref=str(account)))
+    return publish(ctx, "sizing_refusals", (REPEATED_SIZING_REFUSALS,), signals)
+
+
 # ── 20. public API health ─────────────────────────────────────────────────────────────────────────────────
 def _http_status(url: str, timeout_s: float) -> Tuple[Optional[int], Optional[str]]:
     import urllib.error
@@ -907,7 +947,7 @@ def runtime_producers(ctx: ProducerContext) -> List[Callable[[], Any]]:
                               evaluate_execution_uncertainty, evaluate_protection, evaluate_emergency_flattens,
                               evaluate_kill_switches, evaluate_risk_brakes, evaluate_family_certification,
                               evaluate_venue_certification, evaluate_billing, evaluate_authentication,
-                              evaluate_execution_latency, evaluate_governance_violations)]
+                              evaluate_execution_latency, evaluate_governance_violations, evaluate_sizing_refusals)]
 
 
 __all__ = ["GOVERNANCE_VIOLATION_CODES", "ProducerContext", "RuntimeDatabaseProbe", "Signal", "evaluate_account_leases",
@@ -915,5 +955,6 @@ __all__ = ["GOVERNANCE_VIOLATION_CODES", "ProducerContext", "RuntimeDatabaseProb
            "evaluate_billing", "evaluate_emergency_flattens", "evaluate_exchange_connectivity",
            "evaluate_execution_latency", "evaluate_execution_uncertainty", "evaluate_family_certification",
            "evaluate_instrument_rules", "evaluate_kill_switches", "evaluate_market_data", "evaluate_protection",
-           "evaluate_reconciliation", "evaluate_risk_brakes", "evaluate_runtime_workers", "evaluate_venue_certification",
+           "evaluate_reconciliation", "evaluate_risk_brakes", "evaluate_runtime_workers", "evaluate_sizing_refusals",
+           "evaluate_venue_certification",
            "iso_ms", "ms_iso", "publish", "rows", "runtime_producers", "table_exists"]

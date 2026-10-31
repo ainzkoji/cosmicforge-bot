@@ -40,3 +40,6 @@ tests/exchange/test_user_stream.py
 tests/exchange/test_rate_budget.py
 # Exact runtime money arithmetic: account risk, fills, metrics, reports, capital (persist -> reload)
 tests/trading_intelligence/test_runtime_decimal_money.py
+# Readiness evidence (E-03: durable sizing refusals) and the one-active-operator-grant rule (K2)
+tests/trading_intelligence/test_e03_sizing_readiness.py
+tests/test_operator_grant_single_active.py

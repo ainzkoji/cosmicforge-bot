@@ -46,6 +46,18 @@ class SectionsConfirmationRequest(BaseModel):
     evidence_reference: str = Field(min_length=3)
 
 
+@router.get("/bots/{bot_id}/readiness")
+def get_bot_readiness(bot_id: str, admin: dict = Depends(require_admin)):
+    """The current user-capital readiness report, read-only: every blocking reason and its evidence, including
+    the durable CATI sizing refusals (count, ids, per account / strategy family / reason / stage). Approving
+    nothing and changing nothing; ``/readiness/approve`` stays the only way to approve."""
+    db = DB()
+    with db.connect() as conn:
+        if conn.execute("SELECT 1 FROM bot_instances WHERE id=?", (bot_id,)).fetchone() is None:
+            raise HTTPException(status_code=404, detail="Bot instance not found")
+    return evaluate_user_capital_readiness(db=db, bot_instance_id=bot_id).to_dict()
+
+
 @router.post("/bots/{bot_id}/readiness/approve")
 def approve_bot(bot_id: str, body: ApprovalRequest, admin_id: str = Depends(require_admin)):
     db = DB()

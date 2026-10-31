@@ -144,7 +144,7 @@ def test_every_producer_runs_against_the_real_runtime_schema_without_error(engin
                                     runtime_db=runtime_db, runtime_db_path=runtime_db.path,  # host: not checked here)
                                     producer_state={})
     names = [getattr(e, "__name__", "?") for e in evaluators]
-    assert len(names) == len(set(names)) and len(evaluators) == 26, names      # 24 + alert delivery + platform dump status
+    assert len(names) == len(set(names)) and len(evaluators) == 27, names      # 24 + alert delivery + platform dump status + sizing refusals (E-03)
     out = run_cycle(engine, evaluators)
     assert out["evaluator_errors"] == [] and out["evaluators"] == len(evaluators)
     # an empty runtime database raises nothing but the backup alert (no backup in tmp_path)
@@ -752,6 +752,42 @@ def test_governance_bypass_attempts_alert_and_routine_m0_refusals_do_not(engine,
     assert P.evaluate_governance_violations(ctx(engine, runtime_db, T0 + 2 * HOUR))["resolved"] == 3
     for a in (gate_alert, tampered, live):
         assert_recovered(engine, a["alert_id"], "governance")
+
+
+# ── 19b. repeated sizing refusals (E-03) ───────────────────────────────────────────────────────────────────
+def _risk(db, account, bot, at, *, family="SIZING", status="REJECTED", plan="tp-1", codes=("SIZE_ZERO",)):
+    """A RiskDecision recorded by the real append-only store the execution boundary uses."""
+    from app.trading_intelligence.contracts.execution import RiskDecision
+    from app.trading_intelligence.evidence.stores import RiskDecisionStore
+    risk = RiskDecision.build(
+        trade_plan_id=plan, trade_plan_hash="h", user_id="u-" + account, broker_account_id=account,
+        bot_instance_id=bot, runtime_session_id=None, run_id=None, cycle_id="c", status=status, stage="PRE_EXECUTION",
+        rejection_family=family if status == "REJECTED" else None, reason_codes=tuple(codes), allocation_basis=(),
+        risk_budget=None, resolved_stop_price=None, resolved_stop_distance=None, stop_tightened_by_hard_risk=False,
+        resolved_leverage=None, resolved_quantity=None, resolved_notional=None, resolved_take_profit=None,
+        slot_reservation_id=None, margin_reservation_id=None, policy_versions=(), source="test", decision_time=at)
+    return risk, RiskDecisionStore(db).append(risk)
+
+
+def test_repeated_sizing_refusals_alert_per_account_and_resolve(engine, platform_db, runtime_db):
+    for i in range(3):
+        _risk(runtime_db, A1, "bot-1", T0 - (i + 1) * HOUR, codes=("SIZING_FAILURE_MIN_NOTIONAL",))
+    _, inserted = _risk(runtime_db, A1, "bot-1", T0 - HOUR, codes=("SIZING_FAILURE_MIN_NOTIONAL",))
+    assert inserted is False                                     # the same decision again: one row, counted once
+    _risk(runtime_db, A2, "bot-2", T0 - HOUR)                                       # one refusal: below threshold
+    _risk(runtime_db, A2, "bot-2", T0 - HOUR, family="MARGIN", codes=("INSUFFICIENT_MARGIN",))      # not sizing
+    _risk(runtime_db, A2, "bot-2", T0 - 2 * HOUR, status="APPROVED", codes=("APPROVED_FOR_EXECUTION",))
+    for d, plan in ((2, "tp-1"), (3, "tp-2"), (4, "tp-3")):                         # outside the window
+        _risk(runtime_db, A3, "bot-3", T0 - d * DAY, plan=plan)
+    out = P.evaluate_sizing_refusals(ctx(engine, runtime_db, T0))
+    assert out["firing"] == 1
+    a = assert_raised(engine, platform_db, "REPEATED_SIZING_REFUSALS", {"account": A1}, source="sizing_refusals",
+                      severity="MEDIUM", account_ref=A1)
+    assert a["detail"]["refusals"] == 3 and a["detail"]["bots"] == 1
+    assert a["detail"]["reasons"] == {"SIZING_FAILURE_MIN_NOTIONAL": 3}
+    assert all(s == "OPERATIONAL" for s in components(platform_db).values())          # never public
+    assert P.evaluate_sizing_refusals(ctx(engine, runtime_db, T0 + DAY))["resolved"] == 1
+    assert_recovered(engine, a["alert_id"], "sizing_refusals")
 
 
 # ── 20. public API health ──────────────────────────────────────────────────────────────────────────────────

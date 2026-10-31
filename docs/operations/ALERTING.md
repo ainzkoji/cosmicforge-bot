@@ -58,6 +58,11 @@ reports `data_available: false` with every non-portal component `DEGRADED` -- ne
 | GOVERNANCE_VIOLATION_ATTEMPT | HIGH | security | (never public) |
 | OPERATIONS_OWNER_REQUIRED | CRITICAL | operations-owner | (never public) |
 | ALERT_DELIVERY_FAILURE | HIGH | operations-owner | Notifications |
+| REPEATED_SIZING_REFUSALS | MEDIUM | trading-operations | (never public) |
+
+`REPEATED_SIZING_REFUSALS` (E-03, 31 Oct 2026): one alert per account with three or more durable sizing refusals
+(`cati_risk_decisions`, `rejection_family='SIZING'`) in 24 hours; it resolves itself when the window clears.
+Producer: `evaluate_sizing_refusals` in `app/ops/alert_producers.py`.
 
 A caller may override the severity of a single alert (`severity=`); the category's rotation is fixed.
 

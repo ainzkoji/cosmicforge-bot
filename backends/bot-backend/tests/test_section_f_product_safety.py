@@ -123,6 +123,11 @@ def _make_db(tmp_db_path: str):
             );
             """
         )
+    # The canonical CATI evidence tables (cati_risk_decisions: the durable sizing-refusal evidence the readiness
+    # gate reads since E-03), created by the same schema step ``migrate()`` runs.
+    from shared_lib.persistence.cati_schema import ensure_cati_schema
+
+    ensure_cati_schema(db)
     return db
 
 

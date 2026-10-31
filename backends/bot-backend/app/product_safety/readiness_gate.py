@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass, asdict, field
 from datetime import datetime, timedelta, timezone, date
 from enum import Enum
 from typing import Any, Optional
@@ -31,6 +31,8 @@ class RejectionReason(str, Enum):
     MAX_DRAWDOWN_TOO_HIGH = "MAX_DRAWDOWN_TOO_HIGH"
     PROFIT_FACTOR_TOO_LOW = "PROFIT_FACTOR_TOO_LOW"
     SIZING_FAILURES_DETECTED = "SIZING_FAILURES_DETECTED"
+    #: the durable sizing-refusal evidence (cati_risk_decisions) cannot be read: no proof of "no sizing failures"
+    SIZING_EVIDENCE_UNAVAILABLE = "SIZING_EVIDENCE_UNAVAILABLE"
     DAILY_CLOSE_NOT_VALIDATED = "DAILY_CLOSE_NOT_VALIDATED"
     SIGNAL_SCHEDULER_NOT_VALIDATED = "SIGNAL_SCHEDULER_NOT_VALIDATED"
     SECTIONS_A_TO_E_NOT_CONFIRMED = "SECTIONS_A_TO_E_NOT_CONFIRMED"
@@ -74,6 +76,18 @@ class UserCapitalReadinessReport:
     readiness_status: ReadinessStatus
     blocking_reasons: list[str]
     created_at: str
+
+    #: E-03 breakdown of ``sizing_failure_count``: durable CATI refusals (by account, strategy family, reason code
+    #: and risk stage, plus their ids) and the legacy-event compatibility count
+    sizing_refusal_count_durable: int = 0
+    sizing_failure_legacy_event_count: int = 0
+    sizing_evidence_available: bool = True
+    sizing_refusals_by_account: dict[str, int] = field(default_factory=dict)
+    sizing_refusals_by_family: dict[str, int] = field(default_factory=dict)
+    sizing_refusal_reasons: dict[str, int] = field(default_factory=dict)
+    sizing_refusals_by_stage: dict[str, int] = field(default_factory=dict)
+    sizing_refusal_ids: list[str] = field(default_factory=list)
+    last_sizing_refusal_at_ms: Optional[int] = None
 
     def to_dict(self) -> dict[str, Any]:
         d = asdict(self)
@@ -277,26 +291,19 @@ def evaluate_user_capital_readiness(
                     max_dd = max(max_dd, dd)
     max_drawdown_pct = round(max_dd, 6)
 
-    # Sizing failures: count SIZING_FAILURE audit events for this bot during paper period
-    sizing_failures = 0
-    if paper_start and paper_end:
-        with db.connect() as conn:
-            ev_rows = conn.execute(
-                """
-                SELECT details_json
-                FROM events
-                WHERE event_type = 'SIZING_FAILURE'
-                  AND timestamp_utc >= ? AND timestamp_utc <= ?
-                """,
-                (paper_start.isoformat(), paper_end.isoformat()),
-            ).fetchall()
-        for ev in ev_rows:
-            try:
-                details = json.loads(ev["details_json"] or "{}")
-                if details.get("bot_instance_id") == bot_instance_id:
-                    sizing_failures += 1
-            except Exception:
-                continue
+    # Sizing failures (E-03): the durable CATI sizing refusals of THIS bot -- RiskDecisions REJECTED with family
+    # SIZING in cati_risk_decisions, each counted once by its id -- from the start of the paper period on (the
+    # bot's whole history when it has no closed paper trade yet), with no upper bound: a refusal after the last
+    # close is still a sizing failure. Legacy SIZING_FAILURE events (pre-6e0b42c) are added for compatibility.
+    # A missing evidence table fails closed (SIZING_EVIDENCE_UNAVAILABLE).
+    from app.product_safety.sizing_evidence import sizing_refusal_summary
+    sizing = sizing_refusal_summary(
+        db, bot_instance_id=bot_instance_id,
+        since_ms=int((paper_start if paper_start.tzinfo else paper_start.replace(tzinfo=timezone.utc)).timestamp()
+                     * 1000) if paper_start else None,
+        since_iso=paper_start.isoformat() if paper_start else None,
+    )
+    sizing_failures = sizing.total
 
     # Daily close evidence: require per-day trigger events (within paper span)
     daily_close_expected = paper_days_count
@@ -387,6 +394,8 @@ def evaluate_user_capital_readiness(
         blocking.append(RejectionReason.PROFIT_FACTOR_TOO_LOW.value)
     if sizing_failures > 0:
         blocking.append(RejectionReason.SIZING_FAILURES_DETECTED.value)
+    if not sizing.evidence_available:
+        blocking.append(RejectionReason.SIZING_EVIDENCE_UNAVAILABLE.value)
     if daily_close_expected > 0 and daily_close_success < daily_close_expected:
         blocking.append(RejectionReason.DAILY_CLOSE_NOT_VALIDATED.value)
     if signal_expected > 0 and signal_success < signal_expected:
@@ -433,6 +442,15 @@ def evaluate_user_capital_readiness(
         readiness_status=status,
         blocking_reasons=blocking,
         created_at=now_iso,
+        sizing_refusal_count_durable=sizing.durable_count,
+        sizing_failure_legacy_event_count=sizing.legacy_event_count,
+        sizing_evidence_available=sizing.evidence_available,
+        sizing_refusals_by_account=sizing.by_account(),
+        sizing_refusals_by_family=sizing.by_family(),
+        sizing_refusal_reasons=sizing.by_reason(),
+        sizing_refusals_by_stage=sizing.by_stage(),
+        sizing_refusal_ids=[r.risk_decision_id for r in sizing.refusals][-50:],
+        last_sizing_refusal_at_ms=sizing.refusals[-1].decision_time if sizing.refusals else None,
     )
     return report
 
