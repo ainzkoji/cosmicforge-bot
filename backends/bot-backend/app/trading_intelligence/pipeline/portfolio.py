@@ -452,7 +452,7 @@ class AuthorizedIntent:
     limit_price: Optional[float]
     leverage: float
     notional: float                     # of the order
-    risk_amount: float                  # risk the order adds at the stop; 0 for a reduction
+    risk_amount: float                  # risk the order adds at the stop it fills under (``_sizing_stop``); 0 for a reduction
     margin: float                       # margin the order needs; 0 for a reduction
     limited_by: Tuple[str, ...]         # what made it smaller or moved a price, in the order applied
     awaits_releases: bool               # fits only once the releases of this decision are visible at the venue
@@ -662,6 +662,7 @@ def _reduction(intent: Intent, position: Optional[PortfolioPosition],
                        f"held {held} is within {intent.band} of the target {intent.target_quantity}")
     else:
         requested = held - intent.target_quantity
+        stop = _remaining_stop(intent, position, rule)
     if requested >= held * (1.0 - _TOL):                     # the whole position: closed like an exit
         if requested > held * (1.0 + _TOL):
             limited.append(CAPPED_TO_POSITION)
@@ -679,6 +680,25 @@ def _reduction(intent: Intent, position: Optional[PortfolioPosition],
     if rule.min_notional is not None and quantity * reference < rule.min_notional:
         return _refuse(intent, BELOW_MIN_NOTIONAL, f"{quantity * reference} is below the minimum notional {rule.min_notional}")
     return accept(quantity, requested, held - quantity, quantity * reference)
+
+
+def _remaining_stop(intent: Intent, position: PortfolioPosition, rule: Optional[InstrumentRules]) -> Optional[float]:
+    """The stop that is to protect what a rebalance DOWN leaves (Section K1 D4, research rule I10: the stop
+    ratchets at every close, a rebalance day included). The resting stop, unless the intent states a TIGHTER one
+    that is protective at the mark: that one, on the price tick (moved toward the market only). A stated stop
+    that is wider, or not protective, is not taken, and the reduction is never withheld because of it. The
+    execution boundary moves the venue stop to it before the reduction leaves, without a gap, or keeps the
+    resting one where the venue has no safe replacement."""
+    resting = position.stop_price
+    stated = getattr(intent, "stop_price", None)
+    if resting is None or stated is None or not position.protected:
+        return resting
+    stop = conform_stop_price(position.direction, float(stated), rule.price_tick if rule is not None else None)
+    if not _wider(position.direction, float(resting), stop):
+        return resting
+    if not stop_side_valid(position.direction, position.mark_price, stop):
+        return resting
+    return stop
 
 
 def _sizing_stop(intent: Intent, position: Optional[PortfolioPosition]) -> float:
@@ -915,11 +935,13 @@ def authorize(snapshot: AccountSnapshot, limits: AccountLimits, intents: Union[I
         if stop != c.stop or (limit is not None and limit != stated_limit):
             notes.append(PRICE_TICK)
         notional = quantity * c.reference
-        # The reserved risk is stated at the order's own stop: the boundary re-checks the executable price against
-        # it at that stop (``execution._executable_risk_refusal``), which then admits no price above the
-        # reference. The quantity was clamped at the wider resting stop, so at any admitted price the position
-        # holds the per-trade ceiling at the stop that actually rests until the tighter one replaces it.
-        risk_amount = quantity * abs(c.reference - c.stop)
+        # The reserved risk is stated at the stop the order FILLS UNDER (``_sizing_stop``): for an increase of a
+        # held position that is the wider resting stop, which stays in charge until a replacement confirms the
+        # tighter one at the venue. So the reservation never states less risk than is enforceable while the
+        # order is in flight. The boundary re-checks the executable price at that same stop
+        # (``execution._executable_risk_refusal``, via ``reservations.risk_stop_price``), which admits no price
+        # above the reference.
+        risk_amount = quantity * c.distance
         margin = notional / c.leverage
         free["risk"] -= quantity * c.distance
         free["notional"] -= notional

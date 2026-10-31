@@ -295,6 +295,8 @@ class _Run:
     brake_state: Optional[BrakeFlags] = None
     increases_refused: Optional[str] = None
     notes: Dict[str, List[str]] = field(default_factory=dict)
+    #: per held symbol, the stop that protected it in this run's snapshot (None: none)
+    stops: Dict[str, Optional[float]] = field(default_factory=dict)
     closing: set = field(default_factory=set)
     resolved: List[str] = field(default_factory=list)
     halted: Optional[str] = None
@@ -439,6 +441,7 @@ class PortfolioExecutionBoundary:
                 if row.kind == EXIT:
                     self._guarded(run, row, lambda r_, o: self._reduce(r_, o, None))
             return
+        run.stops = dict(stops)
         reducing, raising = [], []
         for row in pending:
             intent, held = row.intent, snapshot.position(row.symbol)
@@ -801,6 +804,14 @@ class PortfolioExecutionBoundary:
         if held.position_mode not in (None, "ONE_WAY"):
             self._close(row, REFUSED, f"{POSITION_MODE_NOT_ONE_WAY}:{held.position_mode}")
             return
+        if intent.kind == REBALANCE and authorized is not None and authorized.position_quantity_after > 0:
+            if self._tighten_for_remainder(run, row, authorized):
+                return
+            held = self._position(row.symbol)
+            if held is None:
+                self._settle_protection(run, row.symbol, intent.direction, self.protection.retire(row.symbol, intent.direction))
+                self._close(row, DONE, POSITION_ALREADY_FLAT)
+                return
         whole = intent.kind == EXIT or authorized.position_quantity_after <= 0 \
             or authorized.quantity >= held.quantity * (1.0 - _TOL)
         quantity = float(held.quantity) if whole else float(authorized.quantity)
@@ -818,6 +829,38 @@ class PortfolioExecutionBoundary:
         request = self._request(row)
         self.protection.expect(row.symbol, intent.direction, origin=row.intent_id)
         self._send(run, row, request)
+
+    def _tighten_for_remainder(self, run: _Run, row: _Row, authorized: P.AuthorizedIntent) -> bool:
+        """A rebalance DOWN whose authorized stop is tighter than the one resting (Section K1 D4, research rule
+        I10: the stop ratchets at every close, a rebalance day included; follow-up E-01).
+
+        The stop is moved BEFORE the reduction leaves, by the same gap-free replacement every stop move uses
+        (``ProtectionManager.replace``: amend in place, or create-confirm-retire), for the whole position as it
+        is now. The reduction then only shrinks what that stop covers, and the read-back after its fill
+        confirms the coverage of what remains. So no interval exists in which the remaining quantity has no
+        stop, and the move never waits for the reduction's outcome. The replacement is durable before any venue
+        call (``request_key`` is this intent's): a process that dies anywhere in it has it finished by
+        ``recover`` (``ProtectionManager.resume``), and a second call of the same batch replays it.
+
+        Where the venue has no safe replacement (BingX) the replacement is refused, the resting stop stays, and
+        the reduction still goes. A venue back-off stops the run before anything is sent. Returns True when the
+        intent ended here: the position closed during the move, or its stop vanished and it was closed."""
+        target, resting = authorized.stop_price, run.stops.get(row.symbol)
+        if target is None or resting is None or not PR.wider(row.direction, float(resting), float(target)):
+            return False
+        result = self.protection.replace(row.symbol, row.direction, float(target), reason=TIGHTEN,
+                                         request_key=f"reduce|{row.intent_id}", current_stop_price=resting)
+        run.note(row.symbol, f"STOP_REPLACEMENT:{result.outcome}")
+        if result.outcome == PR.DEFERRED and result.retry_at_ms is not None:
+            raise _Halt(PR.RATE_LIMIT_BACKOFF)                           # nothing is sent before the venue allows it
+        if result.outcome == PR.POSITION_CLOSED:
+            self._close(row, DONE, POSITION_ALREADY_FLAT, evidence="the position closed while its stop was being moved")
+            return True
+        if result.state == PR.REPLACEMENT_UNWOUND and result.outcome == PR.PROTECTION_ABSENT:
+            self._close(row, REJECTED, result.outcome)
+            self._failsafe(run, row, result.outcome)
+            return True
+        return False
 
     def _stop_replace(self, run: _Run, row: _Row) -> None:
         intent = row.intent
@@ -942,20 +985,36 @@ class PortfolioExecutionBoundary:
             return f"{MARK_PRICE_UNAVAILABLE}:{error.code}"
         if price is None or not math.isfinite(float(price)) or price <= 0:
             return MARK_PRICE_UNAVAILABLE
-        distance = float(price) - float(row.stop_price) if row.direction == LONG else float(row.stop_price) - float(price)
+
+        def away(stop: float) -> float:
+            return float(price) - stop if row.direction == LONG else stop - float(price)
+
+        distance = away(float(row.stop_price))
         if distance <= 0:
             return "EXECUTABLE_STOP_GEOMETRY_INVALID"
         if row.kind == ENTRY and distance / float(price) > self.limits.max_entry_stop_distance * (1 + _TOL):
             return P.ENTRY_STOP_TOO_WIDE
+        if reservation.risk_amount is None:
+            return "RESERVATION_RISK_EVIDENCE_REQUIRED"
+        # The risk is measured at the stop the order FILLS UNDER. An entry fills into its own stop. An increase of a
+        # held position fills under the resting stop until a replacement confirms the tighter one, and its
+        # reservation states its risk there (``reservations.Reservation.risk_stop_price``); the wider of the two
+        # is used, so the admitted risk is never below what is enforceable while the order is in flight.
+        risk_stop = float(row.stop_price)
+        if row.kind != ENTRY:
+            stated = reservation.risk_stop_price
+            if stated is None:
+                return "RESERVATION_RISK_EVIDENCE_REQUIRED"
+            if PR.wider(row.direction, stated, risk_stop):
+                risk_stop = stated
+        exposure = away(risk_stop)
         used = 0.0
         for prior in self._rows("reservation_id=? AND intent_id<>? AND filled_quantity>0",
                                 (row.reservation_id, row.intent_id)):
             if prior.average_price is None:
                 return "FILLED_RISK_EVIDENCE_REQUIRED"
-            used += prior.filled_quantity * abs(float(prior.average_price) - float(prior.stop_price))
-        if reservation.risk_amount is None:
-            return "RESERVATION_RISK_EVIDENCE_REQUIRED"
-        risk = used + float(row.quantity) * distance
+            used += prior.filled_quantity * abs(float(prior.average_price) - risk_stop)
+        risk = used + float(row.quantity) * exposure
         if risk > float(reservation.risk_amount) * (1 + _TOL) + _TOL:
             return "EXECUTABLE_PRICE_RISK_CHANGED"
         return None

@@ -196,6 +196,19 @@ class Reservation:
     def open(self) -> bool:
         return self.state in LEDGER_OPEN_STATES
 
+    @property
+    def risk_stop_price(self) -> Optional[float]:
+        """The stop the reserved risk is measured at: ``risk_amount = quantity x |reference - risk_stop_price|``.
+
+        For an entry it is the order's own stop. For an increase of a held position it is the wider resting
+        stop the order fills under (``portfolio._sizing_stop``), which may differ from ``stop_price`` (the stop
+        the position is tightened to after the fill). The execution boundary measures an executable price at
+        this stop, so the risk it admits is the risk that is reserved. None when the row cannot say."""
+        if not (self.quantity and self.quantity > 0) or self.reference_price is None or self.risk_amount is None:
+            return None
+        distance = float(self.risk_amount) / float(self.quantity)
+        return float(self.reference_price) - distance if self.direction == LONG else float(self.reference_price) + distance
+
     def claim(self) -> OpenReservation:
         return OpenReservation(reservation_id=self.reservation_id, symbol=self.symbol, direction=self.direction,
                                kind=self.kind, risk_amount=self.risk_amount, notional=self.notional, margin=self.margin,

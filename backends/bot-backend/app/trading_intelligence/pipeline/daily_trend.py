@@ -436,10 +436,10 @@ def _intent(order: T.Order, book: Book, prices: Mapping[str, float], equity: flo
 
 
 def _with_ratchet(intent: C.Intent, target: Optional[float]) -> C.Intent:
-    """A rebalance UP of a held long whose ratcheted stop ``target`` is tighter than the stop it states: the same
-    rebalance, stating the ratcheted stop (kept below the reference price). Every other intent is unchanged."""
-    if (target is None or not isinstance(intent, C.RebalanceIntent) or intent.direction != C.LONG
-            or intent.target_quantity <= intent.current_quantity):
+    """A rebalance (up or down) of a held long whose ratcheted stop ``target`` is tighter than the stop it states:
+    the same rebalance, stating the ratcheted stop (kept below the reference price). Every other intent is
+    unchanged."""
+    if target is None or not isinstance(intent, C.RebalanceIntent) or intent.direction != C.LONG:
         return intent
     stop = min(float(target), float(intent.reference_price) * (1.0 - 1e-9))
     if not stop > float(intent.stop_price):
@@ -507,9 +507,11 @@ class DailyTrendPipeline:
                 targets[held.symbol] = max(held.stop_price, float(market.features.close[market.row, j]) * (1 - distance))
         decision = decide(book, market)
         # Research rule I10: the stop ratchets at EVERY close. A symbol carries one intent per decision, so a
-        # position that is rebalanced UP carries its ratcheted stop on that intent: the portfolio gate sizes the
-        # increase at the wider resting stop (``portfolio._sizing_stop``) and the boundary tightens the stop
-        # after the fill. A rebalance DOWN is a reduction and keeps the resting stop until the next close.
+        # position that is rebalanced carries its ratcheted stop on that intent. UP: the portfolio gate sizes the
+        # increase at the wider resting stop (``portfolio._sizing_stop``), reserves its risk there, and the
+        # boundary tightens the stop after the fill. DOWN (follow-up E-01): the portfolio gate authorizes the
+        # tighter stop for what remains (``portfolio._remaining_stop``) and the boundary moves the venue stop to it
+        # before the reduction leaves, or keeps the resting one where the venue has no safe replacement.
         decision.intents = tuple(_with_ratchet(i, targets.get(i.symbol)) for i in decision.intents)
         trailing = trailing_stop_intents(targets, snapshot, skip=[i.symbol for i in decision.intents])
         decision.intents += trailing

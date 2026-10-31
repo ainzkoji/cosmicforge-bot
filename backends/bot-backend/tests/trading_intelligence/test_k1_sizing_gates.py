@@ -229,10 +229,48 @@ def test_an_increase_carrying_a_tighter_stop_is_sized_at_the_wider_resting_stop(
     assert two.quantity == pytest.approx(one.quantity)
     assert one.quantity == pytest.approx(40.0 / 15.0 - 2.0, abs=1e-3)  # 0.40 % of 10,000 at 15 USDT, less what is held
     assert two.stop_price == 90.0 and one.stop_price == 85.0        # the boundary tightens to it after the fill
-    # the reserved risk is at the order's own stop, the one the boundary re-checks the executable price at: a
-    # price above the reference is then refused, and below it the clamp at 85 holds the ceiling
-    assert two.risk_amount == pytest.approx(two.quantity * 10.0)
+    # the reserved risk is at the stop the order FILLS UNDER (the resting 85), not at the tighter 90 it states:
+    # while the order is in flight nothing is undercounted (the earlier quantity x (90 - 85) gap is closed)
+    assert two.risk_amount == pytest.approx(two.quantity * 15.0)
+    assert two.risk_amount == pytest.approx(one.risk_amount)
     assert (2.0 + two.quantity) * (PRICE - 85.0) <= 0.004 * EQUITY * (1 + 1e-9)
+
+
+def test_the_reservation_states_the_risk_stop_the_order_fills_under():
+    """``Reservation.risk_stop_price`` gives back the stop the reserved risk is measured at, which is what the
+    boundary measures an executable price at."""
+    from app.trading_intelligence.pipeline import reservations as RL
+
+    position = held(quantity=2.0, stop=85.0)
+    ratcheted = RebalanceIntent(symbol=A, direction=LONG, current_quantity=2.0, target_quantity=4.0,
+                                reference_price=PRICE, stop_price=90.0, band=0.25)
+    accepted = decide([ratcheted], snap=snapshot(position)).accepted[0]
+    fields = {f.name: None for f in dataclasses.fields(RL.Reservation)}
+    fields.update(quantity=accepted.quantity, reference_price=accepted.reference_price, stop_price=accepted.stop_price,
+                  risk_amount=accepted.risk_amount, direction=LONG, awaits_releases=())
+    reservation = RL.Reservation(**fields)
+    assert reservation.stop_price == 90.0
+    assert reservation.risk_stop_price == pytest.approx(85.0)
+    first = decide([entry()]).accepted[0]
+    fields.update(quantity=first.quantity, reference_price=first.reference_price, stop_price=first.stop_price,
+                  risk_amount=first.risk_amount)
+    assert RL.Reservation(**fields).risk_stop_price == pytest.approx(first.stop_price)
+
+
+def test_a_rebalance_down_authorizes_a_tighter_stated_stop_for_what_remains():
+    """Follow-up E-01: a reduction that states a tighter stop is authorized with it (on the tick, toward the
+    market); a wider one, or one not protective at the mark, keeps the resting stop and never withholds it."""
+    position = held(quantity=6.0, stop=85.0)
+
+    def down(stop):
+        return RebalanceIntent(symbol=A, direction=LONG, current_quantity=6.0, target_quantity=4.0,
+                               reference_price=PRICE, stop_price=stop, band=0.25)
+
+    tighter = decide([down(90.004)], snap=snapshot(position)).accepted[0]
+    assert (tighter.quantity, tighter.stop_price, tighter.position_quantity_after) == (2.0, 90.01, 4.0)
+    assert decide([down(80.0)], snap=snapshot(position)).accepted[0].stop_price == 85.0
+    beyond = decide([down(99.999)], snap=snapshot(held(quantity=6.0, stop=85.0, mark=99.0))).accepted[0]
+    assert beyond.stop_price == 85.0 and beyond.quantity == 2.0
 
 
 # ======================================================== the family's broker stage: strength, bars, ratchet
@@ -292,13 +330,20 @@ def test_inside_the_band_the_ratchet_is_its_own_stop_move():
     assert isinstance(intent, StopReplaceIntent) and intent.new_stop_price == pytest.approx(90.0)
 
 
-def test_a_rebalance_down_keeps_the_resting_stop_until_the_next_close():
-    """Residual of D4, documented: a reduction carries no stop and one symbol carries one intent per decision,
-    so the ratchet of a rebalance-down day waits for the next close (the next target is max(resting, ...))."""
+def test_a_rebalance_down_carries_the_ratcheted_stop_too():
+    """Follow-up E-01 (was the residual of D4): the rebalance-down day's ratchet no longer waits for the next
+    close. Held 6 at 85, target 4, ratchet 100 x (1 - 0.10) = 90: the reduction states 90."""
     out = broker_decision(market(), snapshot(held(quantity=6.0, stop=85.0)))
     (intent,) = out.intents
     assert isinstance(intent, RebalanceIntent) and intent.target_quantity < intent.current_quantity
-    assert intent.stop_price == pytest.approx(85.0)
+    assert intent.stop_price == pytest.approx(90.0)
+    assert [i["stop_price"] for i in out.document["intents"]] == [pytest.approx(90.0)]
+
+
+def test_a_rebalance_down_whose_ratchet_is_not_tighter_states_the_resting_stop():
+    out = broker_decision(market(), snapshot(held(quantity=6.0, stop=95.0)))
+    (intent,) = out.intents
+    assert isinstance(intent, RebalanceIntent) and intent.stop_price == pytest.approx(95.0)
 
 
 # ============================================================================================ reason codes

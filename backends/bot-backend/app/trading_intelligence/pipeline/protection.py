@@ -657,8 +657,16 @@ class ProtectionManager:
         return self._unsettle(rec, UNCERTAIN, otherwise)
 
     def _confirmed(self, rec: _Record, found: Coverage, stop: OrderInfo) -> ProtectionOutcome:
-        """Read back: ``stop`` rests and covers the whole position. The only way to ``PROTECTED``."""
-        rec = self._save(rec, status=PROTECTED, client_order_id=stop.client_order_id or rec.client_order_id,
+        """Read back: ``stop`` rests and covers the whole position. The only way to ``PROTECTED``.
+
+        A confirmed stop TIGHTER than the recorded intention becomes the intention (a replacement moved it): a
+        stop that later has to be placed again on this position is placed there, never back at the wider level.
+        A wider confirmed stop leaves the intention as it is (a replacement toward it may be pending)."""
+        intended = float(rec.intended_stop_price or 0.0)
+        if not intended > 0 or wider(rec.direction, intended, float(stop.stop_price)):
+            intended = float(stop.stop_price)
+        rec = self._save(rec, status=PROTECTED, intended_stop_price=intended,
+                         client_order_id=stop.client_order_id or rec.client_order_id,
                          venue_order_id=stop.venue_order_id, resting_stop_price=float(stop.stop_price),
                          form="CLOSE_POSITION" if stop.close_position else "QUANTITY",
                          covered_quantity=None if stop.close_position else float(stop.quantity),
