@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import inspect
 import logging
 from datetime import datetime, timezone
 from types import SimpleNamespace
@@ -239,17 +238,11 @@ class TestRunnerModes:
         assert runner.client.mock_calls == []
         assert "[IOFS_GATE]" in caplog.text
 
-    def test_enforce_blocks_before_ensemble_in_paper_mode(self, monkeypatch):
-        runner = _runner(_failed_gate(), execution_mode="paper")
-        _enable_iofs(monkeypatch, "enforce")
-        result = runner._run_iofs_pre_ensemble("BTCUSDT", trace_id="trace", current_position="NONE")
-        assert result["mode"] == "enforce"
-        assert result["blocked"] is True
-
-        # step_symbol is now a thin canonical-evidence wrapper; the
-        # evaluation body it delegates to is _step_symbol_evaluate.
-        source = inspect.getsource(PaperRunner._step_symbol_evaluate)
-        assert source.index("_run_iofs_pre_ensemble") < source.index("if self.orchestrator")
+    # test_enforce_blocks_before_ensemble_in_paper_mode was removed (Section I Batch 7). Its claim was an
+    # ORDERING in _step_symbol_evaluate: the IOFS gate ran before the V2 ensemble/orchestrator entry. 6e0b42c
+    # removed that entry path (CATI is the sole engine): _step_symbol_evaluate no longer calls the ensemble or
+    # _run_iofs_pre_ensemble, so there is no ordering left to assert. The method's own mode handling is still
+    # covered by the tests around this comment; the method itself has no runtime caller (Batch 7 follow-up).
 
     def test_enforce_is_downgraded_to_shadow_in_live_mode(self, monkeypatch):
         runner = _runner(_failed_gate(), execution_mode="live")

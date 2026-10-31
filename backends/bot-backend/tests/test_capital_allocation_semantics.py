@@ -850,15 +850,13 @@ def test_entry_protection_remains_wired():
     assert "mark_failed" in source
 
 
-def test_htf_bias_halving_is_an_independent_sizing_rule_not_slot_division():
-    from app.runner import runner as runner_module
-
-    source = _module_source(runner_module)
-    htf_index = source.index("trade_usdt *= 0.5")
-    window = source[max(0, htf_index - 500): htf_index + 200]
-    assert "htf_opposed" in window
-    assert "max_open_positions" not in window
-    assert "open_positions" not in window
+# test_htf_bias_halving_is_an_independent_sizing_rule_not_slot_division was removed (Section I Batch 7). It read
+# runner.py for the V2 "HTF bias" rule (trade_usdt *= 0.5 when the ensemble's higher timeframe opposed the
+# signal). That rule lived in the legacy runner's entry path, removed in 6e0b42c; no runtime sizes from
+# ``htf_opposed`` any more (MasterEnsembleStrategy still reports it as V2 benchmark metadata). The property it
+# protected -- per-trade sizing is never divided by the slot count -- is asserted on the CATI path by
+# tests/trading_intelligence/test_section20_execution_boundary.py::test_fixed_amount_is_per_trade_not_aggregate
+# and by the PER_APPROVED_TRADE allocation semantics in ::test_orchestrator_result_carries_risk_evidence.
 
 
 def _module_source(module) -> str:

@@ -333,27 +333,92 @@ class TestTradeFillPersistence:
                 # The outer try/except in runner.py catches this and logs it
                 assert "db unavailable" in str(e)
 
-    def test_runner_open_path_wrapped_in_try_except(self):
-        """Verify runner.py legacy OPEN path wraps record_fill in try/except."""
-        runner_path = os.path.join(
-            os.path.dirname(__file__), "..", "app", "runner", "runner.py"
-        )
-        with open(runner_path, encoding="utf-8", errors="replace") as f:
-            src = f.read()
-        assert "TRADE_FILL_PERSISTENCE_ATTEMPTED" in src
-        assert "TRADE_FILL_PERSISTENCE_FAILED" in src
-        assert "TRADE_FILL_PERSISTED" in src
+    # test_runner_open_path_wrapped_in_try_except was removed (Section I Batch 7): it read runner.py for the
+    # markers of the legacy OPEN fill path, which 6e0b42c removed when CATI became the sole engine. A CATI entry
+    # is recorded as a durable ExecutionAttempt and handed to the lifecycle with the broker-filled quantity
+    # (tests/trading_intelligence/test_section20_execution_boundary.py
+    # ::test_position_lifecycle_registered_with_filled_quantity).
 
-    def test_runner_close_path_wrapped_in_try_except(self):
-        """Verify runner.py legacy CLOSE path wraps record_fill in try/except."""
-        runner_path = os.path.join(
-            os.path.dirname(__file__), "..", "app", "runner", "runner.py"
-        )
-        with open(runner_path, encoding="utf-8", errors="replace") as f:
-            src = f.read()
-        # Both OPEN and CLOSE paths should have the same markers
-        assert src.count("TRADE_FILL_PERSISTENCE_ATTEMPTED") >= 2
-        assert src.count("TRADE_FILL_PERSISTENCE_FAILED") >= 2
+    @staticmethod
+    def _closing_runner(record_fill_side_effect=None):
+        """A bare PaperRunner holding one managed LONG, whose broker close succeeds."""
+        from types import SimpleNamespace
+
+        from app.runner.models import SymbolState
+        from app.runner.runner import PaperRunner
+
+        runner = object.__new__(PaperRunner)
+        runner.db = MagicMock()
+        runner.context = None
+        runner.interval = "15m"
+        runner.run_id, runner.cycle_id = "run_b3", "cyc_b3"
+        runner.state = {"BTCUSDT": SymbolState(position="LONG", entry_price=100.0, entry_qty=2.0,
+                                               position_id="pos_b3")}
+        runner.position_manager = MagicMock()
+        runner.position_manager.get_position.return_value = SimpleNamespace(
+            current_qty=2.0, entry_price=100.0, position_id="pos_b3")
+        runner.executor = MagicMock()
+        runner.client = MagicMock()
+        runner.client.last_price.return_value = 110.0
+        runner.store = MagicMock()
+        runner._closed_symbols_this_cycle = set()
+        runner._effective_execution_mode = lambda: "paper"
+        runner._execute_signal_with_evidence = MagicMock(return_value=SimpleNamespace(
+            success=True, avg_price=110.0, order_id="ord_b3", details={"fee": 0.1}, error=None))
+        runner._record_fill = MagicMock(side_effect=record_fill_side_effect)
+        return runner
+
+    def test_runner_close_path_wrapped_in_try_except(self, caplog):
+        """B-3 on the runner's managed close: a fill-persistence failure AFTER the broker closed is logged and
+        the local lifecycle still closes (a paper book never reconciles a stale LONG away)."""
+        import logging
+
+        runner = self._closing_runner(record_fill_side_effect=RuntimeError("db unavailable"))
+        caplog.set_level(logging.DEBUG, logger="app.runner.runner")
+
+        out = runner._close_managed_position("BTCUSDT", "KILL_SWITCH_ACTIVE")
+
+        assert out["success"] is True and out["fill_persisted"] is False and out["order_id"] == "ord_b3"
+        runner._record_fill.assert_called_once()
+        assert runner._record_fill.call_args.kwargs["action"] == "CLOSE"
+        runner.position_manager.close_position.assert_called_once_with("BTCUSDT", "KILL_SWITCH_ACTIVE")
+        st = runner.state["BTCUSDT"]
+        assert (st.position, st.entry_qty, st.position_id) == ("NONE", 0.0, None)
+        runner.store.save_symbol.assert_called_once_with("BTCUSDT", st)
+        failed = [r for r in caplog.records if "TRADE_FILL_PERSISTENCE_FAILED action=CLOSE" in r.getMessage()]
+        assert failed and failed[0].levelno == logging.ERROR and "db unavailable" in failed[0].getMessage()
+        assert "TRADE_FILL_PERSISTENCE_ATTEMPTED action=CLOSE" in caplog.text
+        assert "TRADE_FILL_PERSISTED action=CLOSE" not in caplog.text
+
+    def test_runner_close_path_persists_one_final_close_fill(self, caplog):
+        import logging
+
+        runner = self._closing_runner()
+        caplog.set_level(logging.DEBUG, logger="app.runner.runner")
+
+        out = runner._close_managed_position("BTCUSDT", "DAILY_CLOSE")
+
+        assert out["success"] is True and out["fill_persisted"] is True
+        assert out["pnl"] == pytest.approx((110.0 - 100.0) * 2.0)
+        kw = runner._record_fill.call_args.kwargs
+        assert (kw["action"], kw["qty"], kw["price"], kw["fill_type"], kw["position_id"]) == (
+            "CLOSE", 2.0, 110.0, "FINAL_CLOSE", "pos_b3")
+        assert "TRADE_FILL_PERSISTED action=CLOSE" in caplog.text
+        assert "TRADE_FILL_PERSISTENCE_FAILED" not in caplog.text
+
+    def test_a_failed_broker_close_records_no_fill_and_keeps_the_position(self):
+        from types import SimpleNamespace
+
+        runner = self._closing_runner()
+        runner._execute_signal_with_evidence.return_value = SimpleNamespace(
+            success=False, avg_price=None, order_id=None, details={}, error="CLOSE_REJECTED")
+
+        out = runner._close_managed_position("BTCUSDT", "DAILY_CLOSE")
+
+        assert out["success"] is False and out["error"] == "CLOSE_REJECTED"
+        runner._record_fill.assert_not_called()
+        runner.position_manager.close_position.assert_not_called()
+        assert runner.state["BTCUSDT"].position == "LONG"
 
     def test_failed_execution_does_not_record_fill(self):
         """record_fill must only be called when execution succeeds."""

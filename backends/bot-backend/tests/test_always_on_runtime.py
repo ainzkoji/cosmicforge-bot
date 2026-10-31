@@ -168,22 +168,78 @@ def test_ownership_is_visible_to_operators(db):
     assert row["hostname"]
 
 
-def test_the_scheduler_refuses_to_start_without_the_lease():
-    from app.runner.multi_runner import MultiBotRunner
+class _FakeLease:
+    """A RuntimeOwnership stand-in: acquisition outcome and renewals are scripted."""
 
-    source = inspect.getsource(MultiBotRunner.run_forever) if hasattr(MultiBotRunner, "run_forever") else ""
-    if not source:
-        source = inspect.getsource(MultiBotRunner)
-    assert "acquire_runtime_ownership" in source
-    assert "refusing to start scheduler" in source
+    def __init__(self, *, acquired=True, renewals=(True,)):
+        self.acquired, self.renewals, self.is_owner = acquired, list(renewals), False
+
+    def acquire(self):
+        from types import SimpleNamespace
+
+        self.is_owner = self.acquired
+        return SimpleNamespace(acquired=self.acquired, reason="ACQUIRED" if self.acquired else "HELD",
+                               runtime_owner_id="own_fake" if self.acquired else None,
+                               holder_pid=4242, holder_hostname="elsewhere")
+
+    def renew(self):
+        ok = self.renewals.pop(0) if self.renewals else True
+        self.is_owner = self.is_owner and ok
+        return ok
 
 
-def test_losing_the_lease_stops_the_scheduler():
-    from app.runner.multi_runner import MultiBotRunner
+def _run_private(coro):
+    """A private loop: asyncio.run would leave no current loop for a later first import of app.main."""
+    import asyncio
 
-    source = inspect.getsource(MultiBotRunner)
-    assert "lease lost" in source
-    assert RUNTIME_OWNERSHIP_LOST in source
+    loop = asyncio.new_event_loop()
+    try:
+        return loop.run_until_complete(coro)
+    finally:
+        loop.close()
+
+
+def _owner_loop(lease, alerts):
+    from app.trading_intelligence.integration.runtime_owner_loop import RuntimeOwnerLoop
+
+    return RuntimeOwnerLoop(None, alert=lambda t, m: alerts.append(t),
+                            ownership_factory=lambda db, runtime_session_id: lease)
+
+
+def test_the_scheduler_refuses_to_start_without_the_lease(watchdog, monkeypatch):
+    """The lease loop (RuntimeOwnerLoop, which MultiBotRunner.run_loop delegates to) schedules nothing
+    without the lease. Behaviour on a real lease table: tests/test_runtime_owner_loop.py."""
+    from app.ops import runtime_watchdog as wd_mod
+    from app.trading_intelligence.integration.runtime_owner_loop import REFUSED
+
+    monkeypatch.setattr(wd_mod, "_WATCHDOG", watchdog)
+
+    alerts, ticks = [], []
+
+    async def tick():
+        ticks.append(1)
+
+    outcome = _run_private(_owner_loop(_FakeLease(acquired=False), alerts).run(
+        tick, interval_seconds=0, keep_running=lambda: True))
+    assert outcome == REFUSED and ticks == [] and alerts == ["RUNTIME_OWNERSHIP_COLLISION"]
+    assert watchdog.last_scheduler_heartbeat is None
+
+
+def test_losing_the_lease_stops_the_scheduler(watchdog, monkeypatch):
+    from app.ops import runtime_watchdog as wd_mod
+    from app.trading_intelligence.integration.runtime_owner_loop import LOST
+
+    monkeypatch.setattr(wd_mod, "_WATCHDOG", watchdog)
+
+    alerts, ticks = [], []
+
+    async def tick():
+        ticks.append(1)
+
+    loop = _owner_loop(_FakeLease(renewals=(True, False)), alerts)
+    outcome = _run_private(loop.run(tick, interval_seconds=0, keep_running=lambda: True))
+    assert outcome == LOST and ticks == [1] and alerts == [RUNTIME_OWNERSHIP_LOST]
+    assert watchdog.scheduler_health() == (ERROR, RUNTIME_OWNERSHIP_LOST)
 
 
 # ══════════════════════════════════════════════════════════════════════════

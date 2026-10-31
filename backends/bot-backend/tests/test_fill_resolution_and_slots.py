@@ -590,13 +590,34 @@ def test_reconciliation_repairs_a_crash_between_fill_and_registration(db):
     assert _reconcile(db, broker)["changed"] == 0
 
 
-def test_the_runner_registers_the_lifecycle_with_the_broker_executed_quantity():
-    from app.runner import runner as runner_module
+def test_the_entry_path_registers_the_lifecycle_with_the_broker_executed_quantity():
+    """The entry path that registers a filled position with the lifecycle authority is the CATI boundary now
+    (the legacy runner's entry path was removed in 6e0b42c). It must hand PositionManager the quantity the
+    broker actually EXECUTED, never the requested one: a partial fill manages exactly what is held."""
+    from app.execution.position_manager import PositionManager
+    from app.trading_intelligence.execution.adapter import EntryRequest, EntryResult
+    from app.trading_intelligence.execution.boundary import CATIExecutionBoundary
 
-    source = Path(runner_module.__file__).read_text(encoding="utf-8")
-    start = source.index("_broker_filled_qty = (")
-    assert '_execution_details.get("filled_qty")' in source[start:start + 200]
-    assert "qty=_executed_qty," in source  # PositionManager.open_position
+    boundary = object.__new__(CATIExecutionBoundary)
+    boundary.position_manager = PositionManager()
+    boundary._db = None
+    plan = SimpleNamespace(side="LONG", broker_account_id="acct_fill", bot_instance_id="bot_fill")
+    req = EntryRequest(
+        trade_plan_id="tp_fill", trade_plan_hash="h", risk_decision_id="rd_fill", venue_symbol=SYMBOL, side="LONG",
+        notional=500.0, stop_price=95.0, target_price=110.0, leverage=float(LEV), requested_order_type="MARKET",
+        requested_price=100.0, max_slippage_bps=10.0, current_open_count=0, current_equity=5000.0,
+        cycle_id="cyc_fill", intent_identity="tp_fill:h")
+    filled = EntryResult(status="PARTIALLY_FILLED", raw_status="PARTIALLY_FILLED", requested_qty=5.0,
+                         submitted_qty=5.0, filled_qty=3.5, avg_fill_price=100.2,
+                         protection={"sl_order_id": "SL-fill", "tp_order_id": "TP-fill"})
+
+    boundary._register_lifecycle(plan, req, filled, "pos_fill")
+
+    pos = boundary.position_manager.get_position(SYMBOL)
+    assert pos is not None and pos.position_id == "pos_fill"
+    assert pos.current_qty == pytest.approx(3.5)          # executed, not the requested 5.0
+    assert pos.entry_price == pytest.approx(100.2)        # the broker's average fill, not the requested price
+    assert pos.sl.sl_order_id == "SL-fill"
 
 
 def test_fill_resolution_tests_do_not_write_the_canonical_database(db):

@@ -12,7 +12,7 @@ from app.exchange.binance.client import BinanceFuturesClient
 # ✅ IMPORT PAPER RUNNER + CONTEXT (The Tested Path)
 from app.runner.runner import PaperRunner
 from app.runner.bot_context import BotRunContext
-from app.runner.effective_policy import EffectivePolicyError, resolve_effective_bot_policy
+from app.policy.effective_policy import EffectivePolicyError, resolve_effective_bot_policy
 from app.runner.errors import RunnerInitializationError
 from app.runner.system_events import record_bot_system_event
 from app.exchange.factory import build_exchange_client, build_exchange_client_from_auth
@@ -61,44 +61,60 @@ class MultiBotRunner:
         # Overlap guard: True while a processor run is active for that bot.
         # Prevents double-processing if asyncio scheduling ever overlaps.
 
-        # Runtime ownership: only the lease holder may schedule trading.
-        self._ownership = None
-        self.ownership_reason: str = "NOT_ACQUIRED"
-        self.runtime_owner_id: str | None = None
-        
+        # Runtime ownership: only the lease holder may schedule trading. The lease loop itself is CATI-side
+        # (app.trading_intelligence.integration.runtime_owner_loop.RuntimeOwnerLoop, Section I Batch 7); this
+        # runner delegates to it and keeps the ownership surface app.main and app.ops read.
+        self._owner = self._new_owner_loop()
+
         # Instrument metadata is loaded only after a bot's DB-backed broker
         # account has been resolved.  Startup never constructs an env-backed
         # Binance client or substitutes dummy credentials.
         logger.info("Instrument registry initialization deferred to resolved per-bot clients")
 
+    # ── runtime ownership: delegated to RuntimeOwnerLoop ─────────────────────
+
+    def _new_owner_loop(self):
+        from app.trading_intelligence.integration.runtime_owner_loop import RuntimeOwnerLoop
+
+        return RuntimeOwnerLoop(self.db, runtime_session_id=lambda: self._runtime_session_id(),
+                                alert=lambda event_type, message: self._record_runtime_alert(event_type, message))
+
+    @property
+    def owner_loop(self):
+        """The runtime-owner lease loop (built on first use for a runner made without ``__init__``)."""
+        owner = self.__dict__.get("_owner")
+        if owner is None:
+            owner = self.__dict__["_owner"] = self._new_owner_loop()
+        return owner
+
+    @property
+    def _ownership(self):
+        """The held ``RuntimeOwnership`` (read by shutdown and the supervisor: ``pid``, ``renew_failures``)."""
+        return self.owner_loop.ownership
+
+    @_ownership.setter
+    def _ownership(self, value) -> None:
+        self.owner_loop.ownership = value
+
+    @property
+    def ownership_reason(self) -> str:
+        return self.owner_loop.ownership_reason
+
+    @ownership_reason.setter
+    def ownership_reason(self, value: str) -> None:
+        self.owner_loop.ownership_reason = value
+
+    @property
+    def runtime_owner_id(self) -> str | None:
+        return self.owner_loop.runtime_owner_id
+
+    @runtime_owner_id.setter
+    def runtime_owner_id(self, value: str | None) -> None:
+        self.owner_loop.runtime_owner_id = value
+
     def acquire_runtime_ownership(self) -> bool:
         """Take the trading lease for this database. Fails closed."""
-        if self._ownership is not None and self._ownership.is_owner:
-            return True
-        try:
-            from app.core.config import settings
-            from app.ops.runtime_ownership import RuntimeOwnership
-
-            self._ownership = RuntimeOwnership(
-                self.db,
-                database_path=self.db.path,
-                database_role=str(getattr(settings, "DATABASE_ROLE", "production")),
-                runtime_session_id=self._runtime_session_id(),
-            )
-            result = self._ownership.acquire()
-            self.ownership_reason = result.reason
-            self.runtime_owner_id = result.runtime_owner_id
-            if not result.acquired:
-                self._record_runtime_alert(
-                    "RUNTIME_OWNERSHIP_COLLISION",
-                    f"another process holds the trading lease "
-                    f"(pid={result.holder_pid} host={result.holder_hostname})",
-                )
-            return result.acquired
-        except Exception as exc:
-            self.ownership_reason = f"RUNTIME_OWNERSHIP_ERROR:{type(exc).__name__}"
-            logger.error("[RUNTIME_OWNERSHIP] acquire failed: %s", exc)
-            return False
+        return self.owner_loop.acquire()
 
     @property
     def owns_runtime(self) -> bool:
@@ -108,17 +124,15 @@ class MultiBotRunner:
         as owning the runtime, because a process may start against a stale
         lease and still lose the acquisition race here.
         """
-        return bool(self._ownership is not None and self._ownership.is_owner)
+        return self.owner_loop.owns_runtime
 
     @property
     def ownership_decided(self) -> bool:
         """True once acquisition has been attempted, win or lose."""
-        return self.ownership_reason != "NOT_ACQUIRED"
+        return self.owner_loop.ownership_decided
 
     def release_runtime_ownership(self, *, reason: str = "SHUTDOWN") -> None:
-        if self._ownership is not None:
-            self._ownership.release(reason=reason)
-
+        self.owner_loop.release(reason=reason)
     def _record_runtime_alert(self, event_type: str, message: str) -> None:
         """§15: no silent recovery. Every runtime fault leaves an event."""
         try:
@@ -425,79 +439,30 @@ class MultiBotRunner:
             logger.debug("[ExtSig] Could not read Phase 4 config at startup: %s", _cfg_exc)
         # ─────────────────────────────────────────────────────────────────────
         
-        # §1/§2: exactly one trading scheduler per runtime database. The lease
-        # is held against the DB, not the port -- two backends on different
-        # ports would otherwise both drive the same bots.
-        if not self.acquire_runtime_ownership():
-            logger.critical(
-                "[RUNTIME_OWNERSHIP] refusing to start scheduler: %s",
-                self.ownership_reason,
-            )
+        # §1/§2: exactly one trading scheduler per runtime database. The lease is held against the DB, not the
+        # port -- two backends on different ports would otherwise both drive the same bots. The lease loop
+        # (acquire, renew every iteration, heartbeat, stop on loss) is RuntimeOwnerLoop's; in production
+        # run_once returns at once, so that loop is all this runner does there.
+        from app.trading_intelligence.integration.runtime_owner_loop import LOST, REFUSED
+
+        outcome = await self.owner_loop.run(
+            lambda: self.run_once(), interval_seconds=interval_seconds,
+            keep_running=lambda: self.running and not self._stop_requested,
+            after_tick=self._after_iteration,
+        )
+        if outcome in (REFUSED, LOST):
             self.running = False
-            return
 
-        while self.running and not self._stop_requested:
-            start_time = datetime.now()
-
-            # Losing the lease means another process took over. Stop scheduling
-            # immediately rather than double-driving the bots.
-            if self._ownership is not None and not self._ownership.renew():
-                from app.ops.runtime_watchdog import get_watchdog
-
-                get_watchdog().ownership_lost()
-                self._record_runtime_alert(
-                    "RUNTIME_OWNERSHIP_LOST",
-                    "scheduler lease lost to another process; stopping",
-                )
-                logger.critical("[RUNTIME_OWNERSHIP] lease lost - stopping scheduler")
-                self.running = False
-                break
-
-            try:
-                from app.ops.runtime_watchdog import get_watchdog
-
-                get_watchdog().scheduler_heartbeat()
-            except Exception:
-                pass
-
-            try:
-                await self.run_once()
-                try:
-                    from app.ops.runtime_watchdog import get_watchdog
-
-                    get_watchdog().iteration_succeeded()
-                except Exception:
-                    pass
-            except Exception as e:
-                logger.critical(f"MultiBotRunner Loop Error: {e}")
-                try:
-                    from app.ops.runtime_watchdog import get_watchdog
-
-                    get_watchdog().record_error(f"{type(e).__name__}: {e}")
-                except Exception:
-                    pass
-                traceback.print_exc()
-
-            # §5/§7: detect a stalled strategy clock and recover safely.
-            try:
-                from app.core.config import settings
-                if not settings.production:
-                    self._check_strategy_clocks()
-            except Exception as _wd_exc:
-                logger.error("[WATCHDOG] clock check failed: %s", _wd_exc)
-            
-            # Sleep remainder of interval
-            elapsed = (datetime.now() - start_time).total_seconds()
-            sleep_time = max(0.5, interval_seconds - elapsed)
-            
-            # Initial sleep in chunks to allow graceful stop
-            slept = 0.0
-            chunk = 0.5
-            while slept < sleep_time and self.running and not self._stop_requested:
-                await asyncio.sleep(chunk)
-                slept += chunk
-        
         logger.info("Multi-Bot Runner Loop Stopped")
+
+    def _after_iteration(self) -> None:
+        """§5/§7: detect a stalled strategy clock and recover safely (outside production only)."""
+        try:
+            from app.core.config import settings
+            if not settings.production:
+                self._check_strategy_clocks()
+        except Exception as _wd_exc:
+            logger.error("[WATCHDOG] clock check failed: %s", _wd_exc)
 
     async def run_once(self):
         """Execution of one cycle for all bots using PaperRunner."""

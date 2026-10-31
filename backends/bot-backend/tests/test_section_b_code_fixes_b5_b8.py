@@ -49,49 +49,8 @@ def _mock_context(bot_instance_id="bot1", strategy_id="master_ensemble"):
 # B-5 (external signal confidence) was removed with the TradingView path in Section I Batch 5.
 
 class TestDailyActivityFallback:
-
-    def test_activity_targets_get_current_reduction_always_zero(self):
-        """B-6: get_current_reduction must always return 0.0 regardless of inactivity."""
-        from app.strategy.activity_targets import ActivityTargets
-        at = ActivityTargets(enabled=True)
-        # Simulate 24h of no trades
-        reduction, reason = at.get_current_reduction(trades_today=0, current_hour_utc=23)
-        assert reduction == 0.0, f"Expected 0.0 reduction, got {reduction}"
-        assert "DAILY_ACTIVITY_FALLBACK_DISABLED" in reason
-
-    def test_activity_targets_enabled_still_returns_zero(self):
-        """Even if enabled=True is forced, reduction must be 0.0."""
-        from app.strategy.activity_targets import ActivityTargets
-        at = ActivityTargets(enabled=True, min_signals_per_day=5)
-        reduction, reason = at.get_current_reduction(trades_today=0, current_hour_utc=21)
-        assert reduction == 0.0
-
-    def test_conservative_targets_still_return_zero(self):
-        """Pre-built conservative_activity_targets must not lower thresholds."""
-        from app.strategy.activity_targets import conservative_activity_targets
-        at = conservative_activity_targets()
-        reduction, reason = at.get_current_reduction(trades_today=0, current_hour_utc=21)
-        assert reduction == 0.0
-
-    def test_moderate_targets_still_return_zero(self):
-        from app.strategy.activity_targets import moderate_activity_targets
-        at = moderate_activity_targets()
-        reduction, reason = at.get_current_reduction(trades_today=0, current_hour_utc=20)
-        assert reduction == 0.0
-
-    def test_calculate_nudge_never_adjusts_threshold(self):
-        """ActivityTargetsMixin.calculate_nudge must not reduce the base threshold."""
-        from app.strategy.activity_targets import ActivityTargets, ActivityTargetsMixin
-        mixin = ActivityTargetsMixin()
-        mixin.activity_targets = ActivityTargets(enabled=True)
-        mixin._trades_today = 0
-
-        base = 0.70
-        nudge = mixin.calculate_nudge(base_min_confidence=base)
-        assert nudge.adjusted_min_confidence == base, (
-            f"Threshold was reduced from {base} to {nudge.adjusted_min_confidence}"
-        )
-        assert nudge.reduction_applied == 0.0
+    # The disabled activity-target helpers (app/strategy/activity_targets.py) were removed in
+    # Section I Batch 7; nothing imported them. B-6 is kept where the entry bar actually lives.
 
     def test_inactivity_cannot_soften_the_entry_bar(self):
         """The property B-6 protects, tested where the bar actually lives.
@@ -125,16 +84,6 @@ class TestDailyActivityFallback:
         source = inspect.getsource(threshold_engine)
         for forbidden in ("trade_count", "trades_today", "daily_trade", "_trades_today"):
             assert forbidden not in source
-
-    def test_activity_fallback_disabled_in_source(self):
-        """activity_targets.py must contain the DAILY_ACTIVITY_FALLBACK_DISABLED marker."""
-        import os
-        path = os.path.join(
-            os.path.dirname(__file__), "..", "app", "strategy", "activity_targets.py"
-        )
-        with open(path, encoding="utf-8") as f:
-            src = f.read()
-        assert "DAILY_ACTIVITY_FALLBACK_DISABLED" in src
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -314,17 +263,11 @@ class TestSizingFailureVisibility:
                (call_kwargs.args and call_kwargs.args[0] == "SIZING_FAILURE") or \
                "SIZING_FAILURE" in str(call_kwargs)
 
-    def test_runner_source_contains_sizing_audit(self):
-        """runner.py must emit SIZING_FAILURE audit events."""
-        import os
-        path = os.path.join(
-            os.path.dirname(__file__), "..", "app", "runner", "runner.py"
-        )
-        with open(path, encoding="utf-8", errors="replace") as f:
-            src = f.read()
-        assert "SIZING_FAILURE" in src
-        assert "SIZING_FAILURE_DASHBOARD_ALERT_SET" in src
-        assert "SIZING_FAILURE_TRADE_SKIPPED" in src
+    # test_runner_source_contains_sizing_audit was removed (Section I Batch 7): it read runner.py for the
+    # SIZING_FAILURE audit block of the legacy entry path, which 6e0b42c removed when CATI became the sole
+    # engine. A sizing refusal on the CATI path is durable risk evidence instead (RiskDecision with
+    # rejection_family SIZING): tests/trading_intelligence/test_section20_execution_boundary.py
+    # ::test_executor_sizing_rejection.
 
     def test_sizing_success_does_not_set_error(self):
         """A successful sizing must not trigger error codes."""

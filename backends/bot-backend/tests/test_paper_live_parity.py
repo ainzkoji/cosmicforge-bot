@@ -334,117 +334,60 @@ class TestPaperLiveParity:
         # Do not check orderId if we mocked it identically, it's fine.
 
     def test_runner_state_parity(self, mock_components, monkeypatch):
+        """Paper and broker execution modes give the legacy runner the SAME outcome for the same inputs.
+
+        Since 6e0b42c the runner has no entry path: a strategy BUY can no longer make it open, size or persist
+        a position in either mode (the old version of this test expected a LONG). What must stay identical
+        across modes is that a flat symbol is observed, never executed, and no position state is written.
         """
-        Verify that Runner updates persistent state identically for Paper event though it mocks execution.
-        """
-        # We need to import Runner here to avoid circular imports at top if any
-        # But we added sys.path so it should be fine.
         from app.runner.runner import PaperRunner
-        from app.execution.executor import ExecResult
         from app.runner.models import SymbolState
-        
-        # 1. Mock dependencies
+
         client = mock_components["client"]
-        
-        # Mock StateStore constructor to return a MagicMock
         MockStateStore = MagicMock()
         monkeypatch.setattr("app.runner.runner.StateStore", MockStateStore)
-        
-        # Mock Audit/DB mocks
-        MockDB = MagicMock()
-        monkeypatch.setattr("app.runner.runner.DB", MockDB)
-        MockAudit = MagicMock()
-        monkeypatch.setattr("app.runner.runner.Audit", MockAudit)
-        
-        # Mock Singletons to prevent side effects
-        monkeypatch.setattr("app.runner.runner.get_circuit_registry", MagicMock())
-        monkeypatch.setattr("app.runner.runner.get_risk_budget_engine", MagicMock())
-        monkeypatch.setattr("app.runner.runner.get_policy_engine", MagicMock())
-        monkeypatch.setattr("app.runner.runner.get_invariant_checker", MagicMock())
-        monkeypatch.setattr("app.runner.runner.StrategyHealthMonitor", MagicMock()) # Class
-        monkeypatch.setattr("app.runner.runner.DrawdownMonitor", MagicMock()) # Class
-        monkeypatch.setattr("app.runner.runner.get_trace_recorder", MagicMock()) # Singleton
-        
-        # Mock time to ensure last_checked_ms is identical
+        monkeypatch.setattr("app.runner.runner.DB", MagicMock())
+        monkeypatch.setattr("app.runner.runner.Audit", MagicMock())
+        for name in ("get_circuit_registry", "get_risk_budget_engine", "get_policy_engine",
+                     "get_invariant_checker", "StrategyHealthMonitor", "DrawdownMonitor", "get_trace_recorder"):
+            monkeypatch.setattr(f"app.runner.runner.{name}", MagicMock())
         mock_time = MagicMock()
         mock_time.time.return_value = 1700000000.0
         monkeypatch.setattr("app.runner.runner.time", mock_time)
-        
-        # Setup specific mocks for Runner init
-        client.exchange_info_cached.return_value = {
-            "symbols": [{"symbol": "BTCUSDT", "filters": []}]
-        }
+
         import time
-        client.get_klines.return_value = [
-            [1000, "50000", "50100", "49900", "50000", "10", int(time.time() * 1000)]
-        ]
-        client.klines.return_value = client.get_klines.return_value
+        client.exchange_info_cached.return_value = {"symbols": [{"symbol": "BTCUSDT", "filters": []}]}
+        client.klines.return_value = [[1000, "50000", "50100", "49900", "50000", "10", int(time.time() * 1000)]]
         client.last_price.return_value = 50000.0
         client.account.return_value = {"availableBalance": "1000.0"}
-        
-        # Create Runner
-        # Note: We rely on default settings/context here
-        runner = PaperRunner(client)
-        
-        # Verify runner.store is our mock instance
-        store_mock = MockStateStore.return_value
-        runner.store = store_mock
-        
-        # Mock Internal Executor
-        runner.executor = MagicMock()
-        
-        runner.policy_engine.evaluate.return_value.allowed = True
-        runner.policy_engine.evaluate.return_value.suggested_size_usdt = 100.0
-        # Also mock the res struct used in logs since it accesses res.confidence
-        # Actually res is from strategy.calculate not policy. 
-        # But wait, step_symbol does `res = self.strategy.calculate(kl, state)`
-        # Then `eval_decision = self.policy_engine.evaluate(sig, res, state)`
-        # The logging logs `res.confidence`. Let's ensure res is a Mock object that returns a float for confidence, not a MagicMock
-        class MockRes:
-            def __init__(self):
-                self.signal = type('Signal', (), {'value': 'BUY', 'name': 'BUY'})()
-                self.confidence = 0.9000
-                self.reason = "mock"
-                self.meta = {}
-        
-        mock_strategy_res = MockRes()
-        
-        runner.strategy = MagicMock()
-        runner.strategy.get_signal.return_value = mock_strategy_res
-        runner.strategy.name = "MockStrategy"
-        
-        # Mock Executor Result (What we expect commonly)
-        runner.executor.execute_signal.return_value = ExecResult(
-            status="ORDER_PLACED",
-            details={"qty": 0.1, "avgPrice": 50000.0, "symbol": "BTCUSDT"}
-        )
-        
-        # Setup Initial State
-        symbol = "BTCUSDT"
-        runner.state[symbol] = SymbolState() # Flat
-        
-        # ACT 1: Step (Conceptually Paper)
-        # We call step_symbol directly (public API)
-        # It handles price fetch internally via client.last_price
-        runner.step_symbol(symbol)
-        
-        paper_save_call = store_mock.save_symbol.call_args
-        
-        # Verify it went LONG
-        assert paper_save_call is not None
-        saved_state_p = paper_save_call[0][1] # arg 1 is state
-        assert saved_state_p.position == "LONG"
-        
-        # ACT 2: Step (Conceptually Live - Same inputs)
-        store_mock.save_symbol.reset_mock()
-        runner.state[symbol] = SymbolState() # Reset to Flat
-        
-        runner.step_symbol(symbol)
-        
-        live_save_call = store_mock.save_symbol.call_args
-        
-        # ASSERT Parity
-        assert paper_save_call == live_save_call
-        saved_state_l = live_save_call[0][1]
-        assert saved_state_l.position == "LONG"
-        assert saved_state_l.entry_price == saved_state_p.entry_price
+
+        class BuySignal:
+            signal = type("Signal", (), {"value": "BUY", "name": "BUY"})()
+            confidence = 0.90
+            reason = "a strong scalar BUY the runner must not act on"
+            meta = {}
+
+        outcomes = {}
+        for mode in ("paper", "broker"):
+            runner = PaperRunner(client)
+            runner.store = MockStateStore.return_value
+            runner.store.save_symbol.reset_mock()
+            runner.executor = MagicMock()
+            runner.executor.client.get_position_info.return_value = {"positionAmt": "0", "entryPrice": "0"}
+            runner.strategy = MagicMock()
+            runner.strategy.get_signal.return_value = BuySignal()
+            runner._effective_execution_mode = lambda m=mode: m
+            runner.state["BTCUSDT"] = SymbolState()  # flat
+
+            out = runner.step_symbol("BTCUSDT")
+
+            saved_positions = [c.args[1].position for c in runner.store.save_symbol.call_args_list
+                               if len(c.args) > 1 and hasattr(c.args[1], "position")]
+            assert all(p == "NONE" for p in saved_positions), (mode, saved_positions)
+            runner.executor.execute_signal.assert_not_called()
+            runner.strategy.get_signal.assert_not_called()
+            assert runner.state["BTCUSDT"].position == "NONE"
+            outcomes[mode] = out
+
+        assert outcomes["paper"] == outcomes["broker"]
+        assert outcomes["paper"]["decision"] == "CATI_OBSERVE" and outcomes["paper"]["executed"] is False

@@ -1,8 +1,5 @@
 from __future__ import annotations
 
-import inspect
-
-from app.runner.runner import PaperRunner
 from app.strategy.base import Signal
 from app.strategy.hold_breakdown import build_hold_breakdown, component_breakdown
 from app.strategy.master_ensemble import MasterEnsembleStrategy
@@ -76,8 +73,9 @@ def test_structured_hold_breakdown_contains_required_fields():
     assert payload["hold_reason"] == "CONFIDENCE_BELOW_FLOOR"
 
 
-def test_runner_emits_structured_hold_breakdown_log():
-    source = inspect.getsource(PaperRunner._step_symbol_orchestrated)
-
-    assert "[HOLD_BREAKDOWN]" in source
-    assert "build_hold_breakdown" in source
+# test_runner_emits_structured_hold_breakdown_log was removed (Section I Batch 7): it read
+# PaperRunner._step_symbol_orchestrated for the V2 "[HOLD_BREAKDOWN]" log, which 6e0b42c removed with the legacy
+# entry path. The runner now records an observe-only CATI outcome (tests/test_logging_harden.py); CATI's own
+# hold/observe reasons are canonical and registered
+# (tests/trading_intelligence/test_cati_sole_runtime.py::test_observation_reason_is_canonical_and_never_approved_or_filled,
+# tests/trading_intelligence/test_reason_registry.py). The breakdown builders above are still tested directly.

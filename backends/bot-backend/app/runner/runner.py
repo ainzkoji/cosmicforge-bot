@@ -1538,20 +1538,31 @@ class PaperRunner:
         close_price = float(result.avg_price or price)
         entry_price = float(pos.entry_price or st.entry_price or 0.0)
         pnl = (close_price - entry_price) * qty if side == "LONG" else (entry_price - close_price) * qty
-        from shared_lib.persistence.trade_fills import record_fill
-        self._record_fill(
-            self.db,
-            symbol=symbol, side=side, action="CLOSE", qty=qty, price=close_price,
-            fee=float((result.details or {}).get("fee") or 0.0), realized_pnl=pnl,
-            strategy="orchestrated", bot_instance_id=self.context.bot_instance_id if self.context else None,
-            user_id=self.context.user_id if self.context else None,
-            broker_account_id=self.context.broker_account_id if self.context else None,
-            execution_mode=self._effective_execution_mode(), timeframe=self.interval,
-            position_id=st.position_id or pos.position_id, order_id=result.order_id,
-            exit_reason=reason, initiator_type="BOT", trigger_source=reason,
-            position_phase="EXITING", run_id=self.run_id, cycle_id=self.cycle_id,
-            fill_type="FINAL_CLOSE", remaining_qty=0.0,
-        )
+        # B-3: the broker close has already happened. A failure to persist its fill must be logged and must not
+        # leave the in-memory lifecycle claiming an open position (which a paper book never reconciles away).
+        fill_persisted = False
+        logger.debug("TRADE_FILL_PERSISTENCE_ATTEMPTED action=CLOSE symbol=%s reason=%s", symbol, reason)
+        try:
+            self._record_fill(
+                self.db,
+                symbol=symbol, side=side, action="CLOSE", qty=qty, price=close_price,
+                fee=float((result.details or {}).get("fee") or 0.0), realized_pnl=pnl,
+                strategy="orchestrated", bot_instance_id=self.context.bot_instance_id if self.context else None,
+                user_id=self.context.user_id if self.context else None,
+                broker_account_id=self.context.broker_account_id if self.context else None,
+                execution_mode=self._effective_execution_mode(), timeframe=self.interval,
+                position_id=st.position_id or pos.position_id, order_id=result.order_id,
+                exit_reason=reason, initiator_type="BOT", trigger_source=reason,
+                position_phase="EXITING", run_id=self.run_id, cycle_id=self.cycle_id,
+                fill_type="FINAL_CLOSE", remaining_qty=0.0,
+            )
+            fill_persisted = True
+            logger.debug("TRADE_FILL_PERSISTED action=CLOSE symbol=%s", symbol)
+        except Exception as fill_err:
+            logger.error(
+                "TRADE_FILL_PERSISTENCE_FAILED action=CLOSE symbol=%s position_id=%s order_id=%s error=%s",
+                symbol, st.position_id or pos.position_id, result.order_id, fill_err, exc_info=True,
+            )
         self.position_manager.close_position(symbol, reason)
         st.position = "NONE"
         st.entry_qty = 0.0
@@ -1562,7 +1573,8 @@ class PaperRunner:
             "[PAPER_LIFECYCLE] FINAL_CLOSE symbol=%s qty=%s position_id=%s reason=%s",
             symbol, qty, pos.position_id, reason,
         )
-        return {"success": True, "qty": qty, "price": close_price, "pnl": pnl, "order_id": result.order_id}
+        return {"success": True, "qty": qty, "price": close_price, "pnl": pnl, "order_id": result.order_id,
+                "fill_persisted": fill_persisted}
 
     def _daily_close_already_marked(self, symbol: str, close_window: str) -> bool:
         """True when this symbol was already daily-closed in this window.
@@ -4366,7 +4378,7 @@ class PaperRunner:
                     "error": f"{type(_md_exc).__name__}: {_md_exc}",
                 }
 
-            from app.runner.market_snapshot import MarketSnapshot, claim_candle
+            from app.market_data.market_snapshot import MarketSnapshot, claim_candle
             _primary_snapshot = MarketSnapshot.build(
                 symbol=symbol,
                 timeframe=self.interval,
@@ -4443,7 +4455,7 @@ class PaperRunner:
                     # The candle was already claimed -- possibly by a previous
                     # process. Seed the marker so a restarted runtime is not
                     # mistaken for a stalled one, then age the stall counter.
-                    from app.runner.market_snapshot import last_evaluated_candle
+                    from app.market_data.market_snapshot import last_evaluated_candle
 
                     _wd.seed_evaluated_candle(
                         _bot_candle_id, symbol, self.interval,
