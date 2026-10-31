@@ -166,9 +166,11 @@ def quiesce(reason: str = "OPERATOR_SHUTDOWN", *, timeout_s: float | None = None
 
 def _quiesce_inner(report: QuiesceReport, timeout_s: float) -> None:
     import app.main as main_module
+    from app.trading_intelligence.integration import runtime_owner
 
     runner_service = getattr(main_module, "runner_service", None)
-    multi = getattr(runner_service, "multi_runner", None) if runner_service else None
+    # The runtime-owner host: the CATI lease host in production, the simulation MultiBotRunner elsewhere.
+    host = runtime_owner.host_of(runner_service)
 
     # ── 1/2. Stop new entry work and the scheduler loop ─────────────────────
     if runner_service is not None:
@@ -178,24 +180,23 @@ def _quiesce_inner(report: QuiesceReport, timeout_s: float) -> None:
         except Exception as exc:
             report.errors.append(f"stop_entries: {exc}")
 
-    if multi is not None:
+    if host is not None:
         try:
-            multi.running = False
-            multi._stop_requested = True
+            runtime_owner.stop_scheduler(host)
             report.scheduler_stopped = True
         except Exception as exc:
             report.errors.append(f"stop_scheduler: {exc}")
 
     # ── 3. Let the current cycle finish ─────────────────────────────────────
     # Interrupting mid-cycle is how half-written evidence happens. Each cached
-    # runner is asked to stop at its next check rather than being cancelled.
+    # simulation runner is asked to stop at its next check rather than being cancelled.
     try:
-        for runner in list((getattr(multi, "_runners", None) or {}).values()):
+        for runner in runtime_owner.simulation_runners(host).values():
             try:
                 runner._stop_requested = True
             except Exception:
                 pass
-        report.cycle_drained = _wait_for_idle(multi, timeout_s)
+        report.cycle_drained = _wait_for_idle(host, timeout_s)
     except Exception as exc:
         report.errors.append(f"drain: {exc}")
 
@@ -216,11 +217,10 @@ def _quiesce_inner(report: QuiesceReport, timeout_s: float) -> None:
     # ── 4. Release the lease ────────────────────────────────────────────────
     # This is the step force-kill skipped, and the reason a dead PID kept
     # holding ownership until the next start noticed.
-    if multi is not None:
+    if host is not None:
         try:
-            ownership = getattr(multi, "_ownership", None)
-            report.lease_owner_pid = getattr(ownership, "pid", None) or _own_pid()
-            multi.release_runtime_ownership(reason=report.reason)
+            report.lease_owner_pid = runtime_owner.ownership(host).lease_pid or _own_pid()
+            runtime_owner.release(host, reason=report.reason)
             report.lease_released = _lease_is_released()
         except Exception as exc:
             report.errors.append(f"release_lease: {exc}")
@@ -250,15 +250,17 @@ def _own_pid() -> int:
     return os.getpid()
 
 
-def _wait_for_idle(multi: Any, timeout_s: float) -> bool:
+def _wait_for_idle(host: Any, timeout_s: float) -> bool:
     """Wait for the scheduler loop to report it is no longer iterating."""
     import time
 
-    if multi is None:
+    from app.trading_intelligence.integration import runtime_owner
+
+    if host is None:
         return True
     deadline = time.time() + timeout_s
     while time.time() < deadline:
-        if not getattr(multi, "running", False):
+        if not runtime_owner.scheduler_running(host):
             return True
         time.sleep(0.25)
     return False

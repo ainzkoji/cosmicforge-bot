@@ -151,13 +151,14 @@ def get_effective_policy(
 
     payload = policy.to_public_dict()
 
-    # Phase 2 §28: surface whether the live runner is still on this policy.
+    # Phase 2 §28: surface whether the cached simulation runner (non-production) is still on this policy.
+    # Production builds no per-bot runner, so there it is always None.
     runner_policy_hash = None
     try:
         from app.main import runner_service
+        from app.trading_intelligence.integration import runtime_owner
 
-        multi = getattr(runner_service, "multi_runner", None)
-        cached = (getattr(multi, "_runners", {}) or {}).get(instance_id) if multi else None
+        cached = runtime_owner.simulation_runner(runtime_owner.host_of(runner_service), instance_id)
         runner_policy_hash = getattr(cached, "effective_policy_hash", None) if cached else None
     except Exception:
         runner_policy_hash = None

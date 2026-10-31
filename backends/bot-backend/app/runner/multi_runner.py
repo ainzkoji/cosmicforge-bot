@@ -63,7 +63,8 @@ class MultiBotRunner:
 
         # Runtime ownership: only the lease holder may schedule trading. The lease loop itself is CATI-side
         # (app.trading_intelligence.integration.runtime_owner_loop.RuntimeOwnerLoop, Section I Batch 7); this
-        # runner delegates to it and keeps the ownership surface app.main and app.ops read.
+        # runner delegates to it. It is the runtime-owner host only OUTSIDE production (the per-bot simulation);
+        # production uses runtime_owner.RuntimeOwnerHost, and every reader asks through runtime_owner (E-05).
         self._owner = self._new_owner_loop()
 
         # Instrument metadata is loaded only after a bot's DB-backed broker

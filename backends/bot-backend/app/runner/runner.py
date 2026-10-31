@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import asyncio
 import json
 import logging
 import threading
@@ -26,16 +25,7 @@ from shared_lib.persistence.state_store import StateStore
 from app.risk.daily_loss import DailyLossState
 from app.risk.realized_pnl import realized_pnl_from_user_trades
 from app.runner.models import SymbolState
-from app.data.multi_timeframe_fetcher import MultiTimeframeFetcher, MultiTimeframeFetchError
-from app.strategy.iofs_gate import (
-    IOFSGateEvaluator,
-    gate_result_details,
-    is_session_allowed,
-    is_symbol_allowed,
-    make_gate_failure,
-)
 from app.strategy.loader import build_strategy
-from app.strategy.hold_breakdown import build_hold_breakdown
 from app.symbols.sizing import parse_usdt_map, usdt_for
 from app.symbols.leverage import leverage_for, parse_leverage_map
 from app.symbols.universe import parse_symbols
@@ -718,12 +708,6 @@ class PaperRunner:
         # REACTION_ALLOW_RISK_INFLUENCE=False by default â€” returns (False) immediately.
         # Only activates after shadow-mode data quality is validated and flag is set.
         self.reaction_risk_gate = build_event_reaction_risk_gate(self.db)
-
-        # IOFS Gate 0 performs no exchange calls while disabled. Enforce mode is
-        # downgraded to shadow for live execution.
-        self.iofs_fetcher = MultiTimeframeFetcher(self.client)
-        self.iofs_evaluator = IOFSGateEvaluator()
-        self.last_iofs_result: dict[str, dict[str, Any]] = {}
 
         # NOTE: PositionSizer is now handled by PolicyEngine
         # NOTE: Executor and PositionManager already initialized above (lines ~161-172 and ~231)
@@ -3877,85 +3861,6 @@ class PaperRunner:
         )
         self._evidence_provenance_cache = (run_id, value)
         return value
-
-    def _effective_iofs_mode(self) -> str:
-        if not bool(getattr(settings, "IOFS_GATE_ENABLED", False)):
-            return "disabled"
-
-        mode = str(getattr(settings, "IOFS_GATE_MODE", "shadow") or "shadow").strip().lower()
-        if mode not in {"disabled", "shadow", "enforce"}:
-            logger.warning("[IOFS_GATE] Invalid mode=%s; defaulting to shadow", mode)
-            mode = "shadow"
-        if mode == "enforce" and self._effective_execution_mode() == "broker":
-            logger.warning(
-                "[IOFS_GATE] Live enforce requested; downgrading to shadow. "
-                "IOFS enforcement is paper/testnet-only."
-            )
-            return "shadow"
-        return mode
-
-    def _run_iofs_pre_ensemble(
-        self,
-        symbol: str,
-        *,
-        trace_id: str | None,
-        current_position: str = "NONE",
-    ) -> dict[str, Any]:
-        mode = self._effective_iofs_mode()
-        if mode == "disabled":
-            return {"evaluated": False, "blocked": False, "mode": "disabled"}
-
-        profile = str(getattr(settings, "IOFS_RISK_PROFILE", "balanced") or "balanced")
-        allowed_symbols = str(getattr(settings, "IOFS_ALLOWED_SYMBOLS", "BTCUSDT,ETHUSDT") or "")
-        if not is_symbol_allowed(symbol, allowed_symbols):
-            result = make_gate_failure("SYMBOL_NOT_ALLOWED", profile)
-        elif bool(getattr(settings, "IOFS_SESSION_FILTER_ENABLED", True)) and not is_session_allowed(
-            str(getattr(settings, "IOFS_SESSION_WINDOWS_UTC", "07:00-10:00,13:00-16:00"))
-        ):
-            result = make_gate_failure("OUTSIDE_SESSION", profile)
-        else:
-            try:
-                fetcher = getattr(self, "iofs_fetcher", None) or MultiTimeframeFetcher(self.client)
-                evaluator = getattr(self, "iofs_evaluator", None) or IOFSGateEvaluator()
-                self.iofs_fetcher = fetcher
-                self.iofs_evaluator = evaluator
-                candles_by_tf = asyncio.run(fetcher.fetch_all(symbol))
-                result = evaluator.evaluate(candles_by_tf, profile)
-            except MultiTimeframeFetchError as exc:
-                reason = "INVALID_CANDLES" if "invalid_candles" in str(exc) else "MISSING_TIMEFRAME"
-                result = make_gate_failure(reason, profile)
-            except Exception as exc:
-                logger.warning("[IOFS_GATE] %s evaluation failed closed: %s", symbol, exc)
-                result = make_gate_failure("INVALID_CANDLES", profile)
-
-        position_is_flat = str(current_position or "NONE").upper() not in {"LONG", "SHORT"}
-        blocked = mode == "enforce" and not result.passed and position_is_flat
-        details = gate_result_details(symbol, mode, result, blocked_trade=blocked)
-        if not hasattr(self, "last_iofs_result"):
-            self.last_iofs_result = {}
-        self.last_iofs_result[str(symbol).upper()] = details
-
-        logger.info("[IOFS_GATE] %s", json.dumps(details, sort_keys=True))
-        try:
-            self.audit.event(
-                event_type="IOFS_GATE",
-                run_id=getattr(self, "run_id", None),
-                cycle_id=getattr(self, "cycle_id", None),
-                symbol=symbol,
-                action="BLOCKED" if blocked else "EVALUATED",
-                details=details,
-                trace_id=trace_id,
-            )
-        except Exception:
-            pass
-
-        return {
-            "evaluated": True,
-            "blocked": blocked,
-            "mode": mode,
-            "result": result,
-            "details": details,
-        }
 
     # ── Broker-derived market universe ─────────────────────────────────────
 

@@ -1,15 +1,10 @@
 from __future__ import annotations
 
-import logging
 from datetime import datetime, timezone
-from types import SimpleNamespace
-from unittest.mock import MagicMock
 
 import pytest
 
 import app.strategy.iofs_gate as gate_module
-from app.core.config import settings
-from app.runner.runner import PaperRunner
 from app.strategy.iofs_components.indicators import calculate_atr
 from app.strategy.iofs_components.models import (
     Candle,
@@ -188,82 +183,10 @@ class TestSessionAndSymbols:
         assert is_symbol_allowed("SOLUSDT", allowed) is False
 
 
-class _FakeFetcher:
-    def __init__(self):
-        self.calls = 0
-
-    async def fetch_all(self, symbol):
-        self.calls += 1
-        return _all_timeframes()
-
-
-def _runner(result: IOFSGateResult, *, execution_mode: str = "paper"):
-    runner = object.__new__(PaperRunner)
-    runner.context = SimpleNamespace(execution_mode=execution_mode)
-    runner.client = MagicMock()
-    runner.audit = MagicMock()
-    runner.run_id = "run-1"
-    runner.cycle_id = "cycle-1"
-    runner.iofs_fetcher = _FakeFetcher()
-    runner.iofs_evaluator = MagicMock()
-    runner.iofs_evaluator.evaluate.return_value = result
-    runner.last_iofs_result = {}
-    return runner
-
-
 def _failed_gate() -> IOFSGateResult:
     return IOFSGateResult(
         False, "NONE", 0, "TREND_NOT_ALIGNED", None, None, None, "balanced", 72
     )
-
-
-class TestRunnerModes:
-    def test_disabled_mode_does_not_evaluate_or_change_behavior(self, monkeypatch):
-        runner = _runner(_failed_gate())
-        monkeypatch.setattr(settings, "IOFS_GATE_ENABLED", False)
-        result = runner._run_iofs_pre_ensemble("BTCUSDT", trace_id="trace", current_position="NONE")
-        assert result == {"evaluated": False, "blocked": False, "mode": "disabled"}
-        assert runner.iofs_fetcher.calls == 0
-        runner.audit.event.assert_not_called()
-
-    def test_shadow_logs_and_audits_but_does_not_block(self, monkeypatch, caplog):
-        runner = _runner(_failed_gate())
-        _enable_iofs(monkeypatch, "shadow")
-        caplog.set_level(logging.INFO, logger="app.runner.runner")
-        result = runner._run_iofs_pre_ensemble("BTCUSDT", trace_id="trace", current_position="NONE")
-        assert result["blocked"] is False
-        assert runner.iofs_fetcher.calls == 1
-        assert runner.last_iofs_result["BTCUSDT"]["reason"] == "TREND_NOT_ALIGNED"
-        runner.audit.event.assert_called_once()
-        assert runner.client.mock_calls == []
-        assert "[IOFS_GATE]" in caplog.text
-
-    # test_enforce_blocks_before_ensemble_in_paper_mode was removed (Section I Batch 7). Its claim was an
-    # ORDERING in _step_symbol_evaluate: the IOFS gate ran before the V2 ensemble/orchestrator entry. 6e0b42c
-    # removed that entry path (CATI is the sole engine): _step_symbol_evaluate no longer calls the ensemble or
-    # _run_iofs_pre_ensemble, so there is no ordering left to assert. The method's own mode handling is still
-    # covered by the tests around this comment; the method itself has no runtime caller (Batch 7 follow-up).
-
-    def test_enforce_is_downgraded_to_shadow_in_live_mode(self, monkeypatch):
-        runner = _runner(_failed_gate(), execution_mode="live")
-        _enable_iofs(monkeypatch, "enforce")
-        result = runner._run_iofs_pre_ensemble("BTCUSDT", trace_id="trace", current_position="NONE")
-        assert result["mode"] == "shadow"
-        assert result["blocked"] is False
-
-    def test_enforce_does_not_block_existing_position_management(self, monkeypatch):
-        runner = _runner(_failed_gate(), execution_mode="paper")
-        _enable_iofs(monkeypatch, "enforce")
-        result = runner._run_iofs_pre_ensemble("BTCUSDT", trace_id="trace", current_position="LONG")
-        assert result["blocked"] is False
-
-    def test_disallowed_symbol_is_skipped_by_iofs_without_fetching(self, monkeypatch):
-        runner = _runner(_failed_gate())
-        _enable_iofs(monkeypatch, "enforce")
-        result = runner._run_iofs_pre_ensemble("SOLUSDT", trace_id="trace", current_position="NONE")
-        assert result["result"].reason == "SYMBOL_NOT_ALLOWED"
-        assert result["blocked"] is True
-        assert runner.iofs_fetcher.calls == 0
 
 
 def test_logger_payload_contains_required_fields():
@@ -283,11 +206,3 @@ def test_config_defaults_are_safe():
 
     assert Settings.model_fields["IOFS_GATE_ENABLED"].default is False
     assert Settings.model_fields["IOFS_GATE_MODE"].default == "shadow"
-
-
-def _enable_iofs(monkeypatch, mode: str) -> None:
-    monkeypatch.setattr(settings, "IOFS_GATE_ENABLED", True)
-    monkeypatch.setattr(settings, "IOFS_GATE_MODE", mode)
-    monkeypatch.setattr(settings, "IOFS_RISK_PROFILE", "balanced")
-    monkeypatch.setattr(settings, "IOFS_ALLOWED_SYMBOLS", "BTCUSDT,ETHUSDT")
-    monkeypatch.setattr(settings, "IOFS_SESSION_FILTER_ENABLED", False)

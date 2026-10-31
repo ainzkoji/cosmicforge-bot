@@ -8,9 +8,11 @@ this process owns the runtime (``residual_prospective.owner_current`` reads the 
 reads ``owns_runtime`` / ``ownership_decided`` / ``ownership_reason``).
 
 In production the legacy ``MultiBotRunner.run_loop`` did only this: its ``run_once`` returns at once, because the
-V2 ``PaperRunner`` is never built there. This class is that loop, with no runner in it. ``MultiBotRunner``
-delegates to it and keeps its public surface, so ``app.main``, ``app.ops.runtime_shutdown`` (quiesce and lease
-release) and ``app.ops.runtime_supervisor`` (health) are unchanged.
+V2 ``PaperRunner`` is never built there. This class is that loop, with no runner in it. In production it is
+hosted by ``runtime_owner.RuntimeOwnerHost`` (``MultiBotRunner`` is not built there); outside production
+``MultiBotRunner`` delegates to it. The readers -- ``app.main``, ``app.api.bot_instances``,
+``app.ops.runtime_shutdown`` (quiesce and lease release) and ``app.ops.runtime_supervisor`` (health) -- ask
+through ``runtime_owner`` (E-05), so they do not depend on which host it is.
 
 Behaviour (pinned by ``tests/test_runtime_owner_loop.py``):
 

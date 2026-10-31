@@ -325,10 +325,12 @@ def observe_runtime(started_monotonic: float) -> dict[str, Any]:
     service = getattr(main_module, "runner_service", None)
     task = getattr(service, "task", None)
     obs["runner_task_alive"] = None if task is None else not task.done()
-    multi = getattr(service, "multi_runner", None)
-    obs["owns_runtime"] = bool(getattr(multi, "owns_runtime", False))
-    obs["ownership_reason"] = getattr(multi, "ownership_reason", None)
-    obs["lease_renew_failures"] = getattr(getattr(multi, "_ownership", None), "renew_failures", 0)
+    from app.trading_intelligence.integration import runtime_owner
+
+    ownership = runtime_owner.ownership(runtime_owner.host_of(service))
+    obs["owns_runtime"] = ownership.owns_runtime
+    obs["ownership_reason"] = ownership.reason
+    obs["lease_renew_failures"] = ownership.renew_failures
     production = getattr(main_module.app.state, "cati_production_task", None)
     obs["production_task_alive"] = None if production is None else not production.done()
     try:

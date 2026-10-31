@@ -687,7 +687,7 @@ async def _startup_run_manager():
     info = run_manager.start()
     print(f"[RUN] started run_id={info.run_id} mode={info.mode}")
 
-    # ✅ Auto-start the MultiBotRunner on every startup (restored post-unification audit)
+    # ✅ Auto-start the runtime owner (runner_loop) on every startup (restored post-unification audit)
     runner_service.running = True
     runner_service.task = asyncio.create_task(runner_loop())
     print("[RUNNER] Loop started automatically.")
@@ -832,9 +832,11 @@ class RunnerServiceState:
     last_error: Optional[str] = None
     task: Optional[asyncio.Task] = None
     crash_next_cycle: bool = False
-    multi_runner: Optional[Any] = (
-        None  # Avoid circular import if needed, or use Type Hint
-    )
+    # The runtime-owner host (app.trading_intelligence.integration.runtime_owner): every ownership reader asks
+    # it through that module. Production: RuntimeOwnerHost (the lease loop only). Elsewhere: the MultiBotRunner.
+    runtime_owner: Optional[Any] = None
+    # The non-production simulation runner (PaperRunner per bot); None in production.
+    multi_runner: Optional[Any] = None
 
 
 runner_service = RunnerServiceState()
@@ -944,13 +946,16 @@ def _may_run_background_jobs() -> tuple[bool, str]:
         # anything.
         return True, "PREFLIGHT_SKIPPED"
 
-    multi = getattr(runner_service, "multi_runner", None)
-    if multi is None:
+    from app.trading_intelligence.integration import runtime_owner
+
+    host = runtime_owner.host_of(runner_service)
+    if host is None:
         return False, "RUNNER_NOT_STARTED"
-    if getattr(multi, "owns_runtime", False):
+    view = runtime_owner.ownership(host)
+    if view.owns_runtime:
         return True, "RUNTIME_OWNER"
-    if getattr(multi, "ownership_decided", False):
-        return False, f"NOT_RUNTIME_OWNER:{getattr(multi, 'ownership_reason', 'UNKNOWN')}"
+    if view.decided:
+        return False, f"NOT_RUNTIME_OWNER:{view.reason if view.reason is not None else 'UNKNOWN'}"
     return False, "OWNERSHIP_PENDING"
 
 
@@ -1101,7 +1106,6 @@ def _utc_now_iso():
     return datetime.now(timezone.utc).isoformat()
 
 
-from app.runner.multi_runner import MultiBotRunner
 from app.runner.effective_policy import normalize_execution_mode
 
 # ✅ Initialize logger for debugging
@@ -1109,19 +1113,31 @@ logger = logging.getLogger(__name__)
 
 
 async def runner_loop():
-    """
-    Continuous loop that executes MultiBotRunner.
+    """Hold the runtime-ownership lease for this process (and, outside production, run the simulation).
+
+    Production: the CATI-side ``RuntimeOwnerHost`` -- the lease loop only; the legacy runner is not built.
+    Elsewhere: ``MultiBotRunner``, which runs PaperRunner per bot and holds the same lease.
     """
     # ✅ USE PRINT instead of logger to bypass logging config
-    print("[DEBUG] runner_loop() STARTING - Initializing MultiBotRunner")
+    print("[DEBUG] runner_loop() STARTING - Initializing the runtime owner")
 
     try:
-        # Initialize Multi-Bot Runner
-        runner = MultiBotRunner()
-        runner_service.multi_runner = runner
-        print("[DEBUG] runner_loop() - MultiBotRunner initialized successfully")
+        if settings.production:
+            from app.core.bot_instance_service import get_bot_instance_service
+            from app.trading_intelligence.integration.runtime_owner import RuntimeOwnerHost
 
-        # We use the internal loop of MultiBotRunner which is robust
+            # The same database the bot-instance service (and so the former runner) holds the lease on.
+            runner = RuntimeOwnerHost(get_bot_instance_service().db,
+                                      runtime_session_id=lambda: RUNTIME_SESSION_ID)
+            runner_service.multi_runner = None
+        else:
+            from app.runner.multi_runner import MultiBotRunner
+
+            runner = MultiBotRunner()
+            runner_service.multi_runner = runner
+        runner_service.runtime_owner = runner
+        print(f"[DEBUG] runner_loop() - {type(runner).__name__} initialized successfully")
+
         print("[DEBUG] runner_loop() - Calling runner.run_loop(interval_seconds=10)")
         await runner.run_loop(interval_seconds=10)
 
@@ -1813,16 +1829,17 @@ async def runner_live_stop():
 
 
 def runner_status() -> dict:
+    from app.trading_intelligence.integration import runtime_owner
+
+    multi = runtime_owner.host_of(runner_service)
     if settings.production:
-        multi = runner_service.multi_runner
         return {"running": bool(runner_service.running), "mode": "live", "engine": "CATI",
                 "strategy": settings.STRATEGY_NAME, "configuration": settings.configuration_matrix(),
-                "owns_runtime": bool(getattr(multi, "owns_runtime", False)),
+                "owns_runtime": runtime_owner.ownership(multi).owns_runtime,
                 "live_order_submission_enabled": settings.LIVE_ORDER_SUBMISSION_ENABLED,
                 "demo_order_submission_enabled": settings.DEMO_ORDER_SUBMISSION_ENABLED,
                 "broker_execution_scope": "ACCOUNT_SCOPED",
                 "legacy_instances_scheduled": False, "bots": []}
-    multi = runner_service.multi_runner
     bots = []
     db = DB(path=get_db_path())
     with db.connect() as conn:
@@ -1866,7 +1883,7 @@ def runner_status() -> dict:
             item["is_mainnet"] = broker_env in ("live", "mainnet", "production")
 
             # ── Runner initialization / policy state ──────────────────────────
-            cached = (getattr(multi, "_runners", {}) or {}).get(item["id"]) if multi else None
+            cached = runtime_owner.simulation_runner(multi, item["id"])
             item["runner_present"] = cached is not None
 
             # §13: freshness fields so an operator can tell in seconds whether
@@ -1913,7 +1930,7 @@ def runner_status() -> dict:
         # and are the authoritative values for what each bot actually does.
         "process_execution_mode": runner_service.mode,
         "multi_bot_runner_initialized": multi is not None,
-        "iteration": getattr(multi, "iteration", 0) if multi else 0,
+        "iteration": runtime_owner.iteration(multi),
         "bots": bots,
     }
 
@@ -2942,9 +2959,10 @@ async def health(request: _HealthRequest = None, ready: bool = False):
     strong_trend_guard = evaluate_strong_trend_guard(settings)
     # Read live component state, without claiming that a running worker has
     # successfully fetched fresh data. Never expose credentials/account IDs.
-    multi = getattr(runner_service, "multi_runner", None)
+    from app.trading_intelligence.integration import runtime_owner
+
     component_state = {
-        "runtime_owns_lease": bool(getattr(multi, "owns_runtime", False)),
+        "runtime_owns_lease": runtime_owner.ownership(runtime_owner.host_of(runner_service)).owns_runtime,
         "signal_scheduler_running": bool(_signal_scheduler and _signal_scheduler.running),
         **({} if settings.production else {"cati_simulation_running": bool(getattr(app.state, "cati_simulation_task", None) and not app.state.cati_simulation_task.done())}),
         "signal_scheduler_jobs": len(_signal_scheduler.get_jobs()) if _signal_scheduler else 0,

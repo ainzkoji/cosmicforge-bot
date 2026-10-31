@@ -27,7 +27,7 @@ except ImportError:
 from app.core.config import settings
 
 if TYPE_CHECKING:
-    from app.runner.runner import SymbolState
+    from app.runner.models import SymbolState
     from app.execution.executor import BinanceExecutor
     from shared_lib.persistence.audit import Audit
 
