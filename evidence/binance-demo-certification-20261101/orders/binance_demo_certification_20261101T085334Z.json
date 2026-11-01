@@ -1,0 +1,860 @@
+{
+  "checks": {
+    "ACCOUNT_ENVIRONMENT": {
+      "reason": "",
+      "status": "PASS"
+    },
+    "ACCOUNT_STATE": {
+      "reason": "",
+      "status": "PASS"
+    },
+    "CANCEL": {
+      "reason": "",
+      "status": "PASS"
+    },
+    "CANCEL_OBSOLETE_PROTECTION": {
+      "reason": "",
+      "status": "PASS"
+    },
+    "CLOCK_DRIFT": {
+      "reason": "",
+      "status": "PASS"
+    },
+    "CLOSE_POSITION": {
+      "reason": "",
+      "status": "PASS"
+    },
+    "CONNECTION_INTERRUPTION": {
+      "reason": "",
+      "status": "PASS"
+    },
+    "ENTRY_FILL": {
+      "reason": "",
+      "status": "PASS"
+    },
+    "ENTRY_SUBMIT": {
+      "reason": "",
+      "status": "PASS"
+    },
+    "FINAL_ACCOUNT_STATE": {
+      "reason": "",
+      "status": "PASS"
+    },
+    "FLATTEN": {
+      "reason": "",
+      "status": "PASS"
+    },
+    "IDEMPOTENT_REPEAT": {
+      "reason": "",
+      "status": "PASS"
+    },
+    "INSTRUMENT_RULES": {
+      "reason": "",
+      "status": "PASS"
+    },
+    "LEVERAGE_AND_MODE": {
+      "reason": "",
+      "status": "PASS"
+    },
+    "LOST_ACKNOWLEDGMENT": {
+      "reason": "",
+      "status": "PASS"
+    },
+    "MANUAL_POSITION_CHANGE": {
+      "reason": "",
+      "status": "PASS"
+    },
+    "ORDER_LOOKUP": {
+      "reason": "",
+      "status": "PASS"
+    },
+    "PROTECTION_CREATE": {
+      "reason": "",
+      "status": "PASS"
+    },
+    "PROTECTION_GEOMETRY": {
+      "reason": "",
+      "status": "PASS"
+    },
+    "PROTECTION_READ_BACK": {
+      "reason": "",
+      "status": "PASS"
+    },
+    "PROTECTION_REPLACE": {
+      "reason": "",
+      "status": "PASS"
+    },
+    "RATE_LIMIT": {
+      "reason": "",
+      "status": "PASS"
+    },
+    "RATE_LIMIT_OBSERVATION": {
+      "reason": "",
+      "status": "PASS"
+    },
+    "RECONCILIATION": {
+      "reason": "",
+      "status": "PASS"
+    },
+    "RESTART_WITH_PROTECTED_POSITION": {
+      "reason": "",
+      "status": "PASS"
+    },
+    "TEST_SCOPE": {
+      "reason": "",
+      "status": "PASS"
+    },
+    "TIME_SYNC": {
+      "reason": "",
+      "status": "PASS"
+    },
+    "UNKNOWN_SUBMIT_RECONCILE": {
+      "reason": "",
+      "status": "PASS"
+    },
+    "USER_STREAM_SPEC": {
+      "reason": "",
+      "status": "PASS"
+    },
+    "VENUE_REJECTION": {
+      "reason": "",
+      "status": "PASS"
+    }
+  },
+  "cleanup_complete": true,
+  "environment": "DEMO",
+  "failure_reasons": [],
+  "mocked_transport": false,
+  "operations": [
+    "CANCEL",
+    "CLOSE",
+    "ENTRY",
+    "PROTECTIVE_STOP",
+    "STOP_REPLACEMENT",
+    "USER_STREAM"
+  ],
+  "outcome": "PASSED",
+  "permit": {
+    "account_ref": "brk_c729454e6c98",
+    "allow_orders": true,
+    "authorized_scope": "Binance DEMO order lifecycle certification on brk_c729454e6c98: ADAUSDT, leverage 1, max notional 60 USDT, flat before and after",
+    "environment": "DEMO",
+    "expires_at_ms": 1793526733918,
+    "issued_at_ms": 1793523133918,
+    "leverage": 1,
+    "max_notional": 60.0,
+    "operator_ref": "claude-code-opus-5.5 for owner CosmicforgeHealthnet",
+    "owner_authorization_ref": "Owner written brief TRADINGBOT DEMO ACTIVATION 2026-11-01 section 5 (bounded operator-authorized DEMO order lifecycle)",
+    "symbol": "ADAUSDT",
+    "venue": "binance"
+  },
+  "recorded_status": "CERTIFIED",
+  "register": {
+    "actions": [
+      {
+        "action": "SET_LEVERAGE",
+        "client_order_id": null,
+        "document": "{\"leverage\": 1}",
+        "outcome": null,
+        "phase": "INTENT",
+        "recorded_at": 1793523139678,
+        "run_id": "cert_6852df804410b16bee8ad4d1",
+        "seq": 1,
+        "symbol": "ADAUSDT"
+      },
+      {
+        "action": "SET_LEVERAGE",
+        "client_order_id": null,
+        "document": "{\"result\": 1}",
+        "outcome": "ANSWERED",
+        "phase": "OUTCOME",
+        "recorded_at": 1793523140028,
+        "run_id": "cert_6852df804410b16bee8ad4d1",
+        "seq": 2,
+        "symbol": "ADAUSDT"
+      },
+      {
+        "action": "PLACE_ORDER",
+        "client_order_id": "certa81da5d9f001",
+        "document": "{\"order_type\": \"MARKET\", \"price\": null, \"quantity\": 28.0, \"reduce_only\": true, \"side\": \"SELL\", \"stop_price\": null}",
+        "outcome": null,
+        "phase": "INTENT",
+        "recorded_at": 1793523140104,
+        "run_id": "cert_6852df804410b16bee8ad4d1",
+        "seq": 3,
+        "symbol": "ADAUSDT"
+      },
+      {
+        "action": "PLACE_ORDER",
+        "client_order_id": "certa81da5d9f001",
+        "document": "{\"banned_until_ms\": null, \"code\": \"REDUCE_ONLY_REJECTED\", \"http_status\": 400, \"retry_after_s\": null, \"retryable\": false, \"uncertain\": false, \"venue_code\": \"-2022\"}",
+        "outcome": "REFUSED",
+        "phase": "OUTCOME",
+        "recorded_at": 1793523140873,
+        "run_id": "cert_6852df804410b16bee8ad4d1",
+        "seq": 4,
+        "symbol": "ADAUSDT"
+      },
+      {
+        "action": "PLACE_ORDER",
+        "client_order_id": "certa81da5d9f002",
+        "document": "{\"order_type\": \"MARKET\", \"price\": null, \"quantity\": 56.0, \"reduce_only\": false, \"side\": \"BUY\", \"stop_price\": null}",
+        "outcome": null,
+        "phase": "INTENT",
+        "recorded_at": 1793523141293,
+        "run_id": "cert_6852df804410b16bee8ad4d1",
+        "seq": 5,
+        "symbol": "ADAUSDT"
+      },
+      {
+        "action": "PLACE_ORDER",
+        "client_order_id": "certa81da5d9f002",
+        "document": "{\"status\": \"FILLED\", \"venue_order_id\": \"1333417962\"}",
+        "outcome": "ANSWERED",
+        "phase": "OUTCOME",
+        "recorded_at": 1793523142034,
+        "run_id": "cert_6852df804410b16bee8ad4d1",
+        "seq": 6,
+        "symbol": "ADAUSDT"
+      },
+      {
+        "action": "PLACE_ORDER",
+        "client_order_id": "certa81da5d9f002",
+        "document": "{\"order_type\": \"MARKET\", \"price\": null, \"quantity\": 56.0, \"reduce_only\": false, \"side\": \"BUY\", \"stop_price\": null}",
+        "outcome": null,
+        "phase": "INTENT",
+        "recorded_at": 1793523144079,
+        "run_id": "cert_6852df804410b16bee8ad4d1",
+        "seq": 7,
+        "symbol": "ADAUSDT"
+      },
+      {
+        "action": "PLACE_ORDER",
+        "client_order_id": "certa81da5d9f002",
+        "document": "{\"status\": \"FILLED\", \"venue_order_id\": \"1333417962\"}",
+        "outcome": "ANSWERED",
+        "phase": "OUTCOME",
+        "recorded_at": 1793523144428,
+        "run_id": "cert_6852df804410b16bee8ad4d1",
+        "seq": 8,
+        "symbol": "ADAUSDT"
+      },
+      {
+        "action": "PLACE_ORDER",
+        "client_order_id": "certa81da5d9f003",
+        "document": "{\"order_type\": \"STOP_MARKET\", \"price\": null, \"quantity\": 56.0, \"reduce_only\": true, \"side\": \"SELL\", \"stop_price\": 0.1841}",
+        "outcome": null,
+        "phase": "INTENT",
+        "recorded_at": 1793523145178,
+        "run_id": "cert_6852df804410b16bee8ad4d1",
+        "seq": 9,
+        "symbol": "ADAUSDT"
+      },
+      {
+        "action": "PLACE_ORDER",
+        "client_order_id": "certa81da5d9f003",
+        "document": "{\"status\": \"NEW\", \"venue_order_id\": \"algo:1000000268023071\"}",
+        "outcome": "ANSWERED",
+        "phase": "OUTCOME",
+        "recorded_at": 1793523146490,
+        "run_id": "cert_6852df804410b16bee8ad4d1",
+        "seq": 10,
+        "symbol": "ADAUSDT"
+      },
+      {
+        "action": "PLACE_ORDER",
+        "client_order_id": "certa81da5d9f004",
+        "document": "{\"order_type\": \"STOP_MARKET\", \"price\": null, \"quantity\": 56.0, \"reduce_only\": true, \"side\": \"SELL\", \"stop_price\": 0.1889}",
+        "outcome": null,
+        "phase": "INTENT",
+        "recorded_at": 1793523149212,
+        "run_id": "cert_6852df804410b16bee8ad4d1",
+        "seq": 11,
+        "symbol": "ADAUSDT"
+      },
+      {
+        "action": "PLACE_ORDER",
+        "client_order_id": "certa81da5d9f004",
+        "document": "{\"status\": \"NEW\", \"venue_order_id\": \"algo:1000000268023160\"}",
+        "outcome": "ANSWERED",
+        "phase": "OUTCOME",
+        "recorded_at": 1793523150522,
+        "run_id": "cert_6852df804410b16bee8ad4d1",
+        "seq": 12,
+        "symbol": "ADAUSDT"
+      },
+      {
+        "action": "CANCEL_ORDER",
+        "client_order_id": "certa81da5d9f003",
+        "document": "{}",
+        "outcome": null,
+        "phase": "INTENT",
+        "recorded_at": 1793523150552,
+        "run_id": "cert_6852df804410b16bee8ad4d1",
+        "seq": 13,
+        "symbol": "ADAUSDT"
+      },
+      {
+        "action": "CANCEL_ORDER",
+        "client_order_id": "certa81da5d9f003",
+        "document": "{\"status\": \"CANCELED\", \"venue_order_id\": \"algo:1000000268023071\"}",
+        "outcome": "ANSWERED",
+        "phase": "OUTCOME",
+        "recorded_at": 1793523152403,
+        "run_id": "cert_6852df804410b16bee8ad4d1",
+        "seq": 14,
+        "symbol": "ADAUSDT"
+      },
+      {
+        "action": "PLACE_ORDER",
+        "client_order_id": "certa81da5d9f006",
+        "document": "{\"order_type\": \"LIMIT\", \"price\": 0.184, \"quantity\": 28.0, \"reduce_only\": false, \"side\": \"BUY\", \"stop_price\": null}",
+        "outcome": null,
+        "phase": "INTENT",
+        "recorded_at": 1793523155770,
+        "run_id": "cert_6852df804410b16bee8ad4d1",
+        "seq": 15,
+        "symbol": "ADAUSDT"
+      },
+      {
+        "action": "PLACE_ORDER",
+        "client_order_id": "certa81da5d9f006",
+        "document": "{\"status\": \"NEW\", \"venue_order_id\": \"1333418049\"}",
+        "outcome": "ANSWERED",
+        "phase": "OUTCOME",
+        "recorded_at": 1793523156496,
+        "run_id": "cert_6852df804410b16bee8ad4d1",
+        "seq": 16,
+        "symbol": "ADAUSDT"
+      },
+      {
+        "action": "CANCEL_ORDER",
+        "client_order_id": "certa81da5d9f006",
+        "document": "{}",
+        "outcome": null,
+        "phase": "INTENT",
+        "recorded_at": 1793523156531,
+        "run_id": "cert_6852df804410b16bee8ad4d1",
+        "seq": 17,
+        "symbol": "ADAUSDT"
+      },
+      {
+        "action": "CANCEL_ORDER",
+        "client_order_id": "certa81da5d9f006",
+        "document": "{\"status\": \"CANCELED\", \"venue_order_id\": \"1333418049\"}",
+        "outcome": "ANSWERED",
+        "phase": "OUTCOME",
+        "recorded_at": 1793523157237,
+        "run_id": "cert_6852df804410b16bee8ad4d1",
+        "seq": 18,
+        "symbol": "ADAUSDT"
+      },
+      {
+        "action": "CANCEL_ORDER",
+        "client_order_id": "certa81da5d9f006",
+        "document": "{}",
+        "outcome": null,
+        "phase": "INTENT",
+        "recorded_at": 1793523158173,
+        "run_id": "cert_6852df804410b16bee8ad4d1",
+        "seq": 19,
+        "symbol": "ADAUSDT"
+      },
+      {
+        "action": "CANCEL_ORDER",
+        "client_order_id": "certa81da5d9f006",
+        "document": "{\"status\": \"CANCELED\", \"venue_order_id\": \"1333418049\"}",
+        "outcome": "ANSWERED",
+        "phase": "OUTCOME",
+        "recorded_at": 1793523158519,
+        "run_id": "cert_6852df804410b16bee8ad4d1",
+        "seq": 20,
+        "symbol": "ADAUSDT"
+      },
+      {
+        "action": "PLACE_ORDER",
+        "client_order_id": "certa81da5d9f007",
+        "document": "{\"order_type\": \"LIMIT\", \"price\": 0.184, \"quantity\": 28.0, \"reduce_only\": false, \"side\": \"BUY\", \"stop_price\": null}",
+        "outcome": null,
+        "phase": "INTENT",
+        "recorded_at": 1793523159230,
+        "run_id": "cert_6852df804410b16bee8ad4d1",
+        "seq": 21,
+        "symbol": "ADAUSDT"
+      },
+      {
+        "action": "PLACE_ORDER",
+        "client_order_id": "certa81da5d9f007",
+        "document": "{\"banned_until_ms\": null, \"code\": \"NETWORK_UNCERTAIN\", \"http_status\": null, \"retry_after_s\": null, \"retryable\": false, \"uncertain\": true, \"venue_code\": null}",
+        "outcome": "UNCERTAIN",
+        "phase": "OUTCOME",
+        "recorded_at": 1793523159918,
+        "run_id": "cert_6852df804410b16bee8ad4d1",
+        "seq": 22,
+        "symbol": "ADAUSDT"
+      },
+      {
+        "action": "CANCEL_ORDER",
+        "client_order_id": "certa81da5d9f007",
+        "document": "{}",
+        "outcome": null,
+        "phase": "INTENT",
+        "recorded_at": 1793523160298,
+        "run_id": "cert_6852df804410b16bee8ad4d1",
+        "seq": 23,
+        "symbol": "ADAUSDT"
+      },
+      {
+        "action": "CANCEL_ORDER",
+        "client_order_id": "certa81da5d9f007",
+        "document": "{\"status\": \"CANCELED\", \"venue_order_id\": \"1333418058\"}",
+        "outcome": "ANSWERED",
+        "phase": "OUTCOME",
+        "recorded_at": 1793523161043,
+        "run_id": "cert_6852df804410b16bee8ad4d1",
+        "seq": 24,
+        "symbol": "ADAUSDT"
+      },
+      {
+        "action": "PLACE_ORDER",
+        "client_order_id": "certa81da5d9f008",
+        "document": "{\"order_type\": \"LIMIT\", \"price\": 0.184, \"quantity\": 28.0, \"reduce_only\": false, \"side\": \"BUY\", \"stop_price\": null}",
+        "outcome": null,
+        "phase": "INTENT",
+        "recorded_at": 1793523161804,
+        "run_id": "cert_6852df804410b16bee8ad4d1",
+        "seq": 25,
+        "symbol": "ADAUSDT"
+      },
+      {
+        "action": "PLACE_ORDER",
+        "client_order_id": "certa81da5d9f008",
+        "document": "{\"banned_until_ms\": null, \"code\": \"VENUE_UNAVAILABLE\", \"http_status\": null, \"retry_after_s\": null, \"retryable\": true, \"uncertain\": false, \"venue_code\": null}",
+        "outcome": "REFUSED",
+        "phase": "OUTCOME",
+        "recorded_at": 1793523161881,
+        "run_id": "cert_6852df804410b16bee8ad4d1",
+        "seq": 26,
+        "symbol": "ADAUSDT"
+      },
+      {
+        "action": "EXTERNAL_REDUCE",
+        "client_order_id": null,
+        "document": "{\"external_client_order_id\": \"certa81da5d9f009\", \"quantity\": 28.0, \"reduce_only\": true}",
+        "outcome": null,
+        "phase": "INTENT",
+        "recorded_at": 1793523171206,
+        "run_id": "cert_6852df804410b16bee8ad4d1",
+        "seq": 27,
+        "symbol": "ADAUSDT"
+      },
+      {
+        "action": "EXTERNAL_REDUCE",
+        "client_order_id": null,
+        "document": "{\"status\": \"FILLED\", \"venue_order_id\": \"1333418126\"}",
+        "outcome": "ANSWERED",
+        "phase": "OUTCOME",
+        "recorded_at": 1793523172011,
+        "run_id": "cert_6852df804410b16bee8ad4d1",
+        "seq": 28,
+        "symbol": "ADAUSDT"
+      },
+      {
+        "action": "PLACE_ORDER",
+        "client_order_id": "certa81da5d9f010",
+        "document": "{\"order_type\": \"MARKET\", \"price\": null, \"quantity\": 28.0, \"reduce_only\": true, \"side\": \"SELL\", \"stop_price\": null}",
+        "outcome": null,
+        "phase": "INTENT",
+        "recorded_at": 1793523173318,
+        "run_id": "cert_6852df804410b16bee8ad4d1",
+        "seq": 29,
+        "symbol": "ADAUSDT"
+      },
+      {
+        "action": "PLACE_ORDER",
+        "client_order_id": "certa81da5d9f010",
+        "document": "{\"status\": \"FILLED\", \"venue_order_id\": \"1333418135\"}",
+        "outcome": "ANSWERED",
+        "phase": "OUTCOME",
+        "recorded_at": 1793523174017,
+        "run_id": "cert_6852df804410b16bee8ad4d1",
+        "seq": 30,
+        "symbol": "ADAUSDT"
+      },
+      {
+        "action": "CANCEL_ORDER",
+        "client_order_id": "certa81da5d9f004",
+        "document": "{}",
+        "outcome": null,
+        "phase": "INTENT",
+        "recorded_at": 1793523175380,
+        "run_id": "cert_6852df804410b16bee8ad4d1",
+        "seq": 31,
+        "symbol": "ADAUSDT"
+      },
+      {
+        "action": "CANCEL_ORDER",
+        "client_order_id": "certa81da5d9f004",
+        "document": "{\"status\": \"CANCELED\", \"venue_order_id\": \"algo:1000000268023160\"}",
+        "outcome": "ANSWERED",
+        "phase": "OUTCOME",
+        "recorded_at": 1793523177002,
+        "run_id": "cert_6852df804410b16bee8ad4d1",
+        "seq": 32,
+        "symbol": "ADAUSDT"
+      }
+    ],
+    "checks": [
+      {
+        "check_id": "ACCOUNT_ENVIRONMENT",
+        "completed_at": 1793523136047,
+        "evidence": "{\"account_ref\": \"brk_c729454e6c98\", \"adapter_version\": \"binance-usdm-1.2.0\", \"capabilities\": {\"client_order_id_max_length\": 36, \"close_position_stop\": true, \"demo_environment\": true, \"environment\": \"DEMO\", \"hedge_mode\": false, \"multiple_stops_per_position\": true, \"native_stop_market\": true, \"native_take_profit\": true, \"notes\": [\"stops are conditional (algo) orders; venue_order_id is written algo:<algoId>\", \"a stop is either bound to the whole position (closePosition) or reduce-only with its own quantity\", \"a second closePosition stop of the same kind and side is refused by the venue (-4130); reduce-only stops with a quantity may rest beside it (doc: up to 10 conditional orders per symbol), which is the create-confirm-retire replacement. DOC-ONLY until a venue certification run confirms it\", \"an untriggered conditional order cannot be modified (doc, 2025-11-06 change log): no amend in place\", \"a conditional order that is no longer open is read with Query Algo Order; one that fired reports the state of the order it created (UNKNOWN while triggering)\", \"UNVERIFIED: the -4130 refusal of a second closePosition stop is no longer in the published error list\", \"UNVERIFIED: open_orders() without a symbol lists conditional orders through a request the raw client never sends\", \"hedge mode is not carried: orders are sent for a one-way account\", \"private user stream uses the routed /private/ws/<listenKey> path (doc); on the demo host that route is UNVERIFIED and venue certification remains separately required\", \"the raw client itself repeats a rate-limited READ within a small bounded sleep budget; mutations never\"], \"one_way_mode\": true, \"position_stop_endpoint\": false, \"quantity_stop\": true, \"reduce_only\": true, \"stop_amend_in_place\": false, \"stop_client_order_id\": true, \"user_stream\": true, \"venue\": \"binance\"}, \"contract_version\": \"1.0.0\", \"environment\": \"DEMO\", \"venue\": \"binance\"}",
+        "evidence_hash": "93708217a26d25083397152fc75dcc97c060475d550a6eaede05478be45a261b",
+        "reason": "",
+        "run_id": "cert_6852df804410b16bee8ad4d1",
+        "started_at": 1793523136046,
+        "status": "PASS"
+      },
+      {
+        "check_id": "TIME_SYNC",
+        "completed_at": 1793523136496,
+        "evidence": "{\"limit_ms\": 1000, \"offset_ms\": -619}",
+        "evidence_hash": "9319f54f1105cbdd994a57c0f106c8c62f15eec30beec99a92aaf20e9c2d5ef0",
+        "reason": "",
+        "run_id": "cert_6852df804410b16bee8ad4d1",
+        "started_at": 1793523136088,
+        "status": "PASS"
+      },
+      {
+        "check_id": "INSTRUMENT_RULES",
+        "completed_at": 1793523137187,
+        "evidence": "{\"base_asset\": \"ADA\", \"contract_size\": 1.0, \"environment\": \"DEMO\", \"margin_asset\": \"USDT\", \"market_max_quantity\": 10000000.0, \"max_leverage\": null, \"max_quantity\": 10000000.0, \"min_notional\": 5.0, \"min_quantity\": 1.0, \"price_tick\": 0.0001, \"quantity_step\": 1.0, \"quote_asset\": \"USDT\", \"rules_hash\": \"ecdf5cb768a66a209dbf9aab8ce28e46308b7502101281ec9639c602821211b6\", \"status\": \"TRADING\", \"symbol\": \"ADAUSDT\", \"venue\": \"binance\", \"venue_status\": \"TRADING\", \"venue_symbol\": \"ADAUSDT\"}",
+        "evidence_hash": "99cc03ef681cae27fa1f614acef7fc56b210f4b07d6946113b49340685ab9ed0",
+        "reason": "",
+        "run_id": "cert_6852df804410b16bee8ad4d1",
+        "started_at": 1793523136556,
+        "status": "PASS"
+      },
+      {
+        "check_id": "ACCOUNT_STATE",
+        "completed_at": 1793523138544,
+        "evidence": "{\"available_balance\": 417.57574278, \"margin_asset\": \"USDT\", \"open_orders_on_symbol\": 0, \"position_mode\": null, \"position_quantity\": 0.0, \"position_side\": \"FLAT\", \"wallet_balance\": 417.57574278}",
+        "evidence_hash": "8d57ea30d612d01f3e2d9f78957ba76d14e73970aa76a043a621506ee64a6bc4",
+        "reason": "",
+        "run_id": "cert_6852df804410b16bee8ad4d1",
+        "started_at": 1793523137224,
+        "status": "PASS"
+      },
+      {
+        "check_id": "RATE_LIMIT_OBSERVATION",
+        "completed_at": 1793523138590,
+        "evidence": "{\"banned_until_ms\": null, \"limit\": null, \"observed_at_ms\": 1793523138590, \"retry_after_s\": null, \"scope\": \"IP\", \"used_weight\": 16.0, \"venue\": \"binance\", \"window_seconds\": 60}",
+        "evidence_hash": "912407452cd4bf5ca09ec222d87387523cb9a93730391171fcea9485e6cc69db",
+        "reason": "",
+        "run_id": "cert_6852df804410b16bee8ad4d1",
+        "started_at": 1793523138590,
+        "status": "PASS"
+      },
+      {
+        "check_id": "USER_STREAM_SPEC",
+        "completed_at": 1793523138943,
+        "evidence": "{\"auth_mode\": \"LISTEN_KEY_IN_URL\", \"expires_after_seconds\": 3600, \"keepalive_seconds\": 1800, \"subscribe_frames\": 0}",
+        "evidence_hash": "71603f1c6ac49eb7edf75615f4a0bbc7957862c326ae692cc026e91f2b7ddf37",
+        "reason": "",
+        "run_id": "cert_6852df804410b16bee8ad4d1",
+        "started_at": 1793523138629,
+        "status": "PASS"
+      },
+      {
+        "check_id": "TEST_SCOPE",
+        "completed_at": 1793523139293,
+        "evidence": "{\"entry_notional\": 10.8472, \"entry_quantity\": 56.0, \"permit_max_notional\": 60.0, \"reference_price\": 0.1937, \"unit_quantity\": 28.0}",
+        "evidence_hash": "8188801969ceb6758da76332182f29d61bacf53457ff49a9c93a9bb6f3628155",
+        "reason": "",
+        "run_id": "cert_6852df804410b16bee8ad4d1",
+        "started_at": 1793523138981,
+        "status": "PASS"
+      },
+      {
+        "check_id": "LEVERAGE_AND_MODE",
+        "completed_at": 1793523140065,
+        "evidence": "{\"leverage\": 1}",
+        "evidence_hash": "666e1b000d34b979c422544d53777684e1f72eec07f6d0f96e39b30e72f1a238",
+        "reason": "",
+        "run_id": "cert_6852df804410b16bee8ad4d1",
+        "started_at": 1793523139328,
+        "status": "PASS"
+      },
+      {
+        "check_id": "VENUE_REJECTION",
+        "completed_at": 1793523140910,
+        "evidence": "{\"banned_until_ms\": null, \"code\": \"REDUCE_ONLY_REJECTED\", \"http_status\": 400, \"refused_with\": \"REDUCE_ONLY_REJECTED\", \"retry_after_s\": null, \"retryable\": false, \"uncertain\": false, \"venue_code\": \"-2022\"}",
+        "evidence_hash": "28a0669ef57c15b455fe784887fd313161a76f4c7bb74cb16634fe77d6719bc5",
+        "reason": "",
+        "run_id": "cert_6852df804410b16bee8ad4d1",
+        "started_at": 1793523140101,
+        "status": "PASS"
+      },
+      {
+        "check_id": "ENTRY_SUBMIT",
+        "completed_at": 1793523142063,
+        "evidence": "{\"client_order_id\": \"certa81da5d9f002\", \"quantity\": 56.0, \"status\": \"FILLED\", \"venue_order_id\": \"1333417962\"}",
+        "evidence_hash": "bffa5d7a5be30059fb07142efb1525a2b978321e138b59f7ef077ecfc71e32fa",
+        "reason": "",
+        "run_id": "cert_6852df804410b16bee8ad4d1",
+        "started_at": 1793523140979,
+        "status": "PASS"
+      },
+      {
+        "check_id": "ORDER_LOOKUP",
+        "completed_at": 1793523142722,
+        "evidence": "{\"by_client_order_id\": \"FILLED\", \"by_venue_order_id\": \"FILLED\"}",
+        "evidence_hash": "40398ce6d929b1c7db70754108229dd0b6e8217d5b54e57c2f64c4e85127f828",
+        "reason": "",
+        "run_id": "cert_6852df804410b16bee8ad4d1",
+        "started_at": 1793523142091,
+        "status": "PASS"
+      },
+      {
+        "check_id": "ENTRY_FILL",
+        "completed_at": 1793523143726,
+        "evidence": "{\"average_price\": 0.1937, \"filled_quantity\": 56.0, \"partial\": false, \"position_quantity\": 56.0, \"position_side\": \"LONG\", \"status\": \"FILLED\", \"trade_ids\": [\"86516737\"]}",
+        "evidence_hash": "ad40672d806f785355f086f2f6ba447d4351885cb6c493c8563cf1c3b8a58c63",
+        "reason": "",
+        "run_id": "cert_6852df804410b16bee8ad4d1",
+        "started_at": 1793523142759,
+        "status": "PASS"
+      },
+      {
+        "check_id": "IDEMPOTENT_REPEAT",
+        "completed_at": 1793523144768,
+        "evidence": "{\"outcome\": \"RETURNED_THE_EXISTING_ORDER\", \"position_quantity\": 56.0}",
+        "evidence_hash": "c9ff2cd2593a4480312b3f41b8b033884c2e062bc35ffc834b7a9bcc9d4701a5",
+        "reason": "",
+        "run_id": "cert_6852df804410b16bee8ad4d1",
+        "started_at": 1793523143764,
+        "status": "PASS"
+      },
+      {
+        "check_id": "PROTECTION_CREATE",
+        "completed_at": 1793523146522,
+        "evidence": "{\"client_order_id\": \"certa81da5d9f003\", \"quantity\": 56.0, \"status\": \"NEW\", \"stop_price\": 0.1841}",
+        "evidence_hash": "0d370c9a63959673fa3ebfb7d1790c3b63e8690df840758f2e0bf0fdbee728b8",
+        "reason": "",
+        "run_id": "cert_6852df804410b16bee8ad4d1",
+        "started_at": 1793523144805,
+        "status": "PASS"
+      },
+      {
+        "check_id": "PROTECTION_READ_BACK",
+        "completed_at": 1793523148449,
+        "evidence": "{\"status\": \"NEW\", \"venue_order_id\": \"algo:1000000268023071\"}",
+        "evidence_hash": "1bb33c1faaa990bf4780659de83304dc45649b5a75f4361779d3ebfc6ba77b26",
+        "reason": "",
+        "run_id": "cert_6852df804410b16bee8ad4d1",
+        "started_at": 1793523146554,
+        "status": "PASS"
+      },
+      {
+        "check_id": "PROTECTION_GEOMETRY",
+        "completed_at": 1793523148870,
+        "evidence": "{\"close_position\": false, \"entry_price\": 0.1937, \"mark_price\": 0.1937, \"order_type\": \"STOP_MARKET\", \"position_quantity\": 56.0, \"quantity\": 56.0, \"reduce_only\": true, \"requested_stop_price\": 0.1841, \"side\": \"SELL\", \"stop_price\": 0.1841}",
+        "evidence_hash": "eecac50845355a0b33dda61caa50c3c97be50f8180447d24b5d5120dcb3af95f",
+        "reason": "",
+        "run_id": "cert_6852df804410b16bee8ad4d1",
+        "started_at": 1793523148524,
+        "status": "PASS"
+      },
+      {
+        "check_id": "PROTECTION_REPLACE",
+        "completed_at": 1793523153780,
+        "evidence": "{\"method\": \"CREATE_THEN_CANCEL\", \"protective_stops_open\": 1, \"requested_stop_price\": 0.1889, \"stop_price\": 0.1889, \"unprotected_between\": false}",
+        "evidence_hash": "284f9f7c180a73b16f0ca29d07562df03b38693c8809404f3a1e19c5e7c31e1b",
+        "reason": "",
+        "run_id": "cert_6852df804410b16bee8ad4d1",
+        "started_at": 1793523148898,
+        "status": "PASS"
+      },
+      {
+        "check_id": "UNKNOWN_SUBMIT_RECONCILE",
+        "completed_at": 1793523155083,
+        "evidence": "{\"order_never_sent\": \"ORDER_NOT_FOUND\", \"order_sent\": \"FILLED\"}",
+        "evidence_hash": "bdf886e126be87f9a1bb32034fddd31d32c5012a182b8b8a53ff7d5e6a3ae187",
+        "reason": "",
+        "run_id": "cert_6852df804410b16bee8ad4d1",
+        "started_at": 1793523153811,
+        "status": "PASS"
+      },
+      {
+        "check_id": "CANCEL",
+        "completed_at": 1793523158555,
+        "evidence": "{\"filled\": 0.0, \"repeated_cancel\": \"CANCELED\", \"status_after_cancel\": \"CANCELED\", \"still_listed\": false}",
+        "evidence_hash": "8d373974676195485a1cfef11ca5461f79a3b7b7e53c185b005633525b90cda2",
+        "reason": "",
+        "run_id": "cert_6852df804410b16bee8ad4d1",
+        "started_at": 1793523155119,
+        "status": "PASS"
+      },
+      {
+        "check_id": "LOST_ACKNOWLEDGMENT",
+        "completed_at": 1793523161077,
+        "evidence": "{\"recovered_as\": \"NEW\", \"reported\": \"NETWORK_UNCERTAIN\", \"resent\": false}",
+        "evidence_hash": "2da1d7a079bad294ec65dfbf6c77cdca88b07cf9ff8b1e4beb69c1292bd93558",
+        "reason": "",
+        "run_id": "cert_6852df804410b16bee8ad4d1",
+        "started_at": 1793523158594,
+        "status": "PASS"
+      },
+      {
+        "check_id": "CONNECTION_INTERRUPTION",
+        "completed_at": 1793523163183,
+        "evidence": "{\"recovered_offset_ms\": -556, \"reported\": \"VENUE_UNAVAILABLE\", \"settled_as\": \"NOT_ACCEPTED\"}",
+        "evidence_hash": "7289bb465a8dab809f71808f7ee3bec93c2ccf8e1d6e85ccca49f9159ce17d82",
+        "reason": "",
+        "run_id": "cert_6852df804410b16bee8ad4d1",
+        "started_at": 1793523161114,
+        "status": "PASS"
+      },
+      {
+        "check_id": "RATE_LIMIT",
+        "completed_at": 1793523165290,
+        "evidence": "{\"banned_until_ms\": null, \"code\": \"RATE_LIMITED\", \"http_status\": 429, \"retry_after_s\": 2.0, \"retryable\": true, \"uncertain\": false, \"venue_code\": null, \"waited_s\": 2.0}",
+        "evidence_hash": "97c3e7421a842f9abccf4f4c0048d42758904932e227dcbd14e7c7596405610a",
+        "reason": "",
+        "run_id": "cert_6852df804410b16bee8ad4d1",
+        "started_at": 1793523163218,
+        "status": "PASS"
+      },
+      {
+        "check_id": "CLOCK_DRIFT",
+        "completed_at": 1793523166713,
+        "evidence": "{\"recovered\": true, \"reported\": \"TIMESTAMP_OUT_OF_SYNC\", \"skew_ms\": 60000}",
+        "evidence_hash": "b1c3c06fc49e819fb978dbbafb4870268164065016828dcc22e701059be39205",
+        "reason": "",
+        "run_id": "cert_6852df804410b16bee8ad4d1",
+        "started_at": 1793523165444,
+        "status": "PASS"
+      },
+      {
+        "check_id": "RESTART_WITH_PROTECTED_POSITION",
+        "completed_at": 1793523169282,
+        "evidence": "{\"position_quantity\": 56.0, \"position_side\": \"LONG\", \"stop_price\": 0.1889, \"stop_status\": \"NEW\"}",
+        "evidence_hash": "e4d4fec38f530371f1154f9f0469e9800e518722111af95f0d9a161ab2cbff20",
+        "reason": "",
+        "run_id": "cert_6852df804410b16bee8ad4d1",
+        "started_at": 1793523166741,
+        "status": "PASS"
+      },
+      {
+        "check_id": "MANUAL_POSITION_CHANGE",
+        "completed_at": 1793523172969,
+        "evidence": "{\"quantity_at_venue\": 28.0, \"quantity_before\": 56.0, \"reduced_by\": 28.0, \"stop_quantity\": 56.0, \"stop_status\": \"NEW\"}",
+        "evidence_hash": "7e73ca689c10b22cdc84efaf2b9739dac1f60efacf7ac09b517900e4a3e0489e",
+        "reason": "",
+        "run_id": "cert_6852df804410b16bee8ad4d1",
+        "started_at": 1793523169317,
+        "status": "PASS"
+      },
+      {
+        "check_id": "CLOSE_POSITION",
+        "completed_at": 1793523174676,
+        "evidence": "{\"closed_quantity\": 28.0, \"position_side_after\": \"FLAT\", \"status\": \"FILLED\"}",
+        "evidence_hash": "8324ccc0a98ca763259cb71a10eed1028563b8d4236b9ad6cbd1d3840bc4e0e0",
+        "reason": "",
+        "run_id": "cert_6852df804410b16bee8ad4d1",
+        "started_at": 1793523173006,
+        "status": "PASS"
+      },
+      {
+        "check_id": "CANCEL_OBSOLETE_PROTECTION",
+        "completed_at": 1793523178630,
+        "evidence": "{\"protective_stops_open\": 0, \"removed_by\": \"RUN\", \"status\": \"CANCELED\"}",
+        "evidence_hash": "67248cb4888ef69ba57b5149ff7f4a8d1dce545733a87473c1b650b820f77878",
+        "reason": "",
+        "run_id": "cert_6852df804410b16bee8ad4d1",
+        "started_at": 1793523174703,
+        "status": "PASS"
+      },
+      {
+        "check_id": "FLATTEN",
+        "completed_at": 1793523209054,
+        "evidence": "{\"orders_cancelled\": [], \"orders_still_open\": [], \"quantity_closed\": 0.0}",
+        "evidence_hash": "8811d746d3cf9ee13ecbe8a02872731718e8d223f47b80dc71313579cc86ed8d",
+        "reason": "",
+        "run_id": "cert_6852df804410b16bee8ad4d1",
+        "started_at": 1793523178668,
+        "status": "PASS"
+      },
+      {
+        "check_id": "RECONCILIATION",
+        "completed_at": 1793523212631,
+        "evidence": "{\"net_filled_by_run\": 28.0, \"orders_without_fills_by_id\": [\"algo:1000000268023071\", \"algo:1000000268023160\"], \"position_at_venue\": 0.0, \"reduced_outside_the_run\": 28.0}",
+        "evidence_hash": "3fa2ecb279daa3d08799572c374315418b8c8a9d38f3240f523bc3b1bf3f9736",
+        "reason": "",
+        "run_id": "cert_6852df804410b16bee8ad4d1",
+        "started_at": 1793523209089,
+        "status": "PASS"
+      },
+      {
+        "check_id": "FINAL_ACCOUNT_STATE",
+        "completed_at": 1793523213926,
+        "evidence": "{\"open_orders_on_symbol\": 0, \"position_quantity\": 0.0, \"position_side\": \"FLAT\", \"wallet_balance_after\": 417.56146726, \"wallet_balance_before\": 417.57574278}",
+        "evidence_hash": "57bd0452237017e5baa63fc1d6273cdb165d7ccdc19312aa5e0b7d0d9a2d4829",
+        "reason": "",
+        "run_id": "cert_6852df804410b16bee8ad4d1",
+        "started_at": 1793523212668,
+        "status": "PASS"
+      }
+    ],
+    "events": [
+      {
+        "account_ref": "brk_c729454e6c98",
+        "adapter_version": "binance-usdm-1.2.0",
+        "authorized_scope": "Binance DEMO order lifecycle certification on brk_c729454e6c98: ADAUSDT, leverage 1, max notional 60 USDT, flat before and after",
+        "completed_at": null,
+        "contract_version": "1.0.0",
+        "document": "{\"allow_orders\": true, \"framework_version\": \"1.0.0\", \"leverage\": 1, \"max_notional\": 60.0, \"owner_authorization_ref\": \"Owner written brief TRADINGBOT DEMO ACTIVATION 2026-11-01 section 5 (bounded operator-authorized DEMO order lifecycle)\", \"permit_expires_at_ms\": 1793526733918, \"symbol\": \"ADAUSDT\"}",
+        "environment": "DEMO",
+        "event_hash": "94b92cbee43c3ebac11e585bc8ff8615e2d012dc1d89370fb9f8c7797cccd462",
+        "event_id": "certev_dc5430c39cd78ddc13fdae80",
+        "event_type": "RUN_STARTED",
+        "expires_at": null,
+        "operator_ref": "claude-code-opus-5.5 for owner CosmicforgeHealthnet",
+        "prev_hash": "352ede6cdfc2cb68001aa431123d78cd0bc0c1606c619e2e2de3df0ea97b4853",
+        "recorded_at": 1793523136028,
+        "run_id": "cert_6852df804410b16bee8ad4d1",
+        "seq": 3,
+        "source_commit": "def0bf4a52d2eb6bd70af7e7c568e83f00616b5f",
+        "started_at": 1793523136028,
+        "status": null,
+        "venue": "binance"
+      },
+      {
+        "account_ref": "brk_c729454e6c98",
+        "adapter_version": "binance-usdm-1.2.0",
+        "authorized_scope": "Binance DEMO order lifecycle certification on brk_c729454e6c98: ADAUSDT, leverage 1, max notional 60 USDT, flat before and after",
+        "completed_at": 1793523213975,
+        "contract_version": "1.0.0",
+        "document": "{\"actions_hash\": \"8acdb101a738eeb4e8c17a75b123f29ada8726fdcf706ecad58b8ca1c37dbe7c\", \"evidence_hashes\": {\"ACCOUNT_ENVIRONMENT\": \"93708217a26d25083397152fc75dcc97c060475d550a6eaede05478be45a261b\", \"ACCOUNT_STATE\": \"8d57ea30d612d01f3e2d9f78957ba76d14e73970aa76a043a621506ee64a6bc4\", \"CANCEL\": \"8d373974676195485a1cfef11ca5461f79a3b7b7e53c185b005633525b90cda2\", \"CANCEL_OBSOLETE_PROTECTION\": \"67248cb4888ef69ba57b5149ff7f4a8d1dce545733a87473c1b650b820f77878\", \"CLOCK_DRIFT\": \"b1c3c06fc49e819fb978dbbafb4870268164065016828dcc22e701059be39205\", \"CLOSE_POSITION\": \"8324ccc0a98ca763259cb71a10eed1028563b8d4236b9ad6cbd1d3840bc4e0e0\", \"CONNECTION_INTERRUPTION\": \"7289bb465a8dab809f71808f7ee3bec93c2ccf8e1d6e85ccca49f9159ce17d82\", \"ENTRY_FILL\": \"ad40672d806f785355f086f2f6ba447d4351885cb6c493c8563cf1c3b8a58c63\", \"ENTRY_SUBMIT\": \"bffa5d7a5be30059fb07142efb1525a2b978321e138b59f7ef077ecfc71e32fa\", \"FINAL_ACCOUNT_STATE\": \"57bd0452237017e5baa63fc1d6273cdb165d7ccdc19312aa5e0b7d0d9a2d4829\", \"FLATTEN\": \"8811d746d3cf9ee13ecbe8a02872731718e8d223f47b80dc71313579cc86ed8d\", \"IDEMPOTENT_REPEAT\": \"c9ff2cd2593a4480312b3f41b8b033884c2e062bc35ffc834b7a9bcc9d4701a5\", \"INSTRUMENT_RULES\": \"99cc03ef681cae27fa1f614acef7fc56b210f4b07d6946113b49340685ab9ed0\", \"LEVERAGE_AND_MODE\": \"666e1b000d34b979c422544d53777684e1f72eec07f6d0f96e39b30e72f1a238\", \"LOST_ACKNOWLEDGMENT\": \"2da1d7a079bad294ec65dfbf6c77cdca88b07cf9ff8b1e4beb69c1292bd93558\", \"MANUAL_POSITION_CHANGE\": \"7e73ca689c10b22cdc84efaf2b9739dac1f60efacf7ac09b517900e4a3e0489e\", \"ORDER_LOOKUP\": \"40398ce6d929b1c7db70754108229dd0b6e8217d5b54e57c2f64c4e85127f828\", \"PROTECTION_CREATE\": \"0d370c9a63959673fa3ebfb7d1790c3b63e8690df840758f2e0bf0fdbee728b8\", \"PROTECTION_GEOMETRY\": \"eecac50845355a0b33dda61caa50c3c97be50f8180447d24b5d5120dcb3af95f\", \"PROTECTION_READ_BACK\": \"1bb33c1faaa990bf4780659de83304dc45649b5a75f4361779d3ebfc6ba77b26\", \"PROTECTION_REPLACE\": \"284f9f7c180a73b16f0ca29d07562df03b38693c8809404f3a1e19c5e7c31e1b\", \"RATE_LIMIT\": \"97c3e7421a842f9abccf4f4c0048d42758904932e227dcbd14e7c7596405610a\", \"RATE_LIMIT_OBSERVATION\": \"912407452cd4bf5ca09ec222d87387523cb9a93730391171fcea9485e6cc69db\", \"RECONCILIATION\": \"3fa2ecb279daa3d08799572c374315418b8c8a9d38f3240f523bc3b1bf3f9736\", \"RESTART_WITH_PROTECTED_POSITION\": \"e4d4fec38f530371f1154f9f0469e9800e518722111af95f0d9a161ab2cbff20\", \"TEST_SCOPE\": \"8188801969ceb6758da76332182f29d61bacf53457ff49a9c93a9bb6f3628155\", \"TIME_SYNC\": \"9319f54f1105cbdd994a57c0f106c8c62f15eec30beec99a92aaf20e9c2d5ef0\", \"UNKNOWN_SUBMIT_RECONCILE\": \"bdf886e126be87f9a1bb32034fddd31d32c5012a182b8b8a53ff7d5e6a3ae187\", \"USER_STREAM_SPEC\": \"71603f1c6ac49eb7edf75615f4a0bbc7957862c326ae692cc026e91f2b7ddf37\", \"VENUE_REJECTION\": \"28a0669ef57c15b455fe784887fd313161a76f4c7bb74cb16634fe77d6719bc5\"}, \"exchange_capabilities\": {\"client_order_id_max_length\": 36, \"close_position_stop\": true, \"demo_environment\": true, \"environment\": \"DEMO\", \"hedge_mode\": false, \"multiple_stops_per_position\": true, \"native_stop_market\": true, \"native_take_profit\": true, \"notes\": [\"stops are conditional (algo) orders; venue_order_id is written algo:<algoId>\", \"a stop is either bound to the whole position (closePosition) or reduce-only with its own quantity\", \"a second closePosition stop of the same kind and side is refused by the venue (-4130); reduce-only stops with a quantity may rest beside it (doc: up to 10 conditional orders per symbol), which is the create-confirm-retire replacement. DOC-ONLY until a venue certification run confirms it\", \"an untriggered conditional order cannot be modified (doc, 2025-11-06 change log): no amend in place\", \"a conditional order that is no longer open is read with Query Algo Order; one that fired reports the state of the order it created (UNKNOWN while triggering)\", \"UNVERIFIED: the -4130 refusal of a second closePosition stop is no longer in the published error list\", \"UNVERIFIED: open_orders() without a symbol lists conditional orders through a request the raw client never sends\", \"hedge mode is not carried: orders are sent for a one-way account\", \"private user stream uses the routed /private/ws/<listenKey> path (doc); on the demo host that route is UNVERIFIED and venue certification remains separately required\", \"the raw client itself repeats a rate-limited READ within a small bounded sleep budget; mutations never\"], \"one_way_mode\": true, \"position_stop_endpoint\": false, \"quantity_stop\": true, \"reduce_only\": true, \"stop_amend_in_place\": false, \"stop_client_order_id\": true, \"user_stream\": true, \"venue\": \"binance\"}, \"failure_reasons\": [], \"framework_version\": \"1.0.0\", \"operations\": [\"CANCEL\", \"CLOSE\", \"ENTRY\", \"PROTECTIVE_STOP\", \"STOP_REPLACEMENT\", \"USER_STREAM\"], \"outcome\": \"PASSED\", \"rehearsal\": false, \"test_cases\": {\"ACCOUNT_ENVIRONMENT\": {\"reason\": \"\", \"status\": \"PASS\"}, \"ACCOUNT_STATE\": {\"reason\": \"\", \"status\": \"PASS\"}, \"CANCEL\": {\"reason\": \"\", \"status\": \"PASS\"}, \"CANCEL_OBSOLETE_PROTECTION\": {\"reason\": \"\", \"status\": \"PASS\"}, \"CLOCK_DRIFT\": {\"reason\": \"\", \"status\": \"PASS\"}, \"CLOSE_POSITION\": {\"reason\": \"\", \"status\": \"PASS\"}, \"CONNECTION_INTERRUPTION\": {\"reason\": \"\", \"status\": \"PASS\"}, \"ENTRY_FILL\": {\"reason\": \"\", \"status\": \"PASS\"}, \"ENTRY_SUBMIT\": {\"reason\": \"\", \"status\": \"PASS\"}, \"FINAL_ACCOUNT_STATE\": {\"reason\": \"\", \"status\": \"PASS\"}, \"FLATTEN\": {\"reason\": \"\", \"status\": \"PASS\"}, \"IDEMPOTENT_REPEAT\": {\"reason\": \"\", \"status\": \"PASS\"}, \"INSTRUMENT_RULES\": {\"reason\": \"\", \"status\": \"PASS\"}, \"LEVERAGE_AND_MODE\": {\"reason\": \"\", \"status\": \"PASS\"}, \"LOST_ACKNOWLEDGMENT\": {\"reason\": \"\", \"status\": \"PASS\"}, \"MANUAL_POSITION_CHANGE\": {\"reason\": \"\", \"status\": \"PASS\"}, \"ORDER_LOOKUP\": {\"reason\": \"\", \"status\": \"PASS\"}, \"PROTECTION_CREATE\": {\"reason\": \"\", \"status\": \"PASS\"}, \"PROTECTION_GEOMETRY\": {\"reason\": \"\", \"status\": \"PASS\"}, \"PROTECTION_READ_BACK\": {\"reason\": \"\", \"status\": \"PASS\"}, \"PROTECTION_REPLACE\": {\"reason\": \"\", \"status\": \"PASS\"}, \"RATE_LIMIT\": {\"reason\": \"\", \"status\": \"PASS\"}, \"RATE_LIMIT_OBSERVATION\": {\"reason\": \"\", \"status\": \"PASS\"}, \"RECONCILIATION\": {\"reason\": \"\", \"status\": \"PASS\"}, \"RESTART_WITH_PROTECTED_POSITION\": {\"reason\": \"\", \"status\": \"PASS\"}, \"TEST_SCOPE\": {\"reason\": \"\", \"status\": \"PASS\"}, \"TIME_SYNC\": {\"reason\": \"\", \"status\": \"PASS\"}, \"UNKNOWN_SUBMIT_RECONCILE\": {\"reason\": \"\", \"status\": \"PASS\"}, \"USER_STREAM_SPEC\": {\"reason\": \"\", \"status\": \"PASS\"}, \"VENUE_REJECTION\": {\"reason\": \"\", \"status\": \"PASS\"}}, \"validity_days\": 90}",
+        "environment": "DEMO",
+        "event_hash": "2095f9d30c6db8dae6451fc48e4ab5df02bc90ee2d5d196fa0142f6dd15f63bc",
+        "event_id": "certev_9c5c8ad2e91de1ad7db3786f",
+        "event_type": "RUN_COMPLETED",
+        "expires_at": 1801299213975,
+        "operator_ref": "claude-code-opus-5.5 for owner CosmicforgeHealthnet",
+        "prev_hash": "94b92cbee43c3ebac11e585bc8ff8615e2d012dc1d89370fb9f8c7797cccd462",
+        "recorded_at": 1793523213975,
+        "run_id": "cert_6852df804410b16bee8ad4d1",
+        "seq": 4,
+        "source_commit": "def0bf4a52d2eb6bd70af7e7c568e83f00616b5f",
+        "started_at": 1793523136028,
+        "status": "CERTIFIED",
+        "venue": "binance"
+      }
+    ]
+  },
+  "run_id": "cert_6852df804410b16bee8ad4d1",
+  "source_commit": "def0bf4a52d2eb6bd70af7e7c568e83f00616b5f",
+  "venue": "binance",
+  "venue_contacted": true
+}

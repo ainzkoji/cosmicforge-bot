@@ -1,0 +1,525 @@
+{
+  "checks": {
+    "ACCOUNT_ENVIRONMENT": {
+      "reason": "",
+      "status": "PASS"
+    },
+    "ACCOUNT_STATE": {
+      "reason": "",
+      "status": "PASS"
+    },
+    "CANCEL": {
+      "reason": "NOT_REACHED:ORDERS_NOT_ALLOWED_BY_PERMIT",
+      "status": "NOT_RUN"
+    },
+    "CANCEL_OBSOLETE_PROTECTION": {
+      "reason": "NOT_REACHED:ORDERS_NOT_ALLOWED_BY_PERMIT",
+      "status": "NOT_RUN"
+    },
+    "CLOCK_DRIFT": {
+      "reason": "NOT_REACHED:ORDERS_NOT_ALLOWED_BY_PERMIT",
+      "status": "NOT_RUN"
+    },
+    "CLOSE_POSITION": {
+      "reason": "NOT_REACHED:ORDERS_NOT_ALLOWED_BY_PERMIT",
+      "status": "NOT_RUN"
+    },
+    "CONNECTION_INTERRUPTION": {
+      "reason": "NOT_REACHED:ORDERS_NOT_ALLOWED_BY_PERMIT",
+      "status": "NOT_RUN"
+    },
+    "ENTRY_FILL": {
+      "reason": "NOT_REACHED:ORDERS_NOT_ALLOWED_BY_PERMIT",
+      "status": "NOT_RUN"
+    },
+    "ENTRY_SUBMIT": {
+      "reason": "NOT_REACHED:ORDERS_NOT_ALLOWED_BY_PERMIT",
+      "status": "NOT_RUN"
+    },
+    "FINAL_ACCOUNT_STATE": {
+      "reason": "NO_ORDER_WAS_SENT",
+      "status": "NOT_RUN"
+    },
+    "FLATTEN": {
+      "reason": "NO_ORDER_WAS_SENT",
+      "status": "NOT_RUN"
+    },
+    "IDEMPOTENT_REPEAT": {
+      "reason": "NOT_REACHED:ORDERS_NOT_ALLOWED_BY_PERMIT",
+      "status": "NOT_RUN"
+    },
+    "INSTRUMENT_RULES": {
+      "reason": "",
+      "status": "PASS"
+    },
+    "LEVERAGE_AND_MODE": {
+      "reason": "NOT_REACHED:ORDERS_NOT_ALLOWED_BY_PERMIT",
+      "status": "NOT_RUN"
+    },
+    "LOST_ACKNOWLEDGMENT": {
+      "reason": "NOT_REACHED:ORDERS_NOT_ALLOWED_BY_PERMIT",
+      "status": "NOT_RUN"
+    },
+    "MANUAL_POSITION_CHANGE": {
+      "reason": "NOT_REACHED:ORDERS_NOT_ALLOWED_BY_PERMIT",
+      "status": "NOT_RUN"
+    },
+    "ORDER_LOOKUP": {
+      "reason": "NOT_REACHED:ORDERS_NOT_ALLOWED_BY_PERMIT",
+      "status": "NOT_RUN"
+    },
+    "PROTECTION_CREATE": {
+      "reason": "NOT_REACHED:ORDERS_NOT_ALLOWED_BY_PERMIT",
+      "status": "NOT_RUN"
+    },
+    "PROTECTION_GEOMETRY": {
+      "reason": "NOT_REACHED:ORDERS_NOT_ALLOWED_BY_PERMIT",
+      "status": "NOT_RUN"
+    },
+    "PROTECTION_READ_BACK": {
+      "reason": "NOT_REACHED:ORDERS_NOT_ALLOWED_BY_PERMIT",
+      "status": "NOT_RUN"
+    },
+    "PROTECTION_REPLACE": {
+      "reason": "NOT_REACHED:ORDERS_NOT_ALLOWED_BY_PERMIT",
+      "status": "NOT_RUN"
+    },
+    "RATE_LIMIT": {
+      "reason": "NOT_REACHED:ORDERS_NOT_ALLOWED_BY_PERMIT",
+      "status": "NOT_RUN"
+    },
+    "RATE_LIMIT_OBSERVATION": {
+      "reason": "",
+      "status": "PASS"
+    },
+    "RECONCILIATION": {
+      "reason": "NO_ORDER_WAS_SENT",
+      "status": "NOT_RUN"
+    },
+    "RESTART_WITH_PROTECTED_POSITION": {
+      "reason": "NOT_REACHED:ORDERS_NOT_ALLOWED_BY_PERMIT",
+      "status": "NOT_RUN"
+    },
+    "TEST_SCOPE": {
+      "reason": "NOT_REACHED:ORDERS_NOT_ALLOWED_BY_PERMIT",
+      "status": "NOT_RUN"
+    },
+    "TIME_SYNC": {
+      "reason": "",
+      "status": "PASS"
+    },
+    "UNKNOWN_SUBMIT_RECONCILE": {
+      "reason": "NOT_REACHED:ORDERS_NOT_ALLOWED_BY_PERMIT",
+      "status": "NOT_RUN"
+    },
+    "USER_STREAM_SPEC": {
+      "reason": "",
+      "status": "PASS"
+    },
+    "VENUE_REJECTION": {
+      "reason": "NOT_REACHED:ORDERS_NOT_ALLOWED_BY_PERMIT",
+      "status": "NOT_RUN"
+    }
+  },
+  "cleanup_complete": true,
+  "environment": "DEMO",
+  "failure_reasons": [
+    "TEST_SCOPE:NOT_RUN:NOT_REACHED:ORDERS_NOT_ALLOWED_BY_PERMIT",
+    "LEVERAGE_AND_MODE:NOT_RUN:NOT_REACHED:ORDERS_NOT_ALLOWED_BY_PERMIT",
+    "VENUE_REJECTION:NOT_RUN:NOT_REACHED:ORDERS_NOT_ALLOWED_BY_PERMIT",
+    "ENTRY_SUBMIT:NOT_RUN:NOT_REACHED:ORDERS_NOT_ALLOWED_BY_PERMIT",
+    "ORDER_LOOKUP:NOT_RUN:NOT_REACHED:ORDERS_NOT_ALLOWED_BY_PERMIT",
+    "ENTRY_FILL:NOT_RUN:NOT_REACHED:ORDERS_NOT_ALLOWED_BY_PERMIT",
+    "IDEMPOTENT_REPEAT:NOT_RUN:NOT_REACHED:ORDERS_NOT_ALLOWED_BY_PERMIT",
+    "PROTECTION_CREATE:NOT_RUN:NOT_REACHED:ORDERS_NOT_ALLOWED_BY_PERMIT",
+    "PROTECTION_READ_BACK:NOT_RUN:NOT_REACHED:ORDERS_NOT_ALLOWED_BY_PERMIT",
+    "PROTECTION_GEOMETRY:NOT_RUN:NOT_REACHED:ORDERS_NOT_ALLOWED_BY_PERMIT",
+    "PROTECTION_REPLACE:NOT_RUN:NOT_REACHED:ORDERS_NOT_ALLOWED_BY_PERMIT",
+    "UNKNOWN_SUBMIT_RECONCILE:NOT_RUN:NOT_REACHED:ORDERS_NOT_ALLOWED_BY_PERMIT",
+    "CANCEL:NOT_RUN:NOT_REACHED:ORDERS_NOT_ALLOWED_BY_PERMIT",
+    "LOST_ACKNOWLEDGMENT:NOT_RUN:NOT_REACHED:ORDERS_NOT_ALLOWED_BY_PERMIT",
+    "CONNECTION_INTERRUPTION:NOT_RUN:NOT_REACHED:ORDERS_NOT_ALLOWED_BY_PERMIT",
+    "RATE_LIMIT:NOT_RUN:NOT_REACHED:ORDERS_NOT_ALLOWED_BY_PERMIT",
+    "CLOCK_DRIFT:NOT_RUN:NOT_REACHED:ORDERS_NOT_ALLOWED_BY_PERMIT",
+    "RESTART_WITH_PROTECTED_POSITION:NOT_RUN:NOT_REACHED:ORDERS_NOT_ALLOWED_BY_PERMIT",
+    "MANUAL_POSITION_CHANGE:NOT_RUN:NOT_REACHED:ORDERS_NOT_ALLOWED_BY_PERMIT",
+    "CLOSE_POSITION:NOT_RUN:NOT_REACHED:ORDERS_NOT_ALLOWED_BY_PERMIT",
+    "CANCEL_OBSOLETE_PROTECTION:NOT_RUN:NOT_REACHED:ORDERS_NOT_ALLOWED_BY_PERMIT",
+    "FLATTEN:NOT_RUN:NO_ORDER_WAS_SENT",
+    "RECONCILIATION:NOT_RUN:NO_ORDER_WAS_SENT",
+    "FINAL_ACCOUNT_STATE:NOT_RUN:NO_ORDER_WAS_SENT"
+  ],
+  "mocked_transport": false,
+  "operations": [],
+  "outcome": "INCOMPLETE",
+  "permit": {
+    "account_ref": "brk_c729454e6c98",
+    "allow_orders": false,
+    "authorized_scope": "Binance DEMO read-only preflight on brk_c729454e6c98",
+    "environment": "DEMO",
+    "expires_at_ms": 1793526627470,
+    "issued_at_ms": 1793523027470,
+    "leverage": 1,
+    "max_notional": 60.0,
+    "operator_ref": "claude-code-opus-5.5 for owner CosmicforgeHealthnet",
+    "owner_authorization_ref": "Owner written brief TRADINGBOT DEMO ACTIVATION 2026-11-01 section 5 (bounded DEMO certification)",
+    "symbol": "ADAUSDT",
+    "venue": "binance"
+  },
+  "recorded_status": null,
+  "register": {
+    "actions": [],
+    "checks": [
+      {
+        "check_id": "ACCOUNT_ENVIRONMENT",
+        "completed_at": 1793523029646,
+        "evidence": "{\"account_ref\": \"brk_c729454e6c98\", \"adapter_version\": \"binance-usdm-1.2.0\", \"capabilities\": {\"client_order_id_max_length\": 36, \"close_position_stop\": true, \"demo_environment\": true, \"environment\": \"DEMO\", \"hedge_mode\": false, \"multiple_stops_per_position\": true, \"native_stop_market\": true, \"native_take_profit\": true, \"notes\": [\"stops are conditional (algo) orders; venue_order_id is written algo:<algoId>\", \"a stop is either bound to the whole position (closePosition) or reduce-only with its own quantity\", \"a second closePosition stop of the same kind and side is refused by the venue (-4130); reduce-only stops with a quantity may rest beside it (doc: up to 10 conditional orders per symbol), which is the create-confirm-retire replacement. DOC-ONLY until a venue certification run confirms it\", \"an untriggered conditional order cannot be modified (doc, 2025-11-06 change log): no amend in place\", \"a conditional order that is no longer open is read with Query Algo Order; one that fired reports the state of the order it created (UNKNOWN while triggering)\", \"UNVERIFIED: the -4130 refusal of a second closePosition stop is no longer in the published error list\", \"UNVERIFIED: open_orders() without a symbol lists conditional orders through a request the raw client never sends\", \"hedge mode is not carried: orders are sent for a one-way account\", \"private user stream uses the routed /private/ws/<listenKey> path (doc); on the demo host that route is UNVERIFIED and venue certification remains separately required\", \"the raw client itself repeats a rate-limited READ within a small bounded sleep budget; mutations never\"], \"one_way_mode\": true, \"position_stop_endpoint\": false, \"quantity_stop\": true, \"reduce_only\": true, \"stop_amend_in_place\": false, \"stop_client_order_id\": true, \"user_stream\": true, \"venue\": \"binance\"}, \"contract_version\": \"1.0.0\", \"environment\": \"DEMO\", \"venue\": \"binance\"}",
+        "evidence_hash": "93708217a26d25083397152fc75dcc97c060475d550a6eaede05478be45a261b",
+        "reason": "",
+        "run_id": "cert_942eca8106c9d24db9c147e4",
+        "started_at": 1793523029643,
+        "status": "PASS"
+      },
+      {
+        "check_id": "TIME_SYNC",
+        "completed_at": 1793523030016,
+        "evidence": "{\"limit_ms\": 1000, \"offset_ms\": -574}",
+        "evidence_hash": "ddaf6b85ca1d1349c74e61d9c95f6354219d3d4f299f99ac39afb2f6a9ed1462",
+        "reason": "",
+        "run_id": "cert_942eca8106c9d24db9c147e4",
+        "started_at": 1793523029681,
+        "status": "PASS"
+      },
+      {
+        "check_id": "INSTRUMENT_RULES",
+        "completed_at": 1793523030417,
+        "evidence": "{\"base_asset\": \"ADA\", \"contract_size\": 1.0, \"environment\": \"DEMO\", \"margin_asset\": \"USDT\", \"market_max_quantity\": 10000000.0, \"max_leverage\": null, \"max_quantity\": 10000000.0, \"min_notional\": 5.0, \"min_quantity\": 1.0, \"price_tick\": 0.0001, \"quantity_step\": 1.0, \"quote_asset\": \"USDT\", \"rules_hash\": \"ecdf5cb768a66a209dbf9aab8ce28e46308b7502101281ec9639c602821211b6\", \"status\": \"TRADING\", \"symbol\": \"ADAUSDT\", \"venue\": \"binance\", \"venue_status\": \"TRADING\", \"venue_symbol\": \"ADAUSDT\"}",
+        "evidence_hash": "99cc03ef681cae27fa1f614acef7fc56b210f4b07d6946113b49340685ab9ed0",
+        "reason": "",
+        "run_id": "cert_942eca8106c9d24db9c147e4",
+        "started_at": 1793523030053,
+        "status": "PASS"
+      },
+      {
+        "check_id": "ACCOUNT_STATE",
+        "completed_at": 1793523031744,
+        "evidence": "{\"available_balance\": 417.57574278, \"margin_asset\": \"USDT\", \"open_orders_on_symbol\": 0, \"position_mode\": null, \"position_quantity\": 0.0, \"position_side\": \"FLAT\", \"wallet_balance\": 417.57574278}",
+        "evidence_hash": "8d57ea30d612d01f3e2d9f78957ba76d14e73970aa76a043a621506ee64a6bc4",
+        "reason": "",
+        "run_id": "cert_942eca8106c9d24db9c147e4",
+        "started_at": 1793523030453,
+        "status": "PASS"
+      },
+      {
+        "check_id": "RATE_LIMIT_OBSERVATION",
+        "completed_at": 1793523031780,
+        "evidence": "{\"banned_until_ms\": null, \"limit\": null, \"observed_at_ms\": 1793523031780, \"retry_after_s\": null, \"scope\": \"IP\", \"used_weight\": 16.0, \"venue\": \"binance\", \"window_seconds\": 60}",
+        "evidence_hash": "a573088d527050f42ff0780824707ef41b5b4de8ea9d74c631170b09bc947b0b",
+        "reason": "",
+        "run_id": "cert_942eca8106c9d24db9c147e4",
+        "started_at": 1793523031780,
+        "status": "PASS"
+      },
+      {
+        "check_id": "USER_STREAM_SPEC",
+        "completed_at": 1793523032147,
+        "evidence": "{\"auth_mode\": \"LISTEN_KEY_IN_URL\", \"expires_after_seconds\": 3600, \"keepalive_seconds\": 1800, \"subscribe_frames\": 0}",
+        "evidence_hash": "71603f1c6ac49eb7edf75615f4a0bbc7957862c326ae692cc026e91f2b7ddf37",
+        "reason": "",
+        "run_id": "cert_942eca8106c9d24db9c147e4",
+        "started_at": 1793523031816,
+        "status": "PASS"
+      },
+      {
+        "check_id": "TEST_SCOPE",
+        "completed_at": 1793523032181,
+        "evidence": "{}",
+        "evidence_hash": "c89a148be40e6752261e3038609a4b68de22fa3bfdaf32f884edffb8480b9bbe",
+        "reason": "NOT_REACHED:ORDERS_NOT_ALLOWED_BY_PERMIT",
+        "run_id": "cert_942eca8106c9d24db9c147e4",
+        "started_at": 1793523032181,
+        "status": "NOT_RUN"
+      },
+      {
+        "check_id": "LEVERAGE_AND_MODE",
+        "completed_at": 1793523032211,
+        "evidence": "{}",
+        "evidence_hash": "c89a148be40e6752261e3038609a4b68de22fa3bfdaf32f884edffb8480b9bbe",
+        "reason": "NOT_REACHED:ORDERS_NOT_ALLOWED_BY_PERMIT",
+        "run_id": "cert_942eca8106c9d24db9c147e4",
+        "started_at": 1793523032211,
+        "status": "NOT_RUN"
+      },
+      {
+        "check_id": "VENUE_REJECTION",
+        "completed_at": 1793523032238,
+        "evidence": "{}",
+        "evidence_hash": "c89a148be40e6752261e3038609a4b68de22fa3bfdaf32f884edffb8480b9bbe",
+        "reason": "NOT_REACHED:ORDERS_NOT_ALLOWED_BY_PERMIT",
+        "run_id": "cert_942eca8106c9d24db9c147e4",
+        "started_at": 1793523032238,
+        "status": "NOT_RUN"
+      },
+      {
+        "check_id": "ENTRY_SUBMIT",
+        "completed_at": 1793523032274,
+        "evidence": "{}",
+        "evidence_hash": "c89a148be40e6752261e3038609a4b68de22fa3bfdaf32f884edffb8480b9bbe",
+        "reason": "NOT_REACHED:ORDERS_NOT_ALLOWED_BY_PERMIT",
+        "run_id": "cert_942eca8106c9d24db9c147e4",
+        "started_at": 1793523032274,
+        "status": "NOT_RUN"
+      },
+      {
+        "check_id": "ORDER_LOOKUP",
+        "completed_at": 1793523032309,
+        "evidence": "{}",
+        "evidence_hash": "c89a148be40e6752261e3038609a4b68de22fa3bfdaf32f884edffb8480b9bbe",
+        "reason": "NOT_REACHED:ORDERS_NOT_ALLOWED_BY_PERMIT",
+        "run_id": "cert_942eca8106c9d24db9c147e4",
+        "started_at": 1793523032309,
+        "status": "NOT_RUN"
+      },
+      {
+        "check_id": "ENTRY_FILL",
+        "completed_at": 1793523032341,
+        "evidence": "{}",
+        "evidence_hash": "c89a148be40e6752261e3038609a4b68de22fa3bfdaf32f884edffb8480b9bbe",
+        "reason": "NOT_REACHED:ORDERS_NOT_ALLOWED_BY_PERMIT",
+        "run_id": "cert_942eca8106c9d24db9c147e4",
+        "started_at": 1793523032341,
+        "status": "NOT_RUN"
+      },
+      {
+        "check_id": "IDEMPOTENT_REPEAT",
+        "completed_at": 1793523032367,
+        "evidence": "{}",
+        "evidence_hash": "c89a148be40e6752261e3038609a4b68de22fa3bfdaf32f884edffb8480b9bbe",
+        "reason": "NOT_REACHED:ORDERS_NOT_ALLOWED_BY_PERMIT",
+        "run_id": "cert_942eca8106c9d24db9c147e4",
+        "started_at": 1793523032367,
+        "status": "NOT_RUN"
+      },
+      {
+        "check_id": "PROTECTION_CREATE",
+        "completed_at": 1793523032432,
+        "evidence": "{}",
+        "evidence_hash": "c89a148be40e6752261e3038609a4b68de22fa3bfdaf32f884edffb8480b9bbe",
+        "reason": "NOT_REACHED:ORDERS_NOT_ALLOWED_BY_PERMIT",
+        "run_id": "cert_942eca8106c9d24db9c147e4",
+        "started_at": 1793523032432,
+        "status": "NOT_RUN"
+      },
+      {
+        "check_id": "PROTECTION_READ_BACK",
+        "completed_at": 1793523032477,
+        "evidence": "{}",
+        "evidence_hash": "c89a148be40e6752261e3038609a4b68de22fa3bfdaf32f884edffb8480b9bbe",
+        "reason": "NOT_REACHED:ORDERS_NOT_ALLOWED_BY_PERMIT",
+        "run_id": "cert_942eca8106c9d24db9c147e4",
+        "started_at": 1793523032477,
+        "status": "NOT_RUN"
+      },
+      {
+        "check_id": "PROTECTION_GEOMETRY",
+        "completed_at": 1793523032513,
+        "evidence": "{}",
+        "evidence_hash": "c89a148be40e6752261e3038609a4b68de22fa3bfdaf32f884edffb8480b9bbe",
+        "reason": "NOT_REACHED:ORDERS_NOT_ALLOWED_BY_PERMIT",
+        "run_id": "cert_942eca8106c9d24db9c147e4",
+        "started_at": 1793523032513,
+        "status": "NOT_RUN"
+      },
+      {
+        "check_id": "PROTECTION_REPLACE",
+        "completed_at": 1793523032546,
+        "evidence": "{}",
+        "evidence_hash": "c89a148be40e6752261e3038609a4b68de22fa3bfdaf32f884edffb8480b9bbe",
+        "reason": "NOT_REACHED:ORDERS_NOT_ALLOWED_BY_PERMIT",
+        "run_id": "cert_942eca8106c9d24db9c147e4",
+        "started_at": 1793523032546,
+        "status": "NOT_RUN"
+      },
+      {
+        "check_id": "UNKNOWN_SUBMIT_RECONCILE",
+        "completed_at": 1793523032574,
+        "evidence": "{}",
+        "evidence_hash": "c89a148be40e6752261e3038609a4b68de22fa3bfdaf32f884edffb8480b9bbe",
+        "reason": "NOT_REACHED:ORDERS_NOT_ALLOWED_BY_PERMIT",
+        "run_id": "cert_942eca8106c9d24db9c147e4",
+        "started_at": 1793523032574,
+        "status": "NOT_RUN"
+      },
+      {
+        "check_id": "CANCEL",
+        "completed_at": 1793523032603,
+        "evidence": "{}",
+        "evidence_hash": "c89a148be40e6752261e3038609a4b68de22fa3bfdaf32f884edffb8480b9bbe",
+        "reason": "NOT_REACHED:ORDERS_NOT_ALLOWED_BY_PERMIT",
+        "run_id": "cert_942eca8106c9d24db9c147e4",
+        "started_at": 1793523032603,
+        "status": "NOT_RUN"
+      },
+      {
+        "check_id": "LOST_ACKNOWLEDGMENT",
+        "completed_at": 1793523032632,
+        "evidence": "{}",
+        "evidence_hash": "c89a148be40e6752261e3038609a4b68de22fa3bfdaf32f884edffb8480b9bbe",
+        "reason": "NOT_REACHED:ORDERS_NOT_ALLOWED_BY_PERMIT",
+        "run_id": "cert_942eca8106c9d24db9c147e4",
+        "started_at": 1793523032632,
+        "status": "NOT_RUN"
+      },
+      {
+        "check_id": "CONNECTION_INTERRUPTION",
+        "completed_at": 1793523032661,
+        "evidence": "{}",
+        "evidence_hash": "c89a148be40e6752261e3038609a4b68de22fa3bfdaf32f884edffb8480b9bbe",
+        "reason": "NOT_REACHED:ORDERS_NOT_ALLOWED_BY_PERMIT",
+        "run_id": "cert_942eca8106c9d24db9c147e4",
+        "started_at": 1793523032661,
+        "status": "NOT_RUN"
+      },
+      {
+        "check_id": "RATE_LIMIT",
+        "completed_at": 1793523032691,
+        "evidence": "{}",
+        "evidence_hash": "c89a148be40e6752261e3038609a4b68de22fa3bfdaf32f884edffb8480b9bbe",
+        "reason": "NOT_REACHED:ORDERS_NOT_ALLOWED_BY_PERMIT",
+        "run_id": "cert_942eca8106c9d24db9c147e4",
+        "started_at": 1793523032691,
+        "status": "NOT_RUN"
+      },
+      {
+        "check_id": "CLOCK_DRIFT",
+        "completed_at": 1793523032719,
+        "evidence": "{}",
+        "evidence_hash": "c89a148be40e6752261e3038609a4b68de22fa3bfdaf32f884edffb8480b9bbe",
+        "reason": "NOT_REACHED:ORDERS_NOT_ALLOWED_BY_PERMIT",
+        "run_id": "cert_942eca8106c9d24db9c147e4",
+        "started_at": 1793523032719,
+        "status": "NOT_RUN"
+      },
+      {
+        "check_id": "RESTART_WITH_PROTECTED_POSITION",
+        "completed_at": 1793523032747,
+        "evidence": "{}",
+        "evidence_hash": "c89a148be40e6752261e3038609a4b68de22fa3bfdaf32f884edffb8480b9bbe",
+        "reason": "NOT_REACHED:ORDERS_NOT_ALLOWED_BY_PERMIT",
+        "run_id": "cert_942eca8106c9d24db9c147e4",
+        "started_at": 1793523032747,
+        "status": "NOT_RUN"
+      },
+      {
+        "check_id": "MANUAL_POSITION_CHANGE",
+        "completed_at": 1793523032777,
+        "evidence": "{}",
+        "evidence_hash": "c89a148be40e6752261e3038609a4b68de22fa3bfdaf32f884edffb8480b9bbe",
+        "reason": "NOT_REACHED:ORDERS_NOT_ALLOWED_BY_PERMIT",
+        "run_id": "cert_942eca8106c9d24db9c147e4",
+        "started_at": 1793523032777,
+        "status": "NOT_RUN"
+      },
+      {
+        "check_id": "CLOSE_POSITION",
+        "completed_at": 1793523032813,
+        "evidence": "{}",
+        "evidence_hash": "c89a148be40e6752261e3038609a4b68de22fa3bfdaf32f884edffb8480b9bbe",
+        "reason": "NOT_REACHED:ORDERS_NOT_ALLOWED_BY_PERMIT",
+        "run_id": "cert_942eca8106c9d24db9c147e4",
+        "started_at": 1793523032813,
+        "status": "NOT_RUN"
+      },
+      {
+        "check_id": "CANCEL_OBSOLETE_PROTECTION",
+        "completed_at": 1793523032849,
+        "evidence": "{}",
+        "evidence_hash": "c89a148be40e6752261e3038609a4b68de22fa3bfdaf32f884edffb8480b9bbe",
+        "reason": "NOT_REACHED:ORDERS_NOT_ALLOWED_BY_PERMIT",
+        "run_id": "cert_942eca8106c9d24db9c147e4",
+        "started_at": 1793523032849,
+        "status": "NOT_RUN"
+      },
+      {
+        "check_id": "FLATTEN",
+        "completed_at": 1793523032900,
+        "evidence": "{}",
+        "evidence_hash": "c89a148be40e6752261e3038609a4b68de22fa3bfdaf32f884edffb8480b9bbe",
+        "reason": "NO_ORDER_WAS_SENT",
+        "run_id": "cert_942eca8106c9d24db9c147e4",
+        "started_at": 1793523032900,
+        "status": "NOT_RUN"
+      },
+      {
+        "check_id": "RECONCILIATION",
+        "completed_at": 1793523032933,
+        "evidence": "{}",
+        "evidence_hash": "c89a148be40e6752261e3038609a4b68de22fa3bfdaf32f884edffb8480b9bbe",
+        "reason": "NO_ORDER_WAS_SENT",
+        "run_id": "cert_942eca8106c9d24db9c147e4",
+        "started_at": 1793523032933,
+        "status": "NOT_RUN"
+      },
+      {
+        "check_id": "FINAL_ACCOUNT_STATE",
+        "completed_at": 1793523032965,
+        "evidence": "{}",
+        "evidence_hash": "c89a148be40e6752261e3038609a4b68de22fa3bfdaf32f884edffb8480b9bbe",
+        "reason": "NO_ORDER_WAS_SENT",
+        "run_id": "cert_942eca8106c9d24db9c147e4",
+        "started_at": 1793523032965,
+        "status": "NOT_RUN"
+      }
+    ],
+    "events": [
+      {
+        "account_ref": "brk_c729454e6c98",
+        "adapter_version": "binance-usdm-1.2.0",
+        "authorized_scope": "Binance DEMO read-only preflight on brk_c729454e6c98",
+        "completed_at": null,
+        "contract_version": "1.0.0",
+        "document": "{\"allow_orders\": false, \"framework_version\": \"1.0.0\", \"leverage\": 1, \"max_notional\": 60.0, \"owner_authorization_ref\": \"Owner written brief TRADINGBOT DEMO ACTIVATION 2026-11-01 section 5 (bounded DEMO certification)\", \"permit_expires_at_ms\": 1793526627470, \"symbol\": \"ADAUSDT\"}",
+        "environment": "DEMO",
+        "event_hash": "2528b6825d76ac075f7d416867af040e43d72a9cbc63261f4e9b5af0ebc64d5d",
+        "event_id": "certev_7b93a17414c692500fe17a38",
+        "event_type": "RUN_STARTED",
+        "expires_at": null,
+        "operator_ref": "claude-code-opus-5.5 for owner CosmicforgeHealthnet",
+        "prev_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+        "recorded_at": 1793523029581,
+        "run_id": "cert_942eca8106c9d24db9c147e4",
+        "seq": 1,
+        "source_commit": "unknown",
+        "started_at": 1793523029581,
+        "status": null,
+        "venue": "binance"
+      },
+      {
+        "account_ref": "brk_c729454e6c98",
+        "adapter_version": "binance-usdm-1.2.0",
+        "authorized_scope": "Binance DEMO read-only preflight on brk_c729454e6c98",
+        "completed_at": 1793523032998,
+        "contract_version": "1.0.0",
+        "document": "{\"actions_hash\": \"4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945\", \"evidence_hashes\": {\"ACCOUNT_ENVIRONMENT\": \"93708217a26d25083397152fc75dcc97c060475d550a6eaede05478be45a261b\", \"ACCOUNT_STATE\": \"8d57ea30d612d01f3e2d9f78957ba76d14e73970aa76a043a621506ee64a6bc4\", \"CANCEL\": \"c89a148be40e6752261e3038609a4b68de22fa3bfdaf32f884edffb8480b9bbe\", \"CANCEL_OBSOLETE_PROTECTION\": \"c89a148be40e6752261e3038609a4b68de22fa3bfdaf32f884edffb8480b9bbe\", \"CLOCK_DRIFT\": \"c89a148be40e6752261e3038609a4b68de22fa3bfdaf32f884edffb8480b9bbe\", \"CLOSE_POSITION\": \"c89a148be40e6752261e3038609a4b68de22fa3bfdaf32f884edffb8480b9bbe\", \"CONNECTION_INTERRUPTION\": \"c89a148be40e6752261e3038609a4b68de22fa3bfdaf32f884edffb8480b9bbe\", \"ENTRY_FILL\": \"c89a148be40e6752261e3038609a4b68de22fa3bfdaf32f884edffb8480b9bbe\", \"ENTRY_SUBMIT\": \"c89a148be40e6752261e3038609a4b68de22fa3bfdaf32f884edffb8480b9bbe\", \"FINAL_ACCOUNT_STATE\": \"c89a148be40e6752261e3038609a4b68de22fa3bfdaf32f884edffb8480b9bbe\", \"FLATTEN\": \"c89a148be40e6752261e3038609a4b68de22fa3bfdaf32f884edffb8480b9bbe\", \"IDEMPOTENT_REPEAT\": \"c89a148be40e6752261e3038609a4b68de22fa3bfdaf32f884edffb8480b9bbe\", \"INSTRUMENT_RULES\": \"99cc03ef681cae27fa1f614acef7fc56b210f4b07d6946113b49340685ab9ed0\", \"LEVERAGE_AND_MODE\": \"c89a148be40e6752261e3038609a4b68de22fa3bfdaf32f884edffb8480b9bbe\", \"LOST_ACKNOWLEDGMENT\": \"c89a148be40e6752261e3038609a4b68de22fa3bfdaf32f884edffb8480b9bbe\", \"MANUAL_POSITION_CHANGE\": \"c89a148be40e6752261e3038609a4b68de22fa3bfdaf32f884edffb8480b9bbe\", \"ORDER_LOOKUP\": \"c89a148be40e6752261e3038609a4b68de22fa3bfdaf32f884edffb8480b9bbe\", \"PROTECTION_CREATE\": \"c89a148be40e6752261e3038609a4b68de22fa3bfdaf32f884edffb8480b9bbe\", \"PROTECTION_GEOMETRY\": \"c89a148be40e6752261e3038609a4b68de22fa3bfdaf32f884edffb8480b9bbe\", \"PROTECTION_READ_BACK\": \"c89a148be40e6752261e3038609a4b68de22fa3bfdaf32f884edffb8480b9bbe\", \"PROTECTION_REPLACE\": \"c89a148be40e6752261e3038609a4b68de22fa3bfdaf32f884edffb8480b9bbe\", \"RATE_LIMIT\": \"c89a148be40e6752261e3038609a4b68de22fa3bfdaf32f884edffb8480b9bbe\", \"RATE_LIMIT_OBSERVATION\": \"a573088d527050f42ff0780824707ef41b5b4de8ea9d74c631170b09bc947b0b\", \"RECONCILIATION\": \"c89a148be40e6752261e3038609a4b68de22fa3bfdaf32f884edffb8480b9bbe\", \"RESTART_WITH_PROTECTED_POSITION\": \"c89a148be40e6752261e3038609a4b68de22fa3bfdaf32f884edffb8480b9bbe\", \"TEST_SCOPE\": \"c89a148be40e6752261e3038609a4b68de22fa3bfdaf32f884edffb8480b9bbe\", \"TIME_SYNC\": \"ddaf6b85ca1d1349c74e61d9c95f6354219d3d4f299f99ac39afb2f6a9ed1462\", \"UNKNOWN_SUBMIT_RECONCILE\": \"c89a148be40e6752261e3038609a4b68de22fa3bfdaf32f884edffb8480b9bbe\", \"USER_STREAM_SPEC\": \"71603f1c6ac49eb7edf75615f4a0bbc7957862c326ae692cc026e91f2b7ddf37\", \"VENUE_REJECTION\": \"c89a148be40e6752261e3038609a4b68de22fa3bfdaf32f884edffb8480b9bbe\"}, \"exchange_capabilities\": {\"client_order_id_max_length\": 36, \"close_position_stop\": true, \"demo_environment\": true, \"environment\": \"DEMO\", \"hedge_mode\": false, \"multiple_stops_per_position\": true, \"native_stop_market\": true, \"native_take_profit\": true, \"notes\": [\"stops are conditional (algo) orders; venue_order_id is written algo:<algoId>\", \"a stop is either bound to the whole position (closePosition) or reduce-only with its own quantity\", \"a second closePosition stop of the same kind and side is refused by the venue (-4130); reduce-only stops with a quantity may rest beside it (doc: up to 10 conditional orders per symbol), which is the create-confirm-retire replacement. DOC-ONLY until a venue certification run confirms it\", \"an untriggered conditional order cannot be modified (doc, 2025-11-06 change log): no amend in place\", \"a conditional order that is no longer open is read with Query Algo Order; one that fired reports the state of the order it created (UNKNOWN while triggering)\", \"UNVERIFIED: the -4130 refusal of a second closePosition stop is no longer in the published error list\", \"UNVERIFIED: open_orders() without a symbol lists conditional orders through a request the raw client never sends\", \"hedge mode is not carried: orders are sent for a one-way account\", \"private user stream uses the routed /private/ws/<listenKey> path (doc); on the demo host that route is UNVERIFIED and venue certification remains separately required\", \"the raw client itself repeats a rate-limited READ within a small bounded sleep budget; mutations never\"], \"one_way_mode\": true, \"position_stop_endpoint\": false, \"quantity_stop\": true, \"reduce_only\": true, \"stop_amend_in_place\": false, \"stop_client_order_id\": true, \"user_stream\": true, \"venue\": \"binance\"}, \"failure_reasons\": [\"TEST_SCOPE:NOT_RUN:NOT_REACHED:ORDERS_NOT_ALLOWED_BY_PERMIT\", \"LEVERAGE_AND_MODE:NOT_RUN:NOT_REACHED:ORDERS_NOT_ALLOWED_BY_PERMIT\", \"VENUE_REJECTION:NOT_RUN:NOT_REACHED:ORDERS_NOT_ALLOWED_BY_PERMIT\", \"ENTRY_SUBMIT:NOT_RUN:NOT_REACHED:ORDERS_NOT_ALLOWED_BY_PERMIT\", \"ORDER_LOOKUP:NOT_RUN:NOT_REACHED:ORDERS_NOT_ALLOWED_BY_PERMIT\", \"ENTRY_FILL:NOT_RUN:NOT_REACHED:ORDERS_NOT_ALLOWED_BY_PERMIT\", \"IDEMPOTENT_REPEAT:NOT_RUN:NOT_REACHED:ORDERS_NOT_ALLOWED_BY_PERMIT\", \"PROTECTION_CREATE:NOT_RUN:NOT_REACHED:ORDERS_NOT_ALLOWED_BY_PERMIT\", \"PROTECTION_READ_BACK:NOT_RUN:NOT_REACHED:ORDERS_NOT_ALLOWED_BY_PERMIT\", \"PROTECTION_GEOMETRY:NOT_RUN:NOT_REACHED:ORDERS_NOT_ALLOWED_BY_PERMIT\", \"PROTECTION_REPLACE:NOT_RUN:NOT_REACHED:ORDERS_NOT_ALLOWED_BY_PERMIT\", \"UNKNOWN_SUBMIT_RECONCILE:NOT_RUN:NOT_REACHED:ORDERS_NOT_ALLOWED_BY_PERMIT\", \"CANCEL:NOT_RUN:NOT_REACHED:ORDERS_NOT_ALLOWED_BY_PERMIT\", \"LOST_ACKNOWLEDGMENT:NOT_RUN:NOT_REACHED:ORDERS_NOT_ALLOWED_BY_PERMIT\", \"CONNECTION_INTERRUPTION:NOT_RUN:NOT_REACHED:ORDERS_NOT_ALLOWED_BY_PERMIT\", \"RATE_LIMIT:NOT_RUN:NOT_REACHED:ORDERS_NOT_ALLOWED_BY_PERMIT\", \"CLOCK_DRIFT:NOT_RUN:NOT_REACHED:ORDERS_NOT_ALLOWED_BY_PERMIT\", \"RESTART_WITH_PROTECTED_POSITION:NOT_RUN:NOT_REACHED:ORDERS_NOT_ALLOWED_BY_PERMIT\", \"MANUAL_POSITION_CHANGE:NOT_RUN:NOT_REACHED:ORDERS_NOT_ALLOWED_BY_PERMIT\", \"CLOSE_POSITION:NOT_RUN:NOT_REACHED:ORDERS_NOT_ALLOWED_BY_PERMIT\", \"CANCEL_OBSOLETE_PROTECTION:NOT_RUN:NOT_REACHED:ORDERS_NOT_ALLOWED_BY_PERMIT\", \"FLATTEN:NOT_RUN:NO_ORDER_WAS_SENT\", \"RECONCILIATION:NOT_RUN:NO_ORDER_WAS_SENT\", \"FINAL_ACCOUNT_STATE:NOT_RUN:NO_ORDER_WAS_SENT\"], \"framework_version\": \"1.0.0\", \"operations\": [], \"outcome\": \"INCOMPLETE\", \"rehearsal\": false, \"test_cases\": {\"ACCOUNT_ENVIRONMENT\": {\"reason\": \"\", \"status\": \"PASS\"}, \"ACCOUNT_STATE\": {\"reason\": \"\", \"status\": \"PASS\"}, \"CANCEL\": {\"reason\": \"NOT_REACHED:ORDERS_NOT_ALLOWED_BY_PERMIT\", \"status\": \"NOT_RUN\"}, \"CANCEL_OBSOLETE_PROTECTION\": {\"reason\": \"NOT_REACHED:ORDERS_NOT_ALLOWED_BY_PERMIT\", \"status\": \"NOT_RUN\"}, \"CLOCK_DRIFT\": {\"reason\": \"NOT_REACHED:ORDERS_NOT_ALLOWED_BY_PERMIT\", \"status\": \"NOT_RUN\"}, \"CLOSE_POSITION\": {\"reason\": \"NOT_REACHED:ORDERS_NOT_ALLOWED_BY_PERMIT\", \"status\": \"NOT_RUN\"}, \"CONNECTION_INTERRUPTION\": {\"reason\": \"NOT_REACHED:ORDERS_NOT_ALLOWED_BY_PERMIT\", \"status\": \"NOT_RUN\"}, \"ENTRY_FILL\": {\"reason\": \"NOT_REACHED:ORDERS_NOT_ALLOWED_BY_PERMIT\", \"status\": \"NOT_RUN\"}, \"ENTRY_SUBMIT\": {\"reason\": \"NOT_REACHED:ORDERS_NOT_ALLOWED_BY_PERMIT\", \"status\": \"NOT_RUN\"}, \"FINAL_ACCOUNT_STATE\": {\"reason\": \"NO_ORDER_WAS_SENT\", \"status\": \"NOT_RUN\"}, \"FLATTEN\": {\"reason\": \"NO_ORDER_WAS_SENT\", \"status\": \"NOT_RUN\"}, \"IDEMPOTENT_REPEAT\": {\"reason\": \"NOT_REACHED:ORDERS_NOT_ALLOWED_BY_PERMIT\", \"status\": \"NOT_RUN\"}, \"INSTRUMENT_RULES\": {\"reason\": \"\", \"status\": \"PASS\"}, \"LEVERAGE_AND_MODE\": {\"reason\": \"NOT_REACHED:ORDERS_NOT_ALLOWED_BY_PERMIT\", \"status\": \"NOT_RUN\"}, \"LOST_ACKNOWLEDGMENT\": {\"reason\": \"NOT_REACHED:ORDERS_NOT_ALLOWED_BY_PERMIT\", \"status\": \"NOT_RUN\"}, \"MANUAL_POSITION_CHANGE\": {\"reason\": \"NOT_REACHED:ORDERS_NOT_ALLOWED_BY_PERMIT\", \"status\": \"NOT_RUN\"}, \"ORDER_LOOKUP\": {\"reason\": \"NOT_REACHED:ORDERS_NOT_ALLOWED_BY_PERMIT\", \"status\": \"NOT_RUN\"}, \"PROTECTION_CREATE\": {\"reason\": \"NOT_REACHED:ORDERS_NOT_ALLOWED_BY_PERMIT\", \"status\": \"NOT_RUN\"}, \"PROTECTION_GEOMETRY\": {\"reason\": \"NOT_REACHED:ORDERS_NOT_ALLOWED_BY_PERMIT\", \"status\": \"NOT_RUN\"}, \"PROTECTION_READ_BACK\": {\"reason\": \"NOT_REACHED:ORDERS_NOT_ALLOWED_BY_PERMIT\", \"status\": \"NOT_RUN\"}, \"PROTECTION_REPLACE\": {\"reason\": \"NOT_REACHED:ORDERS_NOT_ALLOWED_BY_PERMIT\", \"status\": \"NOT_RUN\"}, \"RATE_LIMIT\": {\"reason\": \"NOT_REACHED:ORDERS_NOT_ALLOWED_BY_PERMIT\", \"status\": \"NOT_RUN\"}, \"RATE_LIMIT_OBSERVATION\": {\"reason\": \"\", \"status\": \"PASS\"}, \"RECONCILIATION\": {\"reason\": \"NO_ORDER_WAS_SENT\", \"status\": \"NOT_RUN\"}, \"RESTART_WITH_PROTECTED_POSITION\": {\"reason\": \"NOT_REACHED:ORDERS_NOT_ALLOWED_BY_PERMIT\", \"status\": \"NOT_RUN\"}, \"TEST_SCOPE\": {\"reason\": \"NOT_REACHED:ORDERS_NOT_ALLOWED_BY_PERMIT\", \"status\": \"NOT_RUN\"}, \"TIME_SYNC\": {\"reason\": \"\", \"status\": \"PASS\"}, \"UNKNOWN_SUBMIT_RECONCILE\": {\"reason\": \"NOT_REACHED:ORDERS_NOT_ALLOWED_BY_PERMIT\", \"status\": \"NOT_RUN\"}, \"USER_STREAM_SPEC\": {\"reason\": \"\", \"status\": \"PASS\"}, \"VENUE_REJECTION\": {\"reason\": \"NOT_REACHED:ORDERS_NOT_ALLOWED_BY_PERMIT\", \"status\": \"NOT_RUN\"}}, \"validity_days\": 90}",
+        "environment": "DEMO",
+        "event_hash": "352ede6cdfc2cb68001aa431123d78cd0bc0c1606c619e2e2de3df0ea97b4853",
+        "event_id": "certev_44411657049d7dcbee1b3a90",
+        "event_type": "RUN_COMPLETED",
+        "expires_at": null,
+        "operator_ref": "claude-code-opus-5.5 for owner CosmicforgeHealthnet",
+        "prev_hash": "2528b6825d76ac075f7d416867af040e43d72a9cbc63261f4e9b5af0ebc64d5d",
+        "recorded_at": 1793523032998,
+        "run_id": "cert_942eca8106c9d24db9c147e4",
+        "seq": 2,
+        "source_commit": "unknown",
+        "started_at": 1793523029581,
+        "status": null,
+        "venue": "binance"
+      }
+    ]
+  },
+  "run_id": "cert_942eca8106c9d24db9c147e4",
+  "source_commit": "unknown",
+  "venue": "binance",
+  "venue_contacted": true
+}

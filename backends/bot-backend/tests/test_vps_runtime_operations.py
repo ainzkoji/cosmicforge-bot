@@ -552,7 +552,9 @@ def test_an_unreachable_broker_fails_the_account_closed_and_the_next_cycle_recov
 
     production_loop.sync(db)                     # the outage: recorded, not raised
     assert state()["status"] == "READ_FAILED" and state()["execution_permission"] == "BLOCKED_ACCOUNT"
-    assert state()["reason"] == "ConnectionError"
+    # classified and sanitized (broker_read_diagnosis), never the bare exception class or its text
+    assert state()["reason"] == "BROKER_NETWORK_UNAVAILABLE"
+    assert state()["read_diagnostic"]["exception"] == "ConnectionError"
     production_loop.sync(db)                     # the venue is back: nothing to restart
     assert state()["status"] == "SYNCED"
 

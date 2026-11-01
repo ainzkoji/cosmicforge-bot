@@ -107,6 +107,10 @@ def first_use_creators() -> List[Tuple[str, str, Callable[[Any, Any], None]]]:
         from shared_lib.broker.auto_trading import ensure
         ensure(conn)
 
+    def experimental_demo(db, conn):
+        from app.trading_intelligence.governance.experimental_demo import ensure
+        ensure(conn)
+
     def safety_engine(db, conn):
         from app.risk.safety_engine import SafetyEngine
         conn.commit()
@@ -173,6 +177,7 @@ def first_use_creators() -> List[Tuple[str, str, Callable[[Any, Any], None]]]:
         ("shared_lib.persistence.global_analytics.GlobalAnalytics(db_path)", "FUNCTION", global_analytics),
         ("shared_lib.billing.operator_grants.ensure_schema", "FUNCTION", operator_grants),
         ("shared_lib.broker.auto_trading.ensure", "FUNCTION", auto_trading),
+        ("app.trading_intelligence.governance.experimental_demo.ensure", "FUNCTION", experimental_demo),
         ("app.risk.safety_engine.SafetyEngine._init_monitoring_state", "FUNCTION", safety_engine),
         ("shared_lib.persistence.trade_tracker.TradeTracker(db_path)", "FUNCTION", trade_tracker),
         ("app.trading_intelligence.integration.residual_prospective.Tracker (inline DDL)", "SOURCE_LITERAL",
