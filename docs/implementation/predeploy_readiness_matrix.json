@@ -1,0 +1,42 @@
+{
+  "schema": "cosmicforge.predeploy_readiness.v1",
+  "baseline_commit": "d9010c262fa5297d3bd38541774f1a4e8259ad31",
+  "final_commit": "the commit that adds this file; its CI run is recorded in the hand-over",
+  "engineering_state": "PRE_DEPLOYMENT_READY",
+  "live_authorized": false,
+  "status_words": ["PASS", "PARTIAL", "BLOCKED", "FAIL", "NOT RUN"],
+  "research_fingerprint": "59a3b6689f63bd8e61c7db5f9251bc58162d0bdb5d37a9c866478f76dc50a7aa",
+  "matrix": [
+    {"category": "CATI engine", "status": "PASS", "evidence": "pipeline suites; test_sustained_cati_cycle.py (30 simulated days)"},
+    {"category": "Market data", "status": "PASS", "evidence": "daily feed, freshness and stale-data refusal tests; DEPTH_STALE at 1,000 accounts"},
+    {"category": "Strategy governance", "status": "PASS", "evidence": "family registry/governance suites; real family refused 90/90 in the sustained cycle"},
+    {"category": "Risk sizing", "status": "PASS", "evidence": "test_k1_sizing_gates.py (0.40 % and 15 % boundaries, D8 equality); E-01/in-flight tests"},
+    {"category": "Portfolio management", "status": "PASS", "evidence": "test_step3_portfolio.py, test_step3_reservations.py, test_reservation_race.py"},
+    {"category": "Execution boundary", "status": "PASS", "evidence": "test_step3_multi_position_execution.py, test_e01_rebalance_protection.py"},
+    {"category": "Binance adapter", "status": "PASS", "scope": "synthetic", "venue_certification": "PENDING", "evidence": "tests/exchange wire suites"},
+    {"category": "Bybit adapter", "status": "PASS", "scope": "synthetic", "venue_certification": "PENDING", "evidence": "tests/exchange wire suites"},
+    {"category": "BingX adapter", "status": "PASS", "scope": "synthetic", "venue_certification": "PENDING", "evidence": "tests/exchange wire suites; stop replacement refused by design"},
+    {"category": "Native stops", "status": "PASS", "scope": "synthetic; per-venue capability documented", "evidence": "test_step3_stop_replacement.py; VENUE_ADAPTER_CONTRACT.md section 13"},
+    {"category": "Worker failover", "status": "PASS", "evidence": "takeover tests; account_scale worker-kill at 1,000 accounts"},
+    {"category": "Durable queue", "status": "PASS", "evidence": "jobs runtime tests; queue consumer crash at scale, 0 duplicates"},
+    {"category": "PostgreSQL", "status": "PASS", "scope": "both-dialect tests and migration drills on disposable clusters", "production_copy": "BLOCKED (EXT-DB-01)"},
+    {"category": "1,000-account load", "status": "PASS", "scope": "synthetic FakeVenue, Windows workstation", "venue_load_test": "BLOCKED (external)", "evidence": "evidence/predeploy/scale_*_accounts.json"},
+    {"category": "Customer APIs", "status": "PASS", "evidence": "user backend suite"},
+    {"category": "Admin APIs", "status": "PASS", "evidence": "admin backend suite; route-walk security test"},
+    {"category": "Security", "status": "PASS", "scope": "internal tests", "external_assessment": "NOT RUN"},
+    {"category": "Emergency operations", "status": "PASS", "scope": "simulated drills", "authorized_environment_drill": "BLOCKED (J-06)"},
+    {"category": "Deployment assets", "status": "PASS", "scope": "container build, migrate, smoke and rollback drill in CI", "hosted_staging": "BLOCKED (EXT-STG-01)"},
+    {"category": "Research certification", "status": "BLOCKED", "actual": "every family M0; DAILY_TREND/H-018 uncertified; Mandate 004 holdout unopened"},
+    {"category": "Live eligibility", "status": "PASS", "scope": "refusal and approval gate logic, two-key live build", "this_build": "LIVE_NOT_PERMITTED_IN_THIS_BUILD"},
+    {"category": "Operational approval", "status": "BLOCKED", "actual": "no owner release decision, no live switch, no L-08 record, no policy keys set"}
+  ],
+  "go_live_readiness": {
+    "engineering": "PRE_DEPLOYMENT_READY",
+    "hosted_staging": "BLOCKED",
+    "venue_certification": "PENDING",
+    "strategy_certification": "BLOCKED",
+    "demo_trading_eligibility": "BLOCKED (no certified family)",
+    "live_trading_eligibility": "BLOCKED",
+    "operational_release": "NOT AUTHORIZED"
+  }
+}

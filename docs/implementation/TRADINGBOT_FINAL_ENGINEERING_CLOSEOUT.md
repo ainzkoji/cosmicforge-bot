@@ -3,6 +3,10 @@
 Pass of 31 October 2026 on `main`. It continues [MASTER_PLAN_I_L_COMPLIANCE.md](MASTER_PLAN_I_L_COMPLIANCE.md) and
 supersedes it where they differ (quarantine count, D2–D4/D8, F6, L-07, L-08, takeover figures).
 
+> **Superseded in part (1 Nov 2026)** by [TRADINGBOT_PRE_DEPLOYMENT_READINESS.md](TRADINGBOT_PRE_DEPLOYMENT_READINESS.md):
+> E-01..E-05 are closed, the rebalance-up reservation note of section 7 no longer applies, and section 12's "Left"
+> list is converted.
+
 **Status words.** PASS = implemented, integrated, tested, and green on the final commit's CI. PARTIAL = part done,
 the rest named. BLOCKED = needs a named owner decision, external party, infrastructure or elapsed time. A green CI is
 engineering evidence only. It never counts as strategy certification, venue certification, staging, a penetration
