@@ -208,10 +208,48 @@ def account_daily_loss_policy(db, account, bots):
         if instance is None or instance.broker_account_id != account["id"]:
             continue
         policy = resolve_effective_bot_policy(instance=instance, broker_environment=str(account.get("environment") or ""),
-            risk_params=service.get_risk_profile_preset(instance.risk_level))
+            risk_params=bot_risk_params(service, instance))
         resolved.append({"pct": policy.max_daily_loss_pct, "source": policy.daily_loss_source,
                          "bot_instance_id": instance.id})
     return min(resolved, key=lambda p: p["pct"]) if resolved else None
+
+
+def bot_risk_params(service, instance):
+    """The risk parameters a bot was deployed with: the versioned customer risk profile
+    (``shared_lib.risk_levels``, at the version saved on the row) for a risk-based deployment, the
+    legacy preset of its risk level otherwise. One rule for every reader of the bot's policy -- the
+    execution boundary and the account-wide daily loss policy must not resolve the same row two ways."""
+    if str(getattr(instance, "allocation_type", "") or "").lower() == "risk_based":
+        from app.core.risk_profile_params import risk_based_params
+        return risk_based_params(instance)
+    return service.get_risk_profile_preset(instance.risk_level)
+
+
+def resolve_executor_capital_budget(boundary, equity):
+    """Bind the bot's capital budget, in USDT, to the executor's capital ledger for this cycle.
+
+    A fixed budget is the saved amount. A percentage budget (``capital_allocation_type`` =
+    ``percent_balance``) is that percentage of the broker-confirmed account ``equity`` of this cycle,
+    with the shared rule (``risk_sizing.effective_budget``) the hard-risk sizing and the deployment
+    preview use -- never the saved percentage read as an amount. An equity that cannot carry the budget
+    raises ``ACCOUNT_CAPITAL_BUDGET_UNRESOLVED``: nothing is sized from a guess. Returns the budget."""
+    policy = getattr(getattr(boundary, "orchestrator", None), "effective_policy", None)
+    executor = getattr(getattr(boundary, "adapter", None), "executor", None)
+    raw_kind = getattr(policy, "capital_allocation_type", None)
+    if policy is None or executor is None or not isinstance(raw_kind, (str, type(None))):
+        return None     # no resolved bot policy on this boundary (harness/legacy wiring): nothing to bind
+    kind = str(raw_kind or "fixed_amount").lower()
+    if kind in ("fixed_amount", "fixed"):
+        executor._capital_budget = float(policy.capital_budget)
+        return executor._capital_budget
+    from app.trading_intelligence.execution.risk_sizing import effective_budget
+    executor._capital_budget = 0.0      # unresolved until the equity is known: the ledger refuses
+    try:
+        budget = float(effective_budget(budget_type=kind, budget_value=policy.capital_budget, account_equity=equity))
+    except (ValueError, TypeError) as exc:
+        raise ValueError("ACCOUNT_CAPITAL_BUDGET_UNRESOLVED") from exc
+    executor._capital_budget = budget
+    return budget
 
 
 def account_risk(db, account, client, positions, orders, bots, now, *, account_state=None, income_force=False):
@@ -462,14 +500,10 @@ def boundary_for(db, account, bot, client):
         raise ValueError("PRODUCTION_REQUIRES_CATI_BOT")
     assert_broker_execution_capability(db, user_id=account["user_id"], broker_account_id=account["id"])
     risk_based = str(getattr(instance, "allocation_type", "") or "").lower() == "risk_based"
-    if risk_based:
-        # The versioned customer risk profile (shared_lib.risk_levels) is the
-        # source of truth for a risk-based deployment; legacy presets stay for
-        # legacy bots. The 0.4 % system ceiling still clamps inside the policy.
-        from app.core.risk_profile_params import risk_based_params
-        risk_params = risk_based_params(instance)
-    else:
-        risk_params = service.get_risk_profile_preset(instance.risk_level)
+    # The versioned customer risk profile (shared_lib.risk_levels) is the source of truth for a
+    # risk-based deployment; legacy presets stay for legacy bots. The 0.4 % system ceiling still
+    # clamps inside the policy.
+    risk_params = bot_risk_params(service, instance)
     policy = resolve_effective_bot_policy(instance=instance, broker_environment=environment.lower(),
         risk_params=risk_params)
     if policy.execution_mode != "broker":
@@ -512,7 +546,11 @@ def boundary_for(db, account, bot, client):
     executor = BinanceExecutor(client, execution_mode="live", live_symbols=symbols, bot_instance_id=bot["id"], db=db,
                                market_data_interval="15m")
     executor._broker_account_id = account["id"]
-    executor._capital_budget = policy.capital_budget
+    # The capital ledger's budget in USDT: the saved amount for a fixed budget; a percentage budget is
+    # resolved against each cycle's broker equity (``resolve_executor_capital_budget`` in
+    # ``prepare_submission``) and refuses every entry until then -- a saved "25" (%) is never 25 USDT.
+    fixed_budget = str(policy.capital_allocation_type or "fixed_amount").lower() in ("fixed_amount", "fixed")
+    executor._capital_budget = float(policy.capital_budget) if fixed_budget else 0.0
     executor._allocation_type = policy.position_allocation_type
     executor._allocation_value = policy.position_allocation_value
     executor._max_open_positions = 1
@@ -1136,6 +1174,10 @@ def _process_account(db, account, client, snapshot, *, now_ms=None, boundary_fac
                             result["experimental_demo"] = {"authorization_id": experimental, "label": "EXPERIMENTAL_DEMO"}
                         result['stage'] = 'BOUNDARY_RESULT'
                         result["reason"] = out.reason_codes[0] if out.reason_codes else out.status
+                        if (out.detail or {}).get("sizing_refusal"):
+                            # A risk-approved order refused for its size (never resized): what it would have
+                            # committed and risked, in the customer's terms (boundary.sizing_refusal).
+                            result["refusal_explanation"] = dict(out.detail["sizing_refusal"])
                         result["execution_permission"] = ("BLOCKED_"+environment+"_ORDER_GATE" if out.status == gate["reason"]
                             else "ORDER_ACTIVE" if out.status in ("EXECUTED", "SUBMIT_UNKNOWN_PENDING_RECONCILIATION")
                             else "BLOCKED_RISK")
@@ -1191,6 +1233,8 @@ def prepare_submission(db, account, bot, client, boundary, plan, instrument, ris
     kyc = evaluate_execution_kyc(user_id=account['user_id'], broker_environment=plan.environment.lower())
     readiness = evaluate_execution_readiness(db=db, bot_instance_id=bot['id'], broker_environment=plan.environment.lower())
     controls = persisted_risk_controls(db,bot['id'],risk,now)
+    # The bot's own capital budget in USDT for this cycle (a percentage budget follows the equity).
+    resolve_executor_capital_budget(boundary, risk.get('equity'))
     # Read the executable price last, after slower metadata/history work.
     price = float(client.last_price(instrument.venue_symbol))
     observed = int(time.time()*1000) if now_ms is None else now_ms

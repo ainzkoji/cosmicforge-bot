@@ -432,6 +432,35 @@ class TradingOrchestrator:
                 return rejected((sizing.reason,), RiskRejectionFamily.SIZING.value)
             kwargs["resolved_leverage"] = sizing.leverage
             kwargs["risk_based_sizing"] = sizing
+        elif policy is not None and str(getattr(policy, "position_allocation_type", "") or "").lower() == "percent_balance":
+            # A percentage position allocation ("% of balance" in the deployment form) is a fixed position
+            # NOTIONAL per trade: that percentage of the account balance the bot may use -- the equity,
+            # bounded by the bot's own capital budget (min(equity, budget), as ``AccountLimits.capital_basis``;
+            # a percentage budget is resolved against this cycle's equity). The same quantity every executor
+            # cap reads it as: the exposure guard (equity x pct, notional) and the capital ledger (budget x pct
+            # as margin) both hold it, so nothing downstream cuts it. It enters hard risk as this trade's fixed
+            # margin at the resolved leverage. Before this branch the percentage never reached sizing on the
+            # CATI path (the plan was sized as ``atr_risk``). Never resized; L-08 refuses an order that risks
+            # too much.
+            from app.trading_intelligence.execution.risk_sizing import effective_budget
+            try:
+                budget = effective_budget(budget_type=getattr(policy, "capital_allocation_type", "fixed_amount"),
+                                          budget_value=policy.capital_budget, account_equity=current_equity)
+                pct = float(policy.position_allocation_value)
+                basis = min(float(current_equity), float(budget))
+            except (TypeError, ValueError) as exc:
+                result["reason"] = str(exc).split(":")[0]
+                return rejected((str(exc),), RiskRejectionFamily.SIZING.value)
+            notional_target = basis * pct / 100.0 if 0 < pct <= 100 and basis > 0 else 0.0
+            if not notional_target > 0:
+                result["reason"] = "PERCENT_ALLOCATION_MARGIN_UNRESOLVED"
+                return rejected((result["reason"],), RiskRejectionFamily.SIZING.value)
+            margin = notional_target / float(leverage_resolution.leverage)
+            result["details"]["percent_allocation"] = {
+                "capital_budget_usdt": float(budget), "equity_usdt": float(current_equity), "basis_usdt": basis,
+                "allocation_pct": pct, "notional_usdt": notional_target, "margin_usdt": margin,
+                "leverage": leverage_resolution.leverage}
+            kwargs["allocation_margin_usdt"] = margin
         if atr is None:
             from app.policy.policy_engine import calculate_atr
 
@@ -731,10 +760,13 @@ class TradingOrchestrator:
             max_leverage=self._get_max_leverage_for_symbols(),
             min_notional=5.0,
             max_notional=effective_equity * self._get_max_leverage_for_symbols(),
-            # A risk-based deployment's sized margin enters here as THIS trade's fixed margin.
+            # A risk-based deployment's sized margin, or a percentage allocation's resolved margin,
+            # enters here as THIS trade's fixed margin.
             trade_amount_mode="fixed" if (kwargs.get("risk_based_sizing") is not None or
+                                          kwargs.get("allocation_margin_usdt") is not None or
                                           (self.validated_config.use_fixed_size and self.validated_config.fixed_size_usdt)) else "atr_risk",
             trade_amount_value=(float(kwargs["risk_based_sizing"].margin_usdt) if kwargs.get("risk_based_sizing") is not None
+                                else float(kwargs["allocation_margin_usdt"]) if kwargs.get("allocation_margin_usdt") is not None
                                 else (self.validated_config.fixed_size_usdt if self.validated_config.use_fixed_size else 0.0)),
             execution_mode="live" if not self.validated_config.paper_mode else "paper",
             confidence_already_approved=True,

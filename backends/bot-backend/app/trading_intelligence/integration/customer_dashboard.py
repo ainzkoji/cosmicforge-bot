@@ -143,7 +143,10 @@ def _latest_evaluation(conn: Any, account_id: str) -> Optional[Dict[str, Any]]:
             "signal_eligible": eligibility.get("eligible"),
             "reason": _explained(doc.get("reason")) if doc.get("reason") else None,
             "orders_submitted": bool(doc.get("orders_submitted")),
-            "experimental_demo": doc.get("experimental_demo")}
+            "experimental_demo": doc.get("experimental_demo"),
+            # A size refusal (never resized): the order's margin, leverage, notional and planned risk at the
+            # stop against the per-trade ceiling, and that the user's configured amount was not changed.
+            "refusal_explanation": doc.get("refusal_explanation")}
 
 
 def _latest_signal(db: Any) -> Dict[str, Any]:

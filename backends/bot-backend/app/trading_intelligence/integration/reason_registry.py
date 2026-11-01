@@ -324,6 +324,33 @@ def _register_read_diagnosis() -> None:
 
 _register_read_diagnosis()
 
+# ── per-bot sizing refusals: the configured amount is never changed or resized ──
+_SIZE_ACTION = ("Your bot's settings were not changed. To trade with this account's equity, choose a smaller "
+                "fixed amount or the risk-based sizing mode in the bot settings.")
+_add("EXECUTABLE_PRICE_RISK_EXCEEDED", BLOCKED,
+     "Trade refused: at the price the order would actually fill, the loss at the stop would be more than 0.40% of "
+     "the account equity, the most one trade may risk. Your configured trade amount was not changed and the order "
+     "was not resized; the evaluation record shows the planned risk.", _SIZE_ACTION)
+_add("EXECUTABLE_PRICE_RISK_UNVERIFIABLE", BLOCKED,
+     "Trade refused: the stop price or the account equity was unavailable, so the risk at the fill price could not "
+     "be checked against the 0.40% per-trade limit. No order was sent.", "No action needed; checked again on the next signal.")
+_add("EXECUTABLE_STOP_DISTANCE_EXCEEDED", BLOCKED,
+     "Trade refused: at the price the order would fill, the stop would be more than 15% away. No order was sent.",
+     "No action needed; checked again on the next signal.")
+_add("MARKET_PREDICTED_SLIPPAGE_EXCEEDS_BOUND", WAITING,
+     "Trade refused: filling this order now would cost more slippage than the trade allows. No order was sent.",
+     "No action needed; checked again on the next signal.")
+_add("MARKET_POLICY_BUDGET_MISMATCH", BLOCKED,
+     "Trade refused: this market's order budget was opened under a different market-entry policy. No order was sent.",
+     "No action needed; checked again on the next signal.")
+_add("DEPTH_INSUFFICIENT_FOR_QUANTITY", WAITING,
+     "Trade refused: the visible order book could not fill the order's size. No order was sent.",
+     "No action needed; checked again on the next signal.")
+_add("PERCENT_ALLOCATION_MARGIN_UNRESOLVED", BLOCKED,
+     "Trade refused: the bot's percentage allocation did not resolve to a positive amount of its budget. No order was sent.",
+     "Check the bot's budget and allocation percentage in the bot settings.")
+
+
 def describe(code: Optional[str]) -> Dict[str, Any]:
     """The registry entry for ``code``; an unknown code is reported as such, never as fine. A code with a
     detail after a colon (``FAMILY_STAGE_NO_ORDER_AUTHORITY:M0``) is described by its part before the colon."""

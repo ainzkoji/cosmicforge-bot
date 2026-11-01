@@ -122,3 +122,18 @@ def test_no_signal_is_reported_as_no_signal(db, monkeypatch):
     assert signal["state"] == "NO_SIGNAL" and signal["reason"]["code"] == "NO_SCORE_AT_LEAST_2"
     monkeypatch.setattr(PE, "latest_decision", lambda db: None)
     assert CD._latest_signal(db)["state"] == "NO_SIGNAL"
+
+
+def test_a_size_refusal_reaches_the_dashboard_with_its_explanation(db, monkeypatch):
+    install(monkeypatch, engine_state())
+    explanation = {"code": "EXPERIMENTAL_DEMO_NOTIONAL_LIMIT_EXCEEDED", "notional_usdt": 480.0, "margin_usdt": 120.0,
+                   "configured_allocation_changed": False, "order_resized": False, "message": "Trade refused: ..."}
+    with db.connect() as c:
+        c.execute("CREATE TABLE IF NOT EXISTS cati_production_decisions (account_id TEXT, decision_id TEXT, "
+                  "bot_instance_id TEXT, observed_at INTEGER, document TEXT)")
+        c.execute("INSERT INTO cati_production_decisions VALUES (?,?,?,?,?)", ("brk_demo", "d1", "b1", 100, json.dumps(
+            {"stage": "BOUNDARY_RESULT", "final_result": "BLOCKED_RISK", "reason": "EXPERIMENTAL_DEMO_NOTIONAL_LIMIT_EXCEEDED",
+             "refusal_explanation": explanation})))
+    last = CD.customer_dashboard(db, user_id=USER)["accounts"][0]["last_evaluation"]
+    assert last["refusal_explanation"] == explanation
+    assert last["reason"]["code"] == "EXPERIMENTAL_DEMO_NOTIONAL_LIMIT_EXCEEDED"

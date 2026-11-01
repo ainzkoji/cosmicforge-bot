@@ -106,6 +106,52 @@ class BoundaryResult:
     detail: Mapping[str, Any] = field(default_factory=dict)
 
 
+#: Refusals of a risk-approved order because of its SIZE (never resized): the boundary result carries the
+#: order's sizing and its planned risk at the stop, so the customer record can say why (``sizing_refusal``).
+SIZING_REFUSAL_CODES = frozenset({"EXECUTABLE_PRICE_RISK_EXCEEDED", "EXPERIMENTAL_DEMO_NOTIONAL_LIMIT_EXCEEDED"})
+
+
+def sizing_refusal(req: "EntryRequest", tp: Mapping[str, Any], code: str) -> Dict[str, Any]:
+    """The risk-approved order a size refusal stopped, in the customer's terms: the margin it would commit
+    (notional / leverage -- for a fixed-amount bot, the configured amount), the leverage, the notional, and
+    the loss at the stop at the planned entry price as a share of equity against the 0.40 % per-trade
+    ceiling. Evidence only: nothing here sizes, resizes or retries an order, and the bot's saved
+    configuration is not touched."""
+    from shared_lib.risk_levels import SYSTEM_PER_TRADE_RISK_CEILING_PCT
+    out: Dict[str, Any] = {"code": str(code), "configured_allocation_changed": False, "order_resized": False,
+                           "per_trade_risk_ceiling_pct": float(SYSTEM_PER_TRADE_RISK_CEILING_PCT)}
+    try:
+        qty, entry = float(tp["quantity"]), float(tp["entry_price"])
+        leverage = max(1.0, float(tp.get("leverage") or req.leverage or 1.0))
+        notional = qty * entry
+        risk = qty * abs(entry - float(req.stop_price))
+        equity = float(req.current_equity)
+        out.update(quantity=qty, entry_price=entry, stop_price=float(req.stop_price), leverage=leverage,
+                   notional_usdt=round(notional, 8), margin_usdt=round(notional / leverage, 8),
+                   stop_distance_pct=round(abs(entry - float(req.stop_price)) / entry * 100.0, 6),
+                   planned_risk_usdt=round(risk, 8), equity_usdt=equity,
+                   planned_risk_pct=round(risk / equity * 100.0, 6) if equity > 0 else None,
+                   max_risk_usdt_at_ceiling=round(equity * float(SYSTEM_PER_TRADE_RISK_CEILING_PCT) / 100.0, 8))
+    except (KeyError, TypeError, ValueError, ZeroDivisionError):
+        out["sizing_unavailable"] = True
+    pct = out.get("planned_risk_pct")
+    if str(code).split(":", 1)[0] == "EXPERIMENTAL_DEMO_NOTIONAL_LIMIT_EXCEEDED":
+        out["message"] = (
+            f"Trade refused: the order's notional of {out.get('notional_usdt', 0):.2f} USDT "
+            f"({out.get('margin_usdt', 0):.2f} USDT margin x {out.get('leverage', 0):g} leverage) is above the "
+            f"experimental DEMO authorization's notional limit. Your configured trade amount was not changed "
+            f"and the order was not resized.")
+    else:
+        out["message"] = (
+            f"Trade refused: at the stop this order would lose {out.get('planned_risk_usdt', 0):.2f} USDT"
+            + (f" ({pct:.2f}% of equity)" if pct is not None else "")
+            + f" at the planned entry price (the limit is checked at the price the order would actually fill); "
+            f"one trade may risk at most "
+            f"{out['per_trade_risk_ceiling_pct']:.2f}% of equity ({out.get('max_risk_usdt_at_ceiling', 0):.2f} USDT). "
+            f"Your configured trade amount was not changed and the order was not resized.")
+    return out
+
+
 #: How long an unresolved submit may stay pending before it is escalated as a
 #: SUBMIT_OUTCOME_UNRESOLVED system fault. Escalation never releases ownership.
 DEFAULT_RESOLUTION_ESCALATION_MS = 15 * 60_000
@@ -377,9 +423,15 @@ class CATIExecutionBoundary:
             from app.trading_intelligence.governance.experimental_demo import entry_refusal
             why = entry_refusal(self._db, experimental_id, req.notional, submit_now)
             if why:
-                return self._fail_before_risk(plan, submit_now, BoundaryStatus.GOVERNANCE_NOT_AUTHORIZED, why)
+                refused = self._fail_before_risk(plan, submit_now, BoundaryStatus.GOVERNANCE_NOT_AUTHORIZED, why)
+                if str(why).split(":", 1)[0] in SIZING_REFUSAL_CODES:
+                    refused = replace(refused, detail={**refused.detail, "sizing_refusal": sizing_refusal(req, tp, why)})
+                return refused
         spread, refused = self._reserve_spread(plan, req, tp, attempt_id, base.client_order_id, submit_now)
         if refused is not None:
+            if refused.reason_codes and str(refused.reason_codes[0]).split(":", 1)[0] in SIZING_REFUSAL_CODES:
+                refused = replace(refused, detail={**refused.detail,
+                                                   "sizing_refusal": sizing_refusal(req, tp, refused.reason_codes[0])})
             return refused
         try:
             inserted = self.attempts.append(base, 0)  # atomic claim: only the inserting process may CREATE
