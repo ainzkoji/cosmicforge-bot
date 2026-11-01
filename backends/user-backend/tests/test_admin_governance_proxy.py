@@ -57,6 +57,12 @@ ROUTES = [
     ("POST", "/families/DAILY_TREND/kill-switch", SWITCH, "family_kill_switch"),
     ("POST", "/families/DAILY_TREND/disable", SWITCH, "family_disable"),
     ("POST", "/accounts/brk_9f2c41aa07b1/kill-switch", SWITCH, "account_kill_switch"),
+    ("GET", "/experimental-demo", None, "experimental_demo_list"),
+    ("POST", "/experimental-demo",
+     {"account_id": "brk_9f2c41aa07b1", "family_id": "DAILY_TREND", "environment": "DEMO",
+      "acknowledged_research_status": "NOT_CERTIFIED", "approval_ref": "owner brief", "duration_hours": 24,
+      "max_entry_notional_usdt": 100, **REASON}, "experimental_demo_authorize"),
+    ("POST", "/experimental-demo/xdemo_0123456789abcdef0123/revoke", REASON, "experimental_demo_revoke"),
 ]
 WRITES = [route for route in ROUTES if route[0] == "POST"]
 
@@ -137,10 +143,11 @@ def test_the_route_table_of_this_file_is_the_proxy_router():
     def template(path):
         path = re.sub(r"^/families/DAILY_TREND", "/families/{family_id}", path)
         path = re.sub(r"^/promotion-requests/[^/]+", "/promotion-requests/{request_id}", path)
+        path = re.sub(r"^/experimental-demo/[^/]+/", "/experimental-demo/{authorization_id}/", path)
         return re.sub(r"^/accounts/[^/]+", "/accounts/{account_id}", path)
 
     assert {(method, template(path)) for method, path, _body, _action in ROUTES} == _proxy_routes()
-    assert len(ROUTES) == len(admin_governance.router.routes) == 15
+    assert len(ROUTES) == len(admin_governance.router.routes) == 18
 
 
 def test_every_bot_backend_governance_route_is_proxied_and_no_other():

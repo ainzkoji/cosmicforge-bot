@@ -2,6 +2,7 @@
 engine only through the user backend.
 
     /api/v1/cati/runtime/status
+    /api/v1/cati/runtime/dashboard
     /api/v1/cati/bots/{id}/status | positions | trades | summary | equity
 
 The access token is forwarded; the bot-backend checks ownership and admin
@@ -20,6 +21,11 @@ router = APIRouter(prefix="/api/v1/cati", tags=["CATI Proxy"])
 @router.get("/runtime/status")
 async def runtime_status(request: Request, user: dict = Depends(get_current_active_user)):
     return await proxy_request(request, "/api/v1/cati/runtime/status")
+
+
+@router.get("/runtime/dashboard")
+async def runtime_dashboard(request: Request, user: dict = Depends(get_current_active_user)):
+    return await proxy_request(request, "/api/v1/cati/runtime/dashboard")
 
 
 @router.get("/bots/{bot_id}/status")

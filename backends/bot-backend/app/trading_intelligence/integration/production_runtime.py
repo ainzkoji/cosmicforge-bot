@@ -88,6 +88,11 @@ def client_doubt(exc) -> bool:
     """True when ``exc`` is a reason to rebuild the account's broker client."""
     if isinstance(exc, AssignmentLost):
         return False  # about this worker's ownership of the account, never about the connection
+    from .broker_read_diagnosis import is_local_budget_refusal
+    if is_local_budget_refusal(exc):
+        # This server's own budget refused before anything was sent. Rebuilding
+        # would only spend more weight (exchangeInfo + time sync) on a full budget.
+        return False
     code = getattr(exc, "reason_code", None)
     if not code and isinstance(exc, ValueError):
         text = str(exc)
@@ -480,14 +485,18 @@ def _sync_accounts(db, accounts, *, layer=_PROCESS_LAYER):
             _progress["assignments_lost"] = _progress.get("assignments_lost", 0) + 1
             logger.warning("[CATI_PRODUCTION] account assignment lost (%s); account skipped", lost.reason)
         except Exception as exc:
-            # Never publish credentials or signed exception URLs.
+            # Never publish credentials or signed exception URLs: the diagnosis
+            # keeps only the exception class and sanitized tokens / status codes.
+            from .broker_read_diagnosis import classify
+            diagnosis = classify(exc)
             save(db, account["id"], account["user_id"], int(time.time()*1000),
-                 {**account_identity(account), "status": "READ_FAILED", "reason":
-                  getattr(exc, "reason_code", None) or type(exc).__name__,
+                 {**account_identity(account), "status": "READ_FAILED", "reason": diagnosis["reason"],
+                  "read_diagnostic": diagnosis["diagnostic"],
                   "execution_permission": "BLOCKED_ACCOUNT", "execution": {"execution_permission": "BLOCKED_ACCOUNT",
-                      "reason": getattr(exc, "reason_code", None) or type(exc).__name__},
+                      "reason": diagnosis["reason"]},
                   "balance": None, "positions": None, "orders": None})
-            logger.warning("[CATI_PRODUCTION] broker read failed: %s", type(exc).__name__)
+            logger.warning("[CATI_PRODUCTION] broker read failed account=%s reason=%s diagnostic=%s",
+                           account["id"], diagnosis["reason"], diagnosis["diagnostic"])
 
 
 def status(db, *, user_id=None):

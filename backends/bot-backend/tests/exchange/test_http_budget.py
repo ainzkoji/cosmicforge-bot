@@ -179,7 +179,10 @@ def test_factory_injects_budget_before_constructor_and_adapter_does_not_double_c
     adapter = BudgetedVenueAdapter(adapter_for(client, C.BINANCE, C.DEMO), budget,
                                    account_ref="one", server_address="egress", clock=lambda: 100_000)
     adapter.server_time()
-    assert budget.snapshot(C.BINANCE, "egress", 100_000)["used"] == 100 * len(calls)
+    from urllib.parse import urlsplit
+    from shared_lib.broker.http_budget import request_weight
+    assert budget.snapshot(C.BINANCE, "egress", 100_000)["used"] == sum(
+        request_weight(C.BINANCE, urlsplit(url).path) for url in calls)
 
 
 def test_bybit_clock_fault_resigns_headers_without_mutating_callers_headers():
@@ -198,3 +201,38 @@ def test_bybit_clock_fault_resigns_headers_without_mutating_callers_headers():
     assert signed["X-BAPI-SIGN"] == hmac.new(b"test-only", b"61000synthetic5000symbol=TEST", hashlib.sha256).hexdigest()
     assert headers["X-BAPI-TIMESTAMP"] == "1000" and "X-BAPI-SIGN" not in headers
 
+
+
+def test_binance_requests_are_charged_from_the_versioned_weight_catalogue(database):
+    """The documented worst-case weight per path, never the old flat 100 and never under the documentation."""
+    import json
+    import requests
+    from shared_lib.broker import http_budget as H
+
+    class Wire:
+        def request(self, method, url, **kwargs):
+            response = requests.Response()
+            response.status_code = 200
+            response._content = json.dumps({}).encode()
+            return response
+
+    assert H.BINANCE_WEIGHT_CATALOGUE_VERSION
+    assert H.BINANCE_PATHS == frozenset(H.BINANCE_ENDPOINT_WEIGHTS)
+    # documented worst cases (account-wide reads, the 2024-09-03 raise of the v2 account reads)
+    for path, floor in (("/fapi/v1/openOrders", 40), ("/fapi/v1/openAlgoOrders", 40), ("/fapi/v2/account", 10),
+                        ("/fapi/v2/positionRisk", 10), ("/fapi/v1/income", 30), ("/fapi/v1/klines", 10),
+                        ("/fapi/v1/depth", 20), ("/fapi/v1/positionSide/dual", 30)):
+        assert H.BINANCE_ENDPOINT_WEIGHTS[path] >= floor
+    budget = RateBudget(database)
+    http = BudgetedHTTP(budget, C.BINANCE, account_ref="one", server_address="egress", transport=Wire(),
+                        clock=lambda: 100_000)
+    cycle = ("/fapi/v1/time", "/fapi/v2/account", "/fapi/v2/positionRisk", "/fapi/v1/openOrders",
+             "/fapi/v1/openAlgoOrders", "/fapi/v1/income")
+    for path in cycle:
+        http.get("https://demo-fapi.binance.com" + path)
+    assert budget.snapshot(C.BINANCE, "egress", 100_000)["used"] == sum(H.BINANCE_ENDPOINT_WEIGHTS[p] for p in cycle)
+    # one account cycle now fits the reconciliation share many times over
+    assert sum(H.BINANCE_ENDPOINT_WEIGHTS[p] for p in cycle) * 8 < 2400 * 0.8 * 0.8
+    with pytest.raises(C.AdapterError) as refused:
+        http.get("https://demo-fapi.binance.com/fapi/v1/notAnEndpoint")
+    assert refused.value.code == C.UNSUPPORTED

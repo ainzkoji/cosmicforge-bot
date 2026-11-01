@@ -17,6 +17,9 @@ revocation, the family and account kill switches).
     POST /api/admin/governance/families/{family_id}/kill-switch
     POST /api/admin/governance/families/{family_id}/disable
     POST /api/admin/governance/accounts/{account_id}/kill-switch
+    GET  /api/admin/governance/experimental-demo
+    POST /api/admin/governance/experimental-demo
+    POST /api/admin/governance/experimental-demo/{authorization_id}/revoke
 
 Every route forwards to the same path under ``/api/v1/admin/governance``; there
 is no route here that the bot-backend router does not have, and none of its
@@ -77,7 +80,8 @@ IDENTIFIER_PATTERN = r"[A-Za-z0-9][A-Za-z0-9_-]{0,127}"
 _IDENTIFIER = re.compile(IDENTIFIER_PATTERN)
 
 #: Request fields kept in the audit trail (plus ``reason``); never the whole body.
-_SUMMARY_KEYS = ("enabled", "to_stage", "key", "reference")
+_SUMMARY_KEYS = ("enabled", "to_stage", "key", "reference", "account_id", "family_id", "environment",
+                 "approval_ref", "duration_hours", "max_entry_notional_usdt", "acknowledged_research_status")
 
 _RECHECK = "Reload the family registry and its history before doing anything else."
 
@@ -236,5 +240,26 @@ async def account_kill_switch(account_id: str, body: Dict[str, Any] = Body(...),
     return await _forward("POST", "/accounts/{account_id}/kill-switch", admin, action="account_kill_switch",
                           ids={"account_id": account_id}, json_body=body, timeout=WRITE_TIMEOUT_SECONDS)
 
+
+
+# ── experimental DEMO grants (DEMO only, expiring, never certification) ──────
+@router.get("/experimental-demo")
+async def experimental_demo_list(admin: dict = Depends(require_admin)):
+    return await _forward("GET", "/experimental-demo", admin, action="experimental_demo_list",
+                          timeout=READ_TIMEOUT_SECONDS)
+
+
+@router.post("/experimental-demo")
+async def experimental_demo_authorize(body: Dict[str, Any] = Body(...), admin: dict = Depends(require_admin)):
+    return await _forward("POST", "/experimental-demo", admin, action="experimental_demo_authorize",
+                          json_body=body, timeout=WRITE_TIMEOUT_SECONDS)
+
+
+@router.post("/experimental-demo/{authorization_id}/revoke")
+async def experimental_demo_revoke(authorization_id: str, body: Dict[str, Any] = Body(...),
+                                   admin: dict = Depends(require_admin)):
+    return await _forward("POST", "/experimental-demo/{authorization_id}/revoke", admin,
+                          action="experimental_demo_revoke", ids={"authorization_id": authorization_id},
+                          json_body=body, timeout=WRITE_TIMEOUT_SECONDS)
 
 __all__ = ["router", "UPSTREAM_PREFIX", "IDENTIFIER_PATTERN", "is_identifier"]

@@ -213,6 +213,8 @@ app.include_router(admin_emergency_router, prefix="/api", tags=["Admin Emergency
 
 from app.api.admin_governance import router as admin_governance_router  # family governance (Step 3.11) -> bot-backend
 app.include_router(admin_governance_router, prefix="/api", tags=["Admin Governance"])
+from app.api.admin_market_policy import router as admin_market_policy_router  # L-08 market-entry policy -> bot-backend
+app.include_router(admin_market_policy_router, prefix="/api", tags=["Admin Market-Entry Policy"])
 
 from app.api.admin_billing import router as admin_billing_router  # operator plan grants (Step 1.5)
 app.include_router(admin_billing_router, prefix="/api", tags=["Admin Billing"])

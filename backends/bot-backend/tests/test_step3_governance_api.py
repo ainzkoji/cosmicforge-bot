@@ -42,10 +42,10 @@ def test_every_route_requires_the_operator_token(db):
     app.include_router(api_module.router)
     app.dependency_overrides[api_module.get_db] = lambda: db
     client = TestClient(app)
-    assert len(api_module.router.routes) == 15
+    assert len(api_module.router.routes) == 18
     for route in api_module.router.routes:
         method = sorted(route.methods - {"HEAD"})[0]
-        path = route.path.replace("{family_id}", "DAILY_TREND").replace("{request_id}", "r").replace("{account_id}", "a")
+        path = route.path.replace("{family_id}", "DAILY_TREND").replace("{request_id}", "r").replace("{account_id}", "a").replace("{authorization_id}", "x")
         assert client.request(method, path, json={}).status_code in (401, 403), route.path
         assert require_admin_emergency in {d.call for d in route.dependant.dependencies}, route.path
 

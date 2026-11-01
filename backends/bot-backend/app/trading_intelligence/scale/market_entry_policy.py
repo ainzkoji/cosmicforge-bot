@@ -280,10 +280,19 @@ def _event(r) -> PolicyEvent:
                        int(r[14]), r[15], r[16])
 
 
+#: The all-symbols scope: DEMO only, and only for a record that names its one account. A strategy that selects
+#: its symbol each cycle (the residual family picks one of ~140) cannot be pre-approved symbol by symbol; the
+#: uncalibrated budget still allows ONE account per venue / symbol / side (ORDER_SPREADING_CALIBRATION_REQUIRED).
+ALL_SYMBOLS = "*"
+ALL_SYMBOLS_REQUIRE_DEMO_ACCOUNT = "MARKET_POLICY_ALL_SYMBOLS_REQUIRES_ONE_DEMO_ACCOUNT"
+
+
 def _scope(venue: Any, symbol: Any, environment: Any) -> Tuple[str, str, str]:
     v, s, e = (str(x).strip().upper() if isinstance(x, str) else "" for x in (venue, symbol, environment))
     if not v or not s or e not in ENVIRONMENTS:
         raise MarketPolicyError(SCOPE_INVALID, "venue, symbol and an environment of DEMO or LIVE are required")
+    if s == ALL_SYMBOLS and e != "DEMO":
+        raise MarketPolicyError(ALL_SYMBOLS_REQUIRE_DEMO_ACCOUNT, "the all-symbols scope exists for DEMO only")
     return v, s, e
 
 
@@ -323,6 +332,8 @@ class MarketEntryPolicyLedger:
         account = None
         if account_id is not None:
             account = _text(account_id, SCOPE_INVALID, minimum=1, maximum=200)
+        if s == ALL_SYMBOLS and account is None:
+            raise MarketPolicyError(ALL_SYMBOLS_REQUIRE_DEMO_ACCOUNT, "an all-symbols record names its one account")
         PolicyTerms.parse(terms)   # shape and bounds before the transaction; the expiry is re-checked inside
         with self.db.transaction() as conn:
             self._lock(conn)
@@ -441,6 +452,10 @@ class MarketEntryPolicyLedger:
             raise MarketPolicyError(LEDGER_INTEGRITY_FAILED, why)
         scoped = [x for x in events if (x.venue, x.symbol, x.environment) == (v, s, e)]
         recorded = [x for x in scoped if x.event_type == POLICY_RECORDED]
+        if not recorded and e == "DEMO":
+            # A symbol-specific record always wins; otherwise a DEMO all-symbols record of this venue.
+            scoped = [x for x in events if (x.venue, x.symbol, x.environment) == (v, ALL_SYMBOLS, e)]
+            recorded = [x for x in scoped if x.event_type == POLICY_RECORDED]
         if not recorded:
             raise MarketPolicyError(NO_POLICY, "no approved single-account policy for this scope")
         try:

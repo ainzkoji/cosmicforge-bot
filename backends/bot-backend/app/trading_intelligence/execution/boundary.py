@@ -370,6 +370,14 @@ class CATIExecutionBoundary:
             base = replace(base, client_order_id=cid)
         # Step 5.5 -- the platform order budget (EXT-LIQ-01), for this ENTRY only, before the claim: fresh depth,
         # a RESERVED slot for the full risk-approved notional, or an explicit refusal. Never resizes the quantity.
+        experimental_id = (getattr(self, "_experimental_grants", None) or {}).get(plan.trade_plan_id)
+        if experimental_id is not None:
+            # Experimental DEMO: the grant's absolute notional cap, checked on the risk-approved order (never
+            # resized), and the grant must still be active at this last moment before the claim.
+            from app.trading_intelligence.governance.experimental_demo import entry_refusal
+            why = entry_refusal(self._db, experimental_id, req.notional, submit_now)
+            if why:
+                return self._fail_before_risk(plan, submit_now, BoundaryStatus.GOVERNANCE_NOT_AUTHORIZED, why)
         spread, refused = self._reserve_spread(plan, req, tp, attempt_id, base.client_order_id, submit_now)
         if refused is not None:
             return refused
@@ -392,6 +400,26 @@ class CATIExecutionBoundary:
             self._release_spread(spread, "PORTFOLIO_RESERVATION_LOST_BEFORE_CREATE")
             return BoundaryResult(BoundaryStatus.EXECUTION_REJECTED, plan.trade_plan_id,
                                   failed.reason_codes, attempt=failed)
+        if experimental_id is not None:
+            # Durable label: this order, its position and its results are experimental DEMO activity. No order
+            # leaves without it: an unrecordable label refuses the order like a lost reservation.
+            try:
+                from app.trading_intelligence.governance.experimental_demo import ExperimentalDemoLedger
+                ledger = ExperimentalDemoLedger(self._db)
+                grant = ledger.grant(experimental_id)
+                if grant is None:
+                    raise LookupError("EXPERIMENTAL_DEMO_AUTHORIZATION_NOT_FOUND")
+                ledger.record_entry(grant, trade_plan_id=plan.trade_plan_id, attempt_id=attempt_id,
+                                    symbol=req.venue_symbol, side=req.side, notional=req.notional, now_ms=submit_now)
+            except Exception as exc:
+                record_stage_error("boundary.experimental_demo", "EXECUTION", exc, db=self._db, **ids)
+                failed = replace(base, status=X.ERROR_PRE_SUBMIT.value, resolved_at=now,
+                                 reason_codes=("EXPERIMENTAL_DEMO_AUDIT_UNAVAILABLE",))
+                self.attempts.append(failed, 1)
+                self._resolve(plan, "RELEASED", now, "EXPERIMENTAL_DEMO_AUDIT_UNAVAILABLE")
+                self._release_spread(spread, "EXPERIMENTAL_DEMO_AUDIT_UNAVAILABLE")
+                return BoundaryResult(BoundaryStatus.EXECUTION_REJECTED, plan.trade_plan_id,
+                                      failed.reason_codes, attempt=failed)
         if spread is not None:
             try:  # RESERVED -> SUBMITTED, tied to the durable claim; no order leaves without it
                 self.spread_gate.mark_submitted(spread)
@@ -794,6 +822,16 @@ class CATIExecutionBoundary:
             allowed, why = self.family_gate.authorize(plan, now_ms=now)
         except Exception:  # an undecidable source is a refusal
             allowed, why = False, 'FAMILY_GATE_UNAVAILABLE'
+        # Remember which plans run under an experimental-DEMO grant (refreshed by every check, so the
+        # final pre-submit check decides): their notional cap and audit record are applied before the claim.
+        from app.trading_intelligence.governance.experimental_demo import AUTHORIZED_REASON
+        experimental = getattr(self, "_experimental_grants", None)
+        if experimental is None:
+            experimental = self._experimental_grants = {}
+        if allowed and isinstance(why, str) and why.startswith(AUTHORIZED_REASON + ":"):
+            experimental[plan.trade_plan_id] = why.split(":", 1)[1]
+        else:
+            experimental.pop(plan.trade_plan_id, None)
         return None if allowed else why
 
     def _go_live_reason(self, plan, now):

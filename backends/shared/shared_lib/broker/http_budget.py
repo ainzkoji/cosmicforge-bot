@@ -1,9 +1,12 @@
 """Persistent admission at the physical HTTP boundary, including retries.
 
 No credentials, signed query strings, or response bodies enter budget evidence.
-Binance costs deliberately reserve 100 units per supported endpoint until a
-versioned endpoint-weight catalogue replaces this conservative policy. Unknown
-Binance endpoints fail closed. This is a local policy, not a venue limit claim.
+Binance requests are charged from a versioned endpoint-weight catalogue
+(``BINANCE_ENDPOINT_WEIGHTS``): the WORST-CASE published IP weight of each path
+over every parameter variant and HTTP method. Unknown Binance endpoints fail
+closed. This replaced a flat 100 units per request, which let one account's
+~8-request cycle plus a client rebuild exhaust the reconciliation share and
+starved the market-data collector (2026-11-01, account read READ_FAILED).
 """
 import json
 import os
@@ -18,18 +21,38 @@ from shared_lib.broker import venue_contract as C
 from .rate_budget import ENTRY, PROTECTION, RECONCILIATION, REASON_CLOSED_BANNED, SCOPE_UID, RateBudget
 
 priority_context = ContextVar("venue_http_priority", default=RECONCILIATION)
-BINANCE_PATHS = frozenset((
-    "/fapi/v1/algoOrder", "/fapi/v1/allOpenOrders", "/fapi/v1/depth",
-    "/fapi/v1/exchangeInfo", "/fapi/v1/fundingInfo", "/fapi/v1/income",
-    "/fapi/v1/klines", "/fapi/v1/leverage", "/fapi/v1/openAlgoOrders",
-    "/fapi/v1/openOrders", "/fapi/v1/order", "/fapi/v1/premiumIndex",
-    "/fapi/v1/ticker/bookTicker", "/fapi/v1/ticker/price", "/fapi/v1/time",
-    "/fapi/v1/userTrades", "/fapi/v2/account", "/fapi/v2/balance",
-    "/fapi/v2/positionRisk", "/fapi/v1/listenKey",
-    "/fapi/v1/commissionRate", "/fapi/v1/positionSide/dual",
-    "/fapi/v1/aggTrades", "/fapi/v1/openInterest", "/fapi/v2/ticker/price",
-    "/fapi/v1/ping", "/fapi/v1/assetIndex", "/fapi/v1/fundingRate",
-))
+#: Version of the catalogue below; recorded with the policy, bump on any change.
+BINANCE_WEIGHT_CATALOGUE_VERSION = "binance-usdm-ip-weights-2026-11-01"
+#: Worst-case REQUEST_WEIGHT (per IP and minute) of each supported USD-M path, the
+#: maximum over its parameter variants and methods, from Binance's documentation
+#: (developers.binance.com/docs/derivatives/usds-margined-futures, read 2026-11-01).
+#: Conservative choices, never under the documented figure:
+#: * /fapi/v2/account, /fapi/v2/balance, /fapi/v2/positionRisk: 10 (endpoint pages
+#:   still say 5; the change log raised them to 10 from 2024-09-03);
+#: * order placement (POST /fapi/v1/order, /fapi/v1/algoOrder) costs 0 IP weight
+#:   (orders count on the separate per-account ORDERS limit) and is charged 1, the
+#:   path's cancel / query cost;
+#: * /fapi/v1/fundingRate states no weight (it shares a separate 500 / 5 min pool
+#:   with fundingInfo): 10 is assumed, not documented.
+#: The demo host publishes 6000 / min; the budget keeps the 2400 production limit.
+BINANCE_ENDPOINT_WEIGHTS = {
+    "/fapi/v1/algoOrder": 1, "/fapi/v1/allOpenOrders": 1, "/fapi/v1/depth": 20,
+    "/fapi/v1/exchangeInfo": 1, "/fapi/v1/fundingInfo": 1, "/fapi/v1/income": 30,
+    "/fapi/v1/klines": 10, "/fapi/v1/leverage": 1, "/fapi/v1/openAlgoOrders": 40,
+    "/fapi/v1/openOrders": 40, "/fapi/v1/order": 1, "/fapi/v1/premiumIndex": 10,
+    "/fapi/v1/ticker/bookTicker": 5, "/fapi/v1/ticker/price": 2, "/fapi/v1/time": 1,
+    "/fapi/v1/userTrades": 5, "/fapi/v2/account": 10, "/fapi/v2/balance": 10,
+    "/fapi/v2/positionRisk": 10, "/fapi/v1/listenKey": 1,
+    "/fapi/v1/commissionRate": 20, "/fapi/v1/positionSide/dual": 30,
+    "/fapi/v1/aggTrades": 20, "/fapi/v1/openInterest": 1, "/fapi/v2/ticker/price": 2,
+    "/fapi/v1/ping": 1, "/fapi/v1/assetIndex": 10, "/fapi/v1/fundingRate": 10,
+}
+BINANCE_PATHS = frozenset(BINANCE_ENDPOINT_WEIGHTS)
+
+
+def request_weight(venue, path):
+    """The weight one physical request to ``path`` reserves (Binance: the catalogue; others: 1)."""
+    return BINANCE_ENDPOINT_WEIGHTS[path] if venue == C.BINANCE else 1
 
 
 def _fields(url, kwargs):
@@ -70,7 +93,7 @@ class BudgetedHTTP:
             raise C.AdapterError(C.UNSUPPORTED, "HTTP_ENDPOINT_WEIGHT_NOT_REGISTERED", venue=self.venue)
         priority = _priority(method, path, _fields(url, kwargs))
         grant = self.budget.reserve(self.venue, self.server_address, now, priority=priority,
-                                    weight=100 if self.venue == C.BINANCE else 1,
+                                    weight=request_weight(self.venue, path),
                                     category="HTTP:" + method + ":" + path, account_ref=self.account_ref)
         if not grant.granted:
             banned = grant.reason == REASON_CLOSED_BANNED

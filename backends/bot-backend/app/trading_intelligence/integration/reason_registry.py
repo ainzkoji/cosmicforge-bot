@@ -286,6 +286,44 @@ _add("INSUFFICIENT_FREE_MARGIN", BLOCKED, "The account has too little free margi
 _add("RESERVATION_EXPIRED", WAITING, "The capital reservation of this order had expired.", "No action needed.")
 
 
+# ── experimental DEMO authorization (governance.experimental_demo) ─────────
+_add("EXPERIMENTAL_DEMO_AUTHORIZED", INFO, "This strategy is trading the DEMO account under a time-limited experimental authorization. It is not certified and has no live authority.", "No action needed.")
+_add("EXPERIMENTAL_DEMO_NOTIONAL_LIMIT_EXCEEDED", BLOCKED, "The order was larger than the experimental DEMO authorization allows; it was not sent (orders are never resized).", "Operator: grant a new authorization with a higher limit if appropriate.")
+_add("EXPERIMENTAL_DEMO_AUTHORIZATION_LAPSED", BLOCKED, "The experimental DEMO authorization expired or was revoked before the order.", "Operator: grant a new authorization if testing should continue.")
+_add("EXPERIMENTAL_DEMO_LEDGER_INTEGRITY_FAILED", CRITICAL, "The experimental DEMO authorization record failed its integrity check; no experimental order is sent.", "Operator review.")
+_add("EXPERIMENTAL_DEMO_AUDIT_UNAVAILABLE", ATTENTION, "The experimental DEMO order could not be labelled in its audit record, so it was not sent.", "Retried on the next qualifying signal.")
+
+# ── market-entry (L-08) policy and the platform order budget ─────────────────
+_POLICY_ACTION = "Operator: record an owner-approved market-entry policy for this account (admin console)."
+for _code, _msg in (
+    ("MARKET_FALLBACK_DISABLED_BY_POLICY", "No approved market-entry policy exists for this account, so market orders are refused."),
+    ("MARKET_POLICY_UNAVAILABLE", "The market-entry policy could not be read."),
+    ("MARKET_POLICY_LEDGER_INTEGRITY_FAILED", "The market-entry policy record failed its integrity check."),
+    ("MARKET_POLICY_REVOKED", "The market-entry policy for this account was revoked."),
+    ("MARKET_POLICY_EXPIRED", "The market-entry policy for this account has expired."),
+    ("MARKET_POLICY_ENVIRONMENT_NOT_PERMITTED", "Market-entry policies for LIVE accounts are not permitted in this release."),
+    ("MARKET_POLICY_ACCOUNT_SCOPE_MISMATCH", "The market-entry policy was approved for a different account."),
+    ("MARKET_POLICY_TERMS_INVALID", "The market-entry policy's terms are no longer valid."),
+    ("MARKET_POLICY_ACCOUNT_NOT_ELIGIBLE", "This account is not an active platform account on this exchange and environment."),
+    ("PLATFORM_ACCOUNT_NOT_REGISTERED", "This account is not registered with the platform's order coordination yet."),
+    ("PLATFORM_ORDER_BUDGET_UNAVAILABLE", "The platform order-coordination database is not configured or reachable."),
+):
+    _add(_code, BLOCKED, _msg + " No order is sent.", _POLICY_ACTION)
+_add("MARKET_SPREAD_EXCESSIVE", WAITING, "The market's bid-ask spread is wider than the policy allows; no order is sent now.", "No action needed; retried on the next signal.")
+_add("MARKET_SPREAD_UNKNOWN", WAITING, "The market's spread could not be read; no order is sent now.", "No action needed; retried on the next signal.")
+_add("ORDER_SPREADING_CALIBRATION_REQUIRED", WAITING, "Another account already holds this market's single uncalibrated order slot.", "No action needed; one account at a time per market until calibration.")
+
+# ── classified account-read failures (broker_read_diagnosis) ─────────────────
+def _register_read_diagnosis() -> None:
+    from .broker_read_diagnosis import MESSAGES
+    for _c, (_m, _a) in MESSAGES.items():
+        _add(_c, ATTENTION if _c not in ("BROKER_CREDENTIALS_REJECTED", "BROKER_SIGNATURE_REJECTED",
+                                          "BROKER_CREDENTIAL_DECRYPT_FAILED", "BROKER_CREDENTIALS_MISSING",
+                                          "BROKER_CONNECTION_INVALID", "BROKER_PERMISSION_DENIED") else BLOCKED, _m, _a)
+
+
+_register_read_diagnosis()
+
 def describe(code: Optional[str]) -> Dict[str, Any]:
     """The registry entry for ``code``; an unknown code is reported as such, never as fine. A code with a
     detail after a colon (``FAMILY_STAGE_NO_ORDER_AUTHORITY:M0``) is described by its part before the colon."""

@@ -15,6 +15,9 @@
     POST /api/v1/admin/governance/families/{family_id}/kill-switch
     POST /api/v1/admin/governance/families/{family_id}/disable
     POST /api/v1/admin/governance/accounts/{account_id}/kill-switch
+    GET  /api/v1/admin/governance/experimental-demo                experimental DEMO grants and ledger integrity
+    POST /api/v1/admin/governance/experimental-demo                grant one (DEMO only, expiring, not certification)
+    POST /api/v1/admin/governance/experimental-demo/{authorization_id}/revoke
 
 Authorisation is the emergency router's: ``require_admin_emergency``, the short-lived service token the
 user-backend mints for a verified operator of the ``admins`` table. A plain ``role=admin`` access token is
@@ -293,3 +296,66 @@ def account_kill_switch(account_id: str, body: SwitchRequest, admin_id: str = De
 
 
 __all__ = ["router", "get_db"]
+
+
+# ------------------------------------------------------------------------------- experimental DEMO grants
+# An operator-granted, expiring permission for an UNCERTIFIED family to trade ONE verified DEMO account
+# (``governance.experimental_demo``). It is not certification, it does not promote the family and it has no
+# LIVE form; every execution gate other than the family's certification and stage still applies.
+class ExperimentalDemoRequest(BaseModel):
+    account_id: str = Field(min_length=1, max_length=128)
+    family_id: str = Field(min_length=1, max_length=128)
+    environment: str = Field(min_length=1, max_length=16)
+    acknowledged_research_status: str = Field(min_length=1, max_length=64)
+    approval_ref: str = Field(min_length=3, max_length=500)
+    reason: str = Field(min_length=3, max_length=500)
+    duration_hours: int = Field(ge=1)
+    max_entry_notional_usdt: float = Field(gt=0)
+
+
+def _experimental(db: DB):
+    from app.trading_intelligence.governance.experimental_demo import ExperimentalDemoLedger
+
+    return ExperimentalDemoLedger(db)
+
+
+def _experimental_act(db: DB, admin_id: str, action: str, details: Dict[str, Any], call) -> Any:
+    from app.trading_intelligence.governance.experimental_demo import ExperimentalDemoError
+
+    _audit(db, f"{action}_REQUESTED", admin_id, details)
+    try:
+        grant = call()
+    except ExperimentalDemoError as exc:
+        _audit(db, f"{action}_REFUSED", admin_id, {**details, "refusal": exc.code})
+        status = 404 if exc.code.endswith(("NOT_FOUND",)) else 409
+        return JSONResponse(status_code=status, content={"detail": str(exc), "reason": exc.code})
+    _audit(db, f"{action}_RECORDED", admin_id, {**details, "authorization_id": grant.authorization_id})
+    return {"authorization": grant.to_plain()}
+
+
+@router.get("/experimental-demo")
+def experimental_demo_list(admin_id: str = Depends(require_admin_emergency), db: DB = Depends(get_db)):
+    ledger = _experimental(db)
+    ok, why = ledger.verify()
+    from app.trading_intelligence.governance import experimental_demo as X
+
+    return {"integrity": {"ok": ok, "reason": why}, "max_duration_hours": X.MAX_DURATION_HOURS,
+            "max_entry_notional_usdt": str(X.MAX_ENTRY_NOTIONAL_USDT),
+            "authorizations": [g.to_plain() for g in ledger.grants()]}
+
+
+@router.post("/experimental-demo")
+def experimental_demo_authorize(body: ExperimentalDemoRequest, admin_id: str = Depends(require_admin_emergency),
+                                db: DB = Depends(get_db)):
+    details = body.model_dump()
+    return _experimental_act(db, admin_id, "EXPERIMENTAL_DEMO_AUTHORIZATION", details,
+                             lambda: _experimental(db).authorize(_operator(admin_id), **details))
+
+
+@router.post("/experimental-demo/{authorization_id}/revoke")
+def experimental_demo_revoke(authorization_id: str, body: Reason, admin_id: str = Depends(require_admin_emergency),
+                             db: DB = Depends(get_db)):
+    return _experimental_act(db, admin_id, "EXPERIMENTAL_DEMO_REVOCATION",
+                             {"authorization_id": authorization_id, "reason": body.reason},
+                             lambda: _experimental(db).revoke(_operator(admin_id), authorization_id,
+                                                              reason=body.reason))

@@ -125,6 +125,7 @@ _BY_CLASS: Tuple[Tuple[str, Tuple[str, ...]], ...] = (
         # Section H Steps 5-8 (platform layer, go-live, launch operations)
         "beta_reviews", "golive_events", "incident_records", "ops_oncall_history",
         "platform_market_entry_policy_events",   # L-08 governed market-entry policy ledger (61, append-only)
+        "cati_experimental_demo_events",         # experimental DEMO grants and their uses (append-only)
         "ops_status_incident_updates", "ops_status_incidents", "platform_schema_migrations",
         "cati_adapter_cert_actions", "cati_adapter_cert_checks", "cati_adapter_cert_events", "cati_certification_runs",
         "cati_certification_stage_results", "cati_demo_certifications", "cati_emergency_events", "cati_family_events",

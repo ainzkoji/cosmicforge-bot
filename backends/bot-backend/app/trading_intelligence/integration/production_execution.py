@@ -555,10 +555,10 @@ def process_account(db, account, client, snapshot, *, now_ms=None, boundary_fact
         failure = exc
         from app.execution import production_schema
         production_schema.missing_table(db, exc)     # a replaced database is initialised again on the next cycle
-        code = getattr(exc, 'reason_code', None)
-        if not code and isinstance(exc, ValueError) and str(exc).replace('_','').isalnum() and str(exc).upper() == str(exc):
-            code = str(exc)
-        result.update(reason=code or type(exc).__name__, execution_permission='BLOCKED_ACCOUNT', stage='EVALUATION_FAILED')
+        from .broker_read_diagnosis import classify
+        diagnosis = classify(exc)
+        result.update(reason=diagnosis["reason"], failure_diagnostic=diagnosis["diagnostic"],
+                      execution_permission='BLOCKED_ACCOUNT', stage='EVALUATION_FAILED')
     finally:
         now = int(time.time()*1000) if now_ms is None else now_ms
         from app.platform_workers.account_fence import permits
@@ -1131,6 +1131,9 @@ def _process_account(db, account, client, snapshot, *, now_ms=None, boundary_fac
                         record(db, account, result, submission_time)
                         out = boundary.process_trade_plan(plan, **prepared)
                         result["boundary"] = asdict(out)
+                        experimental = (getattr(boundary, "_experimental_grants", None) or {}).get(plan.trade_plan_id)
+                        if experimental:
+                            result["experimental_demo"] = {"authorization_id": experimental, "label": "EXPERIMENTAL_DEMO"}
                         result['stage'] = 'BOUNDARY_RESULT'
                         result["reason"] = out.reason_codes[0] if out.reason_codes else out.status
                         result["execution_permission"] = ("BLOCKED_"+environment+"_ORDER_GATE" if out.status == gate["reason"]

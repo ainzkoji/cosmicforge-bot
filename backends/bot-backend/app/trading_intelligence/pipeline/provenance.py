@@ -28,6 +28,10 @@ here. It keeps its own narrow permit in ``execution.demo_boundary_certification`
 nothing about any strategy.
 
 There is no override in this module: no environment variable, setting or argument turns a refusal into a pass.
+The one waiver is a durable, operator-granted, expiring experimental-DEMO authorization
+(``governance.experimental_demo``): it waives only the research-certification and stage checks, only for a plan
+on a verified DEMO account of the granted user and family, and every other check here (registration, rule hash,
+disabled, kill switch, mode, environment, market, decision verification, venue certification) still runs.
 """
 from __future__ import annotations
 
@@ -249,8 +253,18 @@ class FamilyExecutionGate:
     def registry(self) -> FamilyRegistry:
         return self._registry if self._registry is not None else FamilyRegistry(self._db)
 
-    def family_authorization(self, plan: Any) -> Tuple[Optional[RegistryEntry], Optional[str]]:
-        """``(entry, None)`` when the family may send this plan's kind of order, else ``(entry or None, code)``."""
+    def family_authorization(self, plan: Any, now_ms: Optional[int] = None) -> Tuple[Optional[RegistryEntry], Optional[str]]:
+        """``(entry, None)`` when the family may send this plan's kind of order, else ``(entry or None, code)``.
+        An active experimental-DEMO grant (``governance.experimental_demo``) waives the certification and stage
+        checks only; ``experimental_grant`` says whether one was used."""
+        now = int(time.time() * 1000) if now_ms is None else int(now_ms)
+        experimental = None
+
+        def waiver(entry: RegistryEntry):
+            # Only these two checks can be waived, only for a verified DEMO account with an active grant.
+            from app.trading_intelligence.governance.experimental_demo import plan_scope
+            return plan_scope(self._db, plan, entry, now)
+
         p = C.provenance_of(plan)
         family_id = p.get("family_id")
         entry = self.registry.entry(family_id) if family_id else None
@@ -265,14 +279,18 @@ class FamilyExecutionGate:
         if entry.kill_switch_state == "ON":
             return entry, FAMILY_KILL_SWITCH
         if entry.certification_status != CERTIFIED:
-            return entry, _CERTIFICATION_REFUSAL.get(entry.certification_status, FAMILY_EVIDENCE_MISSING)
+            experimental = waiver(entry)
+            if experimental is None:
+                return entry, _CERTIFICATION_REFUSAL.get(entry.certification_status, FAMILY_EVIDENCE_MISSING)
         mode, environment = p.get("mode"), str(p.get("environment") or "").upper()
         if mode not in C.EXECUTING_MODES:
             return entry, FAMILY_MODE_NOT_EXECUTABLE
         if mode != environment:
             return entry, FAMILY_ENVIRONMENT_NOT_AUTHORIZED
         if mode not in entry.allowed_modes:
-            return entry, f"{FAMILY_STAGE_NO_ORDER_AUTHORITY}:{entry.governance_stage}"
+            experimental = experimental or waiver(entry)
+            if experimental is None:
+                return entry, f"{FAMILY_STAGE_NO_ORDER_AUTHORITY}:{entry.governance_stage}"
         from app.trading_intelligence.governance.runtime_authority import canonical_venue
 
         if canonical_venue(p.get("venue")) not in {canonical_venue(v) for v, _ in entry.definition.supported_markets}:
@@ -297,16 +315,52 @@ class FamilyExecutionGate:
             certified, reason = adapter_certified(self._db, venue, environment, int(now_ms))
         return None if certified else f"{VENUE_ADAPTER_NOT_CERTIFIED}:{reason}"
 
+    @staticmethod
+    def needs_experimental_grant(entry: Any, plan: Any) -> bool:
+        """True when the family lacks its OWN authority for this plan (research certification or stage)."""
+        status = getattr(entry, "certification_status", None)
+        if status is None:
+            return False  # not a registry entry (a test double): nothing here was waived
+        mode = C.provenance_of(plan).get("mode")
+        return status != CERTIFIED or mode not in tuple(getattr(entry, "allowed_modes", ()) or ())
+
+    def experimental_grant(self, entry: Any, plan: Any, now_ms: int):
+        """The experimental-DEMO grant a passing ``family_authorization`` relied on, or None."""
+        if not self.needs_experimental_grant(entry, plan):
+            return None
+        from app.trading_intelligence.governance.experimental_demo import plan_scope
+        return plan_scope(self._db, plan, entry, int(now_ms))
+
+    def family_authorization_scope(self, plan: Any, now_ms: Optional[int] = None):
+        """``(entry, why, grant)``: ``family_authorization`` plus the experimental grant it relied on (or None)."""
+        now = int(time.time() * 1000) if now_ms is None else int(now_ms)
+        entry, why = self.family_authorization(plan, now_ms=now)
+        return entry, why, (self.experimental_grant(entry, plan, now) if why is None else None)
+
     def authorize(self, plan: Any, *, now_ms: int) -> Tuple[bool, str]:
         try:
-            entry, why = self.family_authorization(plan)
+            import inspect
+            accepts_clock = "now_ms" in inspect.signature(self.family_authorization).parameters
+            entry, why = (self.family_authorization(plan, now_ms=now_ms) if accepts_clock
+                          else self.family_authorization(plan))
+            experimental = None
+            if why is None and self.needs_experimental_grant(entry, plan):
+                experimental = self.experimental_grant(entry, plan, now_ms)
+                if experimental is None:  # the grant lapsed between the two reads: fail closed
+                    from app.trading_intelligence.governance.experimental_demo import GRANT_LAPSED
+                    why = GRANT_LAPSED
             if why is None:
                 why = self.decision_verification(entry, plan, now_ms)
             if why is None:
                 why = self.venue_certification(plan, now_ms)
         except Exception as exc:  # noqa: BLE001 -- an undecidable authorization is a refusal
             return False, f"{FAMILY_GATE_UNAVAILABLE}:{type(exc).__name__}"
-        return (True, "FAMILY_AUTHORIZED") if why is None else (False, why)
+        if why is not None:
+            return False, why
+        if experimental is not None:
+            from app.trading_intelligence.governance.experimental_demo import AUTHORIZED_REASON
+            return True, f"{AUTHORIZED_REASON}:{experimental.authorization_id}"
+        return True, "FAMILY_AUTHORIZED"
 
 
 class StaticFamilyGate:

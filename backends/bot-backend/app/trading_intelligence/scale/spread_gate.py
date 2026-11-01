@@ -428,7 +428,11 @@ class PlatformSpreadGate:
             raise SpreadRefused(ACCOUNT_NOT_REGISTERED_CODE)
         if row[0] != tenant:
             raise SpreadRefused(ACCOUNT_TENANT_MISMATCH_CODE)
-        if str(row[3]) != "ACTIVE" or str(row[1]).upper() != venue.upper() or \
+        # The platform registers an account under its broker id ("binance") while a plan names the venue's
+        # product ("BINANCE_USDM"): both are compared as the platform venue they denote.
+        from app.trading_intelligence.pipeline.provenance import platform_venue
+        registered_venue = platform_venue(row[1]) or str(row[1]).upper()
+        if str(row[3]) != "ACTIVE" or registered_venue != (platform_venue(venue) or venue.upper()) or \
                 str(row[2]).upper() != environment.upper():
             raise SpreadRefused(MARKET_POLICY_ACCOUNT_NOT_ELIGIBLE,
                                 f"state={row[3]} venue={row[1]} environment={row[2]}")
