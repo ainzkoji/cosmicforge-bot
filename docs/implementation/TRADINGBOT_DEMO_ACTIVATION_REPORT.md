@@ -213,7 +213,7 @@ All runs used clean `git archive` exports with CI's global environment (`APP_ENV
 
 PostgreSQL: the L-08 tests' PostgreSQL variants and the "Legacy runtime on PostgreSQL" job run in CI only (no local PostgreSQL cluster was used; the system PostgreSQL service holds other data and was not touched).
 
-GitHub CI on the exact final commit: CI_PLACEHOLDER
+GitHub CI: run [41300468876](https://github.com/ainzkoji/cosmicforge-bot/actions/runs/41300468876) on `24b3879` (the last code commit) **succeeded, all 9 jobs green**: Python lint, bot backend tests, user backend tests, admin backend + shared + root, legacy runtime on PostgreSQL, user frontend, admin frontend, containers (build, migrate, API smoke). The commit that adds this line changes only this report; its CI run is recorded in the commit history.
 
 ## Files
 
