@@ -15,6 +15,7 @@ import SystemHealth from '@/pages/admin/SystemHealth';
 import CatiStatus from '@/pages/admin/CatiStatus';
 import FamilyGovernance from '@/pages/admin/FamilyGovernance';
 import FamilyGovernanceDetail from '@/pages/admin/FamilyGovernanceDetail';
+import ExperimentalDemo from '@/pages/admin/ExperimentalDemo';
 import BotMonitor from '@/pages/admin/BotMonitor';
 import BotRunDetails from '@/pages/admin/BotRunDetails';
 import Transactions from '@/pages/admin/Transactions';
@@ -95,6 +96,7 @@ function App() {
                 <Route path="/admin/cati" element={<CatiStatus />} />
                 <Route path="/admin/governance" element={<FamilyGovernance />} />
                 <Route path="/admin/governance/:familyId" element={<FamilyGovernanceDetail />} />
+                <Route path="/admin/experimental-demo" element={<ExperimentalDemo />} />
                 <Route path="/admin/bot-monitor" element={<BotMonitor />} />
                 <Route path="/admin/bot/runs/:runId" element={<BotRunDetails />} />
                 <Route path="/admin/transactions" element={<Transactions />} />

@@ -600,6 +600,8 @@ export default function AutoPilot() {
                 onConfirm={handleDeploy}
                 title="Deploy LIVE bot?"
                 confirmLabel="Deploy live bot"
+                demoTitle="Deploy bot on DEMO account?"
+                demoConfirmLabel="Deploy on demo account"
                 broker={selectedBrokerAccount?.broker_id || "unknown"}
                 account={selectedBrokerAccount?.label || selectedBrokerAccount?.name || selectedBroker}
                 environment={selectedBrokerAccount?.environment}

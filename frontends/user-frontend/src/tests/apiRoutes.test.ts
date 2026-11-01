@@ -30,7 +30,26 @@ test("the CATI panel reaches the engine through the user backend only", () => {
     const panel = src("components/Dashboard/CatiTrading.tsx");
     assert.equal(panel.includes("VITE_CATI_API_BASE"), false);
     assert.equal(panel.includes("9000"), false);
-    assert.ok(panel.includes("/api/v1/cati/runtime/status"));
+    assert.ok(panel.includes("/api/v1/cati/runtime/dashboard"));
+});
+
+test("the customer dashboard renders no raw configuration or JSON dump", () => {
+    for (const file of ["components/Dashboard/CatiTrading.tsx", "components/Dashboard/AdvancedDashboard.tsx", "pages/Dashboard.tsx"]) {
+        const text = src(file);
+        assert.equal(text.includes("JSON.stringify"), false, file);
+        assert.equal(text.includes(".configuration"), false, file);
+        assert.equal(text.includes("production_configuration"), false, file);
+        assert.equal(text.includes("<pre"), false, file);
+    }
+});
+
+test("every button on the dashboard components has an action", () => {
+    for (const file of ["components/Dashboard/CatiTrading.tsx", "components/Dashboard/AdvancedDashboard.tsx"]) {
+        const text = src(file);
+        for (const match of text.matchAll(/<button(?:\s|>)(?:=>|[^>])*>?/g)) {
+            assert.ok(/onClick=|type="submit"/.test(match[0]), `${file}: ${match[0]}`);
+        }
+    }
 });
 
 test("the analytics stream uses the shared API base variable", () => {

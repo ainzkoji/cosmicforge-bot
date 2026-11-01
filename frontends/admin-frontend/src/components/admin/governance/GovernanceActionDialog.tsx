@@ -24,7 +24,7 @@ interface GovernanceActionDialogProps {
 }
 
 /** The API's answer to a refused or failed action, in its own words. */
-function Refusal({ error }: { error: unknown }) {
+export function Refusal({ error, apiName = "governance API" }: { error: unknown; apiName?: string }) {
     const known = error instanceof GovernanceApiError ? error : null;
     const message = error instanceof Error && error.message ? error.message : "Request failed";
 
@@ -43,7 +43,7 @@ function Refusal({ error }: { error: unknown }) {
         return (
             <div role="alert" className="rounded-lg border border-red-500/50 bg-red-500/10 px-4 py-3 text-sm text-foreground">
                 <div className="font-bold text-red-700">
-                    {known.status >= 500 ? "FAILED" : "REFUSED"} by the governance API (HTTP {known.status}). Nothing on this
+                    {known.status >= 500 ? "FAILED" : "REFUSED"} by the {apiName} (HTTP {known.status}). Nothing on this
                     page reports it as done.
                 </div>
                 {known.reason && (

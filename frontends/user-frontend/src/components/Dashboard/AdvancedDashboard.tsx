@@ -3,7 +3,7 @@ import {
     Activity, BarChart3,
     ArrowUpRight, ArrowDownRight,
     Wallet, AlertCircle, Eye, EyeOff,
-    MoreHorizontal, Calendar, Filter, Trophy, CheckCircle2, X
+    Trophy, CheckCircle2, X
 } from "lucide-react";
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
@@ -141,19 +141,6 @@ export function AdvancedDashboard() {
                     </h1>
                     <p className="text-sm text-muted-foreground">Overview of your automated portfolio</p>
                 </div>
-
-                <div className="flex items-center gap-3 bg-card/50 backdrop-blur-md p-1.5 rounded-xl border border-border/50">
-                    <button className="px-4 py-2 text-xs font-semibold bg-primary/10 text-primary rounded-lg border border-primary/20 hover:bg-primary/20 transition-colors">
-                        Live
-                    </button>
-                    <div className="h-4 w-px bg-border mx-1" />
-                    <button className="flex items-center gap-2 px-3 py-2 text-xs font-medium text-muted-foreground hover:text-foreground transition-colors">
-                        <Calendar className="w-3.5 h-3.5" /> Today
-                    </button>
-                    <button className="p-2 hover:bg-muted rounded-lg transition-colors text-muted-foreground hover:text-foreground">
-                        <Filter className="w-4 h-4" />
-                    </button>
-                </div>
             </div>
 
             {/* Empty State / Connect Broker CTA */}
@@ -197,7 +184,13 @@ export function AdvancedDashboard() {
                                             </span>
                                         </div>
                                     </div>
-                                    <button onClick={() => setHideBalances(!hideBalances)} className="text-muted-foreground hover:text-white transition-colors">
+                                    <button
+                                        type="button"
+                                        onClick={() => setHideBalances(!hideBalances)}
+                                        aria-label={hideBalances ? "Show balances" : "Hide balances"}
+                                        aria-pressed={hideBalances}
+                                        className="text-muted-foreground hover:text-white transition-colors"
+                                    >
                                         {hideBalances ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
                                     </button>
                                 </div>
@@ -231,9 +224,6 @@ export function AdvancedDashboard() {
                                 <div className="text-3xl font-bold text-white">{summary?.active_strategies || 0}</div>
                                 <span className="text-sm text-muted-foreground mb-1">running</span>
                             </div>
-                            <div className="w-full bg-muted/20 rounded-full h-1.5 overflow-hidden">
-                                <div className="bg-purple-500 h-full w-3/4 animate-pulse" />
-                            </div>
                             <div className="mt-4 flex gap-2">
                                 <div className="flex-1 bg-white/5 rounded-lg p-2 text-center">
                                     <div className="text-xs text-muted-foreground">Trade Win Rate</div>
@@ -256,7 +246,7 @@ export function AdvancedDashboard() {
                             </div>
 
                             {isReconciliationLoading ? (
-                                <div className="text-sm text-muted-foreground">Loadingâ€¦</div>
+                                <div className="text-sm text-muted-foreground">Loading…</div>
                             ) : reconciliation?.account ? (
                                 <div className="space-y-2.5">
                                     <div className="flex justify-between items-center">
@@ -320,24 +310,9 @@ export function AdvancedDashboard() {
                         <div className="bg-[#0F1218] border border-white/5 rounded-2xl p-6 shadow-xl flex flex-col">
                             <div className="flex justify-between items-center mb-6">
                                 <h2 className="text-lg font-bold text-white">Allocation</h2>
-                                <button className="p-1 hover:bg-white/5 rounded"><MoreHorizontal className="w-4 h-4 text-muted-foreground" /></button>
                             </div>
 
-                            <div className="flex-1 flex items-center justify-center relative">
-                                {/* SVG Donut */}
-                                <div className="relative w-48 h-48">
-                                    <svg viewBox="0 0 100 100" className="transform -rotate-90 w-full h-full">
-                                        <circle cx="50" cy="50" r="40" fill="none" stroke="#1F2937" strokeWidth="12" />
-                                        {/* Simple segment for now - full dynamic donut requires calculating offsets */}
-                                        <circle cx="50" cy="50" r="40" fill="none" stroke="#3B82F6" strokeWidth="12" strokeDasharray="100 251" strokeDashoffset="-0" />
-                                    </svg>
-                                    <div className="absolute inset-0 flex flex-col items-center justify-center">
-                                        <span className="text-2xl font-bold text-white">{allocation?.length || 0}</span>
-                                        <span className="text-xs text-muted-foreground uppercase tracking-wider">Assets</span>
-                                    </div>
-                                </div>
-                            </div>
-
+                            <p className="mb-4 text-xs text-muted-foreground">Broker-reported allocation breakdown</p>
                             <div className="mt-6 space-y-3">
                                 {allocation?.slice(0, 3).map((item, idx) => (
                                     <div key={idx} className="flex justify-between items-center text-sm">
@@ -361,7 +336,7 @@ export function AdvancedDashboard() {
                         <div className="lg:col-span-2 bg-[#0F1218] border border-white/5 rounded-2xl overflow-hidden shadow-xl">
                             <div className="p-6 border-b border-white/5 flex justify-between items-center">
                                 <h2 className="text-lg font-bold text-white">Open Positions</h2>
-                                <button className="text-xs text-primary hover:text-primary/80 transition-colors">View All</button>
+                                <Link to="/dashboard/portfolio" className="text-xs text-primary hover:text-primary/80 transition-colors">View all</Link>
                             </div>
                             <div className="overflow-x-auto">
                                 <table className="w-full">
@@ -622,14 +597,14 @@ export function AdvancedDashboard() {
                                 <h2 className="text-lg font-bold">Reconciliation</h2>
                                 <p className="text-sm text-muted-foreground">Account vs closed-trade PnL</p>
                             </div>
-                            <button onClick={() => setShowReconciliation(false)} className="p-2 rounded-lg hover:bg-muted text-muted-foreground hover:text-foreground transition-colors">
+                            <button type="button" onClick={() => setShowReconciliation(false)} aria-label="Close reconciliation" className="p-2 rounded-lg hover:bg-muted text-muted-foreground hover:text-foreground transition-colors">
                                 <X className="w-4 h-4" />
                             </button>
                         </div>
 
                         <div className="flex-1 overflow-y-auto px-6 py-4 space-y-6">
                             {isReconciliationLoading ? (
-                                <div className="text-sm text-muted-foreground">Loadingâ€¦</div>
+                                <div className="text-sm text-muted-foreground">Loading…</div>
                             ) : !reconciliation ? (
                                 <div className="text-sm text-muted-foreground">Reconciliation unavailable</div>
                             ) : (
@@ -637,12 +612,12 @@ export function AdvancedDashboard() {
                                     <div>
                                         <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">Account Balance</h3>
                                         <div className="bg-background rounded-lg border border-border p-4 space-y-2">
-                                            <div className="flex justify-between"><span className="text-xs text-muted-foreground">Broker Equity</span><span className="font-mono text-sm">${reconciliation.account.equity.toFixed(2)}</span></div>
-                                            <div className="flex justify-between"><span className="text-xs text-muted-foreground">Wallet Balance</span><span className="font-mono text-sm">${reconciliation.account.wallet_balance.toFixed(2)}</span></div>
-                                            <div className="flex justify-between"><span className="text-xs text-muted-foreground">Unrealized PnL</span><span className={`font-mono text-sm ${reconciliation.account.unrealized_pnl >= 0 ? 'text-green-400' : 'text-red-400'}`}>{reconciliation.account.unrealized_pnl >= 0 ? '+' : ''}${Math.abs(reconciliation.account.unrealized_pnl).toFixed(2)}</span></div>
-                                            {reconciliation.account.balance_change && (
+                                            <div className="flex justify-between"><span className="text-xs text-muted-foreground">Broker Equity</span><span className="font-mono text-sm">{usdOrDash(reconciliation.account?.equity)}</span></div>
+                                            <div className="flex justify-between"><span className="text-xs text-muted-foreground">Wallet Balance</span><span className="font-mono text-sm">{usdOrDash(reconciliation.account?.wallet_balance)}</span></div>
+                                            <div className="flex justify-between"><span className="text-xs text-muted-foreground">Unrealized PnL</span><span className={`font-mono text-sm ${(reconciliation.account?.unrealized_pnl ?? 0) >= 0 ? 'text-green-400' : 'text-red-400'}`}>{usdOrDash(reconciliation.account?.unrealized_pnl, true)}</span></div>
+                                            {reconciliation.account?.balance_change && (
                                                 <div className="pt-2 border-t border-border/60 text-[11px] text-muted-foreground space-y-1">
-                                                    <div>Window: {reconciliation.account.balance_change.from_ts} â†’ {reconciliation.account.balance_change.to_ts}</div>
+                                                    <div>Window: {reconciliation.account.balance_change.from_ts} → {reconciliation.account.balance_change.to_ts}</div>
                                                     <div>Equity change: {reconciliation.account.balance_change.equity_change >= 0 ? '+' : ''}{reconciliation.account.balance_change.equity_change.toFixed(2)}</div>
                                                     <div>Wallet change: {reconciliation.account.balance_change.wallet_balance_change >= 0 ? '+' : ''}{reconciliation.account.balance_change.wallet_balance_change.toFixed(2)}</div>
                                                 </div>

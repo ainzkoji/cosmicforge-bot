@@ -404,6 +404,8 @@ export default function BotDetails() {
                 onConfirm={() => startMutation.mutate(bot.id)}
                 title="Start LIVE bot?"
                 confirmLabel="Start live bot"
+                demoTitle="Start bot on DEMO account?"
+                demoConfirmLabel="Start on demo account"
                 broker={brokerAccount?.broker_id || bot.broker_id || "unknown"}
                 account={brokerAccount?.label || bot.broker_account_id}
                 environment={brokerAccount?.environment}

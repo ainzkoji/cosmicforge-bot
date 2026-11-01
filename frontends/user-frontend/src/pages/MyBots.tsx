@@ -394,6 +394,8 @@ export default function MyBots() {
                 onConfirm={() => liveStartId && startMutation.mutate(liveStartId)}
                 title="Start LIVE bot?"
                 confirmLabel="Start live bot"
+                demoTitle="Start bot on DEMO account?"
+                demoConfirmLabel="Start on demo account"
                 broker={liveStartAccount?.broker_id || liveStartBot?.broker_id || "unknown"}
                 account={liveStartAccount?.label || liveStartBot?.broker_account_id || "unknown"}
                 environment={liveStartAccount?.environment}

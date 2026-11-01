@@ -35,7 +35,7 @@ export function CodeList({ codes, empty, inline = false }: { codes: string[]; em
     );
 }
 
-export function ErrorPanel({ title, error }: { title: string; error: unknown }) {
+export function ErrorPanel({ title, error, route = GOVERNANCE_API_ROUTE }: { title: string; error: unknown; route?: string }) {
     return (
         <div role="alert" className="rounded-lg border border-red-500/40 bg-red-500/10 px-4 py-3 text-sm text-red-200">
             <div className="flex items-start gap-2">
@@ -43,7 +43,7 @@ export function ErrorPanel({ title, error }: { title: string; error: unknown }) 
                 <div>
                     <div className="font-semibold">{title}</div>
                     <div className="mt-1 break-words">{error instanceof Error && error.message ? error.message : "Request failed"}</div>
-                    <div className="mt-1 text-xs opacity-80">Route: {GOVERNANCE_API_ROUTE}</div>
+                    <div className="mt-1 text-xs opacity-80">Route: {route}</div>
                 </div>
             </div>
         </div>
