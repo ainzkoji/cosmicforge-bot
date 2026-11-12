@@ -213,6 +213,55 @@ The user-backend sends the `X-ENGINE-KEY` header, but no endpoint of the trading
 backend checks it, and nothing reads `SERVICE_AUTH_TOKEN`. Do not count either
 as a control when deciding what may reach port 9000.
 
+### 2.4 Platform database (PostgreSQL) — required before any order
+
+The trading process keeps its shared order budget, durable order intents and
+jobs, worker assignments, L-08 market-entry policies, go-live records and
+alerting state in a separate **platform** database named by
+`PLATFORM_DATABASE_URL`. Without it every production entry is refused, DEMO
+included (`PLATFORM_ORDER_BUDGET_UNAVAILABLE`), and the market-policy and
+go-live consoles answer 503. The process never falls back to the runtime
+SQLite database for it.
+
+```bash
+sudo apt-get install -y postgresql-16 postgresql-client-16
+PW=$(python3 -c "import secrets; print(secrets.token_urlsafe(32))")
+sudo -u postgres psql -v ON_ERROR_STOP=1 \
+  -c "CREATE ROLE cosmicforge LOGIN PASSWORD '$PW';" \
+  -c "CREATE DATABASE cosmicforge OWNER cosmicforge;"
+sudo install -d -o root -g cosmicforge -m 0750 /etc/cosmicforge/secrets
+echo "127.0.0.1:5432:cosmicforge:cosmicforge:$PW" | sudo install -o cosmicforge -g cosmicforge -m 0600 /dev/stdin /etc/cosmicforge/secrets/pgpass
+unset PW
+
+ENV=/opt/cosmicforge/cosmicforge-bot/backends/bot-backend/.env
+for kv in 'PLATFORM_DATABASE_URL=postgresql://cosmicforge@127.0.0.1:5432/cosmicforge' \
+          'PGPASSFILE=/etc/cosmicforge/secrets/pgpass' \
+          'GOLIVE_REVOCATION_ANCHOR=/var/lib/cosmicforge-anchor/revocations.jsonl'; do
+  sudo grep -q "^${kv%%=*}=" "$ENV" || echo "$kv" | sudo tee -a "$ENV" >/dev/null
+done
+sudo install -d -o cosmicforge -g cosmicforge -m 0700 /var/lib/cosmicforge-anchor   # separate storage when you have it
+
+# Migrate (versioned, checksummed, idempotent: a second run applies nothing)
+cd /opt/cosmicforge/cosmicforge-bot/backends/shared
+sudo -u cosmicforge env PGPASSFILE=/etc/cosmicforge/secrets/pgpass \
+  PLATFORM_DATABASE_URL=postgresql://cosmicforge@127.0.0.1:5432/cosmicforge \
+  ../venv/bin/python -m shared_lib.persistence.sql migrate
+sudo -u cosmicforge env PGPASSFILE=/etc/cosmicforge/secrets/pgpass \
+  PLATFORM_DATABASE_URL=postgresql://cosmicforge@127.0.0.1:5432/cosmicforge \
+  ../venv/bin/python -m shared_lib.persistence.sql status   # "ok": true, "pending": []
+```
+
+Rehearsed on PostgreSQL 16 (2026-11-12): the first `migrate` applies versions
+1–61, a second run applies none, and the spread gate reports the schema ready.
+Run `migrate` again after every upgrade (section 6.1) before restarting the
+service. The scheduled `pg_dump` of this database is
+`cosmicforge-platform-db-backup.timer` (section 10).
+
+Records in the workstation's local SQLite platform database (`platform.db`)
+are **not** carried over. The only governed records there were the DEMO L-08
+market-entry policy, which expired on 2026-11-08; record a new one from the
+admin console after deployment if DEMO entries are wanted.
+
 ## 3. Install and start the service
 
 ```bash
@@ -398,6 +447,7 @@ hour); an open position is not a reason to wait.
 ```bash
 cd /opt/cosmicforge/cosmicforge-bot
 sudo systemctl start cosmicforge-db-backup                                  # 1. backup first
+sudo systemctl start cosmicforge-platform-db-backup                         #    (both databases)
 sudo -u cosmicforge git rev-parse HEAD | sudo -u cosmicforge tee /var/lib/cosmicforge/PREVIOUS_REVISION
 
 sudo systemctl stop cosmicforge-trading                                     # 2. graceful stop
@@ -407,12 +457,17 @@ sudo -u cosmicforge git pull --ff-only origin main                          # 3.
 sudo -u cosmicforge backends/venv/bin/pip install -r backends/bot-backend/requirements.txt -c deploy/constraints.txt
 sudo cp deploy/systemd/cosmicforge-*.service deploy/systemd/cosmicforge-*.timer /etc/systemd/system/
 sudo systemctl daemon-reload
+(cd backends/shared && sudo -u cosmicforge env PGPASSFILE=/etc/cosmicforge/secrets/pgpass \
+  PLATFORM_DATABASE_URL=postgresql://cosmicforge@127.0.0.1:5432/cosmicforge \
+  ../venv/bin/python -m shared_lib.persistence.sql migrate)                  #    platform schema (section 2.4)
 
 sudo systemctl start cosmicforge-trading                                    # 4. start, verify
 python3 scripts/vps_health_check.py --expect-revision "$(sudo -u cosmicforge git rev-parse HEAD)"
 ```
 
-Schema changes are applied by the application at startup and are additive.
+Runtime (SQLite) schema changes are applied by the application at startup and are additive. Platform
+(PostgreSQL) schema versions are applied by the explicit `migrate` above; a binary started against an
+unmigrated platform schema refuses every entry rather than guessing.
 
 ### 6.2 Roll back to the previous commit
 
