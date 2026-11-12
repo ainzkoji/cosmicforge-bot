@@ -372,7 +372,11 @@ def test_runtime_flatten_refuses_when_the_engine_cannot_act(engine, monkeypatch,
     elif case == "lease":
         monkeypatch.setattr(runtime, "owner_current", lambda db: False)
     elif case == "gates":
+        # Only LIVE accounts, in a build that is not live capable: no risk-reducing mutation may reach them, so the
+        # flatten refuses before acting. (A DEMO flatten with the order switch off now proceeds: see below.)
         monkeypatch.setattr(config, "settings", production_settings(demo=False))
+        monkeypatch.setattr(runtime, "execution_accounts",
+                            lambda db: [{**a, "environment": "LIVE"} for a in ACCOUNTS])
     elif case == "account":
         kwargs["account_id"] = "missing"
     elif case == "none":
@@ -397,6 +401,13 @@ def test_runtime_flatten_refuses_when_the_engine_cannot_act(engine, monkeypatch,
         if holder:
             holder.join(5)
     assert engine.calls == []
+
+
+def test_a_demo_flatten_proceeds_while_the_demo_order_switch_is_off(engine, monkeypatch):
+    """Gate register 3.2: the order switch stops new exposure; it never strands an open position."""
+    monkeypatch.setattr(config, "settings", production_settings(demo=False))
+    runtime.flatten("db", account_id="a", request_id="req-off", factory=engine.factory)
+    assert [c[0] for c in engine.calls] == ["a"]
 
 
 def test_the_broker_cycle_holds_the_lock_flatten_takes(monkeypatch):

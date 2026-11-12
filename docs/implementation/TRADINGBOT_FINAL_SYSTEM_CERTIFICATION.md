@@ -418,11 +418,32 @@ Limits, as stated by the drill:
 
 ## 31. Test results (final tree)
 
-PENDING_TESTS
+All runs used clean `git archive` exports and CI's global environment (`APP_ENV=TEST`, `LIVE_ORDER_SUBMISSION_ENABLED=false`,
+...) with the `ci_quarantine` plugin, whose list was not extended. A local PostgreSQL 16 server was used with
+`PLATFORM_TEST_POSTGRES_REQUIRED=1`, so the PostgreSQL variants ran instead of being skipped.
+
+| Suite | Tree | Result |
+|---|---|---|
+| Bot backend, full | `649080b` baseline | **8,557 tests: 8,543 passed, 0 failed, 14 skipped** (47.5 min) |
+| Bot backend, full | `65372fe` (all four fixes) | 8,626 tests: 8,611 passed, **1 failed**, 14 skipped |
+| The 1 failure | final | `test_runtime_flatten_refuses_when_the_engine_cannot_act[gates]` asserted that a DEMO flatten is refused while the DEMO switch is off, which is the defect fixed in 4.1. It now asserts the refusal for LIVE accounts in this non-live-capable build, and a new test proves the DEMO flatten proceeds. `test_emergency_controls.py`: **36 passed** |
+| Activation-gate register and deploy static tests | final | 127 passed |
+| User backend | final | **910 passed**, 0 failed (904 before + 6 new) |
+| Admin backend | final | **98 passed** |
+| Shared library | final | **299 passed** |
+| Root tests | final | **7 passed** |
+| User frontend (eslint, `npm test`, `tsc -b && vite build`) | final | **102/102**, build OK, 0 lint errors (210 existing warnings) |
+| Admin frontend (eslint, `npm test`, build) | final | **73/73**, build OK, 0 lint errors (151 existing warnings) |
+| Ruff correctness gate (E9, F63, F7, F82) | final | clean; no new F401/F841 in changed files |
+| Restore drill (Linux, SQLite + PostgreSQL) | final | PASSED, 22/22 |
+| Load test 1/10/100/1,000 (Linux, both dialects) | final | 0 duplicates, all accounts owned |
+
+New tests added in this pass: 64 (risk-reduction gate), 1 (switch-off scenario), 1 (DEMO flatten), 4 (BingX and
+coverage), 6 (portfolio). The full GitHub CI run on the exact final SHA is in section 32.
 
 ## 32. GitHub and CI
 
-PENDING_CI
+The CI run on this commit is recorded by the docs-only commit that follows it (as in earlier reports).
 
 ## 33. Genuine external dependencies
 
