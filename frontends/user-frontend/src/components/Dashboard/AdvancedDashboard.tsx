@@ -92,7 +92,9 @@ export function AdvancedDashboard() {
 
     // Fallback for visual stability if data is partial
     const totalEquity = summary?.total_portfolio_value || 0;
-    const dayChange = summary?.total_day_pnl || 0;
+    // Unrealized PnL of the open positions: it is not a day change and is not labelled as one.
+    const dayChange = summary?.total_unrealized_pnl ?? summary?.total_day_pnl ?? 0;
+    const portfolioEnvironment = summary?.environment ?? null;
     const dayChangePercent = summary?.total_day_pnl_percent || 0;
     // Allocation field names differ across backend versions (Cash/Invested vs USDT/Positions).
     // Prefer current backend values (Cash/Invested), fallback to legacy labels if present.
@@ -176,6 +178,12 @@ export function AdvancedDashboard() {
                                             title="Broker-reported account value/equity. May include wallet balance, unrealized PnL, deposits, and broker-side adjustments."
                                         >
                                             Total Portfolio Value
+                                            {portfolioEnvironment === 'DEMO' && (
+                                                <span className="ml-2 text-xs px-2 py-0.5 rounded-full border border-amber-500/30 bg-amber-500/10 text-amber-400">DEMO — no real money</span>
+                                            )}
+                                            {portfolioEnvironment === 'LIVE' && summary?.mixed_environments && (
+                                                <span className="ml-2 text-xs text-muted-foreground">LIVE accounts only; DEMO balances are not included</span>
+                                            )}
                                         </h3>
                                         <div className="text-4xl font-mono font-bold text-white tracking-tight flex items-baseline gap-2">
                                             {hideBalances ? "•••••" : `$${totalEquity.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
@@ -197,7 +205,7 @@ export function AdvancedDashboard() {
 
                                 <div className="grid grid-cols-3 gap-8 pt-4 border-t border-white/5">
                                     <div>
-                                        <div className="text-xs text-muted-foreground mb-1">Daily P&L</div>
+                                        <div className="text-xs text-muted-foreground mb-1" title="Unrealized profit or loss of the positions open now">Open P&L (unrealized)</div>
                                         <div className={`font-mono font-semibold ${dayChange >= 0 ? 'text-green-500' : 'text-red-500'}`}>
                                             {dayChange >= 0 ? '+' : ''}${Math.abs(dayChange).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                         </div>

@@ -204,6 +204,9 @@ export default function EditBot() {
                         </div>
                         {/* Dynamic Helper Text */}
                         <div className="mt-2 text-xs text-gray-500">
+                            {allocationType === 'fixed_amount' && (
+                                <span className="block mb-1">Margin per trade: the position size is this amount × leverage. A trade whose loss at its stop would exceed your per-trade risk limit (at most 0.40% of account equity) is refused, never resized.</span>
+                            )}
                             {/* Helpful text based on combinations */}
                             {capitalAllocationType === 'percent_balance' && (
                                 <span className="text-blue-400 block mb-1">Bot budget tracks {capitalAllocation}% of your account balance.</span>

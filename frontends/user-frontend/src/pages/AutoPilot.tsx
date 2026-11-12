@@ -453,6 +453,11 @@ export default function AutoPilot() {
                                 <label className="text-sm text-gray-400 mb-2 block">
                                     {allocationType === "fixed_amount" ? "Trade Amount per Position (USDT)" : "Position Allocation (%)"}
                                 </label>
+                                {allocationType === "fixed_amount" && (
+                                    <p className="text-xs text-gray-500 mb-2">
+                                        Margin per trade: the position size is this amount × leverage. A trade whose loss at its stop would exceed your per-trade risk limit (at most 0.40% of account equity) is refused, never resized.
+                                    </p>
+                                )}
                                 <div className="relative">
                                     <input
                                         type="number"

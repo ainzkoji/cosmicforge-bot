@@ -527,6 +527,11 @@ export interface StrategyPerfItem {
 
 export interface PortfolioSummary {
     total_portfolio_value: number;
+    /** DEMO | LIVE: the one environment the totals are of; DEMO and LIVE are never added together. */
+    environment?: 'DEMO' | 'LIVE' | null;
+    mixed_environments?: boolean;
+    /** Unrealized PnL of the open positions (total_day_pnl is the same value under its historical name). */
+    total_unrealized_pnl?: number;
     total_day_pnl: number;
     total_day_pnl_percent: number;
     active_strategies: number;

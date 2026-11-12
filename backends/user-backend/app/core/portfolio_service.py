@@ -67,6 +67,22 @@ def _count_running_bots(db: DB, user_id: str) -> int:
         return 0
 
 
+_BINANCE_ACCOUNT_FIELDS = {
+    "equity": "totalMarginBalance", "wallet": "totalWalletBalance", "unrealized_pnl": "totalUnrealizedProfit",
+    "margin_used": "totalInitialMargin", "available": "availableBalance", "maint_margin": "totalMaintMargin",
+}
+
+
+def _environment_label(auth) -> str:
+    """DEMO or LIVE, from the resolved account (the resolver's single source of truth). Unknown counts as LIVE:
+    real money is never labelled as demo."""
+    try:
+        from shared_lib.broker.environment import BrokerEnvironment, normalize_environment
+        return "DEMO" if normalize_environment(getattr(auth, "environment", None)) == BrokerEnvironment.DEMO else "LIVE"
+    except Exception:  # noqa: BLE001
+        return "LIVE"
+
+
 def get_portfolio_summary(user_id: str) -> Dict[str, Any]:
     """
     Aggregates portfolio data from all connected brokers.
@@ -81,13 +97,9 @@ def get_portfolio_summary(user_id: str) -> Dict[str, Any]:
     db = get_db()  # ← CRITICAL: must match DATABASE_URL, not DB() default path
     accounts = list_user_broker_accounts(user_id)
 
-    total_equity = 0.0
-    total_unrealized_pnl = 0.0
-    total_balance = 0.0
-    total_margin_used = 0.0
-    total_available = 0.0
-    total_maint_margin = 0.0
-
+    # DEMO and LIVE money are never added together: each environment has its own totals, and the headline figures
+    # are those of ONE environment (LIVE when any LIVE account was read, else DEMO), named in ``environment``.
+    totals: Dict[str, Dict[str, float]] = {}
     positions: List[Dict[str, Any]] = []
     account_errors: List[Dict[str, Any]] = []
 
@@ -122,30 +134,17 @@ def get_portfolio_summary(user_id: str) -> Dict[str, Any]:
                 "error":      str(exc),
             })
             continue
+        environment = _environment_label(auth)
 
         # ── Fetch live data from exchange ───────────────────────────────────
         if broker_id == "binance":
             try:
                 client = _build_binance_client(auth)
                 acc_data = client.account()
-
-                equity       = float(acc_data.get("totalMarginBalance", 0))
-                wallet       = float(acc_data.get("totalWalletBalance", 0))
-                upnl         = float(acc_data.get("totalUnrealizedProfit", 0))
-                margin_used  = float(acc_data.get("totalInitialMargin", 0))
-                available    = float(acc_data.get("availableBalance", 0))
-                maint_margin = float(acc_data.get("totalMaintMargin", 0))
-
-                total_equity        += equity
-                total_balance       += wallet
-                total_unrealized_pnl += upnl
-                total_margin_used   += margin_used
-                total_available     += available
-                total_maint_margin  += maint_margin
-
-                # Open positions
-                raw_positions = client.position_risk_all()
-                for p in raw_positions:
+                # A field the venue did not answer is not 0: the account is reported as not read.
+                read = {key: float(acc_data[field]) for key, field in _BINANCE_ACCOUNT_FIELDS.items()}
+                account_positions = []
+                for p in client.position_risk_all():
                     amt = float(p.get("positionAmt", 0))
                     if amt == 0:
                         continue
@@ -156,9 +155,10 @@ def get_portfolio_summary(user_id: str) -> Dict[str, Any]:
                     initial_margin = (entry_price * abs(amt)) / leverage if leverage > 0 else 0
                     roi_percent   = round((pnl / initial_margin * 100), 2) if initial_margin > 0 else 0
 
-                    positions.append({
+                    account_positions.append({
                         "account_id":  account_id,
                         "broker":      "Binance",
+                        "environment": environment,
                         "symbol":      p.get("symbol"),
                         "side":        "LONG" if amt > 0 else "SHORT",
                         "size":        abs(amt),
@@ -168,21 +168,41 @@ def get_portfolio_summary(user_id: str) -> Dict[str, Any]:
                         "roi_percent": roi_percent,
                         "leverage":    leverage,
                     })
-
             except Exception as exc:
                 logger.warning(
                     "portfolio_summary fetch_failed account=%s broker=binance error=%s",
-                    account_id, exc,
+                    account_id, type(exc).__name__,
                 )
                 account_errors.append({
                     "account_id": account_id,
                     "broker_id":  broker_id,
+                    "environment": environment,
                     "error_type": "api_error",
-                    "error":      str(exc),
+                    "error":      type(exc).__name__,
                 })
+                continue
+            bucket = totals.setdefault(environment, dict.fromkeys(_BINANCE_ACCOUNT_FIELDS, 0.0))
+            for key, value in read.items():
+                bucket[key] += value
+            positions.extend(account_positions)
+        else:
+            # No portfolio read exists for this broker here: say so, never leave it silently out of the totals.
+            account_errors.append({
+                "account_id": account_id,
+                "broker_id":  broker_id,
+                "environment": environment,
+                "error_type": "BROKER_PORTFOLIO_READ_UNSUPPORTED",
+                "error":      f"{broker_id or 'this broker'} balances are not included in these totals yet",
+            })
 
-        # ── Other brokers — extend here as needed ───────────────────────────
-        # elif broker_id == "bybit": ...
+    headline_env = "LIVE" if "LIVE" in totals else "DEMO" if "DEMO" in totals else (next(iter(totals), None))
+    headline = totals.get(headline_env) or dict.fromkeys(_BINANCE_ACCOUNT_FIELDS, 0.0)
+    total_equity = headline["equity"]
+    total_balance = headline["wallet"]
+    total_unrealized_pnl = headline["unrealized_pnl"]
+    total_margin_used = headline["margin_used"]
+    total_available = headline["available"]
+    total_maint_margin = headline["maint_margin"]
 
     # ── Recent trade activity (from DB) ────────────────────────────────────
     recent_activity: List[Dict[str, Any]] = []
@@ -246,6 +266,12 @@ def get_portfolio_summary(user_id: str) -> Dict[str, Any]:
             "running_bots":          running_bots,
             "open_positions_count":  len(positions),
             "total_portfolio_value": round(total_equity, 2),
+            # DEMO | LIVE: the one environment these totals are of (None: no account was read)
+            "environment":           headline_env,
+            "mixed_environments":    len(totals) > 1,
+            # Unrealized PnL of the open positions. Kept under its historical key for older clients; it was never
+            # a day change and is not labelled as one.
+            "total_unrealized_pnl":  round(total_unrealized_pnl, 2),
             "total_day_pnl":         round(total_unrealized_pnl, 2),
             "total_day_pnl_percent": round(
                 (total_unrealized_pnl / total_balance * 100), 2
@@ -267,4 +293,6 @@ def get_portfolio_summary(user_id: str) -> Dict[str, Any]:
         # silently displaying $0 for accounts that failed.
         "account_errors":  account_errors,
         "broker_breakdown": {},
+        # Per environment, never summed across them.
+        "by_environment": {env: {key: round(value, 2) for key, value in bucket.items()} for env, bucket in totals.items()},
     }
