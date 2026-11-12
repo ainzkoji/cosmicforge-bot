@@ -210,9 +210,9 @@ def main(argv=None) -> int:
     out = Path(a.out)
     doc = json.loads(out.read_text()) if out.exists() else {"schema": "cosmicforge-step5-load-v1"}
     doc[dialect] = {"measured_at_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), "host": P.host_description(),
-                    "rows": rows, "limits": ("Synthetic replayed data and in-memory fake venues on one Windows "
-                                             "workstation; threads for workers. Not exchange-demo throughput, not "
-                                             "a hosted staging run, not a Linux certification.")}
+                    "rows": rows, "limits": ("Synthetic replayed data and in-memory fake venues on the one host "
+                                             "described under 'host'; threads for workers. Not exchange-demo "
+                                             "throughput, not a hosted staging run, not a host certification.")}
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps(doc, indent=1, sort_keys=True, default=str) + "\n", encoding="utf-8")
     for r in rows:

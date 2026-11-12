@@ -345,7 +345,34 @@ Unchanged:
 
 ## 24. Performance (Linux)
 
-PENDING_LOAD
+`scripts/step5_load_test.py` on **Linux** (x86_64, 4 cores, Python 3.13, PostgreSQL 16, SQLite 3.53).
+Evidence: `evidence/linux-drills-20261112/load_test.json`. Earlier measurements were Windows-only, and the Step 5
+report left "Linux resource measurement" open.
+
+| Accounts | Dialect | Sizing ms | Maintenance cycle ms (4 workers) | Queue jobs/s | Duplicate orders | Takeover ms (2 s lease) | Pool peak | RSS MB |
+|---|---|---|---|---|---|---|---|---|
+| 1 | PostgreSQL | 0.48 | 26 | 82 | 0 | 14 | 4 | 84 |
+| 10 | PostgreSQL | 1.89 | 26 | 181 | 0 | 1,968 | 7 | 86 |
+| 100 | PostgreSQL | 17.3 | 115 | 319 | 0 | 1,343 | 12 | 90 |
+| 1,000 | PostgreSQL | 172.7 | 1,637 | 362 | 0 | 2,036 | 16 | 114 |
+| 1 | SQLite | 0.41 | 10 | 103 | 0 | 5 | 4 | 68 |
+| 10 | SQLite | 1.46 | 37 | 287 | 0 | 1,964 | 7 | 71 |
+| 100 | SQLite | 14.4 | 112 | 981 | 0 | 1,782 | 13 | 77 |
+| 1,000 | SQLite | 152.3 | 348 | 1,073 | 0 | 443 | 16 | 104 |
+
+**Results:**
+- every account was owned and maintained at every scale;
+- there were 0 duplicate orders and 0 orphaned accounts;
+- order spreading stayed within its cap at every scale;
+- takeover after a worker stops is bounded by the 2 s lease.
+
+**Disclosed limits:**
+- The data is synthetic and the venues are in-memory fakes.
+- Both runs shared the 4 cores with a concurrent full test-suite run, so latencies are pessimistic. The 1,000-account
+  PostgreSQL maintenance cycle (1.6 s vs 0.8 s on the Windows run) is the most affected.
+- This is not exchange throughput (EXT-LOAD-01 / egress) and not a hosted-staging run.
+
+Also fixed: the script labelled every run "one Windows workstation" whatever the host.
 
 ## 25. Failure and recovery
 
@@ -363,7 +390,22 @@ The existing drills pass in the full suite:
 
 ## 26. Backup and restore
 
-PENDING_RESTORE
+`scripts/restore_drill.py` on Linux with the PostgreSQL leg. Evidence:
+`evidence/linux-drills-20261112/restore_drill.json`. **PASSED: 22 of 22 checks, RPO 190 ms, RTO 66 ms, PostgreSQL
+leg passed.** The steps were:
+1. online backup with `quick_check` and a SHA-256 manifest;
+2. secret scan, which refuses any plaintext credential;
+3. encryption;
+4. off-site copy;
+5. restore;
+6. integrity and foreign-key checks, and every table equal to the backup snapshot;
+7. revoked live permission not restored;
+8. credentials still ciphertext and decryptable only with the secret-manager key.
+
+Limits, as stated by the drill:
+- the encryption was TEST-ONLY, because no age/gpg recipient is configured here;
+- the "remote" was a local directory;
+- the drill does not prove that the production off-site copy can be restored.
 
 ## 27–30. Deployment artifacts
 
@@ -449,7 +491,7 @@ PENDING_CI
 | User / Admin / Bot backends | PASS |
 | User / Admin frontends | PASS (automated suites, builds; no manual browser acceptance in this pass) |
 | Monitoring | PASS (test environment) |
-| Backup and restore | PENDING_RESTORE_STATUS |
+| Backup and restore | PASS (Linux drill, both dialects; production off-site restore not proven) |
 | Container and deployment assets | PASS (CI containers job) / real host BLOCKED (EXT-STG-01) |
 | Real-money activation | BLOCKED (not certified, not authorized) |
 
