@@ -722,14 +722,20 @@ def test_flatten_closes_a_position_without_lineage_reduce_only(broker):
 def test_flatten_never_bypasses_the_order_gate_or_the_runtime_lease(broker, monkeypatch):
     h, state = broker
     state["qty"] = 2.
-    monkeypatch.setattr(config, "settings", demo_profile(demo=False))
-    results = flatten(h)
-    assert [(r["status"], r["detail"]) for r in results] == [("failed", "DEMO_ORDER_SUBMISSION_DISABLED")]
     monkeypatch.setattr(config, "settings", demo_profile())
     monkeypatch.setattr(production, "owner_current", lambda db: False)
     with pytest.raises(ValueError, match="CANONICAL_RUNTIME_LEASE_REQUIRED"):
         flatten(h)
     assert state["qty"] == 2. and not order_posts(h)
+    monkeypatch.setattr(production, "owner_current", lambda db: True)
+    # LIVE in a build that is not live capable: the risk-reduction gate refuses too, nothing is sent
+    from shared_lib.core.production import risk_reduction_gate
+    assert risk_reduction_gate("LIVE")["enabled"] is False
+    # DEMO with the order switch off: a flatten only reduces risk, so it is NOT stranded (gate register 3.2)
+    monkeypatch.setattr(config, "settings", demo_profile(demo=False))
+    results = flatten(h)
+    assert [r["status"] for r in results] == ["closed"] and state["qty"] == 0
+    assert [p.kwargs["params"]["reduceOnly"] for p in order_posts(h)] == ["true"]
 
 
 def test_flatten_reports_an_unknown_close_as_failed_and_the_runtime_resolves_it(broker, monkeypatch):

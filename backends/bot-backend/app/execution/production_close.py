@@ -148,7 +148,7 @@ def close_position(client, symbol, trace=None):
                         or terminal) -- never set while it may still be live
     * ``state``         a precise reason for the failure
     """
-    from shared_lib.core.production import order_submission_gate
+    from shared_lib.core.production import risk_reduction_gate
     from app.trading_intelligence.integration.residual_prospective import owner_current
     from .demo_transport_smoke import lookup
     trace = {} if trace is None else trace
@@ -158,8 +158,10 @@ def close_position(client, symbol, trace=None):
     from app.platform_workers.account_fence import runtime_authority  # Step 5.2: the account fence, when one is active
     if not identity or not runtime_authority(db, account, lease=owner_current):
         raise ValueError('PRODUCTION_CLOSE_AUTHORITY_REQUIRED')
-    if not order_submission_gate(client.broker_environment)['enabled']:
-        raise ValueError(order_submission_gate(client.broker_environment)['reason'])
+    # A close only reduces risk: the order switch off does not strand the position (risk_reduction_gate).
+    reducing = risk_reduction_gate(client.broker_environment)
+    if not reducing['enabled']:
+        raise ValueError(reducing['reason'])
     from .fill_resolution import RATE_LIMIT_STATUSES, TRANSIENT_NOT_PROCESSED_CODES, definitive_rejection, venue_error
     cid = close_client_id(account,identity,symbol)
     from .production_schema import ensure

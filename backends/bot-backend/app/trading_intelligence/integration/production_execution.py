@@ -16,7 +16,7 @@ import time
 
 from app.core.config import settings
 from shared_lib.broker.environment import normalize_environment
-from shared_lib.core.production import order_submission_gate
+from shared_lib.core.production import order_submission_gate, risk_reduction_gate
 from shared_lib.core.money_math import ZERO, MoneyValueError, dsum, exact, to_dec, to_float
 from .residual_prospective import FAMILY, REGISTRY_HASH, SOURCE, Q, owner_current, frozen_definition
 from app.platform_workers.assignments import AssignmentLost
@@ -887,9 +887,10 @@ def flatten_account(db, account, client, *, request_id, now_ms=None, boundary_fa
         # The durable close speaks this venue's order API only: an open position
         # elsewhere is reported as NOT closed, never silently skipped.
         return [{**base, "symbol": s, "status": "failed", "detail": "EMERGENCY_FLATTEN_UNSUPPORTED_BROKER"} for s in symbols]
-    gate = order_submission_gate(environment)
+    gate = risk_reduction_gate(environment)
     if not gate["enabled"]:
-        # The close path's own gate; reported, never bypassed.
+        # The close path's own gate; reported, never bypassed. A flatten only reduces risk, so the order switch
+        # off does not stop it where the risk-reduction gate admits it.
         return [{**base, "symbol": s, "status": "failed", "detail": gate["reason"]} for s in symbols]
     client._production_db, client._production_account_id = db, account["id"]
     # A position opened by a trade plan is closed under that plan's identity, so

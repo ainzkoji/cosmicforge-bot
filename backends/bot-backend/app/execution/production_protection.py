@@ -106,9 +106,10 @@ def _next_leg_attempt(db, account, symbol, candidates, now):
 def place_native_protection(client, request):
     from app.models.unified_trading import ProtectionResult, Side
     from app.exchange.binance.filters import normalize_protection_price
-    # Transport remains the final gate as well; do not create an intent when off.
-    from shared_lib.core.production import order_submission_gate
-    gate = order_submission_gate(client.broker_environment)
+    # Transport remains the final gate as well; do not create an intent when off. A protective stop only reduces
+    # risk, so the order switch off does not strand the position where the risk-reduction gate admits it.
+    from shared_lib.core.production import risk_reduction_gate
+    gate = risk_reduction_gate(client.broker_environment)
     if not gate["enabled"]:
         raise ValueError(gate["reason"])
     db = getattr(client, "_production_db", None)

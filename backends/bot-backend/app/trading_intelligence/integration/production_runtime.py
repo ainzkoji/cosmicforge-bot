@@ -12,7 +12,7 @@ from app.core.config import settings
 from shared_lib.broker.environment import BrokerEnvironment, normalize_environment
 from shared_lib.broker.resolver import resolve_broker_auth
 from shared_lib.broker.client_factory import build_client_from_auth
-from shared_lib.core.production import order_submission_gate
+from shared_lib.core.production import order_submission_gate, risk_reduction_gate
 from app.trading_intelligence.pipeline.coordination import PreemptionGate
 from app.platform_workers.assignments import AssignmentLost
 from .residual_prospective import FAMILY, REGISTRY_HASH, owner_current, schedule as residual_schedule
@@ -697,7 +697,7 @@ def flatten(db, *, account_id=None, request_id, factory=build_client_from_auth, 
             raise EngineUnavailable("EXECUTION_ACCOUNT_NOT_FOUND")
     if not accounts:
         raise EngineUnavailable("BROKER_ACCOUNT_REQUIRED")
-    if not any(order_submission_gate(a["environment"])["enabled"] for a in accounts):
+    if not any(risk_reduction_gate(a["environment"])["enabled"] for a in accounts):
         raise EngineUnavailable("ORDER_SUBMISSION_DISABLED")
     ticket = _preemption.request(request_id, account_id)       # the cycle yields at its next safe point
     outcome = "FAILED"

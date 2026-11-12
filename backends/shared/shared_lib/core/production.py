@@ -142,6 +142,60 @@ def order_submission_gate(environment):
             "reason": name.replace("_ENABLED", "_DISABLED"), "environment": env.value.upper()}
 
 
+#: Venue mutations that can never add exposure: protective stops, reduce-only closes and cancels. While an
+#: environment's order switch is off they are still admitted where ``risk_reduction_gate`` allows (see there).
+_ORDER_PATHS = {"binance": {"/fapi/v1/order", "/fapi/v1/algoOrder"}, "bybit": {"/v5/order/create"},
+                "bingx": {"/openApi/swap/v2/trade/order"}}
+_CANCEL_PATHS = {"bybit": {"/v5/order/cancel", "/v5/order/cancel-all"}}
+_PROTECTIVE_PATHS = {"bybit": {"/v5/position/trading-stop"}}
+
+
+def _flag(params, key) -> bool:
+    value = params.get(key, "")
+    return value is True or str(value).lower() == "true"
+
+
+def is_risk_reducing_mutation(method: str, path: str, broker: str, payload=None) -> bool:
+    """True only for a request that cannot open or increase a position. Unknown paths are not risk reducing."""
+    method, broker, params = method.upper(), (broker or "").lower(), payload if isinstance(payload, dict) else {}
+    if method == "DELETE":
+        return True                                      # cancels (single, all-open, conditional)
+    if method != "POST":
+        return False
+    if path in _CANCEL_PATHS.get(broker, ()) or path in _PROTECTIVE_PATHS.get(broker, ()):
+        return True
+    if path in _ORDER_PATHS.get(broker, ()):
+        return _flag(params, "reduceOnly") or _flag(params, "closePosition")
+    return False
+
+
+def risk_reduction_gate(environment):
+    """Whether protective and risk-reducing mutations may reach this environment's venue.
+
+    The order switch (``order_submission_gate``) governs new exposure. Switching it off must not strand open
+    positions without their exchange-side protection, so while it is off, protective stops, reduce-only closes,
+    cancels and flatten stay permitted:
+
+    * DEMO: always (no real money);
+    * LIVE: only in a live-capable reviewed build (``live_build_status().capable``). Every other build stays
+      incapable of any real-money mutation, exactly as before.
+
+    The answer carries ``risk_reduction_only=True`` in that case; ``reason`` stays the switch's own reason, which
+    is what every risk-increasing order is refused with."""
+    gate = dict(order_submission_gate(environment))
+    if gate["enabled"]:
+        return {**gate, "risk_reduction_only": False}
+    if gate["environment"] == "LIVE":
+        try:
+            from shared_lib.core.live_build import live_build_status
+            capable = bool(live_build_status().capable)
+        except Exception:  # noqa: BLE001 -- an undecidable build is not live capable
+            capable = False
+        if not capable:
+            return {**gate, "risk_reduction_only": False}
+    return {**gate, "enabled": True, "risk_reduction_only": True}
+
+
 def require_execution_account(environment, broker: str = "", base_url: str = "") -> None:
     from shared_lib.broker.environment import normalize_environment, resolve_base_url
     env = normalize_environment(environment)
@@ -178,8 +232,13 @@ def require_broker_mutation_permission(method: str, path: str = "", *, environme
         require_execution_account(env, broker, base_url)
         gate = order_submission_gate(env)
         if not gate["enabled"]:
-            error = DemoOrderSubmissionDisabled if gate["environment"] == "DEMO" else LiveOrderSubmissionDisabled
-            raise error(gate["reason"])
+            # The switch stops new exposure. Protection, reduce-only closes and cancels of open positions still
+            # go where risk_reduction_gate allows them; everything else is refused with the switch's reason.
+            if not (risk_reduction_gate(env)["enabled"]
+                    and is_risk_reducing_mutation(method, path, broker, payload)):
+                error = DemoOrderSubmissionDisabled if gate["environment"] == "DEMO" else LiveOrderSubmissionDisabled
+                raise error(gate["reason"])
+            return
         entry_paths = {"binance": "/fapi/v1/order", "bybit": "/v5/order/create",
                        "bingx": "/openApi/swap/v2/trade/order"}
         if method.upper() == "POST" and path == entry_paths.get(broker):

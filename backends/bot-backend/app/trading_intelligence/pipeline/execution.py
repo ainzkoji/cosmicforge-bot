@@ -538,19 +538,43 @@ class PortfolioExecutionBoundary:
         refusal, increases_refused = self._source(batch, now)
         if refusal is not None:
             return refusal, None
-        refusal = self._operating_refusal(production)
-        return refusal, None if refusal else increases_refused
+        refusal = self._operating_refusal(production, risk_reducing=True)
+        if refusal is not None:
+            return refusal, None
+        # The order switch off stops every risk-increasing intent of the batch; its exits and protection go on
+        # where the risk-reduction gate admits them (shared_lib.core.production.risk_reduction_gate).
+        return None, increases_refused or self._submission_refusal()
 
-    def _operating_refusal(self, production: bool) -> Optional[str]:
-        """The conditions under which this software may send anything at all through this adapter."""
-        if production and self._submission_gate is not self._real_submission_gate:
-            return SUBMISSION_GATE_NOT_AUTHORITATIVE
+    def _submission_refusal(self) -> Optional[str]:
+        """Why the environment's order switch refuses NEW exposure now, or None."""
         try:
             gate = self._submission_gate(self.account.environment)
         except Exception:  # noqa: BLE001 -- an undecidable permission is a refusal
             return "ORDER_SUBMISSION_GATE_UNAVAILABLE"
         if not gate.get("enabled"):
             return str(gate.get("reason") or "ORDER_SUBMISSION_DISABLED")
+        return None
+
+    def _operating_refusal(self, production: bool, *, risk_reducing: bool = False) -> Optional[str]:
+        """The conditions under which this software may send anything at all through this adapter.
+        ``risk_reducing``: the caller sends only protection, reduce-only closes and cancels, so an order switch
+        that is off refuses it only where the risk-reduction gate does too."""
+        if production and self._submission_gate is not self._real_submission_gate:
+            return SUBMISSION_GATE_NOT_AUTHORITATIVE
+        refusal = self._submission_refusal()
+        if refusal is not None:
+            if not risk_reducing:
+                return refusal
+            if self._submission_gate is self._real_submission_gate:
+                from shared_lib.core.production import risk_reduction_gate
+                try:
+                    reducing = risk_reduction_gate(self.account.environment)
+                except Exception:  # noqa: BLE001
+                    return refusal
+                if not reducing.get("enabled"):
+                    return refusal
+            else:
+                return refusal          # a substituted gate (tests) has no risk-reduction answer
         try:
             if production:
                 from app.exchange.platform_adapter.certification import adapter_certified
@@ -614,6 +638,10 @@ class PortfolioExecutionBoundary:
     def _increase_refusal(self) -> Optional[str]:
         """Why NO risk-increasing order may be sent for this account now, or None."""
         from app.core.config import settings
+
+        switched_off = self._submission_refusal()       # the order switch governs new exposure
+        if switched_off is not None:
+            return switched_off
 
         if settings.production and type(self._authority) is not self._real_authority:
             return GOVERNANCE_AUTHORITY_NOT_AUTHORITATIVE
@@ -1317,7 +1345,7 @@ class PortfolioExecutionBoundary:
         from app.core.config import settings
 
         now = int(now_ms if now_ms is not None else self.journal.now())
-        refusal = self._operating_refusal(bool(settings.production))
+        refusal = self._operating_refusal(bool(settings.production), risk_reducing=True)
         if refusal is not None:
             return RecoveryReport(BATCH_REFUSED, (refusal,), (), self._unresolved_ids(), ())
         retry_at = self.journal.backoff_until()

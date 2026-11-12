@@ -203,12 +203,31 @@ def test_the_real_gate_is_the_default_and_the_real_flags_refuse(world, monkeypat
     assert type(boundary.family_gate) is PV.FamilyExecutionGate
     result = boundary.execute(world.decide(E.entry(BTC)), brake_state=E.NO_BRAKE)
     assert result.status == X.BATCH_REFUSED and result.reasons[0].split(":")[0] == PV.FAMILY_UNKNOWN   # the synthetic family is not in the code
-    # with the family authorized, the real order-submission flag of the environment refuses everything, exits included
+    # with the family authorized, the real order-submission flag of the environment refuses every risk-increasing
+    # intent; exits, protection and recovery are risk reducing and go on (shared_lib risk_reduction_gate)
     flagged = world.boundary(submission_gate=None)
     result = flagged.execute(world.decide(E.entry(BTC), E.exit_(ETH)), brake_state=E.NO_BRAKE)
-    assert (result.status, result.reasons) == (X.BATCH_REFUSED, ("DEMO_ORDER_SUBMISSION_DISABLED",))
-    assert flagged.recover().reasons == ("DEMO_ORDER_SUBMISSION_DISABLED",)           # recovery sends nothing either
-    untouched(world)
+    assert result.status == X.BATCH_PROCESSED
+    assert result.outcome(BTC).state == X.REFUSED and result.outcome(BTC).reasons[0] == "DEMO_ORDER_SUBMISSION_DISABLED"
+    assert entry_orders(world) == []                                                   # nothing that adds exposure
+    assert "DEMO_ORDER_SUBMISSION_DISABLED" not in flagged.recover().reasons             # recovery still protects
+
+
+def test_the_order_switch_off_stops_entries_but_never_strands_an_open_position(world, monkeypatch):
+    """Owner finding (gate register section 3.2): switching new orders off must not stop protection or exits."""
+    from app.core.config import settings
+
+    open_three(world)
+    monkeypatch.setattr(settings, "DEMO_ORDER_SUBMISSION_ENABLED", False, raising=False)
+    switched_off = world.boundary(submission_gate=None)
+    sent_before = len(entry_orders(world))
+    result = switched_off.execute(world.decide(E.exit_(ETH), E.entry(XRP)), brake_state=E.NO_BRAKE)
+    assert result.outcome(XRP).state == X.REFUSED and result.outcome(XRP).reasons[0] == "DEMO_ORDER_SUBMISSION_DISABLED"
+    assert result.outcome(ETH).state not in (X.REFUSED,), result.outcome(ETH)
+    assert world.signed(ETH) == 0                                                      # the exit reached the venue
+    assert len(entry_orders(world)) == sent_before                                     # and no new exposure did
+    assert switched_off.recover().status != X.BATCH_REFUSED
+    assert world.signed(BTC) != 0 and world.signed(SOL) != 0                           # the rest stay held, protected
 
 
 def _other_user(w):
@@ -355,8 +374,10 @@ def test_production_settings_accept_only_the_real_gates_and_never_the_fake_venue
     doubled = world.boundary(adapter=pretend)                       # the real family gate, a substitute submission gate
     assert doubled.execute(batch, brake_state=E.NO_BRAKE).reasons == (X.SUBMISSION_GATE_NOT_AUTHORITATIVE,)
     real = world.boundary(adapter=pretend, submission_gate=None)    # the real one reads the real flag: false
-    assert real.execute(batch, brake_state=E.NO_BRAKE).reasons == ("DEMO_ORDER_SUBMISSION_DISABLED",)
+    # the flag refuses the entry; the uncertified pretend adapter refuses the whole batch and recovery before that
+    assert real.execute(batch, brake_state=E.NO_BRAKE).reasons[0].startswith("ADAPTER_NOT_CERTIFIED")
     assert real.recover().status == X.BATCH_REFUSED
+    assert real._increase_refusal() == "DEMO_ORDER_SUBMISSION_DISABLED"
     assert world.boundary()._increase_refusal() == X.GOVERNANCE_AUTHORITY_NOT_AUTHORITATIVE     # a substitute authority neither
     untouched(world)
 
