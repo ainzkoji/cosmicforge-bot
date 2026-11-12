@@ -63,13 +63,21 @@ Every gate was tested against a strict rule. A gate is Type A only if both of th
    (`app/golive/gate.py` `_operator_approval_audited`): an approval is in force at most that many days after its
    grant, whatever expiry its request stated; unset, condition 11 is `BLOCKED_PENDING_POLICY`
    (`APPROVAL_MAX_VALIDITY_DAYS_NOT_SET`). The value is the owner's. Test: `test_an_approval_is_never_open_ended`.
-2. **Switching `LIVE_ORDER_SUBMISSION_ENABLED` off also stops protective orders.** In production,
+2. **FIXED 2026-11-12 (`334f2ff`) — switching an order switch off no longer strands protection.** The switch now
+   governs new exposure only: `shared_lib.core.production.risk_reduction_gate` keeps protective stops, reduce-only
+   closes, cancels, recovery and flatten admitted while it is off — on DEMO always, on LIVE only in a live-capable
+   reviewed build (every build in this repository stays incapable of any real-money mutation). Tests:
+   `tests/test_risk_reduction_gate.py`,
+   `test_the_order_switch_off_stops_entries_but_never_strands_an_open_position`. The original finding follows.
+   **Switching `LIVE_ORDER_SUBMISSION_ENABLED` off also stops protective orders.** In production,
    `require_broker_mutation_permission` refuses every mutation to a LIVE account while the flag is off: it raises
    `LiveOrderSubmissionDisabled` before the reduce-only branch, so stop replacement and flatten are refused too.
    - Revoking the go-live operator switch or a certification refuses new entries only. Protection and reduction go on
      (`test_revocation_refuses_new_entries_immediately_while_reducing_recovery_stays_allowed`).
    - Operators should use the switch or the kill switches to stop entries. The flag means "all real-money mutation off".
-3. **`deploy/env.production.example` sets neither `GOLIVE_REVOCATION_ANCHOR` nor `PLATFORM_DATABASE_URL`.**
+3. **FIXED 2026-11-12 (`a746a58`): `env.production.example` carries both, and `docs/VPS_TRADING_DEPLOYMENT.md`
+   section 2.4 creates, migrates and checks the platform database.** The original finding follows.
+   **`deploy/env.production.example` sets neither `GOLIVE_REVOCATION_ANCHOR` nor `PLATFORM_DATABASE_URL`.**
    - Without the anchor, every live entry fails `AUTHORIZATION_LEDGER_INTACT`.
    - Without the platform database, every production entry is refused, demo included.
    - The new profiles (`deploy/profiles/`) carry both.
