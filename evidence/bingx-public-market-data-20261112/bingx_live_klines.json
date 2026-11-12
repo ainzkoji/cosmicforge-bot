@@ -1,0 +1,272 @@
+{
+ "observed_at_ms": 1794521663934,
+ "venue": "bingx",
+ "endpoint": "/openApi/swap/v3/quote/klines",
+ "fetcher": "venue_history.bingx_klines (fixed)",
+ "series": {
+  "BTCUSDT:1h": {
+   "rows": 2160,
+   "expected": 2160,
+   "missing": 0,
+   "starts_at_range_start": true,
+   "ascending": true,
+   "unique": true,
+   "usable": true,
+   "misaligned": 0,
+   "secs": 1.42
+  },
+  "BTCUSDT:15m": {
+   "rows": 1344,
+   "expected": 1344,
+   "missing": 0,
+   "starts_at_range_start": true,
+   "ascending": true,
+   "unique": true,
+   "usable": true,
+   "misaligned": 0,
+   "secs": 0.83
+  },
+  "BTCUSDT:1m": {
+   "rows": 4320,
+   "expected": 4320,
+   "missing": 0,
+   "starts_at_range_start": true,
+   "ascending": true,
+   "unique": true,
+   "usable": true,
+   "misaligned": 0,
+   "secs": 2.15
+  },
+  "ETHUSDT:1h": {
+   "rows": 2160,
+   "expected": 2160,
+   "missing": 0,
+   "starts_at_range_start": true,
+   "ascending": true,
+   "unique": true,
+   "usable": true,
+   "misaligned": 0,
+   "secs": 1.32
+  },
+  "ETHUSDT:15m": {
+   "rows": 1344,
+   "expected": 1344,
+   "missing": 0,
+   "starts_at_range_start": true,
+   "ascending": true,
+   "unique": true,
+   "usable": true,
+   "misaligned": 0,
+   "secs": 0.8
+  },
+  "ETHUSDT:1m": {
+   "rows": 4320,
+   "expected": 4320,
+   "missing": 0,
+   "starts_at_range_start": true,
+   "ascending": true,
+   "unique": true,
+   "usable": true,
+   "misaligned": 0,
+   "secs": 2.15
+  },
+  "SOLUSDT:1h": {
+   "rows": 2160,
+   "expected": 2160,
+   "missing": 0,
+   "starts_at_range_start": true,
+   "ascending": true,
+   "unique": true,
+   "usable": true,
+   "misaligned": 0,
+   "secs": 1.35
+  },
+  "SOLUSDT:15m": {
+   "rows": 1344,
+   "expected": 1344,
+   "missing": 0,
+   "starts_at_range_start": true,
+   "ascending": true,
+   "unique": true,
+   "usable": true,
+   "misaligned": 0,
+   "secs": 0.8
+  },
+  "SOLUSDT:1m": {
+   "rows": 4320,
+   "expected": 4320,
+   "missing": 0,
+   "starts_at_range_start": true,
+   "ascending": true,
+   "unique": true,
+   "usable": true,
+   "misaligned": 0,
+   "secs": 2.35
+  },
+  "XRPUSDT:1h": {
+   "rows": 2160,
+   "expected": 2160,
+   "missing": 0,
+   "starts_at_range_start": true,
+   "ascending": true,
+   "unique": true,
+   "usable": true,
+   "misaligned": 0,
+   "secs": 1.35
+  },
+  "XRPUSDT:15m": {
+   "rows": 1344,
+   "expected": 1344,
+   "missing": 0,
+   "starts_at_range_start": true,
+   "ascending": true,
+   "unique": true,
+   "usable": true,
+   "misaligned": 0,
+   "secs": 0.85
+  },
+  "XRPUSDT:1m": {
+   "rows": 4320,
+   "expected": 4320,
+   "missing": 0,
+   "starts_at_range_start": true,
+   "ascending": true,
+   "unique": true,
+   "usable": true,
+   "misaligned": 0,
+   "secs": 2.02
+  },
+  "DOGEUSDT:1h": {
+   "rows": 2160,
+   "expected": 2160,
+   "missing": 0,
+   "starts_at_range_start": true,
+   "ascending": true,
+   "unique": true,
+   "usable": true,
+   "misaligned": 0,
+   "secs": 1.38
+  },
+  "DOGEUSDT:15m": {
+   "rows": 1344,
+   "expected": 1344,
+   "missing": 0,
+   "starts_at_range_start": true,
+   "ascending": true,
+   "unique": true,
+   "usable": true,
+   "misaligned": 0,
+   "secs": 0.83
+  },
+  "DOGEUSDT:1m": {
+   "rows": 4320,
+   "expected": 4320,
+   "missing": 0,
+   "starts_at_range_start": true,
+   "ascending": true,
+   "unique": true,
+   "usable": true,
+   "misaligned": 0,
+   "secs": 2.37
+  },
+  "ADAUSDT:1h": {
+   "rows": 2160,
+   "expected": 2160,
+   "missing": 0,
+   "starts_at_range_start": true,
+   "ascending": true,
+   "unique": true,
+   "usable": true,
+   "misaligned": 0,
+   "secs": 1.33
+  },
+  "ADAUSDT:15m": {
+   "rows": 1344,
+   "expected": 1344,
+   "missing": 0,
+   "starts_at_range_start": true,
+   "ascending": true,
+   "unique": true,
+   "usable": true,
+   "misaligned": 0,
+   "secs": 0.81
+  },
+  "ADAUSDT:1m": {
+   "rows": 4320,
+   "expected": 4320,
+   "missing": 0,
+   "starts_at_range_start": true,
+   "ascending": true,
+   "unique": true,
+   "usable": true,
+   "misaligned": 0,
+   "secs": 2.15
+  },
+  "LINKUSDT:1h": {
+   "rows": 2160,
+   "expected": 2160,
+   "missing": 0,
+   "starts_at_range_start": true,
+   "ascending": true,
+   "unique": true,
+   "usable": true,
+   "misaligned": 0,
+   "secs": 1.11
+  },
+  "LINKUSDT:15m": {
+   "rows": 1344,
+   "expected": 1344,
+   "missing": 0,
+   "starts_at_range_start": true,
+   "ascending": true,
+   "unique": true,
+   "usable": true,
+   "misaligned": 0,
+   "secs": 0.8
+  },
+  "LINKUSDT:1m": {
+   "rows": 4320,
+   "expected": 4320,
+   "missing": 0,
+   "starts_at_range_start": true,
+   "ascending": true,
+   "unique": true,
+   "usable": true,
+   "misaligned": 0,
+   "secs": 2.41
+  },
+  "BNBUSDT:1h": {
+   "rows": 2160,
+   "expected": 2160,
+   "missing": 0,
+   "starts_at_range_start": true,
+   "ascending": true,
+   "unique": true,
+   "usable": true,
+   "misaligned": 0,
+   "secs": 1.33
+  },
+  "BNBUSDT:15m": {
+   "rows": 1344,
+   "expected": 1344,
+   "missing": 0,
+   "starts_at_range_start": true,
+   "ascending": true,
+   "unique": true,
+   "usable": true,
+   "misaligned": 0,
+   "secs": 0.85
+  },
+  "BNBUSDT:1m": {
+   "rows": 4320,
+   "expected": 4320,
+   "missing": 0,
+   "starts_at_range_start": true,
+   "ascending": true,
+   "unique": true,
+   "usable": true,
+   "misaligned": 0,
+   "secs": 2.46
+  }
+ }
+}

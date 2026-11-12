@@ -212,3 +212,72 @@ def test_venue_history_fetchers_paginate_and_report_unavailable():
     assert isinstance(oi, vh.FeatureUnavailable) and oi.reason == "VENUE_HISTORY_LIMIT_30D"
     assert vh.bingx_open_interest().reason == "VENUE_HAS_NO_OI_HISTORY_ENDPOINT"
     assert "NO_COMPLETE_HISTORICAL_LIQUIDATION_FEED" in vh.liquidations("bybit").reason
+
+
+# ── BingX: newest-first pages, gaps and error envelopes (live behaviour observed 2026-11-12) ────────────────
+
+def _bingx_venue(listed, *, error_at=None):
+    """BingX /openApi/swap/v3/quote/klines as observed live: newest bars first and, with both startTime and endTime,
+    the NEWEST ``limit`` bars of the range."""
+    calls = []
+
+    def get(url, params):
+        assert url.endswith("/openApi/swap/v3/quote/klines") and params["symbol"] == "BTC-USDT"
+        calls.append(dict(params))
+        if error_at is not None and len(calls) == error_at:
+            return {"code": 100410, "msg": "rate limited", "data": []}
+        bars = [t for t in listed if params["startTime"] <= t <= params["endTime"]][-params["limit"]:]
+        return {"code": 0, "msg": "", "data": [{"time": t, "open": "1", "high": "2", "low": "0.5", "close": "1.5",
+                                                "volume": "10"} for t in reversed(bars)]}
+    return get, calls
+
+
+def test_bingx_backfill_keeps_the_oldest_bars_of_a_range_longer_than_one_page():
+    listed = [T0 + i * M for i in range(1440)]
+    get, calls = _bingx_venue(listed)
+    rows = vh.bingx_klines(get, "BTCUSDT", "1m", T0, T0 + 1440 * M - 1)
+    assert [r[0] for r in rows] == listed                         # all 1,440, ascending: none dropped at the start
+    assert len(calls) == 2 and all(c["endTime"] - c["startTime"] < 1000 * M for c in calls)
+
+
+def test_bingx_backfill_walks_past_a_halt_instead_of_ending():
+    listed = [T0 + i * M for i in range(100)] + [T0 + i * M for i in range(2500, 2600)]
+    get, calls = _bingx_venue(listed)
+    rows = vh.bingx_klines(get, "BTCUSDT", "1m", T0, T0 + 2600 * M - 1)
+    assert [r[0] for r in rows] == listed and len(calls) == 3      # the empty middle window did not stop it
+
+
+def test_venue_error_envelopes_raise_instead_of_reading_as_no_data():
+    get, _ = _bingx_venue([T0 + i * M for i in range(1500)], error_at=2)
+    with pytest.raises(vh.VenueDataError) as raised:
+        vh.bingx_klines(get, "BTCUSDT", "1m", T0, T0 + 1500 * M - 1)
+    assert raised.value.venue == "bingx" and raised.value.code == 100410
+
+    def bybit(url, params):
+        return {"retCode": 10006, "retMsg": "Too many visits!", "result": {"list": []}}
+    for fetch in (vh.bybit_klines, ):
+        with pytest.raises(vh.VenueDataError):
+            fetch(bybit, "BTCUSDT", "1m", T0, T0 + M)
+    with pytest.raises(vh.VenueDataError):
+        vh.bybit_funding(bybit, "BTCUSDT", T0, T0 + M)
+    with pytest.raises(vh.VenueDataError):
+        vh.bybit_open_interest(bybit, "BTCUSDT", T0, T0 + M)
+
+
+def test_a_series_cut_short_at_either_end_of_the_requested_range_is_not_usable():
+    rows = [[T0 + i * M, 1, 2, 0.5, 1.5, 10, T0 + (i + 1) * M - 1] for i in range(440, 1440)]   # newest 1,000 only
+    unbounded = check_series(rows, symbol="BTCUSDT", timeframe="1m")
+    assert unbounded.is_usable                                         # what the old check could see: nothing wrong
+    bounded = check_series(rows, symbol="BTCUSDT", timeframe="1m", expected_start_ms=T0, expected_end_ms=T0 + 1439 * M)
+    assert (bounded.missing_leading, bounded.missing_trailing, bounded.is_usable) == (440, 0, False)
+    tail = check_series(rows[:-10], symbol="BTCUSDT", timeframe="1m", expected_start_ms=T0 + 440 * M,
+                        expected_end_ms=T0 + 1439 * M)
+    assert (tail.missing_leading, tail.missing_trailing, tail.is_usable) == (0, 10, False)
+    whole = check_series(rows, symbol="BTCUSDT", timeframe="1m", expected_start_ms=T0 + 440 * M,
+                         expected_end_ms=T0 + 1439 * M)
+    assert whole.is_usable and whole.missing_leading == whole.missing_trailing == 0
+    listed_late = check_series(rows, symbol="BTCUSDT", timeframe="1m", expected_start_ms=T0,
+                               expected_end_ms=T0 + 1439 * M, listed_at_ms=T0 + 440 * M)
+    assert listed_late.is_usable                                       # nothing is due before the listing
+    empty = check_series([], symbol="BTCUSDT", timeframe="1m", expected_start_ms=T0, expected_end_ms=T0 + 9 * M)
+    assert empty.missing_leading == 10 and not empty.is_usable

@@ -140,7 +140,9 @@ def main() -> int:
         tfs = {"15m": fetch["klines"](get, sym, "15m", start, end)}
         for tf, rows in tfs.items():
             store.write_candles(sid, tf, rows)
-            q = check_series(rows, symbol=sym, timeframe=tf, listed_at_ms=ins.listed_at_ms)
+            # the requested range is part of the check: a page the venue cut short is not a usable series
+            q = check_series(rows, symbol=sym, timeframe=tf, listed_at_ms=ins.listed_at_ms,
+                             expected_start_ms=start, expected_end_ms=end)
             manifest["series"][f"{sym}:{tf}"] = {"rows": len(rows), "hash": series_hash(rows), "quality": q.to_dict()}
         for feat in ("funding", "open_interest"):
             if feat not in fetch:

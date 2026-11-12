@@ -32,13 +32,17 @@ class ExtendedQualityReport:
     notes: tuple = ()
     #: FX rows whose BID or ASK side is partial, non-positive or violates its own OHLC envelope
     invalid_quote_sides: int = 0
+    #: bars missing at the start / end of the REQUESTED range (``expected_start_ms`` / ``expected_end_ms``): a page the
+    #: venue cut short leaves no internal gap, so only the requested range can reveal it
+    missing_leading: int = 0
+    missing_trailing: int = 0
 
     @property
     def is_usable(self) -> bool:
         return bool(self.base.get("is_usable")) and not (
             self.misaligned_timestamps or self.before_listing or self.after_delisting
             or self.source_switches or self.venue_switches or self.impossible_spreads
-            or self.invalid_quote_sides)
+            or self.invalid_quote_sides or self.missing_leading or self.missing_trailing)
 
     def to_dict(self) -> Dict[str, Any]:
         d = asdict(self)
@@ -50,15 +54,33 @@ class ExtendedQualityReport:
 
 def check_series(rows: Sequence[Any], *, symbol: str, timeframe: str, sources: Optional[Sequence[str]] = None,
                  venues: Optional[Sequence[str]] = None, listed_at_ms: Optional[int] = None,
-                 delisted_at_ms: Optional[int] = None) -> ExtendedQualityReport:
+                 delisted_at_ms: Optional[int] = None, expected_start_ms: Optional[int] = None,
+                 expected_end_ms: Optional[int] = None) -> ExtendedQualityReport:
+    """``expected_start_ms``/``expected_end_ms``: the range that was requested (open times; the end inclusive). Bars
+    missing before the first or after the last row count against it, bounded by listing and delisting."""
     base = assess_quality(rows, symbol=symbol, timeframe=timeframe).to_dict()
     step = MINUTE_MS * (DERIVABLE.get(timeframe, 1) if timeframe != "1m" else 1)
     misaligned = sum(1 for r in rows if open_time(r) % step)
     before = sum(1 for r in rows if listed_at_ms is not None and open_time(r) < listed_at_ms)
     after = sum(1 for r in rows if delisted_at_ms is not None and open_time(r) >= delisted_at_ms)
+    leading = trailing = 0
+    if expected_start_ms is not None or expected_end_ms is not None:
+        first_due = -(-max(expected_start_ms or 0, listed_at_ms or 0) // step) * step     # first aligned open time
+        last_due = (min(x for x in (expected_end_ms, None if delisted_at_ms is None else delisted_at_ms - 1)
+                        if x is not None) // step) * step if (expected_end_ms is not None or delisted_at_ms) else None
+        times = sorted(open_time(r) for r in rows)
+        if not times:
+            if expected_start_ms is not None and last_due is not None and last_due >= first_due:
+                leading = (last_due - first_due) // step + 1
+        else:
+            if expected_start_ms is not None:
+                leading = max(0, (times[0] - first_due) // step)
+            if last_due is not None:
+                trailing = max(0, (last_due - times[-1]) // step)
     return ExtendedQualityReport(base=base, misaligned_timestamps=misaligned, before_listing=before,
                                  after_delisting=after, source_switches=_switches(sources),
-                                 venue_switches=_switches(venues), impossible_spreads=0)
+                                 venue_switches=_switches(venues), impossible_spreads=0,
+                                 missing_leading=int(leading), missing_trailing=int(trailing))
 
 
 #: ``max_spread_bps`` for ingestion/derivation gates: only crossed quotes count, never a merely wide spread

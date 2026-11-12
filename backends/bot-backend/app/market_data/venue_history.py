@@ -13,7 +13,7 @@ returns ``FeatureUnavailable`` with the reason instead of fabricated zeros.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Mapping, Optional, Tuple
 
 Getter = Callable[[str, Dict[str, Any]], Any]
 MINUTE_MS = 60_000
@@ -29,6 +29,26 @@ BINGX_API = "https://open-api.bingx.com"
 class FeatureUnavailable:
     feature: str
     reason: str
+
+
+class VenueDataError(RuntimeError):
+    """The venue answered with an error envelope (HTTP 200 but a non-zero code). Never read as "no data": an empty
+    page would end a backfill early or leave a silent hole."""
+
+    def __init__(self, venue: str, code: Any, message: str = "") -> None:
+        super().__init__(f"{venue}:{code}:{message}"[:300])
+        self.venue, self.code = venue, code
+
+
+def _envelope(venue: str, data: Any, code_key: str, message_key: str) -> Mapping[str, Any]:
+    if data is None:
+        return {}
+    if not isinstance(data, Mapping):
+        raise VenueDataError(venue, "MALFORMED_RESPONSE", type(data).__name__)
+    code = data.get(code_key)
+    if code not in (None, 0, "0"):
+        raise VenueDataError(venue, code, str(data.get(message_key) or ""))
+    return data
 
 
 def requests_getter(timeout: float = 30.0) -> Getter:
@@ -104,7 +124,8 @@ def bybit_klines(get: Getter, symbol: str, tf: str, start_ms: int, end_ms: int, 
     while cursor <= end_ms:
         data = get(f"{base}/v5/market/kline", {"category": category, "symbol": symbol, "interval": _BYBIT_TF[tf],
                                                "start": cursor, "end": min(end_ms, cursor + step * 1000 - 1),
-                                               "limit": 1000}) or {}
+                                               "limit": 1000})
+        data = _envelope("bybit", data, "retCode", "retMsg")
         rows = sorted(((data.get("result") or {}).get("list") or []), key=lambda r: int(r[0]))
         for r in rows:  # [start, open, high, low, close, volume, turnover]
             t = int(r[0])
@@ -117,8 +138,8 @@ def bybit_funding(get: Getter, symbol: str, start_ms: int, end_ms: int, *, base:
     out, end = [], end_ms
     while end >= start_ms:
         data = get(f"{base}/v5/market/funding/history", {"category": "linear", "symbol": symbol,
-                                                          "startTime": start_ms, "endTime": end, "limit": 200}) or {}
-        rows = (data.get("result") or {}).get("list") or []
+                                                          "startTime": start_ms, "endTime": end, "limit": 200})
+        rows = (_envelope("bybit", data, "retCode", "retMsg").get("result") or {}).get("list") or []
         if not rows:
             break
         out.extend(("funding_rate", int(r["fundingRateTimestamp"]), float(r["fundingRate"])) for r in rows)
@@ -137,7 +158,7 @@ def bybit_open_interest(get: Getter, symbol: str, start_ms: int, end_ms: int, *,
                   "endTime": end_ms, "limit": 200}
         if cursor:
             params["cursor"] = cursor
-        data = get(f"{base}/v5/market/open-interest", params) or {}
+        data = _envelope("bybit", get(f"{base}/v5/market/open-interest", params), "retCode", "retMsg")
         res = data.get("result") or {}
         out.extend(("open_interest", int(r["timestamp"]), float(r["openInterest"])) for r in res.get("list") or [])
         cursor = res.get("nextPageCursor")
@@ -148,22 +169,24 @@ def bybit_open_interest(get: Getter, symbol: str, start_ms: int, end_ms: int, *,
 
 # ── BingX perpetual swap ─────────────────────────────────────────────────────
 
-def bingx_klines(get: Getter, symbol: str, tf: str, start_ms: int, end_ms: int, *, base: str = BINGX_API) -> List[list]:
-    step, out, cursor = _tf_ms(tf), [], start_ms
+def bingx_klines(get: Getter, symbol: str, tf: str, start_ms: int, end_ms: int, *, base: str = BINGX_API,
+                 limit: int = 1000) -> List[list]:
+    """BingX answers newest-first and, given both ``startTime`` and ``endTime``, the NEWEST ``limit`` bars of the
+    range (observed 2026-11-12 on /openApi/swap/v3/quote/klines). The range is therefore walked in fixed windows of
+    at most ``limit`` bars, oldest first, as for Bybit: a window can never hold more than one page, and an empty
+    window (a halt, or before listing) moves on instead of ending the backfill."""
+    step, out = _tf_ms(tf), []
     sym = symbol if "-" in symbol else _bingx_symbol(symbol)
+    cursor = start_ms
     while cursor <= end_ms:
-        data = get(f"{base}/openApi/swap/v3/quote/klines", {"symbol": sym, "interval": tf, "startTime": cursor,
-                                                            "endTime": end_ms, "limit": 1000}) or {}
-        rows = sorted(data.get("data") or [], key=lambda k: int(k["time"]))
-        if not rows:
-            break
-        for k in rows:
+        window_end = min(end_ms, cursor + step * limit - 1)
+        data = _envelope("bingx", get(f"{base}/openApi/swap/v3/quote/klines",
+                                      {"symbol": sym, "interval": tf, "startTime": cursor, "endTime": window_end,
+                                       "limit": limit}), "code", "msg")
+        for k in data.get("data") or []:
             t = int(k["time"])
             out.append([t, k["open"], k["high"], k["low"], k["close"], k["volume"], t + step - 1, None, None])
-        nxt = int(rows[-1]["time"]) + step
-        if nxt <= cursor:
-            break
-        cursor = nxt
+        cursor = window_end + 1
     return _dedupe([r for r in out if start_ms <= r[0] <= end_ms])
 
 
@@ -201,6 +224,6 @@ FETCHERS = {
     "bingx_swap": {"klines": bingx_klines, "open_interest": bingx_open_interest},
 }
 
-__all__ = ["BINANCE_FAPI", "BINGX_API", "BYBIT_API", "FETCHERS", "FeatureUnavailable", "binance_funding",
+__all__ = ["BINANCE_FAPI", "BINGX_API", "BYBIT_API", "FETCHERS", "FeatureUnavailable", "VenueDataError", "binance_funding",
            "binance_klines", "binance_open_interest", "bingx_klines", "bingx_open_interest", "bybit_funding",
            "bybit_klines", "bybit_open_interest", "liquidations", "requests_getter"]
