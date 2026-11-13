@@ -16,7 +16,7 @@ Finding IDs are stable and map to the gap register (column "Master ID" consolida
 | Frontends | user-frontend (138 TS/TSX files), admin-frontend (120 files); both call user-backend; admin-frontend optionally calls admin-backend per `VITE_USE_ADMIN_BACKEND_*` flag | `src/api/client.ts` |
 | HTTP routes | 709 (user 368, bot 277, admin 64) | TRADINGBOT_API_INVENTORY.csv |
 | systemd units | 3 services + 6 timers/services (ops-tick, deadman, healthcheck, db-backup, platform-db-backup, offsite-backup) + alert template | `deploy/systemd/` |
-| Backend tests | bot 8,000+ (CI), user ~903 passed, admin 98, shared 299, root 7 (this audit) | see master report §L |
+| Backend tests | bot 8,032 passed / 460 skipped (local), user ~903 passed, admin 98, shared 299, root 7 (this audit) | see master report §L |
 | Strategy families registered | 6 (all M0, none certified) | STRATEGY_RESEARCH_AUDIT |
 | Venues with production adapters | Binance, Bybit, BingX (only Binance DEMO genuinely certified) | TRADING_EXECUTION_AUDIT |
 

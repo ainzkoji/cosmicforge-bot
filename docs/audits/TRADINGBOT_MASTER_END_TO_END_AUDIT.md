@@ -228,7 +228,7 @@ PARTIAL; production-host testing NOT VERIFIED / BLOCKED.
 | CI on branch `732e0e2` (run 43327108079) | success (previous run on 0da95d6 cancelled) | L3/L4 |
 | user-backend (local, Python 3.12, SQLite) | ≈903 passed, 0 failed, 1 xfailed | L4 |
 | admin-backend / shared / root | 98 / 299 / 7 passed | L4 |
-| bot-backend full suite (local) | see addendum at the end of this section | L4 |
+| bot-backend full suite (local, main `649080b`) | **8,032 passed, 0 failed, 460 skipped** (47 min; skips are PostgreSQL-dependent tests needing `PLATFORM_TEST_POSTGRES_URL`, which CI runs against postgres:16) | L4 |
 | user-frontend / admin-frontend | 102/102 and 23/23 passed; both builds succeed; ESLint 0 errors (210 / 151 warnings) | L4 |
 | Area auditors' targeted runs | ~1,000 targeted tests across CATI, research, sizing, execution, risk-reduction gate (branch), security, deploy suites — all passed except `test_phase2_broker_security.py` which fails 3/10 when run in isolation without `BROKER_SECRET_KEY` (order-dependent, OPS-14) | L4 |
 
