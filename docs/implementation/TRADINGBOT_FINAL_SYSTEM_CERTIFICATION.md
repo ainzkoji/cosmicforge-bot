@@ -443,7 +443,36 @@ coverage), 6 (portfolio). The full GitHub CI run on the exact final SHA is in se
 
 ## 32. GitHub and CI
 
-The CI run on this commit is recorded by the docs-only commit that follows it (as in earlier reports).
+**Commits in this pass (on `649080b`):**
+
+| Commit | Change |
+|---|---|
+| `334f2ff` | order switch never strands protection (4.1) |
+| `a746a58` | platform database in the VPS guide and env template (4.2) |
+| `f8401d5` | BingX backfill and venue error envelopes (4.3) |
+| `65372fe` | portfolio DEMO/LIVE separation and truthful labels (4.4) |
+| `1d552d4` | report draft, gate register, restore evidence |
+| `0da95d6` | Linux load and restore evidence |
+| `732e0e2` | emergency-flatten test contract, report test results |
+| this docs-only commit | records the CI run |
+
+**GitHub Actions CI run [43327108079](https://github.com/ainzkoji/cosmicforge-bot/actions/runs/43327108079)**
+(`workflow_dispatch` on `ccr-b5c520cf-80g8x2`, SHA `732e0e2095e438376ca3773c2d4b7ab0e190f0ad`, 2026-11-12 23:14 to
+2026-11-13 00:04 UTC): **conclusion success, 8 of 8 jobs green.**
+
+| Job | Result |
+|---|---|
+| Python lint (syntax and undefined names) | success |
+| Bot backend tests (SQLite + PostgreSQL 16, `PLATFORM_TEST_POSTGRES_REQUIRED=1`) | success |
+| Legacy runtime on PostgreSQL | success |
+| User backend tests | success |
+| Admin backend, shared library and root unit tests | success |
+| User frontend (lint, test, build) | success |
+| Admin frontend (lint, test, build) | success |
+| Containers: build, no-state check, migrate twice, API smoke, emergency-route refusal, dead-man check, unready release rolled back by `deploy.sh` | success |
+
+The commit recording this run changes only this report. CI triggers automatically only on `main`, so the run on the
+merged `main` commit is the owner's confirmation after merging.
 
 ## 33. Genuine external dependencies
 
